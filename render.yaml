@@ -3,7 +3,7 @@ services:
     name: clinical-pharmacy-app
     runtime: node
     plan: free
-    buildCommand: npm ci && npm run build
+    buildCommand: npm ci --include=dev && npm run build
     startCommand: npm run db:init && npm run server
     healthCheckPath: /api/health
     envVars:
