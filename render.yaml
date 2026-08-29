@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: clinical-pharmacy-app
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm run db:init && npm run server
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: clinical-pharmacy-db
+          property: connectionString
+      - key: DATABASE_SSL
+        value: "true"
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: CLIENT_ORIGIN
+        sync: false
+  - type: pg
+    name: clinical-pharmacy-db
+    plan: free
+    databaseName: clinical_pharmacy
+    user: clinical_pharmacy

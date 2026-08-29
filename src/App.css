@@ -1,0 +1,61 @@
+.patient-cell input { width: 100%; height: 37px; padding: 5px; border: 0; text-align: center; }
+.patient-cell input::placeholder { color: transparent; }
+.date-controls { display: inline-flex; align-items: center; gap: 10px; margin-right: auto; }
+.date-controls label { display: inline-flex; align-items: center; gap: 6px; color: white; font-size: 12px; }
+.date-controls input { width: 135px; padding: 5px 7px; border: 0; color: var(--ink); font-size: 12px; }
+.date-controls button { padding: 6px 10px; border: 1px solid #91c7a2; background: transparent; color: white; font-size: 12px; }
+
+:root { --green: #087c54; --deep-green: #064d3e; --red: #d93038; --ink: #132a27; --muted: #688079; --line: #d7e3dc; --paper: #fff; }
+.login-shell { min-height: 100svh; display: grid; place-items: center; padding: 24px; background: radial-gradient(circle at 18% 8%, #dcefe3 0, transparent 31%), #f4f7f3; }
+.login-card { width: min(100%, 440px); padding: 48px; background: var(--paper); border: 1px solid var(--line); box-shadow: 0 24px 70px #174f3b16; text-align: right; }
+.brand-mark, .mini-mark { display: grid; place-items: center; background: var(--green); color: white; font-weight: 700; }
+.hospital-logo { object-fit: contain; background: white; }
+.login-logo { display: block; width: 118px; height: 118px; margin-bottom: 25px; }
+.header-logo { width: 42px; height: 42px; }
+.print-heading { display: none; }
+.brand-mark { width: 58px; height: 58px; font-size: 26px; margin-bottom: 28px; }
+.eyebrow { margin: 0 0 8px; color: var(--red); font-size: 12px; font-weight: 700; letter-spacing: .08em; }
+h1, h2, p { margin-top: 0; } h1 { margin-bottom: 10px; color: var(--deep-green); font-size: clamp(25px, 3vw, 34px); } h2 { color: var(--deep-green); }
+.login-intro, .section-heading p { color: var(--muted); }
+.login-form { display: grid; gap: 18px; margin-top: 34px; } label { display: grid; gap: 8px; color: var(--deep-green); font-size: 14px; font-weight: 700; }
+.form-error { margin: 0; color: var(--red); font-size: 12px; }
+input, select { border: 1px solid #c6d8ce; background: #fbfdfb; color: var(--ink); outline: none; } input:focus, select:focus { border-color: var(--green); box-shadow: 0 0 0 3px #087c541c; }
+.login-form input, .medicine-modal input { width: 100%; padding: 13px 14px; border-radius: 2px; }
+.primary-button, .secondary-button, .back-button, .text-button { border: 0; padding: 11px 17px; font-weight: 700; } .primary-button { background: var(--green); color: white; } .primary-button:hover { background: var(--deep-green); } .primary-button span { margin-right: 8px; }.compact { white-space: nowrap; }
+.secondary-button { color: var(--green); background: #e4f1e9; } .back-button, .text-button { background: transparent; color: var(--green); padding-inline: 0; }.security-note { margin: 26px 0 0; color: #84958f; font-size: 12px; text-align: center; }
+.app-shell { min-height: 100svh; } .topbar { display: flex; justify-content: space-between; align-items: center; padding: 18px clamp(20px, 5vw, 72px); background: white; border-bottom: 1px solid var(--line); }.topbar-brand, .user-menu, .toolbar-actions { display: flex; align-items: center; gap: 12px; }.mini-mark { width: 34px; height: 34px; font-size: 16px; }.topbar-brand strong, .topbar-brand small { display: block; }.topbar-brand small { color: var(--muted); font-size: 11px; }.user-menu { color: var(--muted); font-size: 13px; }
+.dashboard, .chart-page { width: min(100% - 40px, 1380px); margin: 0 auto; padding: 58px 0; }.section-heading, .chart-toolbar { display: flex; justify-content: space-between; align-items: end; gap: 24px; margin-bottom: 38px; }.date-chip { padding: 13px 18px; border-right: 3px solid var(--red); background: white; text-align: right; }.date-chip span, .date-chip strong { display: block; }.date-chip span { color: var(--muted); font-size: 11px; }.date-chip strong { color: var(--deep-green); }
+.location-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(245px, 1fr)); gap: 12px; }.location-card { display: flex; align-items: center; gap: 16px; padding: 19px; border: 1px solid var(--line); background: white; color: var(--ink); text-align: right; transition: transform .2s, border-color .2s; }.location-card:hover { border-color: var(--green); transform: translateY(-3px); }.location-card strong, .location-card small { display: block; }.location-card small { margin-top: 5px; color: var(--muted); font-size: 12px; }.floor-number { display: grid; place-items: center; width: 43px; height: 43px; background: #e5f2e9; color: var(--green); font-size: 18px; font-weight: 700; }.special .floor-number { background: #fbe7e4; color: var(--red); }.arrow { margin-right: auto; color: var(--green); font-size: 20px; }
+.chart-toolbar { align-items: center; }.chart-toolbar h1 { margin-bottom: 0; }.chart-meta { display: flex; flex-wrap: wrap; gap: 28px; padding: 15px 18px; margin-bottom: 12px; background: var(--deep-green); color: white; font-size: 13px; }.chart-meta b { color: #d9f0df; }.save-state { margin-right: auto; color: #b8e5c5; }.table-frame { overflow: auto; max-height: calc(100svh - 230px); background: white; border: 1px solid #1d2924; direction: rtl; }.chart-table { border-collapse: separate; border-spacing: 0; min-width: 2800px; direction: rtl; font-size: 11px; }.chart-table th, .chart-table td { width: 51px; min-width: 51px; height: 38px; border-left: 1px solid #9ca8a1; border-bottom: 1px solid #9ca8a1; padding: 0; text-align: center; }.chart-table thead th { position: sticky; top: 0; z-index: 3; height: 128px; background: #f5f8f5; vertical-align: bottom; }.chart-table thead th select { width: 128px; height: 28px; border: 0; background: transparent; font-size: 10px; transform: rotate(-90deg); cursor: pointer; }.chart-table .patient-header, .chart-table .patient-cell { position: sticky; right: 0; z-index: 4; width: 155px; min-width: 155px; background: white; }.chart-table .patient-header { z-index: 5; background: var(--deep-green); color: white; }.patient-cell input { width: 100%; height: 37px; padding: 5px; border: 0; text-align: right; }.chart-table td input { width: 100%; height: 37px; border: 0; text-align: center; }.chart-table tfoot th, .chart-table tfoot td { position: sticky; bottom: 0; height: 38px; background: #e8f1eb; color: var(--deep-green); font-weight: 700; }.chart-table tfoot th { z-index: 2; }
+.modal-backdrop { position: fixed; inset: 0; display: grid; place-items: center; padding: 20px; background: #062b218c; z-index: 10; }.medicine-modal { position: relative; width: min(100%, 420px); padding: 35px; background: white; box-shadow: 0 20px 60px #0003; }.medicine-modal h2 { margin-bottom: 24px; }.close-button { position: absolute; top: 14px; left: 16px; border: 0; background: transparent; color: var(--muted); font-size: 24px; }
+@media (max-width: 700px) { .login-card { padding: 32px 24px; }.topbar { align-items: flex-start; gap: 14px; flex-direction: column; }.user-menu { width: 100%; justify-content: space-between; }.dashboard, .chart-page { width: min(100% - 24px, 1380px); padding: 36px 0; }.section-heading, .chart-toolbar { align-items: flex-start; flex-direction: column; }.date-chip { width: 100%; }.toolbar-actions { width: 100%; justify-content: space-between; }.chart-meta { gap: 10px 18px; }.save-state { width: 100%; margin-right: 0; } }
+@media print { @page { size: A4 landscape; margin: 8mm; } body { background: white; } .topbar, .chart-toolbar, .chart-meta, .modal-backdrop { display: none !important; } .chart-page { width: 100%; padding: 0; }.print-heading { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 6px; color: #000; }.print-heading strong, .print-heading span { display: block; }.print-logo { width: 42px; height: 42px; }.table-frame { overflow: visible; max-height: none; border: 1px solid #000; }.chart-table { color: #000; background: white; font-size: 7px; }.chart-table th, .chart-table td { border-color: #000; }.chart-table thead th, .chart-table tfoot th, .chart-table tfoot td, .chart-table .patient-header, .chart-table .patient-cell { background: white; color: #000; }.chart-table thead th { position: static; }.chart-table .patient-header, .chart-table .patient-cell, .chart-table tfoot th, .chart-table tfoot td { position: static; }.chart-table input, .chart-table select { color: #000; background: white; } }
+
+.chart-table .patient-header { vertical-align: middle; text-align: center; }
+.chart-table .patient-header span { display: block; white-space: nowrap; line-height: 1.8; }
+.chart-table .patient-header { position: relative; overflow: hidden; }
+.chart-table .patient-header { background: white; color: #000; }
+.header-watermark { position: absolute; inset: 50% auto auto 50%; width: 125px; height: 125px; object-fit: contain; opacity: .16; transform: translate(-50%, -50%); pointer-events: none; }
+.chart-table .patient-header span { position: relative; z-index: 1; }
+.chart-table thead th:not(.patient-header) { overflow: hidden; vertical-align: middle; }
+.chart-table thead th:not(.patient-header) select { display: block; width: 51px; height: 126px; margin: 0; padding: 0; transform: none; writing-mode: vertical-rl; text-orientation: mixed; overflow: hidden; }
+.chart-table thead th:not(.patient-header) { width: 51px; min-width: 51px; max-width: 51px; padding: 0; overflow: hidden; }
+.chart-table thead th:not(.patient-header) select { appearance: none; -webkit-appearance: none; box-sizing: border-box; width: 51px; min-width: 51px; max-width: 51px; height: 126px; min-height: 126px; max-height: 126px; border: 0; outline: 0; text-align: center; text-align-last: center; line-height: 1; }
+.chart-table thead th:not(.patient-header) select:has(option[value=""]:checked) { color: transparent; }
+
+@media print {
+	@page { size: A4 landscape; margin: 5mm; }
+	.chart-page { width: 100%; padding: 0; }
+	.print-heading { display: none !important; }
+	.print-logo { width: 22mm; height: 22mm; }
+	.table-frame { overflow: visible; max-height: none; width: 100%; }
+	.chart-table { width: 100%; min-width: 0; table-layout: fixed; font-size: 4.5px; }
+	.chart-table th, .chart-table td { width: auto; min-width: 0; height: 4mm; line-height: 1; }
+	.chart-table thead th { height: 16mm; }
+	.chart-table thead th:not(.patient-header) { width: auto; min-width: 0; max-width: none; height: 16mm; }
+	.chart-table thead th:not(.patient-header) select { width: 100%; min-width: 0; max-width: none; height: 15mm; min-height: 15mm; max-height: 15mm; font-size: 6px; }
+	.chart-table .patient-header, .chart-table .patient-cell { width: 28mm; min-width: 28mm; }
+	.header-watermark { width: 25mm; height: 25mm; opacity: .12; }
+	.patient-cell input, .chart-table td input { height: 4mm; font-size: 7px; padding: 0; }
+	.chart-table tfoot th, .chart-table tfoot td { height: 4mm; font-size: 8px; }
+}
