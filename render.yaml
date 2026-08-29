@@ -2,6 +2,7 @@ services:
   - type: web
     name: clinical-pharmacy-app
     runtime: node
+    region: oregon
     plan: free
     buildCommand: npm ci --include=dev && npm run build
     startCommand: npm run db:init && npm run server
@@ -23,5 +24,6 @@ services:
 databases:
   - name: clinical-pharmacy-db
     plan: free
+    region: oregon
     databaseName: clinical_pharmacy
     user: clinical_pharmacy
