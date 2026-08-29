@@ -19,8 +19,9 @@ services:
         generateValue: true
       - key: CLIENT_ORIGIN
         sync: false
-  - type: pg
-    name: clinical-pharmacy-db
+
+databases:
+  - name: clinical-pharmacy-db
     plan: free
     databaseName: clinical_pharmacy
     user: clinical_pharmacy
