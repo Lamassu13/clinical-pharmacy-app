@@ -14,9 +14,10 @@ const app = express()
 const port = Number(process.env.PORT || 3001)
 const projectRoot = path.dirname(fileURLToPath(import.meta.url))
 
+app.set('trust proxy', 1)
 app.use(helmet())
 app.use(cors({ origin: process.env.CLIENT_ORIGIN || 'http://localhost:5173', credentials: true }))
-app.use(express.json({ limit: '100kb' }))
+app.use(express.json({ limit: '2mb' }))
 const PgSession = connectPgSimple(session)
 app.use(session({ store: new PgSession({ pool, createTableIfMissing: true }), secret: process.env.SESSION_SECRET || 'development-only-change-me', resave: false, saveUninitialized: false, cookie: { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', maxAge: 8 * 60 * 60 * 1000 } }))
 
@@ -67,8 +68,10 @@ app.get('/api/registrations', requireAdmin, async (_request, response) => {
 })
 app.put('/api/registrations/:id', requireAdmin, async (request, response) => {
   const status = request.body.status
+  const id = Number(request.params.id)
   if (!['active', 'rejected'].includes(status)) return response.status(400).json({ message: 'الحالة غير صحيحة' })
-  const result = await query("UPDATE users SET account_status = $1, approved_at = NOW(), approved_by = $2 WHERE id = $3 AND account_status = 'pending' RETURNING id", [status, request.session.user.id, request.params.id])
+  if (!Number.isInteger(id) || id < 1) return response.status(400).json({ message: 'معرّف غير صحيح' })
+  const result = await query("UPDATE users SET account_status = $1, approved_at = NOW(), approved_by = $2 WHERE id = $3 AND account_status = 'pending' RETURNING id", [status, request.session.user.id, id])
   if (!result.rows[0]) return response.status(404).json({ message: 'الطلب غير موجود أو تمت معالجته' })
   response.json({ ok: true })
 })
@@ -77,18 +80,20 @@ app.get('/api/access', requireAdmin, async (_request, response) => {
   const result = await query('SELECT u.id, u.username, u.full_name, ufa.floor_number FROM users u LEFT JOIN user_floor_access ufa ON ufa.user_id = u.id ORDER BY u.full_name')
   response.json({ access: result.rows })
 })
-app.put('/api/access/:userId', requireAdmin, async (request, response) => {
-  const floor = Number(request.body.floor)
-  if (![2, 3, 4, 5, 6, 8, 9, 10].includes(floor)) return response.status(400).json({ message: 'الطابق غير مسموح' })
-  await query('INSERT INTO user_floor_access (user_id, floor_number, assigned_by) VALUES ($1, $2, $3) ON CONFLICT (user_id, floor_number) DO UPDATE SET assigned_at = NOW()', [request.params.userId, floor, request.session.user.id])
-  response.json({ ok: true })
-})
 app.put('/api/access/by-username', requireAdmin, async (request, response) => {
   const floor = Number(request.body.floor)
   if (![2, 3, 4, 5, 6, 8, 9, 10].includes(floor)) return response.status(400).json({ message: 'الطابق غير مسموح' })
   const userResult = await query('SELECT id FROM users WHERE username = $1 OR email = $1', [String(request.body.username || '').trim()])
   if (!userResult.rows[0]) return response.status(404).json({ message: 'المستخدم غير موجود' })
   await query('INSERT INTO user_floor_access (user_id, floor_number, assigned_by) VALUES ($1, $2, $3) ON CONFLICT (user_id, floor_number) DO UPDATE SET assigned_at = NOW()', [userResult.rows[0].id, floor, request.session.user.id])
+  response.json({ ok: true })
+})
+app.put('/api/access/:userId', requireAdmin, async (request, response) => {
+  const floor = Number(request.body.floor)
+  const userId = Number(request.params.userId)
+  if (![2, 3, 4, 5, 6, 8, 9, 10].includes(floor)) return response.status(400).json({ message: 'الطابق غير مسموح' })
+  if (!Number.isInteger(userId) || userId < 1) return response.status(400).json({ message: 'معرّف غير صحيح' })
+  await query('INSERT INTO user_floor_access (user_id, floor_number, assigned_by) VALUES ($1, $2, $3) ON CONFLICT (user_id, floor_number) DO UPDATE SET assigned_at = NOW()', [userId, floor, request.session.user.id])
   response.json({ ok: true })
 })
 
