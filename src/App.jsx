@@ -21,7 +21,10 @@ const starterMedicines = [
 ].sort((firstMedicine, secondMedicine) => firstMedicine.localeCompare(secondMedicine))
 
 const toEnglishDigits = (value) => value.replace(/[٠-٩]/g, (digit) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(digit))).replace(/[۰-۹]/g, (digit) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(digit)))
-const isoDate = (date) => new Date(date).toISOString().slice(0, 10)
+const isoDate = (value) => {
+  const date = new Date(value)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
 const locationBody = (value) => {
   const asFloor = Number(value)
   if (floors.some((item) => item.number === asFloor)) return { floor: asFloor }
@@ -68,11 +71,13 @@ function App() {
   const [chartLoading, setChartLoading] = useState(false)
   const [loadedChartKey, setLoadedChartKey] = useState(null)
   const [saveError, setSaveError] = useState(false)
+  const [loadError, setLoadError] = useState(false)
   const [pillsData, setPillsData] = useState(null)
   const [pillEntries, setPillEntries] = useState({})
   const [pillsLoading, setPillsLoading] = useState(false)
   const [loadedPillsKey, setLoadedPillsKey] = useState(null)
   const [pillsSaveError, setPillsSaveError] = useState(false)
+  const [pillsLoadError, setPillsLoadError] = useState(false)
   const [adminMedicines, setAdminMedicines] = useState([])
   const [medicineFilter, setMedicineFilter] = useState('')
   const today = new Date(`${selectedDate}T12:00:00`).toLocaleDateString('ar-IQ')
@@ -237,6 +242,28 @@ function App() {
     columns: columnMedicines.map((medicineName, index) => ({ columnNumber: index + 1, medicineName })),
     quantities: quantities.flatMap((row, rowIndex) => row.map((quantity, columnIndex) => quantity ? ({ rowNumber: rowIndex + 1, columnNumber: columnIndex + 1, quantity: Number(quantity) }) : [])),
   }), [columnMedicines, patientNames, quantities, selected])
+  // Fire an immediate save (survives navigation / tab close) — only once the grid is loaded,
+  // so we never overwrite unknown server state with a blank grid.
+  const flushChart = useCallback(() => {
+    if (!selected || selected.mode === 'pills' || !isLoggedIn) return
+    if (loadedChartKey !== `${selected.floor || 'special'}-${selected.ward}-${selectedDate}`) return
+    try { fetch(`${apiUrl}/chart`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', keepalive: true, body: JSON.stringify(buildChartBody(selectedDate)) }) } catch { /* the debounced autosave or next visit will retry */ }
+  }, [buildChartBody, isLoggedIn, loadedChartKey, selected, selectedDate])
+  const flushPills = useCallback(() => {
+    if (!selected || selected.mode !== 'pills' || !isLoggedIn || !pillsData) return
+    if (loadedPillsKey !== `${selected.floor || 'special'}-${selected.ward}-${selectedDate}`) return
+    const entries = Object.entries(pillEntries).map(([key, value]) => {
+      const [patientRowNumber, medicineId] = key.split(':').map(Number)
+      return { patientRowNumber, medicineId, doseTime: value.doseTime || '', usageMethod: value.usageMethod || '' }
+    })
+    try { fetch(`${apiUrl}/pills`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', keepalive: true, body: JSON.stringify({ floor: selected.floor, ward: selected.ward, date: selectedDate, entries }) }) } catch { /* retry on next visit */ }
+  }, [isLoggedIn, loadedPillsKey, pillEntries, pillsData, selected, selectedDate])
+
+  useEffect(() => {
+    const handler = () => { if (selected?.mode === 'pills') flushPills(); else flushChart() }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [selected, flushChart, flushPills])
 
   useEffect(() => { if (isLoggedIn) loadMedicines() }, [isLoggedIn, loadMedicines])
   useEffect(() => {
@@ -248,30 +275,45 @@ function App() {
 
   useEffect(() => {
     if (!selected || selected.mode === 'pills') return undefined
+    const chartKey = `${selected.floor || 'special'}-${selected.ward}-${selectedDate}`
     setChartLoading(true)
     setLoadedChartKey(null)
     setSaveError(false)
-    const chartKey = `${selected.floor || 'special'}-${selected.ward}-${selectedDate}`
-    const params = new URLSearchParams({ floor: selected.floor || '', ward: selected.ward, date: selectedDate })
-    fetch(`${apiUrl}/chart?${params}`, { credentials: 'include' }).then((response) => response.json()).then((result) => {
-      if (!result.chart) {
-        setPatientNames(Array.from({ length: 36 }, () => ''))
-        setQuantities(Array.from({ length: 36 }, () => Array(51).fill('')))
-        setColumnMedicines(Array(51).fill(''))
+    setLoadError(false)
+    let cancelled = false
+    let retryTimer
+    const load = async () => {
+      try {
+        const params = new URLSearchParams({ floor: selected.floor || '', ward: selected.ward, date: selectedDate })
+        const response = await fetch(`${apiUrl}/chart?${params}`, { credentials: 'include' })
+        if (!response.ok) throw new Error('load failed')
+        const result = await response.json()
+        if (cancelled) return
+        if (!result.chart) {
+          setPatientNames(Array.from({ length: 36 }, () => ''))
+          setQuantities(Array.from({ length: 36 }, () => Array(51).fill('')))
+          setColumnMedicines(Array(51).fill(''))
+        } else {
+          const nextPatients = Array(36).fill('')
+          result.chart.patients.forEach((patient) => { nextPatients[patient.row_number - 1] = patient.patient_name })
+          const nextQuantities = Array.from({ length: 36 }, () => Array(51).fill(''))
+          result.chart.quantities.forEach((quantity) => { nextQuantities[quantity.row_number - 1][quantity.column_number - 1] = String(quantity.quantity) })
+          const nextColumns = Array(51).fill('')
+          result.chart.columns.forEach((column) => { nextColumns[column.column_number - 1] = column.medicine_name || '' })
+          setPatientNames(nextPatients); setQuantities(nextQuantities); setColumnMedicines(nextColumns)
+        }
+        setLoadError(false)
         setLoadedChartKey(chartKey)
-        return
+        setChartLoading(false)
+      } catch {
+        if (cancelled) return
+        setLoadError(true)
+        setChartLoading(false)
+        retryTimer = setTimeout(load, 4000)
       }
-      const nextPatients = Array(36).fill('')
-      result.chart.patients.forEach((patient) => { nextPatients[patient.row_number - 1] = patient.patient_name })
-      const nextQuantities = Array.from({ length: 36 }, () => Array(51).fill(''))
-      result.chart.quantities.forEach((quantity) => { nextQuantities[quantity.row_number - 1][quantity.column_number - 1] = String(quantity.quantity) })
-      const nextColumns = Array(51).fill('')
-      result.chart.columns.forEach((column) => { nextColumns[column.column_number - 1] = column.medicine_name || '' })
-      setPatientNames(nextPatients); setQuantities(nextQuantities); setColumnMedicines(nextColumns)
-      setLoadedChartKey(chartKey)
-      requestAnimationFrame(() => document.querySelectorAll('.chart-table thead input.medicine-select').forEach((select, index) => { select.value = nextColumns[index] || '' }))
-    }).catch(() => undefined).finally(() => setChartLoading(false))
-    return undefined
+    }
+    load()
+    return () => { cancelled = true; clearTimeout(retryTimer) }
   }, [selected, selectedDate])
 
   useEffect(() => {
@@ -288,7 +330,7 @@ function App() {
         retryTimer = setTimeout(save, 4000)
       }
     }
-    const timer = setTimeout(save, 2500)
+    const timer = setTimeout(save, 1200)
     return () => { clearTimeout(timer); clearTimeout(retryTimer) }
   }, [buildChartBody, chartLoading, isLoggedIn, loadedChartKey, selected, selectedDate])
 
@@ -298,15 +340,32 @@ function App() {
     setPillsLoading(true)
     setLoadedPillsKey(null)
     setPillsSaveError(false)
-    const params = new URLSearchParams({ floor: selected.floor || '', ward: selected.ward, date: selectedDate })
-    fetch(`${apiUrl}/pills?${params}`, { credentials: 'include' }).then((response) => response.json()).then((result) => {
-      setPillsData(result.pills || null)
-      const seed = {}
-      ;(result.pills?.entries || []).forEach((entry) => { seed[`${entry.patientRowNumber}:${entry.medicineId}`] = { doseTime: entry.doseTime || '', usageMethod: entry.usageMethod || '' } })
-      setPillEntries(seed)
-      setLoadedPillsKey(pillsKey)
-    }).catch(() => setPillsData(null)).finally(() => setPillsLoading(false))
-    return undefined
+    setPillsLoadError(false)
+    let cancelled = false
+    let retryTimer
+    const load = async () => {
+      try {
+        const params = new URLSearchParams({ floor: selected.floor || '', ward: selected.ward, date: selectedDate })
+        const response = await fetch(`${apiUrl}/pills?${params}`, { credentials: 'include' })
+        if (!response.ok) throw new Error('load failed')
+        const result = await response.json()
+        if (cancelled) return
+        setPillsData(result.pills || null)
+        const seed = {}
+        ;(result.pills?.entries || []).forEach((entry) => { seed[`${entry.patientRowNumber}:${entry.medicineId}`] = { doseTime: entry.doseTime || '', usageMethod: entry.usageMethod || '' } })
+        setPillEntries(seed)
+        setPillsLoadError(false)
+        setLoadedPillsKey(pillsKey)
+        setPillsLoading(false)
+      } catch {
+        if (cancelled) return
+        setPillsLoadError(true)
+        setPillsLoading(false)
+        retryTimer = setTimeout(load, 4000)
+      }
+    }
+    load()
+    return () => { cancelled = true; clearTimeout(retryTimer) }
   }, [selected, selectedDate])
 
   useEffect(() => {
@@ -328,7 +387,7 @@ function App() {
         retryTimer = setTimeout(save, 4000)
       }
     }
-    const timer = setTimeout(save, 2500)
+    const timer = setTimeout(save, 1200)
     return () => { clearTimeout(timer); clearTimeout(retryTimer) }
   }, [isLoggedIn, loadedPillsKey, pillEntries, pillsData, pillsLoading, selected, selectedDate])
 
@@ -340,21 +399,20 @@ function App() {
     if (clearedRows.length) setQuantities((current) => current.map((row, rowIndex) => clearedRows.includes(rowIndex) ? Array(51).fill('') : row))
     previousPatientNames.current = patientNames
   }, [patientNames])
-  const changeDate = useCallback(async (nextDate) => {
-    if (selected) {
-      try { await fetch(`${apiUrl}/chart`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(buildChartBody(selectedDate)) }) } catch { /* the load effect will still fetch server state for nextDate */ }
-    }
+  const changeDate = useCallback((nextDate) => {
+    flushChart()
     setSelectedDate(nextDate)
-  }, [buildChartBody, selected, selectedDate])
+  }, [flushChart])
   const copyToNextDay = useCallback(async () => {
     const nextDate = isoDate(new Date(`${selectedDate}T12:00:00`).getTime() + 86400000)
     if (!window.confirm(`نسخ جارت ${today} إلى اليوم التالي؟ سيُستبدل أي جارت محفوظ في ذلك اليوم.`)) return
+    flushChart()
     try {
       const response = await fetch(`${apiUrl}/chart`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(buildChartBody(nextDate)) })
       if (!response.ok) throw new Error('copy failed')
       setSelectedDate(nextDate)
     } catch { window.alert('تعذر نسخ الجارت') }
-  }, [buildChartBody, selectedDate, today])
+  }, [buildChartBody, flushChart, selectedDate, today])
 
   useEffect(() => {
     const meta = document.querySelector('.chart-meta')
@@ -368,14 +426,8 @@ function App() {
     dateInput.addEventListener('change', (event) => changeDate(event.target.value))
     copyButton.addEventListener('click', copyToNextDay)
     meta.append(controls)
-    const medicineSelects = document.querySelectorAll('.chart-table thead input.medicine-select')
-    const syncColumnMedicines = () => setColumnMedicines(Array.from(medicineSelects, (select) => select.value))
-    medicineSelects.forEach((select) => select.addEventListener('change', syncColumnMedicines))
-    medicineSelects.forEach((select, index) => select.addEventListener('change', () => {
-      setColumnMedicines((current) => current.map((medicine, medicineIndex) => medicineIndex === index ? select.value : medicine))
-    }))
-    return () => { controls.remove(); medicineSelects.forEach((select) => select.removeEventListener('change', syncColumnMedicines)) }
-  }, [selected, selectedDate, patientNames, quantities, changeDate, copyToNextDay])
+    return () => { controls.remove() }
+  }, [selected, selectedDate, changeDate, copyToNextDay])
   useEffect(() => {
     const cards = document.querySelectorAll('.location-card:not(.special)')
     cards.forEach((card) => {
@@ -400,9 +452,10 @@ function App() {
 
   if (adminView === 'medicines' && currentUser?.role === 'admin') return <main className="app-shell">{adminHeader}<section className="dashboard"><div className="section-heading"><div><p className="eyebrow">الأدوية</p><h1>إدارة الأدوية</h1><p>أضف دواءً، عدّل الاسم الإنجليزي أو العربي، أو احذفه. الاسم العربي يظهر في استمارة الحبوب.</p></div></div>{registrationsError && <p className="form-error">{registrationsError}</p>}<form className="medicine-add-row" onSubmit={addMedicine}><input placeholder="اسم دواء جديد (إنجليزي)" value={newMedicine} onChange={(event) => setNewMedicine(event.target.value)} /><button className="primary-button compact" type="submit">إضافة</button></form><input className="medicine-filter" placeholder="بحث في الأدوية…" value={medicineFilter} onChange={(event) => setMedicineFilter(event.target.value)} /><div className="table-frame"><table className="requests-table"><thead><tr><th>الاسم (إنجليزي)</th><th>الاسم بالعربية</th><th>إجراء</th></tr></thead><tbody>{adminMedicines.filter((item) => !medicineFilter.trim() || `${item.name} ${item.arabic_name || ''}`.toLowerCase().includes(medicineFilter.trim().toLowerCase())).map((item) => <MedicineRow key={item.id} item={item} onSave={saveMedicine} onRemove={removeMedicine} />)}</tbody></table></div></section></main>
 
-  if (selected && selected.mode === 'pills') return <main className="app-shell"><header className="topbar"><div className="topbar-brand"><img className="hospital-logo header-logo" src={hospitalLogo} alt="شعار مستشفى بغداد التعليمي" /><div><strong>الصيدلة السريرية</strong><small>مستشفى بغداد التعليمي</small></div></div><div className="user-menu"><span>{currentUser?.fullName || 'مستخدم'}</span><button onClick={logout} className="text-button">تسجيل الخروج</button></div></header><section className="pills-page"><div className="chart-toolbar pills-toolbar"><button className="back-button" onClick={() => setSelected(null)}>→ العودة للردهات</button><div><p className="eyebrow">استمارة إعطاء الحبوب</p><h1>{selected.ward}</h1></div><div className="toolbar-actions"><label className="pills-date">التاريخ <input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} /></label><span className={pillsSaveError ? 'save-state save-state-error' : 'save-state'}>{pillsSaveError ? '⚠ لم يُحفظ — تُعاد المحاولة…' : '● محفوظ تلقائيًا'}</span><button className="primary-button compact" onClick={() => window.print()}>طباعة</button></div></div>{pillsLoading ? <p className="login-intro">جارٍ التحميل…</p> : !pillsData ? <p className="login-intro">لا يوجد جارت محفوظ لهذا اليوم — سجّل الجارت أولًا.</p> : pillsData.patients.length === 0 ? <p className="login-intro">لا يوجد مرضى لديهم حبوب (Tab / Cap) في جارت هذا اليوم.</p> : pillsData.patients.map((patient) => <article className="pill-form" key={patient.rowNumber}><div className="pill-form-head"><img className="hospital-logo header-logo" src={hospitalLogo} alt="" /><div className="pill-form-title"><strong>مستشفى بغداد التعليمي</strong><span>وحدة الصيدلة السريرية — {selected.ward}</span></div><div className="pill-form-patient"><strong>{patient.name}</strong><span>{today}</span></div></div><table className="pill-table"><thead><tr><th>العلاج</th><th>وقت الجرعة</th><th>طريقة الاستخدام</th></tr></thead><tbody>{pillsData.medicines.filter((med) => (pillsData.matrix[patient.rowNumber] || []).includes(med.id)).map((med) => { const key = `${patient.rowNumber}:${med.id}`; const entry = pillEntries[key] || { doseTime: '', usageMethod: '' }; return <tr key={med.id}><td>{med.arabicName || med.name}</td><td><select value={entry.doseTime} onChange={(event) => setPillEntries((current) => ({ ...current, [key]: { ...entry, doseTime: event.target.value } }))}><option value="">—</option>{doseTimes.map((option) => <option key={option} value={option}>{option}</option>)}</select></td><td><select value={entry.usageMethod} onChange={(event) => setPillEntries((current) => ({ ...current, [key]: { ...entry, usageMethod: event.target.value } }))}><option value="">—</option>{usageMethods.map((option) => <option key={option} value={option}>{option}</option>)}</select></td></tr> })}</tbody></table></article>)}</section></main>
+  const wardLabel = selected ? (selected.floor ? `الطابق ${selected.floor} - ${selected.ward}` : selected.ward) : ''
+  if (selected && selected.mode === 'pills') return <main className="app-shell"><header className="topbar"><div className="topbar-brand"><img className="hospital-logo header-logo" src={hospitalLogo} alt="شعار مستشفى بغداد التعليمي" /><div><strong>الصيدلة السريرية</strong><small>مستشفى بغداد التعليمي</small></div></div><div className="user-menu"><span>{currentUser?.fullName || 'مستخدم'}</span><button onClick={logout} className="text-button">تسجيل الخروج</button></div></header><section className="pills-page"><div className="chart-toolbar pills-toolbar"><button className="back-button" onClick={() => { flushPills(); setSelected(null) }}>→ العودة للردهات</button><div><p className="eyebrow">استمارة إعطاء الحبوب</p><h1>{wardLabel}</h1></div><div className="toolbar-actions"><label className="pills-date">التاريخ <input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} /></label><span className={(pillsSaveError || pillsLoadError) ? 'save-state save-state-error' : 'save-state'}>{pillsLoadError ? '⚠ تعذر تحميل الاستمارة — إعادة المحاولة…' : pillsSaveError ? '⚠ لم يُحفظ — تُعاد المحاولة…' : '● محفوظ تلقائيًا'}</span><button className="primary-button compact" onClick={() => window.print()}>طباعة</button></div></div>{pillsLoading ? <p className="login-intro">جارٍ التحميل…</p> : !pillsData ? <p className="login-intro">لا يوجد جارت محفوظ لهذا اليوم — سجّل الجارت أولًا.</p> : pillsData.patients.length === 0 ? <p className="login-intro">لا يوجد مرضى لديهم حبوب (Tab / Cap) في جارت هذا اليوم.</p> : pillsData.patients.map((patient) => <article className="pill-form" key={patient.rowNumber}><div className="pill-form-head"><div className="pill-form-patient"><strong>{patient.name}</strong><span>{today}</span></div><div className="pill-form-brand"><div className="pill-form-title"><strong>مستشفى بغداد التعليمي</strong><span>وحدة الصيدلة السريرية</span><span>{wardLabel}</span></div><img className="hospital-logo header-logo" src={hospitalLogo} alt="" /></div></div><table className="pill-table"><thead><tr><th>العلاج</th><th>وقت الجرعة</th><th>طريقة الاستخدام</th></tr></thead><tbody>{pillsData.medicines.filter((med) => (pillsData.matrix[patient.rowNumber] || []).includes(med.id)).map((med) => { const key = `${patient.rowNumber}:${med.id}`; const entry = pillEntries[key] || { doseTime: '', usageMethod: '' }; return <tr key={med.id}><td>{med.arabicName || med.name}</td><td><select value={entry.doseTime} onChange={(event) => setPillEntries((current) => ({ ...current, [key]: { ...entry, doseTime: event.target.value } }))}><option value="">—</option>{doseTimes.map((option) => <option key={option} value={option}>{option}</option>)}</select></td><td><select value={entry.usageMethod} onChange={(event) => setPillEntries((current) => ({ ...current, [key]: { ...entry, usageMethod: event.target.value } }))}><option value="">—</option>{usageMethods.map((option) => <option key={option} value={option}>{option}</option>)}</select></td></tr> })}</tbody></table></article>)}</section></main>
 
-  return <main className="app-shell"><header className="topbar"><div className="topbar-brand"><img className="hospital-logo header-logo" src={hospitalLogo} alt="شعار مستشفى بغداد التعليمي" /><div><strong>الصيدلة السريرية</strong><small>مستشفى بغداد التعليمي</small></div></div><div className="user-menu">{currentUser?.role === 'admin' && <button className="text-button" onClick={() => setAdminView('requests')}>طلبات الانضمام</button>}{currentUser?.role === 'admin' && <button className="text-button" onClick={() => setAdminView('medicines')}>إدارة الأدوية</button>}{currentUser?.role === 'admin' && <button className="text-button" onClick={() => setAdminView('users')}>جميع المستخدمين</button>}<span>{currentUser?.fullName || 'مستخدم'}</span><button onClick={logout} className="text-button">تسجيل الخروج</button></div></header>{!selected && !floor ? <section className="dashboard"><div className="section-heading"><div><p className="eyebrow">مساحة العمل اليومية</p><h1>اختر الطابق أو الردهة</h1><p>ابدأ باختيار موقع الجارت الذي تريد تسجيله أو مراجعته.</p></div><div className="date-chip"><span>اليوم</span><strong>{today}</strong></div></div><div className="location-grid">{floors.map((item) => <button className="location-card" key={item.number} onClick={() => setFloor(item)}><span className="floor-number">{item.number}</span><span><strong>الطابق {item.number}</strong><small>{item.wards.length} أروقة فرعية</small></span><span className="arrow">←</span></button>)}{specialWards.map((ward) => <div className="location-card special" key={ward}><span className="floor-number">✚</span><span><strong>{ward}</strong></span><span className="ward-card-actions"><button className="secondary-button compact" onClick={() => setSelected({ floor: null, ward, mode: 'chart' })}>الجارت</button><button className="primary-button compact" onClick={() => setSelected({ floor: null, ward, mode: 'pills' })}>الحبوب</button></span></div>)}</div></section> : !selected ? <section className="dashboard"><button className="back-button" onClick={() => setFloor(null)}>→ العودة للطوابق</button><div className="section-heading"><div><p className="eyebrow">الطابق {floor.number}</p><h1>اختر الردهة</h1><p>اختر «الجارت» لتسجيل الجرعات، أو «الحبوب» لاستمارة إعطاء الحبوب.</p></div></div><div className="location-grid">{floor.wards.map((ward) => <div className="location-card" key={ward}><span className="floor-number">{floor.number}</span><span><strong>{ward}</strong></span><span className="ward-card-actions"><button className="secondary-button compact" onClick={() => setSelected({ floor: floor.number, ward, mode: 'chart' })}>الجارت</button><button className="primary-button compact" onClick={() => setSelected({ floor: floor.number, ward, mode: 'pills' })}>الحبوب</button></span></div>)}</div></section> : <section className="chart-page"><div className="chart-toolbar"><button className="back-button" onClick={() => { setSelected(null); setFloor(null) }}>→ العودة للطوابق</button><div><p className="eyebrow">الجارت اليومي</p><h1>{selected.ward}</h1></div><div className="toolbar-actions"><button className="secondary-button" onClick={() => setShowMedicineForm(true)}>+ علاج جديد</button><button className="primary-button compact" onClick={() => window.print()}>طباعة A4</button></div></div><div className="chart-meta">{selected.floor && <span>الطابق: <b>{selected.floor}</b></span>}<span>الفرع: <b>{selected.ward}</b></span><span>التاريخ: <b>{today}</b></span><span className={saveError ? 'save-state save-state-error' : 'save-state'}>{saveError ? '⚠ لم يُحفظ — تُعاد المحاولة…' : '● محفوظ تلقائيًا'}</span></div><datalist id="medicine-options">{medicines.map((medicine) => <option key={medicine} value={medicine} />)}</datalist><div className="table-frame"><table className="chart-table"><thead><tr><th className="patient-header"><img className="header-watermark" src={hospitalLogo} alt="" /><span>مستشفى بغداد التعليمي</span><span>وحدة الصيدلة السريرية</span>{selected.floor && <span>الطابق {selected.floor}</span>}<span>{selected.ward}</span><span>{today}</span></th>{Array.from({ length: 51 }, (_, index) => <th key={index}><input className="medicine-select" list="medicine-options" defaultValue="" placeholder="دواء" title="اكتب أول حروف الدواء" /></th>)}</tr></thead><tbody>{patientNames.map((name, rowIndex) => <tr key={rowIndex}><th className="patient-cell"><input value={name} onChange={(event) => setPatientNames((current) => current.map((patient, index) => index === rowIndex ? event.target.value : patient))} placeholder={`مريض ${rowIndex + 1}`} /></th>{Array.from({ length: 51 }, (_, columnIndex) => <td key={columnIndex}><input inputMode="numeric" pattern="[0-9]*" value={quantities[rowIndex][columnIndex]} onChange={(event) => updateQuantity(rowIndex, columnIndex, event.target.value)} /></td>)}</tr>)}</tbody><tfoot><tr><th className="patient-header">المجموع</th>{totals.map((total, index) => <td key={index}>{total || ''}</td>)}</tr></tfoot></table></div>{showMedicineForm && <div className="modal-backdrop" onClick={() => setShowMedicineForm(false)}><form className="medicine-modal" onSubmit={addMedicine} onClick={(event) => event.stopPropagation()}><button type="button" className="close-button" onClick={() => setShowMedicineForm(false)}>×</button><p className="eyebrow">قائمة الأدوية العامة</p><h2>إضافة علاج جديد</h2><label>اسم العلاج<input autoFocus value={newMedicine} onChange={(event) => setNewMedicine(event.target.value)} required /></label><button className="primary-button" type="submit">إضافة إلى القائمة</button></form></div>}</section>}</main>
+  return <main className="app-shell"><header className="topbar"><div className="topbar-brand"><img className="hospital-logo header-logo" src={hospitalLogo} alt="شعار مستشفى بغداد التعليمي" /><div><strong>الصيدلة السريرية</strong><small>مستشفى بغداد التعليمي</small></div></div><div className="user-menu">{currentUser?.role === 'admin' && <button className="text-button" onClick={() => setAdminView('requests')}>طلبات الانضمام</button>}{currentUser?.role === 'admin' && <button className="text-button" onClick={() => setAdminView('medicines')}>إدارة الأدوية</button>}{currentUser?.role === 'admin' && <button className="text-button" onClick={() => setAdminView('users')}>جميع المستخدمين</button>}<span>{currentUser?.fullName || 'مستخدم'}</span><button onClick={logout} className="text-button">تسجيل الخروج</button></div></header>{!selected && !floor ? <section className="dashboard"><div className="section-heading"><div><p className="eyebrow">مساحة العمل اليومية</p><h1>اختر الطابق أو الردهة</h1><p>ابدأ باختيار موقع الجارت الذي تريد تسجيله أو مراجعته.</p></div><div className="date-chip"><span>اليوم</span><strong>{today}</strong></div></div><div className="location-grid">{floors.map((item) => <button className="location-card" key={item.number} onClick={() => setFloor(item)}><span className="floor-number">{item.number}</span><span><strong>الطابق {item.number}</strong><small>{item.wards.length} أروقة فرعية</small></span><span className="arrow">←</span></button>)}{specialWards.map((ward) => <div className="location-card special" key={ward}><span className="floor-number">✚</span><span><strong>{ward}</strong></span><span className="ward-card-actions"><button className="secondary-button compact" onClick={() => setSelected({ floor: null, ward, mode: 'chart' })}>الجارت</button><button className="primary-button compact" onClick={() => setSelected({ floor: null, ward, mode: 'pills' })}>الحبوب</button></span></div>)}</div></section> : !selected ? <section className="dashboard"><button className="back-button" onClick={() => setFloor(null)}>→ العودة للطوابق</button><div className="section-heading"><div><p className="eyebrow">الطابق {floor.number}</p><h1>اختر الردهة</h1><p>اختر «الجارت» لتسجيل الجرعات، أو «الحبوب» لاستمارة إعطاء الحبوب.</p></div></div><div className="location-grid">{floor.wards.map((ward) => <div className="location-card" key={ward}><span className="floor-number">{floor.number}</span><span><strong>{ward}</strong></span><span className="ward-card-actions"><button className="secondary-button compact" onClick={() => setSelected({ floor: floor.number, ward, mode: 'chart' })}>الجارت</button><button className="primary-button compact" onClick={() => setSelected({ floor: floor.number, ward, mode: 'pills' })}>الحبوب</button></span></div>)}</div></section> : <section className="chart-page"><div className="chart-toolbar"><button className="back-button" onClick={() => { flushChart(); setSelected(null); setFloor(null) }}>→ العودة للطوابق</button><div><p className="eyebrow">الجارت اليومي</p><h1>{wardLabel}</h1></div><div className="toolbar-actions"><button className="secondary-button" onClick={() => setShowMedicineForm(true)}>+ علاج جديد</button><button className="primary-button compact" onClick={() => window.print()}>طباعة A4</button></div></div><div className="chart-meta">{selected.floor && <span>الطابق: <b>{selected.floor}</b></span>}<span>الفرع: <b>{selected.ward}</b></span><span>التاريخ: <b>{today}</b></span><span className={(saveError || loadError) ? 'save-state save-state-error' : 'save-state'}>{loadError ? '⚠ تعذر تحميل الجارت — إعادة المحاولة…' : saveError ? '⚠ لم يُحفظ — تُعاد المحاولة…' : '● محفوظ تلقائيًا'}</span></div><datalist id="medicine-options">{medicines.map((medicine) => <option key={medicine} value={medicine} />)}</datalist><div className="table-frame"><table className="chart-table"><thead><tr><th className="patient-header"><img className="header-watermark" src={hospitalLogo} alt="" /><span>مستشفى بغداد التعليمي</span><span>وحدة الصيدلة السريرية</span>{selected.floor && <span>الطابق {selected.floor}</span>}<span>{selected.ward}</span><span>{today}</span></th>{Array.from({ length: 51 }, (_, index) => <th key={index}><input className="medicine-select" list="medicine-options" value={columnMedicines[index]} onChange={(event) => setColumnMedicines((current) => current.map((medicine, medicineIndex) => medicineIndex === index ? event.target.value : medicine))} placeholder="دواء" title="اكتب أول حروف الدواء" /></th>)}</tr></thead><tbody>{patientNames.map((name, rowIndex) => <tr key={rowIndex}><th className="patient-cell"><input value={name} onChange={(event) => setPatientNames((current) => current.map((patient, index) => index === rowIndex ? event.target.value : patient))} placeholder={`مريض ${rowIndex + 1}`} /></th>{Array.from({ length: 51 }, (_, columnIndex) => <td key={columnIndex}><input inputMode="numeric" pattern="[0-9]*" value={quantities[rowIndex][columnIndex]} onChange={(event) => updateQuantity(rowIndex, columnIndex, event.target.value)} /></td>)}</tr>)}</tbody><tfoot><tr><th className="patient-header">المجموع</th>{totals.map((total, index) => <td key={index}>{total || ''}</td>)}</tr></tfoot></table></div>{showMedicineForm && <div className="modal-backdrop" onClick={() => setShowMedicineForm(false)}><form className="medicine-modal" onSubmit={addMedicine} onClick={(event) => event.stopPropagation()}><button type="button" className="close-button" onClick={() => setShowMedicineForm(false)}>×</button><p className="eyebrow">قائمة الأدوية العامة</p><h2>إضافة علاج جديد</h2><label>اسم العلاج<input autoFocus value={newMedicine} onChange={(event) => setNewMedicine(event.target.value)} required /></label><button className="primary-button" type="submit">إضافة إلى القائمة</button></form></div>}</section>}</main>
 }
 
 export default App

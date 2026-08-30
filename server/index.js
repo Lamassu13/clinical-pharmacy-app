@@ -271,7 +271,7 @@ app.get('/api/chart', requireAuth, async (request, response) => {
   if (request.query.floor && (floor === null || !ALLOWED_FLOORS.includes(floor))) return response.status(400).json({ message: 'الطابق غير مسموح' })
   if (!wardName || !isIsoDate(chartDate)) return response.status(400).json({ message: 'بيانات الردهة والتاريخ مطلوبة' })
   if (!canAccessLocation(request.session.user, floor, wardName)) return response.status(403).json({ message: 'لا تملك صلاحية لهذه الردهة' })
-  const wardResult = await query('SELECT id, floor_number, name FROM wards WHERE floor_number IS NOT DISTINCT FROM $1 AND name = $2', [floor, wardName])
+  const wardResult = await query('SELECT id, floor_number, name FROM wards WHERE floor_number IS NOT DISTINCT FROM $1 AND name = $2 ORDER BY id LIMIT 1', [floor, wardName])
   if (!wardResult.rows[0]) return response.json({ chart: null })
   const chartResult = await query('SELECT id FROM daily_charts WHERE ward_id = $1 AND chart_date = $2', [wardResult.rows[0].id, chartDate])
   if (!chartResult.rows[0]) return response.json({ chart: null })
@@ -306,7 +306,7 @@ app.put('/api/chart', requireAuth, async (request, response) => {
     await client.query('BEGIN')
     // Select-then-insert: ON CONFLICT (floor_number, name) never matches when
     // floor_number IS NULL (special wards), which would create duplicates.
-    let wardRow = (await client.query('SELECT id FROM wards WHERE floor_number IS NOT DISTINCT FROM $1 AND name = $2', [floor, wardName])).rows[0]
+    let wardRow = (await client.query('SELECT id FROM wards WHERE floor_number IS NOT DISTINCT FROM $1 AND name = $2 ORDER BY id LIMIT 1', [floor, wardName])).rows[0]
     if (!wardRow) {
       wardRow = (await client.query('INSERT INTO wards (floor_number, name, is_special) VALUES ($1, $2, $3) RETURNING id', [floor, wardName, floor === null])).rows[0]
     }
@@ -354,7 +354,7 @@ app.put('/api/chart', requireAuth, async (request, response) => {
 })
 
 const resolveChartId = async (floor, wardName, chartDate) => {
-  const wardResult = await query('SELECT id FROM wards WHERE floor_number IS NOT DISTINCT FROM $1 AND name = $2', [floor, wardName])
+  const wardResult = await query('SELECT id FROM wards WHERE floor_number IS NOT DISTINCT FROM $1 AND name = $2 ORDER BY id LIMIT 1', [floor, wardName])
   if (!wardResult.rows[0]) return null
   const chartResult = await query('SELECT id FROM daily_charts WHERE ward_id = $1 AND chart_date = $2', [wardResult.rows[0].id, chartDate])
   return chartResult.rows[0] ? chartResult.rows[0].id : null
