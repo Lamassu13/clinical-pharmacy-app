@@ -1,110 +1,534 @@
-.patient-cell input { width: 100%; height: 37px; padding: 5px; border: 0; text-align: center; }
-.patient-cell input::placeholder { color: transparent; }
-.date-controls { display: inline-flex; align-items: center; gap: 10px; margin-right: auto; }
-.date-controls label { display: inline-flex; align-items: center; gap: 6px; color: white; font-size: 12px; }
-.date-controls input { width: 135px; padding: 5px 7px; border: 0; color: var(--ink); font-size: 12px; }
-.date-controls button { padding: 6px 10px; border: 1px solid #91c7a2; background: transparent; color: white; font-size: 12px; }
+/* ============================================================
+   Design tokens
+   ============================================================ */
+:root {
+  /* brand ramp — derived from the clinical green #087c54 */
+  --green-50: #eef6f1;
+  --green-100: #d9ece1;
+  --green-200: #b2d8c6;
+  --green-300: #7fbfa4;
+  --green-400: #3f9c78;
+  --green-500: #087c54;
+  --green-600: #0a6b4a;
+  --green-700: #08543b;
+  --green-800: #064d3e;
+  --green-900: #053a2f;
+
+  /* semantic surfaces & text */
+  --bg: #f5f8f6;
+  --surface: #ffffff;
+  --surface-alt: #f0f5f2;
+  --border: #dbe6df;
+  --border-strong: #b9cdc2;
+  --text: #132a27;
+  --text-muted: #4f6b63;
+
+  /* intent colours */
+  --primary: var(--green-500);
+  --primary-hover: var(--green-700);
+  --primary-tint: #087c541f;
+  --danger: #c92a33;
+  --danger-tint: #c92a3316;
+  --success: #0a7d51;
+  --success-tint: #0a7d5116;
+  --warning: #a86400;
+  --warning-tint: #a8640016;
+
+  /* spacing scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 40px;
+  --space-8: 56px;
+
+  /* radius / elevation / motion */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --shadow-xs: 0 1px 2px #0f2f2410, 0 1px 1px #0f2f240a;
+  --shadow-sm: 0 2px 8px #12332612, 0 1px 3px #1233260f;
+  --shadow-md: 0 12px 32px #12332618, 0 4px 12px #12332612;
+  --ring: 0 0 0 3px var(--primary-tint);
+  --dur: .22s;
+  --dur-fast: .14s;
+  --ease: cubic-bezier(.4, 0, .2, 1);
+
+  /* type scale */
+  --text-xs: 11px;
+  --text-sm: 13px;
+  --text-base: 15px;
+  --text-lg: 18px;
+  --text-xl: 22px;
+  --text-2xl: 28px;
+
+  /* back-compat aliases (older rules still reference these) */
+  --green: var(--green-500);
+  --deep-green: var(--green-800);
+  --red: var(--danger);
+  --ink: var(--text);
+  --muted: var(--text-muted);
+  --line: var(--border);
+  --paper: var(--surface);
+}
 
 [hidden] { display: none !important; }
-:root { --green: #087c54; --deep-green: #064d3e; --red: #d93038; --ink: #132a27; --muted: #688079; --line: #d7e3dc; --paper: #fff; }
-.login-shell { min-height: 100svh; display: grid; place-items: center; padding: 24px; background: radial-gradient(circle at 18% 8%, #dcefe3 0, transparent 31%), #f4f7f3; }
-.login-card { width: min(100%, 440px); padding: 48px; background: var(--paper); border: 1px solid var(--line); box-shadow: 0 24px 70px #174f3b16; text-align: right; }
-.brand-mark, .mini-mark { display: grid; place-items: center; background: var(--green); color: white; font-weight: 700; }
-.hospital-logo { object-fit: contain; background: white; }
-.login-logo { display: block; width: 118px; height: 118px; margin-bottom: 25px; }
-.header-logo { width: 42px; height: 42px; }
-.print-heading { display: none; }
-.brand-mark { width: 58px; height: 58px; font-size: 26px; margin-bottom: 28px; }
-.eyebrow { margin: 0 0 8px; color: var(--red); font-size: 12px; font-weight: 700; letter-spacing: .08em; }
-h1, h2, p { margin-top: 0; } h1 { margin-bottom: 10px; color: var(--deep-green); font-size: clamp(25px, 3vw, 34px); } h2 { color: var(--deep-green); }
-.login-intro, .section-heading p { color: var(--muted); }
-.login-form { display: grid; gap: 18px; margin-top: 34px; } label { display: grid; gap: 8px; color: var(--deep-green); font-size: 14px; font-weight: 700; }
-.form-error { margin: 0; color: var(--red); font-size: 12px; }
-.form-success { margin: 0; color: var(--green); font-size: 12px; }
-.requests-table { width: 100%; border-collapse: collapse; background: var(--paper); }
-.requests-table th, .requests-table td { padding: 12px 14px; border: 1px solid var(--line); text-align: right; font-size: 14px; }
-.requests-table thead th { background: #e4f1e9; color: var(--deep-green); }
-.requests-actions { display: flex; gap: 8px; }
-.requests-table select { padding: 8px 10px; border-radius: 2px; }
-.requests-table input { width: 100%; padding: 8px 10px; border: 1px solid #c6d8ce; border-radius: 2px; }
-.requests-table button:disabled { opacity: .4; }
-.admin-users-heading { margin-top: 46px; }
-.medicine-add-row { display: flex; gap: 10px; margin: 8px 0; }
-.medicine-add-row input { flex: 1; padding: 11px 13px; border: 1px solid #c6d8ce; border-radius: 2px; }
-.medicine-filter { width: 100%; padding: 10px 13px; margin-bottom: 10px; border: 1px solid #c6d8ce; border-radius: 2px; }
 
-.pills-page { width: min(100% - 40px, 1100px); margin: 0 auto; padding: 40px 0; direction: rtl; }
-.pills-toolbar { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; margin-bottom: 20px; }
+body { background: var(--bg); color: var(--text); }
+
+h1, h2, p { margin-top: 0; }
+h1 { margin-bottom: var(--space-3); color: var(--green-800); font-size: clamp(24px, 3vw, var(--text-2xl)); line-height: 1.25; }
+h2 { color: var(--green-800); line-height: 1.3; }
+p { line-height: 1.65; }
+
+.eyebrow { margin: 0 0 var(--space-2); color: var(--danger); font-size: var(--text-xs); font-weight: 700; }
+
+/* ============================================================
+   Form controls
+   ============================================================ */
+input, select {
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  padding: 9px 12px;
+  outline: none;
+  transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+}
+input:focus, select:focus { border-color: var(--primary); box-shadow: var(--ring); }
+
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-block: 9px;
+  padding-inline: 12px 34px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5' stroke='%234f6b63' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: left 12px center;
+}
+
+label { display: grid; gap: var(--space-2); color: var(--green-800); font-size: var(--text-sm); font-weight: 700; }
+
+/* ============================================================
+   Buttons
+   ============================================================ */
+.primary-button, .secondary-button, .back-button, .text-button, .danger-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  padding: 10px 18px;
+  font-weight: 700;
+  font-size: var(--text-sm);
+  line-height: 1;
+  white-space: nowrap;
+  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+}
+.primary-button:active, .secondary-button:active, .danger-button:active,
+.back-button:active, .text-button:active { transform: translateY(1px); }
+.primary-button:disabled, .secondary-button:disabled, .danger-button:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+.primary-button span, .secondary-button span { margin: 0; }
+
+.primary-button { background: var(--primary); color: #fff; box-shadow: var(--shadow-xs); }
+.primary-button:hover:not(:disabled) { background: var(--primary-hover); }
+.secondary-button { background: var(--green-50); color: var(--primary-hover); border-color: var(--green-200); }
+.secondary-button:hover:not(:disabled) { background: var(--green-100); }
+.danger-button { background: var(--danger-tint); color: var(--danger); border-color: #e6b8bb; }
+.danger-button:hover:not(:disabled) { background: #f4d9db; }
+.back-button, .text-button { background: transparent; color: var(--primary); padding-inline: 6px; }
+.back-button:hover, .text-button:hover { color: var(--primary-hover); background: var(--green-50); }
+.compact { white-space: nowrap; }
+
+/* ============================================================
+   Badges / empty & loading states
+   ============================================================ */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  line-height: 1.6;
+  border: 1px solid transparent;
+}
+.badge-success { background: var(--success-tint); color: var(--success); border-color: #a9d6c4; }
+.badge-muted { background: var(--surface-alt); color: var(--text-muted); border-color: var(--border-strong); }
+.badge-warning { background: var(--warning-tint); color: var(--warning); border-color: #e5cfa3; }
+.badge-danger { background: var(--danger-tint); color: var(--danger); border-color: #e6b8bb; }
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-8) var(--space-4);
+  color: var(--text-muted);
+  text-align: center;
+  background: var(--surface);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+}
+.empty-state strong { color: var(--text); font-size: var(--text-lg); }
+.empty-state span { font-size: var(--text-sm); max-width: 42ch; }
+.spinner {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2.5px solid var(--green-200);
+  border-top-color: var(--primary);
+  animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.form-error, .form-success { margin: 0; font-size: var(--text-sm); padding: 10px 12px; border-radius: var(--radius-sm); }
+.form-error { color: var(--danger); background: var(--danger-tint); }
+.form-success { color: var(--success); background: var(--success-tint); }
+
+/* ============================================================
+   Auth (login / register)
+   ============================================================ */
+.login-shell {
+  min-height: 100svh;
+  display: grid;
+  place-items: center;
+  padding: var(--space-5);
+  background: radial-gradient(circle at 18% 8%, var(--green-100) 0, transparent 32%), var(--bg);
+}
+.login-card {
+  width: min(100%, 440px);
+  padding: var(--space-8) var(--space-7);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  text-align: start;
+}
+.login-card > .secondary-button, .login-card > .text-button { width: 100%; margin-top: var(--space-3); }
+.login-intro, .section-heading p { color: var(--text-muted); }
+.login-form { display: grid; gap: var(--space-4); margin-top: var(--space-6); }
+.login-form input, .medicine-modal input { width: 100%; padding: 12px 14px; }
+.security-note { margin: var(--space-6) 0 0; color: var(--text-muted); font-size: var(--text-xs); text-align: center; }
+
+.hospital-logo { object-fit: contain; background: #fff; border-radius: var(--radius-sm); }
+.login-logo { display: block; width: 116px; height: 116px; margin-bottom: var(--space-5); border-radius: var(--radius-md); }
+.header-logo { width: 42px; height: 42px; }
+
+/* ============================================================
+   App shell / top bar
+   ============================================================ */
+.app-shell { min-height: 100svh; }
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding: var(--space-3) clamp(var(--space-4), 5vw, var(--space-8));
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  box-shadow: var(--shadow-xs);
+}
+.topbar-brand, .user-menu, .toolbar-actions { display: flex; align-items: center; gap: var(--space-3); }
+.user-menu, .toolbar-actions { flex-wrap: wrap; }
+.user-menu { color: var(--text-muted); font-size: var(--text-sm); }
+.topbar-brand strong { display: block; color: var(--green-800); font-size: var(--text-base); }
+.topbar-brand small { display: block; color: var(--text-muted); font-size: var(--text-xs); }
+
+/* ============================================================
+   Dashboards / location grid
+   ============================================================ */
+.dashboard, .chart-page { width: min(100% - var(--space-7), 1380px); margin: 0 auto; padding: var(--space-8) 0; }
+.section-heading, .chart-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: var(--space-5);
+  margin-bottom: var(--space-7);
+  flex-wrap: wrap;
+}
+.date-chip {
+  padding: var(--space-3) var(--space-4);
+  border-inline-start: 3px solid var(--danger);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+  text-align: start;
+}
+.date-chip span { display: block; color: var(--text-muted); font-size: var(--text-xs); }
+.date-chip strong { display: block; color: var(--green-800); font-size: var(--text-lg); }
+
+.location-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 245px), 1fr)); gap: var(--space-3); }
+.location-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  text-align: start;
+  box-shadow: var(--shadow-xs);
+  transition: transform var(--dur) var(--ease), border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+.location-card:hover { border-color: var(--green-300); transform: translateY(-3px); box-shadow: var(--shadow-sm); }
+.location-card strong, .location-card small { display: block; }
+.location-card small { margin-top: var(--space-1); color: var(--text-muted); font-size: var(--text-xs); }
+.floor-number {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: var(--radius-md);
+  background: var(--green-100);
+  color: var(--primary);
+  font-size: var(--text-lg);
+  font-weight: 700;
+}
+.special .floor-number { background: var(--danger-tint); color: var(--danger); }
+.arrow { margin-inline-start: auto; color: var(--primary); font-size: 20px; }
+.ward-card-actions { margin-inline-start: auto; display: flex; gap: var(--space-2); flex-wrap: wrap; }
+
+/* ============================================================
+   Admin tables (requests / users / medicines)
+   ============================================================ */
+.requests-table { width: 100%; border-collapse: collapse; background: var(--surface); font-size: var(--text-sm); }
+.requests-table th, .requests-table td { padding: 11px 14px; border: 1px solid var(--border); text-align: start; }
+.requests-table thead th { position: sticky; top: 0; background: var(--green-50); color: var(--green-800); font-weight: 700; }
+.requests-table tbody tr:nth-child(even) td { background: var(--surface-alt); }
+.requests-table tbody tr:hover td { background: var(--green-50); }
+.requests-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.requests-table select { padding-block: 8px; padding-inline: 10px 32px; }
+.requests-table input { width: 100%; padding: 8px 10px; }
+
+.medicine-add-row { display: flex; gap: var(--space-3); margin: var(--space-2) 0; flex-wrap: wrap; }
+.medicine-add-row input { flex: 1; min-width: 200px; padding: 11px 13px; }
+.medicine-filter { width: 100%; padding: 10px 13px; margin-bottom: var(--space-3); }
+
+/* ============================================================
+   Pills form
+   ============================================================ */
+.pills-page { width: min(100% - var(--space-6), 1100px); margin: 0 auto; padding: var(--space-7) 0; }
+.pills-toolbar { display: flex; align-items: center; gap: var(--space-5); flex-wrap: wrap; margin-bottom: var(--space-5); }
 .pills-toolbar h1 { margin: 0; }
-.pills-date { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--deep-green); font-weight: 700; }
-.pills-date input { padding: 7px 9px; border: 1px solid #c6d8ce; border-radius: 2px; }
-.pill-form { border: 1px solid var(--line); background: var(--paper); padding: 20px; margin-bottom: 22px; }
-.pill-form-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 14px; border-bottom: 2px solid var(--deep-green); padding-bottom: 12px; }
-.pill-form-brand { display: flex; align-items: center; gap: 10px; }
-.pill-form-title strong { display: block; color: var(--deep-green); }
-.pill-form-title span, .pill-form-patient span { display: block; color: var(--muted); font-size: 12px; }
-.pill-form-patient { text-align: right; }
-.pill-form-patient strong { display: block; font-size: 18px; color: var(--ink); }
-.pill-room { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--deep-green); white-space: nowrap; }
-.pill-room input { width: 80px; padding: 5px 7px; border: 1px solid #c6d8ce; border-radius: 2px; text-align: center; }
-.pill-table { width: 100%; border-collapse: collapse; direction: rtl; }
-.pill-table th, .pill-table td { border: 1px solid #9ca8a1; padding: 9px 12px; text-align: right; font-size: 14px; }
-.pill-table thead th { background: #e8f1eb; color: var(--deep-green); }
+.pills-date { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); color: var(--green-800); font-weight: 700; }
+.pills-date input { padding: 7px 9px; }
+
+.pill-form {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  padding: var(--space-5);
+  margin-bottom: var(--space-5);
+  box-shadow: var(--shadow-sm);
+}
+.pill-form-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+  border-bottom: 2px solid var(--green-800);
+  padding-bottom: var(--space-3);
+  flex-wrap: wrap;
+}
+.pill-form-brand { display: flex; align-items: center; gap: var(--space-3); }
+.pill-form-title strong { display: block; color: var(--green-800); }
+.pill-form-title span, .pill-form-patient span { display: block; color: var(--text-muted); font-size: var(--text-xs); }
+.pill-form-patient { text-align: start; }
+.pill-form-patient strong { display: block; font-size: var(--text-lg); color: var(--text); }
+.pill-room { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); font-weight: 700; color: var(--green-800); white-space: nowrap; }
+.pill-room input { width: 90px; padding: 6px 8px; text-align: center; }
+
+.pill-table { width: 100%; border-collapse: collapse; }
+.pill-table th, .pill-table td { border: 1px solid var(--border-strong); padding: 9px 12px; text-align: start; font-size: var(--text-sm); vertical-align: middle; }
+.pill-table thead th { background: var(--green-100); color: var(--green-800); font-weight: 700; }
 .pill-table th:first-child, .pill-table td:first-child { width: 80px; padding: 4px; }
 .pill-table td:nth-child(2) { font-weight: 700; }
 .pill-table td:last-child { min-width: 240px; }
-.pill-table select { width: 100%; padding: 7px 9px; border: 1px solid #c6d8ce; border-radius: 2px; background: white; }
+.pill-table select { width: 100%; padding-block: 7px; padding-inline: 9px 32px; background-color: var(--surface); }
 
+.pill-signature { display: flex; gap: var(--space-6); margin-top: var(--space-5); }
+.pill-signature span { flex: 1; padding-bottom: var(--space-5); border-bottom: 1px solid var(--border-strong); font-size: var(--text-sm); color: var(--text); font-weight: 700; }
+.pill-form-foot { display: flex; justify-content: space-between; gap: var(--space-4); margin-top: var(--space-4); font-size: var(--text-xs); color: var(--text-muted); flex-wrap: wrap; }
+
+/* ============================================================
+   Chart grid  (signature screen — kept close to its tuned values)
+   ============================================================ */
+.chart-toolbar { align-items: center; }
+.chart-toolbar h1 { margin-bottom: 0; }
+.chart-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-3);
+  background: var(--green-800);
+  color: #fff;
+  font-size: var(--text-sm);
+  border-radius: var(--radius-md);
+}
+.chart-meta > span { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: #ffffff14; border: 1px solid #ffffff26; border-radius: 999px; }
+.chart-meta b { color: #eafaf0; font-weight: 700; }
+.chart-meta > span.date-controls { background: transparent; border: 0; padding: 0; }
+.save-state { margin-inline-start: auto; background: transparent !important; border: 0 !important; padding: 0 !important; color: #bfe8cd; }
+.save-state-error { color: #ffd7d3; font-weight: 700; }
+
+.table-frame {
+  overflow: auto;
+  max-height: calc(100svh - 240px);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  direction: rtl;
+}
+.chart-table { border-collapse: separate; border-spacing: 0; min-width: 2800px; direction: rtl; font-size: 11px; }
+.chart-table th, .chart-table td { width: 51px; min-width: 51px; height: 38px; border-left: 1px solid #9ca8a1; border-bottom: 1px solid #9ca8a1; padding: 0; text-align: center; }
+.chart-table thead th { position: sticky; top: 0; z-index: 3; height: 128px; background: #f5f8f5; vertical-align: bottom; box-shadow: 0 8px 12px -8px #0f2f241f; }
+.chart-table .patient-header, .chart-table .patient-cell { position: sticky; right: 0; z-index: 4; width: 155px; min-width: 155px; background: #fff; }
+.chart-table .patient-header { z-index: 5; background: var(--green-800); color: #fff; }
+.chart-table .patient-cell { box-shadow: -8px 0 12px -8px #0f2f2440; }
+.patient-cell input { width: 100%; height: 37px; padding: 5px; border: 0; text-align: start; font-variant-numeric: tabular-nums; }
+.patient-cell input::placeholder { color: transparent; }
+.chart-table td input { width: 100%; height: 37px; padding: 0; border: 0; text-align: center; font-variant-numeric: tabular-nums; }
+.chart-table tbody tr:hover td { background: var(--green-50); }
+.chart-table tbody tr:hover .patient-cell { background: var(--green-50); }
+.chart-table tbody tr:nth-child(5n) td { border-bottom-color: var(--border-strong); }
+.chart-table tfoot th, .chart-table tfoot td { position: sticky; bottom: 0; height: 38px; background: var(--green-100); color: var(--green-800); font-weight: 700; box-shadow: 0 -8px 12px -8px #0f2f241f; }
+.chart-table tfoot th { z-index: 2; }
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--space-5);
+  background: #062b21a8;
+  z-index: 10;
+  animation: fade-in var(--dur) var(--ease);
+}
+.medicine-modal {
+  position: relative;
+  width: min(100%, 420px);
+  padding: var(--space-7);
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  animation: modal-in var(--dur) var(--ease);
+}
+.medicine-modal h2 { margin-bottom: var(--space-5); }
+.close-button { position: absolute; top: var(--space-3); inset-inline-end: var(--space-4); border: 0; background: transparent; color: var(--text-muted); font-size: 24px; line-height: 1; padding: 4px; border-radius: var(--radius-sm); }
+.close-button:hover { background: var(--surface-alt); color: var(--text); }
+@keyframes fade-in { from { opacity: 0; } }
+@keyframes modal-in { from { opacity: 0; transform: translateY(8px) scale(.98); } }
+
+/* injected date picker inside .chart-meta */
+.date-controls { display: inline-flex; align-items: center; gap: 10px; margin-inline-start: auto; }
+.date-controls label { display: inline-flex; align-items: center; gap: 6px; color: #fff; font-size: var(--text-xs); }
+.date-controls input { width: 150px; padding: 6px 8px; border: 0; color: var(--text); font-size: var(--text-xs); border-radius: var(--radius-sm); }
+.date-controls button { padding: 6px 12px; border: 1px solid #ffffff4d; background: transparent; color: #fff; font-size: var(--text-xs); border-radius: var(--radius-sm); transition: background var(--dur-fast) var(--ease); }
+.date-controls button:hover { background: #ffffff1f; }
+
+/* chart watermark + vertical medicine headers (tuned — do not reorder) */
+.chart-table .patient-header { position: relative; overflow: hidden; vertical-align: middle; text-align: center; background: #fff; color: #000; }
+.chart-table .patient-header span { display: block; white-space: nowrap; line-height: 1.8; position: relative; z-index: 1; }
+.header-watermark { position: absolute; inset: 50% auto auto 50%; width: 125px; height: 125px; object-fit: contain; opacity: .16; transform: translate(-50%, -50%); pointer-events: none; }
+.chart-table thead th:not(.patient-header) { width: 51px; min-width: 51px; max-width: 51px; padding: 0; overflow: hidden; vertical-align: middle; }
+.chart-table thead th:not(.patient-header) .medicine-select {
+  appearance: none;
+  -webkit-appearance: none;
+  box-sizing: border-box;
+  display: block;
+  width: 51px;
+  min-width: 51px;
+  max-width: 51px;
+  height: 126px;
+  min-height: 126px;
+  max-height: 126px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  overflow: hidden;
+  text-align: center;
+  text-align-last: center;
+  line-height: 1;
+  font: inherit;
+  transition: background var(--dur-fast) var(--ease);
+}
+.chart-table thead th:not(.patient-header) .medicine-select::placeholder { color: #9bb0a8; }
+.chart-table thead th:not(.patient-header) .medicine-select:hover { background: var(--green-50); }
+.chart-table thead th:not(.patient-header) .medicine-select:focus { background: var(--green-100); box-shadow: none; }
+
+/* ============================================================
+   Responsive
+   ============================================================ */
+@media (max-width: 1024px) {
+  .dashboard, .chart-page { width: min(100% - var(--space-5), 1380px); }
+  .pills-page { width: min(100% - var(--space-5), 1100px); }
+}
+@media (max-width: 700px) {
+  .login-card { padding: var(--space-6) var(--space-5); }
+  .topbar { align-items: flex-start; gap: var(--space-3); }
+  .user-menu { width: 100%; }
+  .dashboard, .chart-page { width: min(100% - var(--space-4), 1380px); padding: var(--space-6) 0; }
+  .section-heading, .chart-toolbar { align-items: flex-start; flex-direction: column; }
+  .date-chip { width: 100%; }
+  .toolbar-actions { width: 100%; }
+  .chart-meta { gap: var(--space-2) var(--space-3); }
+  .save-state { width: 100%; margin-inline-start: 0; }
+}
+
+/* ============================================================
+   Print — pills form (A4 portrait, one card per page)
+   ============================================================ */
 @media print {
   @page { size: A4 portrait; margin: 12mm; }
   .topbar, .pills-toolbar { display: none !important; }
   .pills-page { width: 100%; padding: 0; }
-  .pill-form { border: 1px solid #000; break-after: page; padding: 0; margin: 0; }
+  .pill-form { border: 1px solid #000; border-radius: 0; box-shadow: none; break-after: page; padding: 0; margin: 0; }
   .pill-form:last-child { break-after: auto; }
   .pill-form-head { border-color: #000; }
   .pill-room input { border: 0; border-bottom: 1px solid #000; color: #000; padding: 0 2px; }
   .pill-table th, .pill-table td { border-color: #000; color: #000; font-size: 12px; }
-  .pill-table thead th { background: white; }
-  .pill-table select { border: 0; appearance: none; -webkit-appearance: none; color: #000; padding: 0; background: white; }
+  .pill-table thead th { background: #fff; }
+  .pill-table select { border: 0; appearance: none; -webkit-appearance: none; color: #000; padding: 0; background: #fff; background-image: none; }
+  .pill-signature span, .pill-signature { border-color: #000; color: #000; }
+  .pill-form-foot { color: #000; }
 }
-.login-card > .secondary-button, .login-card > .text-button { width: 100%; margin-top: 14px; text-align: center; }
-input, select { border: 1px solid #c6d8ce; background: #fbfdfb; color: var(--ink); outline: none; } input:focus, select:focus { border-color: var(--green); box-shadow: 0 0 0 3px #087c541c; }
-.login-form input, .medicine-modal input { width: 100%; padding: 13px 14px; border-radius: 2px; }
-.primary-button, .secondary-button, .back-button, .text-button { border: 0; padding: 11px 17px; font-weight: 700; } .primary-button { background: var(--green); color: white; } .primary-button:hover { background: var(--deep-green); } .primary-button span { margin-right: 8px; }.compact { white-space: nowrap; }
-.secondary-button { color: var(--green); background: #e4f1e9; } .back-button, .text-button { background: transparent; color: var(--green); padding-inline: 0; }.security-note { margin: 26px 0 0; color: #84958f; font-size: 12px; text-align: center; }
-.app-shell { min-height: 100svh; } .topbar { display: flex; justify-content: space-between; align-items: center; padding: 18px clamp(20px, 5vw, 72px); background: white; border-bottom: 1px solid var(--line); }.topbar-brand, .user-menu, .toolbar-actions { display: flex; align-items: center; gap: 12px; }.mini-mark { width: 34px; height: 34px; font-size: 16px; }.topbar-brand strong, .topbar-brand small { display: block; }.topbar-brand small { color: var(--muted); font-size: 11px; }.user-menu { color: var(--muted); font-size: 13px; }
-.dashboard, .chart-page { width: min(100% - 40px, 1380px); margin: 0 auto; padding: 58px 0; }.section-heading, .chart-toolbar { display: flex; justify-content: space-between; align-items: end; gap: 24px; margin-bottom: 38px; }.date-chip { padding: 13px 18px; border-right: 3px solid var(--red); background: white; text-align: right; }.date-chip span, .date-chip strong { display: block; }.date-chip span { color: var(--muted); font-size: 11px; }.date-chip strong { color: var(--deep-green); }
-.location-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(245px, 1fr)); gap: 12px; }.location-card { display: flex; align-items: center; gap: 16px; padding: 19px; border: 1px solid var(--line); background: white; color: var(--ink); text-align: right; transition: transform .2s, border-color .2s; }.location-card:hover { border-color: var(--green); transform: translateY(-3px); }.location-card strong, .location-card small { display: block; }.location-card small { margin-top: 5px; color: var(--muted); font-size: 12px; }.floor-number { display: grid; place-items: center; width: 43px; height: 43px; background: #e5f2e9; color: var(--green); font-size: 18px; font-weight: 700; }.special .floor-number { background: #fbe7e4; color: var(--red); }.arrow { margin-right: auto; color: var(--green); font-size: 20px; }.ward-card-actions { margin-right: auto; display: flex; gap: 8px; }
-.chart-toolbar { align-items: center; }.chart-toolbar h1 { margin-bottom: 0; }.chart-meta { display: flex; flex-wrap: wrap; gap: 28px; padding: 15px 18px; margin-bottom: 12px; background: var(--deep-green); color: white; font-size: 13px; }.chart-meta b { color: #d9f0df; }.save-state { margin-right: auto; color: #b8e5c5; }.save-state-error { color: #ffd7d3; font-weight: 700; }.table-frame { overflow: auto; max-height: calc(100svh - 230px); background: white; border: 1px solid #1d2924; direction: rtl; }.chart-table { border-collapse: separate; border-spacing: 0; min-width: 2800px; direction: rtl; font-size: 11px; }.chart-table th, .chart-table td { width: 51px; min-width: 51px; height: 38px; border-left: 1px solid #9ca8a1; border-bottom: 1px solid #9ca8a1; padding: 0; text-align: center; }.chart-table thead th { position: sticky; top: 0; z-index: 3; height: 128px; background: #f5f8f5; vertical-align: bottom; }.chart-table thead th select { width: 128px; height: 28px; border: 0; background: transparent; font-size: 10px; transform: rotate(-90deg); cursor: pointer; }.chart-table .patient-header, .chart-table .patient-cell { position: sticky; right: 0; z-index: 4; width: 155px; min-width: 155px; background: white; }.chart-table .patient-header { z-index: 5; background: var(--deep-green); color: white; }.patient-cell input { width: 100%; height: 37px; padding: 5px; border: 0; text-align: right; }.chart-table td input { width: 100%; height: 37px; border: 0; text-align: center; }.chart-table tfoot th, .chart-table tfoot td { position: sticky; bottom: 0; height: 38px; background: #e8f1eb; color: var(--deep-green); font-weight: 700; }.chart-table tfoot th { z-index: 2; }
-.modal-backdrop { position: fixed; inset: 0; display: grid; place-items: center; padding: 20px; background: #062b218c; z-index: 10; }.medicine-modal { position: relative; width: min(100%, 420px); padding: 35px; background: white; box-shadow: 0 20px 60px #0003; }.medicine-modal h2 { margin-bottom: 24px; }.close-button { position: absolute; top: 14px; left: 16px; border: 0; background: transparent; color: var(--muted); font-size: 24px; }
-@media (max-width: 700px) { .login-card { padding: 32px 24px; }.topbar { align-items: flex-start; gap: 14px; flex-direction: column; }.user-menu { width: 100%; justify-content: space-between; }.dashboard, .chart-page { width: min(100% - 24px, 1380px); padding: 36px 0; }.section-heading, .chart-toolbar { align-items: flex-start; flex-direction: column; }.date-chip { width: 100%; }.toolbar-actions { width: 100%; justify-content: space-between; }.chart-meta { gap: 10px 18px; }.save-state { width: 100%; margin-right: 0; } }
-@media print { @page { size: A4 landscape; margin: 8mm; } body { background: white; } .topbar, .chart-toolbar, .chart-meta, .modal-backdrop { display: none !important; } .chart-page { width: 100%; padding: 0; }.print-heading { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 6px; color: #000; }.print-heading strong, .print-heading span { display: block; }.print-logo { width: 42px; height: 42px; }.table-frame { overflow: visible; max-height: none; border: 1px solid #000; }.chart-table { color: #000; background: white; font-size: 7px; }.chart-table th, .chart-table td { border-color: #000; }.chart-table thead th, .chart-table tfoot th, .chart-table tfoot td, .chart-table .patient-header, .chart-table .patient-cell { background: white; color: #000; }.chart-table thead th { position: static; }.chart-table .patient-header, .chart-table .patient-cell, .chart-table tfoot th, .chart-table tfoot td { position: static; }.chart-table input, .chart-table select { color: #000; background: white; } }
 
-.chart-table .patient-header { vertical-align: middle; text-align: center; }
-.chart-table .patient-header span { display: block; white-space: nowrap; line-height: 1.8; }
-.chart-table .patient-header { position: relative; overflow: hidden; }
-.chart-table .patient-header { background: white; color: #000; }
-.header-watermark { position: absolute; inset: 50% auto auto 50%; width: 125px; height: 125px; object-fit: contain; opacity: .16; transform: translate(-50%, -50%); pointer-events: none; }
-.chart-table .patient-header span { position: relative; z-index: 1; }
-.chart-table thead th:not(.patient-header) { overflow: hidden; vertical-align: middle; }
-.chart-table thead th:not(.patient-header) .medicine-select { display: block; width: 51px; height: 126px; margin: 0; padding: 0; transform: none; writing-mode: vertical-rl; text-orientation: mixed; overflow: hidden; }
-.chart-table thead th:not(.patient-header) { width: 51px; min-width: 51px; max-width: 51px; padding: 0; overflow: hidden; }
-.chart-table thead th:not(.patient-header) .medicine-select { appearance: none; -webkit-appearance: none; box-sizing: border-box; width: 51px; min-width: 51px; max-width: 51px; height: 126px; min-height: 126px; max-height: 126px; border: 0; outline: 0; background: transparent; text-align: center; text-align-last: center; line-height: 1; font: inherit; }
-.chart-table thead th:not(.patient-header) .medicine-select::placeholder { color: #9bb0a8; }
-
+/* ============================================================
+   Print — chart grid (A4 landscape) — single deterministic block
+   ============================================================ */
 @media print {
-	@page { size: A4 landscape; margin: 5mm; }
-	.chart-page { width: 100%; padding: 0; }
-	.print-heading { display: none !important; }
-	.print-logo { width: 22mm; height: 22mm; }
-	.table-frame { overflow: visible; max-height: none; width: 100%; }
-	.chart-table { width: 100%; min-width: 0; table-layout: fixed; font-size: 4.5px; }
-	.chart-table th, .chart-table td { width: auto; min-width: 0; height: 4mm; line-height: 1; }
-	.chart-table thead th { height: 16mm; }
-	.chart-table thead th:not(.patient-header) { width: auto; min-width: 0; max-width: none; height: 16mm; }
-	.chart-table thead th:not(.patient-header) .medicine-select { width: 100%; min-width: 0; max-width: none; height: 15mm; min-height: 15mm; max-height: 15mm; font-size: 6px; }
-	.chart-table .patient-header, .chart-table .patient-cell { width: 28mm; min-width: 28mm; }
-	.header-watermark { width: 25mm; height: 25mm; opacity: .12; }
-	.patient-cell input, .chart-table td input { height: 4mm; font-size: 7px; padding: 0; }
-	.chart-table tfoot th, .chart-table tfoot td { height: 4mm; font-size: 8px; }
+  @page { size: A4 landscape; margin: 5mm; }
+  body { background: #fff; }
+  .topbar, .chart-toolbar, .chart-meta, .modal-backdrop { display: none !important; }
+  .chart-page { width: 100%; padding: 0; }
+  .print-heading { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 6px; color: #000; }
+  .print-heading strong, .print-heading span { display: block; }
+  .print-logo { width: 22mm; height: 22mm; }
+  .table-frame { overflow: visible; max-height: none; width: 100%; border: 1px solid #000; border-radius: 0; }
+  .chart-table { width: 100%; min-width: 0; table-layout: fixed; font-size: 4.5px; color: #000; background: #fff; }
+  .chart-table th, .chart-table td { width: auto; min-width: 0; height: 4mm; line-height: 1; border-color: #000; box-shadow: none !important; }
+  .chart-table thead th { position: static; height: 16mm; background: #fff; color: #000; }
+  .chart-table thead th:not(.patient-header) { width: auto; min-width: 0; max-width: none; height: 16mm; }
+  .chart-table thead th:not(.patient-header) .medicine-select { width: 100%; min-width: 0; max-width: none; height: 15mm; min-height: 15mm; max-height: 15mm; font-size: 6px; color: #000; background: #fff; }
+  .chart-table .patient-header, .chart-table .patient-cell { position: static; width: 28mm; min-width: 28mm; background: #fff; color: #000; }
+  .chart-table tfoot th, .chart-table tfoot td { position: static; height: 4mm; font-size: 8px; background: #fff; color: #000; }
+  .header-watermark { width: 25mm; height: 25mm; opacity: .12; }
+  .patient-cell input, .chart-table td input { height: 4mm; font-size: 7px; padding: 0; color: #000; background: #fff; }
+  .chart-table input, .chart-table select { color: #000; background: #fff; }
 }
