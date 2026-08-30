@@ -40,7 +40,7 @@ app.use(session({
 }))
 
 const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: 'draft-7', legacyHeaders: false, skipSuccessfulRequests: true, message: { message: 'محاولات كثيرة، حاول لاحقًا بعد ١٥ دقيقة' } })
-const registerLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 5, standardHeaders: 'draft-7', legacyHeaders: false, message: { message: 'محاولات كثيرة لإنشاء حساب، حاول لاحقًا' } })
+const registerLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 30, standardHeaders: 'draft-7', legacyHeaders: false, message: { message: 'محاولات كثيرة لإنشاء حساب، حاول لاحقًا' } })
 const apiLimiter = rateLimit({ windowMs: 60 * 1000, limit: 300, standardHeaders: 'draft-7', legacyHeaders: false })
 app.use('/api/', apiLimiter)
 
@@ -108,11 +108,61 @@ app.get('/api/registrations', requireAdmin, async (_request, response) => {
 app.put('/api/registrations/:id', requireAdmin, async (request, response) => {
   const status = request.body.status
   const id = Number(request.params.id)
+  const floor = Number(request.body.floor)
   if (!['active', 'rejected'].includes(status)) return response.status(400).json({ message: 'الحالة غير صحيحة' })
   if (!Number.isInteger(id) || id < 1) return response.status(400).json({ message: 'معرّف غير صحيح' })
-  const result = await query("UPDATE users SET account_status = $1, approved_at = NOW(), approved_by = $2 WHERE id = $3 AND account_status = 'pending' RETURNING id", [status, request.session.user.id, id])
-  if (!result.rows[0]) return response.status(404).json({ message: 'الطلب غير موجود أو تمت معالجته' })
-  response.json({ ok: true })
+  if (status === 'active' && !ALLOWED_FLOORS.includes(floor)) return response.status(400).json({ message: 'يجب اختيار طابق صحيح عند قبول الطلب' })
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    const result = await client.query("UPDATE users SET account_status = $1, approved_at = NOW(), approved_by = $2 WHERE id = $3 AND account_status = 'pending' RETURNING id", [status, request.session.user.id, id])
+    if (!result.rows[0]) { await client.query('ROLLBACK'); return response.status(404).json({ message: 'الطلب غير موجود أو تمت معالجته' }) }
+    if (status === 'active') {
+      await client.query('INSERT INTO user_floor_access (user_id, floor_number, assigned_by) VALUES ($1, $2, $3) ON CONFLICT (user_id, floor_number) DO UPDATE SET assigned_at = NOW()', [id, floor, request.session.user.id])
+    }
+    await client.query('COMMIT')
+    response.json({ ok: true })
+  } catch (error) {
+    await client.query('ROLLBACK')
+    console.error('registration decision failed:', error)
+    response.status(500).json({ message: 'تعذر تحديث الطلب' })
+  } finally { client.release() }
+})
+
+app.get('/api/users', requireAdmin, async (_request, response) => {
+  const result = await query(`SELECT u.id, u.full_name, u.username, u.email, u.phone, u.role, u.account_status,
+    COALESCE(array_agg(ufa.floor_number ORDER BY ufa.floor_number) FILTER (WHERE ufa.floor_number IS NOT NULL), '{}') AS floors
+    FROM users u LEFT JOIN user_floor_access ufa ON ufa.user_id = u.id
+    GROUP BY u.id ORDER BY u.created_at DESC`)
+  response.json({ users: result.rows })
+})
+app.delete('/api/users/:id', requireAdmin, async (request, response) => {
+  const id = Number(request.params.id)
+  if (!Number.isInteger(id) || id < 1) return response.status(400).json({ message: 'معرّف غير صحيح' })
+  if (id === Number(request.session.user.id)) return response.status(400).json({ message: 'لا يمكنك حذف حسابك الخاص' })
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    const target = await client.query('SELECT role FROM users WHERE id = $1', [id])
+    if (!target.rows[0]) { await client.query('ROLLBACK'); return response.status(404).json({ message: 'المستخدم غير موجود' }) }
+    if (target.rows[0].role === 'admin') {
+      const admins = await client.query("SELECT COUNT(*)::int AS count FROM users WHERE role = 'admin'")
+      if (admins.rows[0].count <= 1) { await client.query('ROLLBACK'); return response.status(400).json({ message: 'لا يمكن حذف آخر مدير في النظام' }) }
+    }
+    const actingAdmin = request.session.user.id
+    await client.query('UPDATE users SET approved_by = NULL WHERE approved_by = $1', [id])
+    await client.query('UPDATE user_floor_access SET assigned_by = $1 WHERE assigned_by = $2', [actingAdmin, id])
+    await client.query('UPDATE daily_charts SET created_by = $1 WHERE created_by = $2', [actingAdmin, id])
+    await client.query('UPDATE daily_charts SET updated_by = $1 WHERE updated_by = $2', [actingAdmin, id])
+    await client.query('UPDATE medicines SET created_by = NULL WHERE created_by = $1', [id])
+    await client.query('DELETE FROM users WHERE id = $1', [id])
+    await client.query('COMMIT')
+    response.json({ ok: true })
+  } catch (error) {
+    await client.query('ROLLBACK')
+    console.error('user delete failed:', error)
+    response.status(500).json({ message: 'تعذر حذف المستخدم' })
+  } finally { client.release() }
 })
 
 app.get('/api/access', requireAdmin, async (_request, response) => {
