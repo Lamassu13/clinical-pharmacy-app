@@ -5,6 +5,7 @@ import cors from 'cors'
 import helmet from 'helmet'
 import session from 'express-session'
 import connectPgSimple from 'connect-pg-simple'
+import bcrypt from 'bcryptjs'
 import 'dotenv/config'
 import { checkDatabase, pool, query } from './db.js'
 import { authenticateUser, requireAdmin, requireAuth } from './auth.js'
@@ -26,6 +27,25 @@ app.post('/api/auth/login', async (request, response) => {
     request.session.user = user
     response.json({ user })
   } catch (error) { response.status(500).json({ message: 'تعذر تسجيل الدخول', error: error.message }) }
+})
+app.post('/api/auth/register', async (request, response) => {
+  const fullName = String(request.body.fullName || '').trim()
+  const username = String(request.body.username || '').trim()
+  const phone = String(request.body.phone || '').trim()
+  const email = String(request.body.email || '').trim()
+  const fingerprintNumber = String(request.body.fingerprintNumber || '').trim()
+  const password = String(request.body.password || '')
+  if (!fullName || !username || !phone || !email || !fingerprintNumber || password.length < 6) {
+    return response.status(400).json({ message: 'يرجى ملء جميع الحقول وكلمة مرور لا تقل عن ٦ أحرف' })
+  }
+  try {
+    const passwordHash = await bcrypt.hash(password, 12)
+    await query('INSERT INTO users (full_name, username, phone, email, fingerprint_number, password_hash) VALUES ($1, $2, $3, $4, $5, $6)', [fullName, username, phone, email, fingerprintNumber, passwordHash])
+    response.status(201).json({ message: 'تم إنشاء الحساب، بانتظار موافقة المدير' })
+  } catch (error) {
+    if (error.code === '23505') return response.status(409).json({ message: 'اسم المستخدم أو البريد الإلكتروني مستخدم بالفعل' })
+    response.status(500).json({ message: 'تعذر إنشاء الحساب', error: error.message })
+  }
 })
 app.post('/api/auth/logout', (request, response) => request.session.destroy(() => response.status(204).end()))
 app.get('/api/auth/me', (request, response) => response.json({ user: request.session.user || null }))
