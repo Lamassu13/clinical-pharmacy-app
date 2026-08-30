@@ -15,6 +15,13 @@ dist-ssr
 .env.*
 !.env.example
 
+# Secrets / local credentials — never commit
+*.pem
+*.key
+*.p12
+secrets.json
+.firebase/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
