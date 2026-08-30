@@ -50,8 +50,8 @@ const SPECIAL_WARDS = ['ردهة الديلزة', 'ردهة العناية ال�
 // A medicine belongs on the pill administration form when its name names an oral solid.
 const PILL_FORM = /\b(tab|tabs|tablet|tablets|cap|caps|capsule|capsules)\b/i
 // Fixed option lists for the pill form. Keep in sync with src/App.jsx.
-const DOSE_TIMES = ['٦ صباحاً', '٩ صباحاً', '١٢ ظهراً', '٦ مساءً', '٩ مساءً', 'صباحاً ومساءً', 'صباحاً وظهراً ومساءً', 'عند النوم', 'عند الحاجة']
-const USAGE_METHODS = ['حبة بعد الطعام مباشرة', 'نصف حبة بعد الطعام مباشرة', 'حبة قبل الطعام', 'حبة على الريق', 'حبة عند النوم', 'حبتان بعد الطعام مباشرة', 'تُمضغ', 'توضع تحت اللسان']
+const DOSE_TIMES = ['٨ صباحًا', '٩ صباحًا', '١٠ صباحًا', '١١ صباحًا', '١٢ ظهرًا', '٢ ظهرًا', '٣ ظهرًا', '٤ عصرًا', '٥ عصرًا', '٦ مساءً', '٨ ليلًا', '٩ ليلًا', '١٠ ليلًا', '١٠ صباحًا - ١٠ مساءً', '١٢ ظهرًا - ١٢ ليلًا', '١٢ ظهرًا - ٨ ليلًا', '٨ صباحًا - ٤ عصرًا - ١٢ ليلًا', '٦ صباحًا - ١٢ ظهرًا - ٦ مساءً - ١٢ ليلًا']
+const USAGE_METHODS = ['حبة بعد الطعام مباشرة', 'حبة قبل الطعام بساعة أو بعده بساعتين', '٢ حبة بعد الطعام مباشرة']
 const canAccessLocation = (user, floor, wardName) => {
   if (user.role === 'admin') return true
   if (Number.isInteger(floor)) return floor === user.assignedFloor
