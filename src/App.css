@@ -47,10 +47,10 @@ input, select { border: 1px solid #c6d8ce; background: #fbfdfb; color: var(--ink
 .header-watermark { position: absolute; inset: 50% auto auto 50%; width: 125px; height: 125px; object-fit: contain; opacity: .16; transform: translate(-50%, -50%); pointer-events: none; }
 .chart-table .patient-header span { position: relative; z-index: 1; }
 .chart-table thead th:not(.patient-header) { overflow: hidden; vertical-align: middle; }
-.chart-table thead th:not(.patient-header) select { display: block; width: 51px; height: 126px; margin: 0; padding: 0; transform: none; writing-mode: vertical-rl; text-orientation: mixed; overflow: hidden; }
+.chart-table thead th:not(.patient-header) .medicine-select { display: block; width: 51px; height: 126px; margin: 0; padding: 0; transform: none; writing-mode: vertical-rl; text-orientation: mixed; overflow: hidden; }
 .chart-table thead th:not(.patient-header) { width: 51px; min-width: 51px; max-width: 51px; padding: 0; overflow: hidden; }
-.chart-table thead th:not(.patient-header) select { appearance: none; -webkit-appearance: none; box-sizing: border-box; width: 51px; min-width: 51px; max-width: 51px; height: 126px; min-height: 126px; max-height: 126px; border: 0; outline: 0; text-align: center; text-align-last: center; line-height: 1; }
-.chart-table thead th:not(.patient-header) select:has(option[value=""]:checked) { color: transparent; }
+.chart-table thead th:not(.patient-header) .medicine-select { appearance: none; -webkit-appearance: none; box-sizing: border-box; width: 51px; min-width: 51px; max-width: 51px; height: 126px; min-height: 126px; max-height: 126px; border: 0; outline: 0; background: transparent; text-align: center; text-align-last: center; line-height: 1; font: inherit; }
+.chart-table thead th:not(.patient-header) .medicine-select::placeholder { color: #9bb0a8; }
 
 @media print {
 	@page { size: A4 landscape; margin: 5mm; }
@@ -62,7 +62,7 @@ input, select { border: 1px solid #c6d8ce; background: #fbfdfb; color: var(--ink
 	.chart-table th, .chart-table td { width: auto; min-width: 0; height: 4mm; line-height: 1; }
 	.chart-table thead th { height: 16mm; }
 	.chart-table thead th:not(.patient-header) { width: auto; min-width: 0; max-width: none; height: 16mm; }
-	.chart-table thead th:not(.patient-header) select { width: 100%; min-width: 0; max-width: none; height: 15mm; min-height: 15mm; max-height: 15mm; font-size: 6px; }
+	.chart-table thead th:not(.patient-header) .medicine-select { width: 100%; min-width: 0; max-width: none; height: 15mm; min-height: 15mm; max-height: 15mm; font-size: 6px; }
 	.chart-table .patient-header, .chart-table .patient-cell { width: 28mm; min-width: 28mm; }
 	.header-watermark { width: 25mm; height: 25mm; opacity: .12; }
 	.patient-cell input, .chart-table td input { height: 4mm; font-size: 7px; padding: 0; }
