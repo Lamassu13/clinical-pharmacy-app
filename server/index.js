@@ -47,6 +47,11 @@ app.use('/api/', apiLimiter)
 
 const ALLOWED_FLOORS = [2, 3, 4, 5, 6, 8, 9, 10]
 const SPECIAL_WARDS = ['ردهة الديلزة', 'ردهة العناية المركزة', 'ردهة الخدج']
+// A medicine belongs on the pill administration form when its name names an oral solid.
+const PILL_FORM = /\b(tab|tabs|tablet|tablets|cap|caps|capsule|capsules)\b/i
+// Fixed option lists for the pill form. Keep in sync with src/App.jsx.
+const DOSE_TIMES = ['٦ صباحاً', '٩ صباحاً', '١٢ ظهراً', '٦ مساءً', '٩ مساءً', 'صباحاً ومساءً', 'صباحاً وظهراً ومساءً', 'عند النوم', 'عند الحاجة']
+const USAGE_METHODS = ['حبة بعد الطعام مباشرة', 'نصف حبة بعد الطعام مباشرة', 'حبة قبل الطعام', 'حبة على الريق', 'حبة عند النوم', 'حبتان بعد الطعام مباشرة', 'تُمضغ', 'توضع تحت اللسان']
 const canAccessLocation = (user, floor, wardName) => {
   if (user.role === 'admin') return true
   if (Number.isInteger(floor)) return floor === user.assignedFloor
@@ -97,14 +102,49 @@ app.post('/api/auth/logout', (request, response) => request.session.destroy(() =
 app.get('/api/auth/me', (request, response) => response.json({ user: request.session.user || null }))
 
 app.get('/api/medicines', requireAuth, async (_request, response) => {
-  const result = await query('SELECT id, name FROM medicines ORDER BY name ASC')
+  const result = await query('SELECT id, name, arabic_name FROM medicines ORDER BY name ASC')
   response.json({ medicines: result.rows })
 })
 app.post('/api/medicines', requireAuth, async (request, response) => {
   const name = String(request.body.name || '').trim()
   if (!name) return response.status(400).json({ message: 'اسم العلاج مطلوب' })
-  const result = await query('INSERT INTO medicines (name, created_by) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id, name', [name, request.session.user.id])
+  const result = await query('INSERT INTO medicines (name, created_by) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id, name, arabic_name', [name, request.session.user.id])
   response.status(201).json({ medicine: result.rows[0] })
+})
+app.put('/api/medicines/:id', requireAdmin, async (request, response) => {
+  const id = Number(request.params.id)
+  if (!Number.isInteger(id) || id < 1) return response.status(400).json({ message: 'معرّف غير صحيح' })
+  const name = request.body.name === undefined ? null : cleanText(request.body.name, 200).trim()
+  const arabicName = request.body.arabicName === undefined ? null : cleanText(request.body.arabicName, 200).trim()
+  if (name !== null && !name) return response.status(400).json({ message: 'اسم العلاج مطلوب' })
+  try {
+    const result = await query('UPDATE medicines SET name = COALESCE($2, name), arabic_name = COALESCE($3, arabic_name) WHERE id = $1 RETURNING id, name, arabic_name', [id, name, arabicName])
+    if (!result.rows[0]) return response.status(404).json({ message: 'الدواء غير موجود' })
+    response.json({ medicine: result.rows[0] })
+  } catch (error) {
+    if (error.code === '23505') return response.status(409).json({ message: 'اسم الدواء مستخدم بالفعل' })
+    console.error('medicine update failed:', error)
+    response.status(500).json({ message: 'تعذر تحديث الدواء' })
+  }
+})
+app.delete('/api/medicines/:id', requireAdmin, async (request, response) => {
+  const id = Number(request.params.id)
+  if (!Number.isInteger(id) || id < 1) return response.status(400).json({ message: 'معرّف غير صحيح' })
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    const target = await client.query('SELECT id FROM medicines WHERE id = $1', [id])
+    if (!target.rows[0]) { await client.query('ROLLBACK'); return response.status(404).json({ message: 'الدواء غير موجود' }) }
+    await client.query('UPDATE chart_columns SET medicine_id = NULL WHERE medicine_id = $1', [id])
+    await client.query('DELETE FROM pill_entries WHERE medicine_id = $1', [id])
+    await client.query('DELETE FROM medicines WHERE id = $1', [id])
+    await client.query('COMMIT')
+    response.json({ ok: true })
+  } catch (error) {
+    await client.query('ROLLBACK')
+    console.error('medicine delete failed:', error)
+    response.status(500).json({ message: 'تعذر حذف الدواء' })
+  } finally { client.release() }
 })
 
 app.get('/api/registrations', requireAdmin, async (_request, response) => {
@@ -310,6 +350,88 @@ app.put('/api/chart', requireAuth, async (request, response) => {
     await client.query('ROLLBACK')
     console.error('chart save failed:', error)
     response.status(400).json({ message: 'تعذر حفظ الجارت' })
+  } finally { client.release() }
+})
+
+const resolveChartId = async (floor, wardName, chartDate) => {
+  const wardResult = await query('SELECT id FROM wards WHERE floor_number IS NOT DISTINCT FROM $1 AND name = $2', [floor, wardName])
+  if (!wardResult.rows[0]) return null
+  const chartResult = await query('SELECT id FROM daily_charts WHERE ward_id = $1 AND chart_date = $2', [wardResult.rows[0].id, chartDate])
+  return chartResult.rows[0] ? chartResult.rows[0].id : null
+}
+
+app.get('/api/pills', requireAuth, async (request, response) => {
+  const floor = request.query.floor ? clampInt(request.query.floor, 2, 10) : null
+  const wardName = cleanText(request.query.ward, 120).trim()
+  const chartDate = request.query.date
+  if (request.query.floor && (floor === null || !ALLOWED_FLOORS.includes(floor))) return response.status(400).json({ message: 'الطابق غير مسموح' })
+  if (!wardName || !isIsoDate(chartDate)) return response.status(400).json({ message: 'بيانات الردهة والتاريخ مطلوبة' })
+  if (!canAccessLocation(request.session.user, floor, wardName)) return response.status(403).json({ message: 'لا تملك صلاحية لهذه الردهة' })
+  const chartId = await resolveChartId(floor, wardName, chartDate)
+  if (!chartId) return response.json({ pills: null })
+  const [columns, patients, quantities, entries] = await Promise.all([
+    query('SELECT cc.column_number, cc.medicine_id, m.name, m.arabic_name FROM chart_columns cc JOIN medicines m ON m.id = cc.medicine_id WHERE cc.chart_id = $1', [chartId]),
+    query("SELECT row_number, patient_name FROM chart_patients WHERE chart_id = $1 AND patient_name <> '' ORDER BY row_number", [chartId]),
+    query('SELECT row_number, column_number, quantity FROM chart_quantities WHERE chart_id = $1 AND quantity > 0', [chartId]),
+    query('SELECT patient_row_number, medicine_id, dose_time, usage_method FROM pill_entries WHERE chart_id = $1', [chartId]),
+  ])
+  const pillColumns = columns.rows.filter((column) => PILL_FORM.test(column.name || ''))
+  const medicineByColumn = new Map(pillColumns.map((column) => [column.column_number, column.medicine_id]))
+  const nameByRow = new Map(patients.rows.map((patient) => [patient.row_number, patient.patient_name]))
+  const matrix = {}
+  const usedMedicineIds = new Set()
+  quantities.rows.forEach((cell) => {
+    const medicineId = medicineByColumn.get(cell.column_number)
+    if (medicineId === undefined || !nameByRow.has(cell.row_number)) return
+    if (!matrix[cell.row_number]) matrix[cell.row_number] = []
+    if (!matrix[cell.row_number].includes(medicineId)) matrix[cell.row_number].push(medicineId)
+    usedMedicineIds.add(medicineId)
+  })
+  const medicineInfo = new Map(pillColumns.map((column) => [column.medicine_id, { id: column.medicine_id, name: column.name, arabicName: column.arabic_name || '' }]))
+  const result = {
+    patients: patients.rows.filter((patient) => matrix[patient.row_number]).map((patient) => ({ rowNumber: patient.row_number, name: patient.patient_name })),
+    medicines: [...usedMedicineIds].map((id) => medicineInfo.get(id)).filter(Boolean).sort((a, b) => (a.arabicName || a.name).localeCompare(b.arabicName || b.name, 'ar')),
+    matrix,
+    entries: entries.rows.map((row) => ({ patientRowNumber: row.patient_row_number, medicineId: row.medicine_id, doseTime: row.dose_time, usageMethod: row.usage_method })),
+  }
+  response.json({ pills: result })
+})
+app.put('/api/pills', requireAuth, async (request, response) => {
+  const floor = request.body.floor ? clampInt(request.body.floor, 2, 10) : null
+  const wardName = cleanText(request.body.ward, 120).trim()
+  const chartDate = request.body.date
+  if (request.body.floor && (floor === null || !ALLOWED_FLOORS.includes(floor))) return response.status(400).json({ message: 'الطابق غير مسموح' })
+  if (!wardName || !isIsoDate(chartDate)) return response.status(400).json({ message: 'بيانات الردهة والتاريخ مطلوبة' })
+  if (!canAccessLocation(request.session.user, floor, wardName)) return response.status(403).json({ message: 'لا تملك صلاحية لهذه الردهة' })
+  const chartId = await resolveChartId(floor, wardName, chartDate)
+  if (!chartId) return response.status(404).json({ message: 'لا يوجد جارت لهذا اليوم' })
+  const byKey = new Map()
+  ;(Array.isArray(request.body.entries) ? request.body.entries : []).forEach((entry) => {
+    const patientRowNumber = clampInt(entry?.patientRowNumber, 1, 36)
+    const medicineId = clampInt(entry?.medicineId, 1, Number.MAX_SAFE_INTEGER)
+    if (patientRowNumber === null || medicineId === null) return
+    const doseTime = DOSE_TIMES.includes(entry?.doseTime) ? entry.doseTime : ''
+    const usageMethod = USAGE_METHODS.includes(entry?.usageMethod) ? entry.usageMethod : ''
+    if (!doseTime && !usageMethod) return
+    byKey.set(`${patientRowNumber}:${medicineId}`, { patientRowNumber, medicineId, doseTime, usageMethod })
+  })
+  const rows = [...byKey.values()]
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    await client.query('DELETE FROM pill_entries WHERE chart_id = $1', [chartId])
+    if (rows.length) {
+      await client.query(
+        'INSERT INTO pill_entries (chart_id, patient_row_number, medicine_id, dose_time, usage_method) SELECT $1, prn, mid, dt, um FROM UNNEST($2::int[], $3::bigint[], $4::text[], $5::text[]) AS u(prn, mid, dt, um)',
+        [chartId, rows.map((row) => row.patientRowNumber), rows.map((row) => row.medicineId), rows.map((row) => row.doseTime), rows.map((row) => row.usageMethod)],
+      )
+    }
+    await client.query('COMMIT')
+    response.json({ ok: true })
+  } catch (error) {
+    await client.query('ROLLBACK')
+    console.error('pill save failed:', error)
+    response.status(400).json({ message: 'تعذر حفظ الاستمارة' })
   } finally { client.release() }
 })
 
