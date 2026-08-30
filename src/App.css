@@ -33,7 +33,7 @@ h1, h2, p { margin-top: 0; } h1 { margin-bottom: 10px; color: var(--deep-green);
 .medicine-add-row input { flex: 1; padding: 11px 13px; border: 1px solid #c6d8ce; border-radius: 2px; }
 .medicine-filter { width: 100%; padding: 10px 13px; margin-bottom: 10px; border: 1px solid #c6d8ce; border-radius: 2px; }
 
-.pills-page { width: min(100% - 40px, 1100px); margin: 0 auto; padding: 40px 0; }
+.pills-page { width: min(100% - 40px, 1100px); margin: 0 auto; padding: 40px 0; direction: rtl; }
 .pills-toolbar { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; margin-bottom: 20px; }
 .pills-toolbar h1 { margin: 0; }
 .pills-date { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--deep-green); font-weight: 700; }
@@ -45,7 +45,7 @@ h1, h2, p { margin-top: 0; } h1 { margin-bottom: 10px; color: var(--deep-green);
 .pill-form-title span, .pill-form-patient span { color: var(--muted); font-size: 12px; }
 .pill-form-patient { text-align: left; }
 .pill-form-patient strong { display: block; font-size: 18px; color: var(--ink); }
-.pill-table { width: 100%; border-collapse: collapse; }
+.pill-table { width: 100%; border-collapse: collapse; direction: rtl; }
 .pill-table th, .pill-table td { border: 1px solid #9ca8a1; padding: 9px 12px; text-align: right; font-size: 14px; }
 .pill-table thead th { background: #e8f1eb; color: var(--deep-green); }
 .pill-table td:first-child { font-weight: 700; }
