@@ -351,10 +351,11 @@ label { display: grid; gap: var(--space-2); color: var(--green-800); font-size: 
 .pill-table { width: 100%; border-collapse: collapse; }
 .pill-table th, .pill-table td { border: 1px solid var(--border-strong); padding: 9px 12px; text-align: start; font-size: var(--text-sm); vertical-align: middle; }
 .pill-table thead th { background: var(--green-100); color: var(--green-800); font-weight: 700; }
-.pill-table th:first-child, .pill-table td:first-child { width: 80px; padding: 4px; }
+.pill-table th:first-child, .pill-table td:first-child { width: 120px; padding: 4px; }
 .pill-table td:nth-child(2) { font-weight: 700; }
-.pill-table td:last-child { min-width: 240px; }
-.pill-table select { width: 100%; padding-block: 7px; padding-inline: 9px 32px; background-color: var(--surface); }
+.pill-table th:last-child, .pill-table td:last-child { width: 110px; min-width: 0; }
+.pill-table select { width: 100%; appearance: auto; -webkit-appearance: auto; padding: 7px 9px; background-image: none; background-color: var(--surface); }
+.pill-table th:last-child select, .pill-table td:last-child select { font-size: var(--text-xs); }
 
 .pill-signature { display: flex; gap: var(--space-6); margin-top: var(--space-5); }
 .pill-signature span { flex: 1; padding-bottom: var(--space-5); border-bottom: 1px solid var(--border-strong); font-size: var(--text-sm); color: var(--text); font-weight: 700; }
@@ -438,10 +439,9 @@ label { display: grid; gap: var(--space-2); color: var(--green-800); font-size: 
 .date-controls button { padding: 6px 12px; border: 1px solid #ffffff4d; background: transparent; color: #fff; font-size: var(--text-xs); border-radius: var(--radius-sm); transition: background var(--dur-fast) var(--ease); }
 .date-controls button:hover { background: #ffffff1f; }
 
-/* chart watermark + vertical medicine headers (tuned — do not reorder) */
-.chart-table .patient-header { position: relative; overflow: hidden; vertical-align: middle; text-align: center; background: #fff; color: #000; }
-.chart-table .patient-header span { display: block; white-space: nowrap; line-height: 1.8; position: relative; z-index: 1; }
-.header-watermark { position: absolute; inset: 50% auto auto 50%; width: 125px; height: 125px; object-fit: contain; opacity: .16; transform: translate(-50%, -50%); pointer-events: none; }
+/* vertical medicine headers (tuned — do not reorder) */
+.chart-table .patient-header { vertical-align: middle; text-align: center; background: #fff; color: #000; }
+.chart-table .patient-header span { display: block; white-space: nowrap; line-height: 1.8; }
 .chart-table thead th:not(.patient-header) { width: 51px; min-width: 51px; max-width: 51px; padding: 0; overflow: hidden; vertical-align: middle; }
 .chart-table thead th:not(.patient-header) .medicine-select {
   appearance: none;
@@ -504,7 +504,8 @@ label { display: grid; gap: var(--space-2); color: var(--green-800); font-size: 
   .pill-room input { border: 0; border-bottom: 1px solid #000; color: #000; padding: 0 2px; }
   .pill-table th, .pill-table td { border-color: #000; color: #000; font-size: 12px; }
   .pill-table thead th { background: #fff; }
-  .pill-table select { border: 0; appearance: none; -webkit-appearance: none; color: #000; padding: 0; background: #fff; background-image: none; }
+  .pill-table select { border: 0; appearance: auto; -webkit-appearance: auto; color: #000; padding: 0 2px; background: #fff; background-image: none; font-size: 11px; }
+  .pill-table th:last-child select, .pill-table td:last-child select { font-size: 9px; }
   .pill-signature span, .pill-signature { border-color: #000; color: #000; }
   .pill-form-foot { color: #000; }
 }
@@ -517,9 +518,6 @@ label { display: grid; gap: var(--space-2); color: var(--green-800); font-size: 
   body { background: #fff; }
   .topbar, .chart-toolbar, .chart-meta, .modal-backdrop { display: none !important; }
   .chart-page { width: 100%; padding: 0; }
-  .print-heading { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 6px; color: #000; }
-  .print-heading strong, .print-heading span { display: block; }
-  .print-logo { width: 22mm; height: 22mm; }
   .table-frame { overflow: visible; max-height: none; width: 100%; border: 1px solid #000; border-radius: 0; }
   .chart-table { width: 100%; min-width: 0; table-layout: fixed; font-size: 4.5px; color: #000; background: #fff; }
   .chart-table th, .chart-table td { width: auto; min-width: 0; height: 4mm; line-height: 1; border-color: #000; box-shadow: none !important; }
@@ -528,7 +526,6 @@ label { display: grid; gap: var(--space-2); color: var(--green-800); font-size: 
   .chart-table thead th:not(.patient-header) .medicine-select { width: 100%; min-width: 0; max-width: none; height: 15mm; min-height: 15mm; max-height: 15mm; font-size: 6px; color: #000; background: #fff; }
   .chart-table .patient-header, .chart-table .patient-cell { position: static; width: 28mm; min-width: 28mm; background: #fff; color: #000; }
   .chart-table tfoot th, .chart-table tfoot td { position: static; height: 4mm; font-size: 8px; background: #fff; color: #000; }
-  .header-watermark { width: 25mm; height: 25mm; opacity: .12; }
   .patient-cell input, .chart-table td input { height: 4mm; font-size: 7px; padding: 0; color: #000; background: #fff; }
   .chart-table input, .chart-table select { color: #000; background: #fff; }
 }
