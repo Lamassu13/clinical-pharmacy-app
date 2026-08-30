@@ -169,20 +169,31 @@ app.get('/api/access', requireAdmin, async (_request, response) => {
   const result = await query('SELECT u.id, u.username, u.full_name, ufa.floor_number FROM users u LEFT JOIN user_floor_access ufa ON ufa.user_id = u.id ORDER BY u.full_name')
   response.json({ access: result.rows })
 })
+const setUserFloor = async (userId, floor, assignedBy) => {
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    await client.query('DELETE FROM user_floor_access WHERE user_id = $1', [userId])
+    await client.query('INSERT INTO user_floor_access (user_id, floor_number, assigned_by) VALUES ($1, $2, $3)', [userId, floor, assignedBy])
+    await client.query('COMMIT')
+  } catch (error) { await client.query('ROLLBACK'); throw error } finally { client.release() }
+}
 app.put('/api/access/by-username', requireAdmin, async (request, response) => {
   const floor = Number(request.body.floor)
-  if (![2, 3, 4, 5, 6, 8, 9, 10].includes(floor)) return response.status(400).json({ message: 'الطابق غير مسموح' })
+  if (!ALLOWED_FLOORS.includes(floor)) return response.status(400).json({ message: 'الطابق غير مسموح' })
   const userResult = await query('SELECT id FROM users WHERE username = $1 OR email = $1', [String(request.body.username || '').trim()])
   if (!userResult.rows[0]) return response.status(404).json({ message: 'المستخدم غير موجود' })
-  await query('INSERT INTO user_floor_access (user_id, floor_number, assigned_by) VALUES ($1, $2, $3) ON CONFLICT (user_id, floor_number) DO UPDATE SET assigned_at = NOW()', [userResult.rows[0].id, floor, request.session.user.id])
+  await setUserFloor(userResult.rows[0].id, floor, request.session.user.id)
   response.json({ ok: true })
 })
 app.put('/api/access/:userId', requireAdmin, async (request, response) => {
   const floor = Number(request.body.floor)
   const userId = Number(request.params.userId)
-  if (![2, 3, 4, 5, 6, 8, 9, 10].includes(floor)) return response.status(400).json({ message: 'الطابق غير مسموح' })
+  if (!ALLOWED_FLOORS.includes(floor)) return response.status(400).json({ message: 'الطابق غير مسموح' })
   if (!Number.isInteger(userId) || userId < 1) return response.status(400).json({ message: 'معرّف غير صحيح' })
-  await query('INSERT INTO user_floor_access (user_id, floor_number, assigned_by) VALUES ($1, $2, $3) ON CONFLICT (user_id, floor_number) DO UPDATE SET assigned_at = NOW()', [userId, floor, request.session.user.id])
+  const userResult = await query('SELECT id FROM users WHERE id = $1', [userId])
+  if (!userResult.rows[0]) return response.status(404).json({ message: 'المستخدم غير موجود' })
+  await setUserFloor(userId, floor, request.session.user.id)
   response.json({ ok: true })
 })
 
