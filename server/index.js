@@ -370,11 +370,12 @@ app.get('/api/pills', requireAuth, async (request, response) => {
   if (!canAccessLocation(request.session.user, floor, wardName)) return response.status(403).json({ message: 'لا تملك صلاحية لهذه الردهة' })
   const chartId = await resolveChartId(floor, wardName, chartDate)
   if (!chartId) return response.json({ pills: null })
-  const [columns, patients, quantities, entries] = await Promise.all([
+  const [columns, patients, quantities, entries, rooms] = await Promise.all([
     query('SELECT cc.column_number, cc.medicine_id, m.name, m.arabic_name FROM chart_columns cc JOIN medicines m ON m.id = cc.medicine_id WHERE cc.chart_id = $1', [chartId]),
     query("SELECT row_number, patient_name FROM chart_patients WHERE chart_id = $1 AND patient_name <> '' ORDER BY row_number", [chartId]),
     query('SELECT row_number, column_number, quantity FROM chart_quantities WHERE chart_id = $1 AND quantity > 0', [chartId]),
     query('SELECT patient_row_number, medicine_id, dose_time, usage_method, lead_note, note FROM pill_entries WHERE chart_id = $1', [chartId]),
+    query('SELECT patient_row_number, room_number FROM pill_patient_meta WHERE chart_id = $1', [chartId]),
   ])
   const pillColumns = columns.rows.filter((column) => PILL_FORM.test(column.name || ''))
   const medicineByColumn = new Map(pillColumns.map((column) => [column.column_number, column.medicine_id]))
@@ -394,6 +395,7 @@ app.get('/api/pills', requireAuth, async (request, response) => {
     medicines: [...usedMedicineIds].map((id) => medicineInfo.get(id)).filter(Boolean).sort((a, b) => (a.arabicName || a.name).localeCompare(b.arabicName || b.name, 'ar')),
     matrix,
     entries: entries.rows.map((row) => ({ patientRowNumber: row.patient_row_number, medicineId: row.medicine_id, doseTime: row.dose_time, usageMethod: row.usage_method, leadNote: row.lead_note, note: row.note })),
+    rooms: Object.fromEntries(rooms.rows.map((row) => [row.patient_row_number, row.room_number])),
   }
   response.json({ pills: result })
 })
@@ -419,14 +421,24 @@ app.put('/api/pills', requireAuth, async (request, response) => {
     byKey.set(`${patientRowNumber}:${medicineId}`, { patientRowNumber, medicineId, doseTime, usageMethod, leadNote, note })
   })
   const rows = [...byKey.values()]
+  const roomRows = Object.entries(request.body.rooms && typeof request.body.rooms === 'object' ? request.body.rooms : {})
+    .map(([key, value]) => ({ patientRowNumber: clampInt(key, 1, 36), roomNumber: cleanText(value, 40).trim() }))
+    .filter((room) => room.patientRowNumber !== null && room.roomNumber)
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
     await client.query('DELETE FROM pill_entries WHERE chart_id = $1', [chartId])
+    await client.query('DELETE FROM pill_patient_meta WHERE chart_id = $1', [chartId])
     if (rows.length) {
       await client.query(
         'INSERT INTO pill_entries (chart_id, patient_row_number, medicine_id, dose_time, usage_method, lead_note, note) SELECT $1, prn, mid, dt, um, ln, nt FROM UNNEST($2::int[], $3::bigint[], $4::text[], $5::text[], $6::text[], $7::text[]) AS u(prn, mid, dt, um, ln, nt)',
         [chartId, rows.map((row) => row.patientRowNumber), rows.map((row) => row.medicineId), rows.map((row) => row.doseTime), rows.map((row) => row.usageMethod), rows.map((row) => row.leadNote), rows.map((row) => row.note)],
+      )
+    }
+    if (roomRows.length) {
+      await client.query(
+        'INSERT INTO pill_patient_meta (chart_id, patient_row_number, room_number) SELECT $1, prn, rn FROM UNNEST($2::int[], $3::text[]) AS u(prn, rn)',
+        [chartId, roomRows.map((room) => room.patientRowNumber), roomRows.map((room) => room.roomNumber)],
       )
     }
     await client.query('COMMIT')

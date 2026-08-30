@@ -92,6 +92,13 @@ CREATE TABLE IF NOT EXISTS pill_entries (
 ALTER TABLE pill_entries ADD COLUMN IF NOT EXISTS lead_note TEXT NOT NULL DEFAULT '';
 ALTER TABLE pill_entries ADD COLUMN IF NOT EXISTS note TEXT NOT NULL DEFAULT '';
 
+CREATE TABLE IF NOT EXISTS pill_patient_meta (
+  chart_id BIGINT NOT NULL REFERENCES daily_charts(id) ON DELETE CASCADE,
+  patient_row_number INTEGER NOT NULL CHECK (patient_row_number BETWEEN 1 AND 36),
+  room_number TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (chart_id, patient_row_number)
+);
+
 CREATE INDEX IF NOT EXISTS daily_charts_date_idx ON daily_charts (chart_date);
 CREATE INDEX IF NOT EXISTS chart_quantities_chart_idx ON chart_quantities (chart_id);
 CREATE INDEX IF NOT EXISTS users_account_status_idx ON users (account_status);
