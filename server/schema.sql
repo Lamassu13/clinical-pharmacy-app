@@ -29,6 +29,14 @@ CREATE TABLE IF NOT EXISTS user_floor_access (
   PRIMARY KEY (user_id, floor_number)
 );
 
+CREATE TABLE IF NOT EXISTS user_ward_access (
+  user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  ward_name TEXT NOT NULL,
+  assigned_by BIGINT NOT NULL REFERENCES users(id),
+  assigned_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_id, ward_name)
+);
+
 CREATE TABLE IF NOT EXISTS daily_charts (
   id BIGSERIAL PRIMARY KEY,
   ward_id BIGINT NOT NULL REFERENCES wards(id),

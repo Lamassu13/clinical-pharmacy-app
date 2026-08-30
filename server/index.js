@@ -45,7 +45,12 @@ const apiLimiter = rateLimit({ windowMs: 60 * 1000, limit: 300, standardHeaders:
 app.use('/api/', apiLimiter)
 
 const ALLOWED_FLOORS = [2, 3, 4, 5, 6, 8, 9, 10]
-const canAccessFloor = (user, floor) => user.role === 'admin' || (Number.isInteger(floor) && floor === user.assignedFloor)
+const SPECIAL_WARDS = ['ردهة الديلزة', 'ردهة العناية المركزة', 'ردهة الخدج']
+const canAccessLocation = (user, floor, wardName) => {
+  if (user.role === 'admin') return true
+  if (Number.isInteger(floor)) return floor === user.assignedFloor
+  return Array.isArray(user.assignedWards) && user.assignedWards.includes(wardName)
+}
 const clampInt = (value, min, max) => {
   const parsed = Math.trunc(Number(value))
   return Number.isFinite(parsed) && parsed >= min && parsed <= max ? parsed : null
@@ -108,17 +113,23 @@ app.get('/api/registrations', requireAdmin, async (_request, response) => {
 app.put('/api/registrations/:id', requireAdmin, async (request, response) => {
   const status = request.body.status
   const id = Number(request.params.id)
-  const floor = Number(request.body.floor)
+  const location = status === 'active' ? resolveLocation(request.body) : null
   if (!['active', 'rejected'].includes(status)) return response.status(400).json({ message: 'الحالة غير صحيحة' })
   if (!Number.isInteger(id) || id < 1) return response.status(400).json({ message: 'معرّف غير صحيح' })
-  if (status === 'active' && !ALLOWED_FLOORS.includes(floor)) return response.status(400).json({ message: 'يجب اختيار طابق صحيح عند قبول الطلب' })
+  if (status === 'active' && !location) return response.status(400).json({ message: 'يجب اختيار طابق أو ردهة صحيحة عند قبول الطلب' })
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
     const result = await client.query("UPDATE users SET account_status = $1, approved_at = NOW(), approved_by = $2 WHERE id = $3 AND account_status = 'pending' RETURNING id", [status, request.session.user.id, id])
     if (!result.rows[0]) { await client.query('ROLLBACK'); return response.status(404).json({ message: 'الطلب غير موجود أو تمت معالجته' }) }
     if (status === 'active') {
-      await client.query('INSERT INTO user_floor_access (user_id, floor_number, assigned_by) VALUES ($1, $2, $3) ON CONFLICT (user_id, floor_number) DO UPDATE SET assigned_at = NOW()', [id, floor, request.session.user.id])
+      await client.query('DELETE FROM user_floor_access WHERE user_id = $1', [id])
+      await client.query('DELETE FROM user_ward_access WHERE user_id = $1', [id])
+      if (location.floor !== null) {
+        await client.query('INSERT INTO user_floor_access (user_id, floor_number, assigned_by) VALUES ($1, $2, $3)', [id, location.floor, request.session.user.id])
+      } else {
+        await client.query('INSERT INTO user_ward_access (user_id, ward_name, assigned_by) VALUES ($1, $2, $3)', [id, location.ward, request.session.user.id])
+      }
     }
     await client.query('COMMIT')
     response.json({ ok: true })
@@ -131,9 +142,9 @@ app.put('/api/registrations/:id', requireAdmin, async (request, response) => {
 
 app.get('/api/users', requireAdmin, async (_request, response) => {
   const result = await query(`SELECT u.id, u.full_name, u.username, u.email, u.phone, u.role, u.account_status,
-    COALESCE(array_agg(ufa.floor_number ORDER BY ufa.floor_number) FILTER (WHERE ufa.floor_number IS NOT NULL), '{}') AS floors
-    FROM users u LEFT JOIN user_floor_access ufa ON ufa.user_id = u.id
-    GROUP BY u.id ORDER BY u.created_at DESC`)
+    COALESCE((SELECT array_agg(floor_number ORDER BY floor_number) FROM user_floor_access WHERE user_id = u.id), '{}') AS floors,
+    COALESCE((SELECT array_agg(ward_name ORDER BY ward_name) FROM user_ward_access WHERE user_id = u.id), '{}') AS wards
+    FROM users u ORDER BY u.created_at DESC`)
   response.json({ users: result.rows })
 })
 app.delete('/api/users/:id', requireAdmin, async (request, response) => {
@@ -152,6 +163,7 @@ app.delete('/api/users/:id', requireAdmin, async (request, response) => {
     const actingAdmin = request.session.user.id
     await client.query('UPDATE users SET approved_by = NULL WHERE approved_by = $1', [id])
     await client.query('UPDATE user_floor_access SET assigned_by = $1 WHERE assigned_by = $2', [actingAdmin, id])
+    await client.query('UPDATE user_ward_access SET assigned_by = $1 WHERE assigned_by = $2', [actingAdmin, id])
     await client.query('UPDATE daily_charts SET created_by = $1 WHERE created_by = $2', [actingAdmin, id])
     await client.query('UPDATE daily_charts SET updated_by = $1 WHERE updated_by = $2', [actingAdmin, id])
     await client.query('UPDATE medicines SET created_by = NULL WHERE created_by = $1', [id])
@@ -169,31 +181,45 @@ app.get('/api/access', requireAdmin, async (_request, response) => {
   const result = await query('SELECT u.id, u.username, u.full_name, ufa.floor_number FROM users u LEFT JOIN user_floor_access ufa ON ufa.user_id = u.id ORDER BY u.full_name')
   response.json({ access: result.rows })
 })
-const setUserFloor = async (userId, floor, assignedBy) => {
+// Resolve an access request that carries either { floor } or { ward } into
+// a single normalised assignment, or null if it is not valid.
+const resolveLocation = (body) => {
+  const floor = Number(body.floor)
+  const ward = typeof body.ward === 'string' ? body.ward.trim() : ''
+  if (ALLOWED_FLOORS.includes(floor)) return { floor, ward: null }
+  if (SPECIAL_WARDS.includes(ward)) return { floor: null, ward }
+  return null
+}
+const setUserAccess = async (userId, location, assignedBy) => {
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
     await client.query('DELETE FROM user_floor_access WHERE user_id = $1', [userId])
-    await client.query('INSERT INTO user_floor_access (user_id, floor_number, assigned_by) VALUES ($1, $2, $3)', [userId, floor, assignedBy])
+    await client.query('DELETE FROM user_ward_access WHERE user_id = $1', [userId])
+    if (location.floor !== null) {
+      await client.query('INSERT INTO user_floor_access (user_id, floor_number, assigned_by) VALUES ($1, $2, $3)', [userId, location.floor, assignedBy])
+    } else {
+      await client.query('INSERT INTO user_ward_access (user_id, ward_name, assigned_by) VALUES ($1, $2, $3)', [userId, location.ward, assignedBy])
+    }
     await client.query('COMMIT')
   } catch (error) { await client.query('ROLLBACK'); throw error } finally { client.release() }
 }
 app.put('/api/access/by-username', requireAdmin, async (request, response) => {
-  const floor = Number(request.body.floor)
-  if (!ALLOWED_FLOORS.includes(floor)) return response.status(400).json({ message: 'الطابق غير مسموح' })
+  const location = resolveLocation(request.body)
+  if (!location) return response.status(400).json({ message: 'الطابق أو الردهة غير مسموح' })
   const userResult = await query('SELECT id FROM users WHERE username = $1 OR email = $1', [String(request.body.username || '').trim()])
   if (!userResult.rows[0]) return response.status(404).json({ message: 'المستخدم غير موجود' })
-  await setUserFloor(userResult.rows[0].id, floor, request.session.user.id)
+  await setUserAccess(userResult.rows[0].id, location, request.session.user.id)
   response.json({ ok: true })
 })
 app.put('/api/access/:userId', requireAdmin, async (request, response) => {
-  const floor = Number(request.body.floor)
+  const location = resolveLocation(request.body)
   const userId = Number(request.params.userId)
-  if (!ALLOWED_FLOORS.includes(floor)) return response.status(400).json({ message: 'الطابق غير مسموح' })
+  if (!location) return response.status(400).json({ message: 'الطابق أو الردهة غير مسموح' })
   if (!Number.isInteger(userId) || userId < 1) return response.status(400).json({ message: 'معرّف غير صحيح' })
   const userResult = await query('SELECT id FROM users WHERE id = $1', [userId])
   if (!userResult.rows[0]) return response.status(404).json({ message: 'المستخدم غير موجود' })
-  await setUserFloor(userId, floor, request.session.user.id)
+  await setUserAccess(userId, location, request.session.user.id)
   response.json({ ok: true })
 })
 
@@ -203,7 +229,7 @@ app.get('/api/chart', requireAuth, async (request, response) => {
   const chartDate = request.query.date
   if (request.query.floor && (floor === null || !ALLOWED_FLOORS.includes(floor))) return response.status(400).json({ message: 'الطابق غير مسموح' })
   if (!wardName || !isIsoDate(chartDate)) return response.status(400).json({ message: 'بيانات الردهة والتاريخ مطلوبة' })
-  if (!canAccessFloor(request.session.user, floor)) return response.status(403).json({ message: 'لا تملك صلاحية لهذه الردهة' })
+  if (!canAccessLocation(request.session.user, floor, wardName)) return response.status(403).json({ message: 'لا تملك صلاحية لهذه الردهة' })
   const wardResult = await query('SELECT id, floor_number, name FROM wards WHERE floor_number IS NOT DISTINCT FROM $1 AND name = $2', [floor, wardName])
   if (!wardResult.rows[0]) return response.json({ chart: null })
   const chartResult = await query('SELECT id FROM daily_charts WHERE ward_id = $1 AND chart_date = $2', [wardResult.rows[0].id, chartDate])
@@ -222,7 +248,7 @@ app.put('/api/chart', requireAuth, async (request, response) => {
   const chartDate = request.body.date
   if (request.body.floor && (floor === null || !ALLOWED_FLOORS.includes(floor))) return response.status(400).json({ message: 'الطابق غير مسموح' })
   if (!wardName || !isIsoDate(chartDate)) return response.status(400).json({ message: 'بيانات الردهة والتاريخ مطلوبة' })
-  if (!canAccessFloor(request.session.user, floor)) return response.status(403).json({ message: 'لا تملك صلاحية لهذه الردهة' })
+  if (!canAccessLocation(request.session.user, floor, wardName)) return response.status(403).json({ message: 'لا تملك صلاحية لهذه الردهة' })
 
   const patients = (Array.isArray(request.body.patients) ? request.body.patients : [])
     .map((patient) => ({ rowNumber: clampInt(patient?.rowNumber, 1, 36), name: cleanText(patient?.name, 200) }))
@@ -237,8 +263,13 @@ app.put('/api/chart', requireAuth, async (request, response) => {
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
-    const wardResult = await client.query('INSERT INTO wards (floor_number, name) VALUES ($1, $2) ON CONFLICT (floor_number, name) DO UPDATE SET name = EXCLUDED.name RETURNING id', [floor, wardName])
-    const chartResult = await client.query('INSERT INTO daily_charts (ward_id, chart_date, created_by, updated_by) VALUES ($1, $2, $3, $3) ON CONFLICT (ward_id, chart_date) DO UPDATE SET updated_by = EXCLUDED.updated_by, updated_at = NOW() RETURNING id', [wardResult.rows[0].id, chartDate, request.session.user.id])
+    // Select-then-insert: ON CONFLICT (floor_number, name) never matches when
+    // floor_number IS NULL (special wards), which would create duplicates.
+    let wardRow = (await client.query('SELECT id FROM wards WHERE floor_number IS NOT DISTINCT FROM $1 AND name = $2', [floor, wardName])).rows[0]
+    if (!wardRow) {
+      wardRow = (await client.query('INSERT INTO wards (floor_number, name, is_special) VALUES ($1, $2, $3) RETURNING id', [floor, wardName, floor === null])).rows[0]
+    }
+    const chartResult = await client.query('INSERT INTO daily_charts (ward_id, chart_date, created_by, updated_by) VALUES ($1, $2, $3, $3) ON CONFLICT (ward_id, chart_date) DO UPDATE SET updated_by = EXCLUDED.updated_by, updated_at = NOW() RETURNING id', [wardRow.id, chartDate, request.session.user.id])
     const chartId = chartResult.rows[0].id
     await client.query('DELETE FROM chart_patients WHERE chart_id = $1', [chartId])
     await client.query('DELETE FROM chart_columns WHERE chart_id = $1', [chartId])
