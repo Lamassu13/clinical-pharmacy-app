@@ -61,6 +61,18 @@ app.post('/api/medicines', requireAuth, async (request, response) => {
   response.status(201).json({ medicine: result.rows[0] })
 })
 
+app.get('/api/registrations', requireAdmin, async (_request, response) => {
+  const result = await query("SELECT id, full_name, username, phone, email, fingerprint_number, created_at FROM users WHERE account_status = 'pending' ORDER BY created_at ASC")
+  response.json({ registrations: result.rows })
+})
+app.put('/api/registrations/:id', requireAdmin, async (request, response) => {
+  const status = request.body.status
+  if (!['active', 'rejected'].includes(status)) return response.status(400).json({ message: 'الحالة غير صحيحة' })
+  const result = await query("UPDATE users SET account_status = $1, approved_at = NOW(), approved_by = $2 WHERE id = $3 AND account_status = 'pending' RETURNING id", [status, request.session.user.id, request.params.id])
+  if (!result.rows[0]) return response.status(404).json({ message: 'الطلب غير موجود أو تمت معالجته' })
+  response.json({ ok: true })
+})
+
 app.get('/api/access', requireAdmin, async (_request, response) => {
   const result = await query('SELECT u.id, u.username, u.full_name, ufa.floor_number FROM users u LEFT JOIN user_floor_access ufa ON ufa.user_id = u.id ORDER BY u.full_name')
   response.json({ access: result.rows })
