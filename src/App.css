@@ -348,14 +348,22 @@ label { display: grid; gap: var(--space-2); color: var(--green-800); font-size: 
 .pill-room { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); font-weight: 700; color: var(--green-800); white-space: nowrap; }
 .pill-room input { width: 90px; padding: 6px 8px; text-align: center; }
 
-.pill-table { width: 100%; border-collapse: collapse; }
-.pill-table th, .pill-table td { border: 1px solid var(--border-strong); padding: 9px 12px; text-align: start; font-size: var(--text-sm); vertical-align: middle; }
+.pill-table { width: 100%; border-collapse: collapse; table-layout: auto; }
+.pill-table th, .pill-table td { border: 1px solid var(--border-strong); padding: 6px 8px; text-align: start; font-size: var(--text-sm); vertical-align: middle; }
 .pill-table thead th { background: var(--green-100); color: var(--green-800); font-weight: 700; }
-.pill-table th:first-child, .pill-table td:first-child { width: 120px; padding: 4px; }
-.pill-table td:nth-child(2) { font-weight: 700; }
-.pill-table th:last-child, .pill-table td:last-child { width: 110px; min-width: 0; }
-.pill-table select { width: 100%; appearance: auto; -webkit-appearance: auto; padding: 7px 9px; background-image: none; background-color: var(--surface); }
-.pill-table th:last-child select, .pill-table td:last-child select { font-size: var(--text-xs); }
+.pill-table th:first-child, .pill-table td:first-child { width: 120px; min-width: 120px; padding: 4px; }
+.pill-table td:nth-child(2) { font-weight: 700; overflow-wrap: anywhere; }
+
+/* flexible dropdown cell — the chosen text wraps and shows in full;
+   a transparent native <select> on top keeps it pickable */
+.pill-select { position: relative; }
+.pill-select-value { display: block; white-space: normal; overflow-wrap: anywhere; line-height: 1.5; min-height: 1.5em; padding: 2px; }
+.pill-select select { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; opacity: 0; cursor: pointer; }
+.pill-select:focus-within .pill-select-value { box-shadow: var(--ring); border-radius: var(--radius-sm); }
+
+.pill-form-foot { display: flex; justify-content: space-between; gap: var(--space-5); margin-top: var(--space-4); font-size: var(--text-sm); color: var(--text); flex-wrap: wrap; }
+.pill-form-foot .pill-sign { flex: 1; min-width: 200px; padding-bottom: var(--space-5); border-bottom: 1px solid var(--border-strong); font-weight: 700; }
+.pill-form-foot .pill-edit-time { color: var(--text-muted); white-space: nowrap; }
 
 /* ============================================================
    Chart grid  (signature screen — kept close to its tuned values)
@@ -500,7 +508,11 @@ label { display: grid; gap: var(--space-2); color: var(--green-800); font-size: 
   .pill-room input { border: 0; border-bottom: 1px solid #000; color: #000; padding: 0 2px; }
   .pill-table th, .pill-table td { border-color: #000; color: #000; font-size: 12px; }
   .pill-table thead th { background: white; }
-  .pill-table select { border: 0; appearance: none; -webkit-appearance: none; color: #000; padding: 0; background: white; }
+  .pill-select select { display: none; }
+  .pill-select-value { color: #000; }
+  .pill-form-foot { color: #000; }
+  .pill-form-foot .pill-sign { border-color: #000; }
+  .pill-form-foot .pill-edit-time { color: #000; }
 }
 @media print { @page { size: A4 landscape; margin: 8mm; } body { background: white; } .topbar, .chart-toolbar, .chart-meta, .modal-backdrop { display: none !important; } .chart-page { width: 100%; padding: 0; }.print-heading { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 6px; color: #000; }.print-heading strong, .print-heading span { display: block; }.print-logo { width: 42px; height: 42px; }.table-frame { overflow: visible; max-height: none; border: 1px solid #000; border-radius: 0; }.chart-table { color: #000; background: white; font-size: 7px; }.chart-table th, .chart-table td { border-color: #000; box-shadow: none !important; }.chart-table thead th, .chart-table tfoot th, .chart-table tfoot td, .chart-table .patient-header, .chart-table .patient-cell { background: white; color: #000; }.chart-table thead th { position: static; }.chart-table .patient-header, .chart-table .patient-cell, .chart-table tfoot th, .chart-table tfoot td { position: static; }.chart-table input, .chart-table select { color: #000; background: white; } }
 @media print {
