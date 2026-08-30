@@ -167,8 +167,32 @@ function App() {
       window.alert(response.ok ? `تم تعيين الطابق ${selectedFloor} للمستخدم ${username}` : (result.message || 'تعذر تعيين الطابق'))
     } catch { window.alert('تعذر الاتصال بالخادم') }
   }, [])
-  const addMedicine = (event) => { event.preventDefault(); const medicine = newMedicine.trim(); if (!medicine) return; setMedicines((current) => [...new Set([...current, medicine])].sort((a, b) => a.localeCompare(b))); setNewMedicine(''); setShowMedicineForm(false) }
+  const loadMedicines = useCallback(async () => {
+    try {
+      const response = await fetch(`${apiUrl}/medicines`, { credentials: 'include' })
+      const result = await response.json()
+      if (!response.ok || !Array.isArray(result.medicines)) return
+      setMedicines((current) => [...new Set([...starterMedicines, ...current, ...result.medicines.map((item) => item.name)])].sort((a, b) => a.localeCompare(b)))
+    } catch { /* keep the current list on network error */ }
+  }, [])
+  const addMedicine = async (event) => {
+    event.preventDefault()
+    const medicine = newMedicine.trim()
+    if (!medicine) return
+    setMedicines((current) => [...new Set([...current, medicine])].sort((a, b) => a.localeCompare(b)))
+    setNewMedicine('')
+    setShowMedicineForm(false)
+    try { await fetch(`${apiUrl}/medicines`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ name: medicine }) }) } catch { /* it will also persist on the next chart autosave */ }
+  }
   const updateQuantity = (rowIndex, columnIndex, value) => setQuantities((current) => current.map((row, currentRow) => currentRow === rowIndex ? row.map((quantity, currentColumn) => currentColumn === columnIndex ? toEnglishDigits(value).replace(/\D/g, '') : quantity) : row))
+
+  useEffect(() => { if (isLoggedIn) loadMedicines() }, [isLoggedIn, loadMedicines])
+  useEffect(() => {
+    if (!selected) return undefined
+    loadMedicines()
+    const timer = setInterval(loadMedicines, 60000)
+    return () => clearInterval(timer)
+  }, [selected, loadMedicines])
 
   useEffect(() => {
     if (!selected) return undefined
