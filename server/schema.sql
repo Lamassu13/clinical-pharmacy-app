@@ -89,6 +89,8 @@ CREATE TABLE IF NOT EXISTS pill_entries (
   usage_method TEXT NOT NULL DEFAULT '',
   PRIMARY KEY (chart_id, patient_row_number, medicine_id)
 );
+ALTER TABLE pill_entries ADD COLUMN IF NOT EXISTS lead_note TEXT NOT NULL DEFAULT '';
+ALTER TABLE pill_entries ADD COLUMN IF NOT EXISTS note TEXT NOT NULL DEFAULT '';
 
 CREATE INDEX IF NOT EXISTS daily_charts_date_idx ON daily_charts (chart_date);
 CREATE INDEX IF NOT EXISTS chart_quantities_chart_idx ON chart_quantities (chart_id);

@@ -51,7 +51,8 @@ const SPECIAL_WARDS = ['ردهة الديلزة', 'ردهة العناية ال�
 const PILL_FORM = /\b(tab|tabs|tablet|tablets|cap|caps|capsule|capsules)\b/i
 // Fixed option lists for the pill form. Keep in sync with src/App.jsx.
 const DOSE_TIMES = ['٨ صباحًا', '٩ صباحًا', '١٠ صباحًا', '١١ صباحًا', '١٢ ظهرًا', '٢ ظهرًا', '٣ ظهرًا', '٤ عصرًا', '٥ عصرًا', '٦ مساءً', '٨ ليلًا', '٩ ليلًا', '١٠ ليلًا', '١٠ صباحًا - ١٠ مساءً', '١٢ ظهرًا - ١٢ ليلًا', '١٢ ظهرًا - ٨ ليلًا', '٨ صباحًا - ٤ عصرًا - ١٢ ليلًا', '٦ صباحًا - ١٢ ظهرًا - ٦ مساءً - ١٢ ليلًا']
-const USAGE_METHODS = ['حبة بعد الطعام مباشرة', 'حبة قبل الطعام بساعة أو بعده بساعتين', '٢ حبة بعد الطعام مباشرة']
+const USAGE_METHODS = ['حبة بعد الطعام مباشرة', 'حبة قبل الطعام بساعة أو بعده بساعتين', '٢ حبة بعد الطعام مباشرة', 'نصف حبة قبل الطعام', 'نصف حبة بعد الطعام']
+const NOTE_OPTIONS = ['الامتناع عن تناول منتجات الأجبان والألبان قبل وبعد الحبة بساعتين']
 const canAccessLocation = (user, floor, wardName) => {
   if (user.role === 'admin') return true
   if (Number.isInteger(floor)) return floor === user.assignedFloor
@@ -373,7 +374,7 @@ app.get('/api/pills', requireAuth, async (request, response) => {
     query('SELECT cc.column_number, cc.medicine_id, m.name, m.arabic_name FROM chart_columns cc JOIN medicines m ON m.id = cc.medicine_id WHERE cc.chart_id = $1', [chartId]),
     query("SELECT row_number, patient_name FROM chart_patients WHERE chart_id = $1 AND patient_name <> '' ORDER BY row_number", [chartId]),
     query('SELECT row_number, column_number, quantity FROM chart_quantities WHERE chart_id = $1 AND quantity > 0', [chartId]),
-    query('SELECT patient_row_number, medicine_id, dose_time, usage_method FROM pill_entries WHERE chart_id = $1', [chartId]),
+    query('SELECT patient_row_number, medicine_id, dose_time, usage_method, lead_note, note FROM pill_entries WHERE chart_id = $1', [chartId]),
   ])
   const pillColumns = columns.rows.filter((column) => PILL_FORM.test(column.name || ''))
   const medicineByColumn = new Map(pillColumns.map((column) => [column.column_number, column.medicine_id]))
@@ -392,7 +393,7 @@ app.get('/api/pills', requireAuth, async (request, response) => {
     patients: patients.rows.filter((patient) => matrix[patient.row_number]).map((patient) => ({ rowNumber: patient.row_number, name: patient.patient_name })),
     medicines: [...usedMedicineIds].map((id) => medicineInfo.get(id)).filter(Boolean).sort((a, b) => (a.arabicName || a.name).localeCompare(b.arabicName || b.name, 'ar')),
     matrix,
-    entries: entries.rows.map((row) => ({ patientRowNumber: row.patient_row_number, medicineId: row.medicine_id, doseTime: row.dose_time, usageMethod: row.usage_method })),
+    entries: entries.rows.map((row) => ({ patientRowNumber: row.patient_row_number, medicineId: row.medicine_id, doseTime: row.dose_time, usageMethod: row.usage_method, leadNote: row.lead_note, note: row.note })),
   }
   response.json({ pills: result })
 })
@@ -412,8 +413,10 @@ app.put('/api/pills', requireAuth, async (request, response) => {
     if (patientRowNumber === null || medicineId === null) return
     const doseTime = DOSE_TIMES.includes(entry?.doseTime) ? entry.doseTime : ''
     const usageMethod = USAGE_METHODS.includes(entry?.usageMethod) ? entry.usageMethod : ''
-    if (!doseTime && !usageMethod) return
-    byKey.set(`${patientRowNumber}:${medicineId}`, { patientRowNumber, medicineId, doseTime, usageMethod })
+    const leadNote = cleanText(entry?.leadNote, 300)
+    const note = NOTE_OPTIONS.includes(entry?.note) ? entry.note : ''
+    if (!doseTime && !usageMethod && !leadNote && !note) return
+    byKey.set(`${patientRowNumber}:${medicineId}`, { patientRowNumber, medicineId, doseTime, usageMethod, leadNote, note })
   })
   const rows = [...byKey.values()]
   const client = await pool.connect()
@@ -422,8 +425,8 @@ app.put('/api/pills', requireAuth, async (request, response) => {
     await client.query('DELETE FROM pill_entries WHERE chart_id = $1', [chartId])
     if (rows.length) {
       await client.query(
-        'INSERT INTO pill_entries (chart_id, patient_row_number, medicine_id, dose_time, usage_method) SELECT $1, prn, mid, dt, um FROM UNNEST($2::int[], $3::bigint[], $4::text[], $5::text[]) AS u(prn, mid, dt, um)',
-        [chartId, rows.map((row) => row.patientRowNumber), rows.map((row) => row.medicineId), rows.map((row) => row.doseTime), rows.map((row) => row.usageMethod)],
+        'INSERT INTO pill_entries (chart_id, patient_row_number, medicine_id, dose_time, usage_method, lead_note, note) SELECT $1, prn, mid, dt, um, ln, nt FROM UNNEST($2::int[], $3::bigint[], $4::text[], $5::text[], $6::text[], $7::text[]) AS u(prn, mid, dt, um, ln, nt)',
+        [chartId, rows.map((row) => row.patientRowNumber), rows.map((row) => row.medicineId), rows.map((row) => row.doseTime), rows.map((row) => row.usageMethod), rows.map((row) => row.leadNote), rows.map((row) => row.note)],
       )
     }
     await client.query('COMMIT')
