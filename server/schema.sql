@@ -81,3 +81,4 @@ CREATE TABLE IF NOT EXISTS chart_quantities (
 
 CREATE INDEX IF NOT EXISTS daily_charts_date_idx ON daily_charts (chart_date);
 CREATE INDEX IF NOT EXISTS chart_quantities_chart_idx ON chart_quantities (chart_id);
+CREATE INDEX IF NOT EXISTS users_account_status_idx ON users (account_status);

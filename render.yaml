@@ -16,6 +16,8 @@ services:
           property: connectionString
       - key: DATABASE_SSL
         value: "true"
+      - key: DATABASE_POOL_SIZE
+        value: "15"
       - key: SESSION_SECRET
         generateValue: true
       - key: CLIENT_ORIGIN

@@ -15,6 +15,7 @@ const app = express()
 const port = Number(process.env.PORT || 3001)
 const projectRoot = path.dirname(fileURLToPath(import.meta.url))
 const isProduction = process.env.NODE_ENV === 'production'
+const BCRYPT_COST = Number(process.env.BCRYPT_COST || 10)
 
 app.set('trust proxy', 1)
 app.disable('x-powered-by')
@@ -31,11 +32,11 @@ app.use(express.json({ limit: '2mb' }))
 const PgSession = connectPgSimple(session)
 app.use(session({
   name: 'cpa.sid',
-  store: new PgSession({ pool, createTableIfMissing: true }),
+  store: new PgSession({ pool, createTableIfMissing: true, disableTouch: true }),
   secret: process.env.SESSION_SECRET || 'development-only-change-me',
   resave: false,
   saveUninitialized: false,
-  rolling: true,
+  rolling: false,
   cookie: { httpOnly: true, sameSite: 'lax', secure: isProduction, maxAge: 8 * 60 * 60 * 1000 },
 }))
 
@@ -83,7 +84,7 @@ app.post('/api/auth/register', registerLimiter, async (request, response) => {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return response.status(400).json({ message: 'صيغة البريد الإلكتروني غير صحيحة' })
   if (!/^[0-9+()\s-]{5,30}$/.test(phone)) return response.status(400).json({ message: 'صيغة رقم الهاتف غير صحيحة' })
   try {
-    const passwordHash = await bcrypt.hash(password, 12)
+    const passwordHash = await bcrypt.hash(password, BCRYPT_COST)
     await query('INSERT INTO users (full_name, username, phone, email, fingerprint_number, password_hash) VALUES ($1, $2, $3, $4, $5, $6)', [fullName, username, phone, email, fingerprintNumber, passwordHash])
     response.status(201).json({ message: 'تم إنشاء الحساب، بانتظار موافقة المدير' })
   } catch (error) {
@@ -274,16 +275,35 @@ app.put('/api/chart', requireAuth, async (request, response) => {
     await client.query('DELETE FROM chart_patients WHERE chart_id = $1', [chartId])
     await client.query('DELETE FROM chart_columns WHERE chart_id = $1', [chartId])
     await client.query('DELETE FROM chart_quantities WHERE chart_id = $1', [chartId])
-    for (const patient of patients) await client.query('INSERT INTO chart_patients (chart_id, row_number, patient_name) VALUES ($1, $2, $3)', [chartId, patient.rowNumber, patient.name])
-    for (const column of columns) {
-      let medicineId = null
-      if (column.medicineName) {
-        const medicineResult = await client.query('INSERT INTO medicines (name, created_by) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id', [column.medicineName, request.session.user.id])
-        medicineId = medicineResult.rows[0].id
-      }
-      await client.query('INSERT INTO chart_columns (chart_id, column_number, medicine_id) VALUES ($1, $2, $3)', [chartId, column.columnNumber, medicineId])
+
+    // Batched set-based inserts (UNNEST) instead of one query per row: a full
+    // 36x51 chart is ~8 round-trips instead of ~2000, so the pooled connection
+    // is held for milliseconds. De-dupe on the natural keys first so a single
+    // repeated key in the payload can't abort the whole save.
+    const patientByRow = new Map(patients.map((patient) => [patient.rowNumber, patient.name]))
+    if (patientByRow.size) {
+      await client.query('INSERT INTO chart_patients (chart_id, row_number, patient_name) SELECT $1, rn, name FROM UNNEST($2::int[], $3::text[]) AS u(rn, name)', [chartId, [...patientByRow.keys()], [...patientByRow.values()]])
     }
-    for (const quantity of quantities) await client.query('INSERT INTO chart_quantities (chart_id, row_number, column_number, quantity) VALUES ($1, $2, $3, $4)', [chartId, quantity.rowNumber, quantity.columnNumber, quantity.quantity])
+
+    const medicineByColumn = new Map(columns.map((column) => [column.columnNumber, column.medicineName]))
+    const wantedMedicines = [...new Set([...medicineByColumn.values()].filter(Boolean))]
+    const idByMedicine = new Map()
+    if (wantedMedicines.length) {
+      await client.query('INSERT INTO medicines (name, created_by) SELECT UNNEST($1::text[]), $2 ON CONFLICT (name) DO NOTHING', [wantedMedicines, request.session.user.id])
+      const known = await client.query('SELECT id, name FROM medicines WHERE name = ANY($1::text[])', [wantedMedicines])
+      known.rows.forEach((row) => idByMedicine.set(row.name, row.id))
+    }
+    if (medicineByColumn.size) {
+      const columnNumbers = [...medicineByColumn.keys()]
+      const medicineIds = columnNumbers.map((columnNumber) => idByMedicine.get(medicineByColumn.get(columnNumber)) ?? null)
+      await client.query('INSERT INTO chart_columns (chart_id, column_number, medicine_id) SELECT $1, cn, mid FROM UNNEST($2::int[], $3::bigint[]) AS u(cn, mid)', [chartId, columnNumbers, medicineIds])
+    }
+
+    const quantityByCell = new Map(quantities.map((entry) => [`${entry.rowNumber}:${entry.columnNumber}`, entry]))
+    const quantityList = [...quantityByCell.values()]
+    if (quantityList.length) {
+      await client.query('INSERT INTO chart_quantities (chart_id, row_number, column_number, quantity) SELECT $1, rn, cn, qty FROM UNNEST($2::int[], $3::int[], $4::int[]) AS u(rn, cn, qty)', [chartId, quantityList.map((entry) => entry.rowNumber), quantityList.map((entry) => entry.columnNumber), quantityList.map((entry) => entry.quantity)])
+    }
     await client.query('COMMIT')
     response.json({ ok: true, chartId })
   } catch (error) {
