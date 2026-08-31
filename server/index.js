@@ -17,18 +17,30 @@ const projectRoot = path.dirname(fileURLToPath(import.meta.url))
 const isProduction = process.env.NODE_ENV === 'production'
 const BCRYPT_COST = Number(process.env.BCRYPT_COST || 10)
 
+// A public fallback secret would let anyone forge session cookies, so production
+// refuses to boot without a real one rather than starting up quietly insecure.
+if (isProduction && !process.env.SESSION_SECRET) {
+  console.error('SESSION_SECRET is required in production. Set it and restart.')
+  process.exit(1)
+}
+if (!process.env.SESSION_SECRET) console.warn('SESSION_SECRET is unset — using the development fallback.')
+const devClientOrigin = 'http://localhost:5173'
+const clientOrigin = process.env.CLIENT_ORIGIN || devClientOrigin
+
 app.set('trust proxy', 1)
 app.disable('x-powered-by')
 app.use(helmet({ hsts: { maxAge: 31536000, includeSubDomains: true, preload: true } }))
-// Force HTTPS behind the platform's TLS-terminating proxy
+// Force HTTPS behind the platform's TLS-terminating proxy. The header can be a
+// proxy chain ("http, https") and may be absent, so redirect on anything but https.
 app.use((request, response, next) => {
-  if (isProduction && request.headers['x-forwarded-proto'] === 'http') {
+  const proto = String(request.headers['x-forwarded-proto'] || '').split(',')[0].trim()
+  if (isProduction && proto && proto !== 'https') {
     return response.redirect(308, `https://${request.headers.host}${request.originalUrl}`)
   }
   next()
 })
-app.use(cors({ origin: process.env.CLIENT_ORIGIN || 'http://localhost:5173', credentials: true }))
-app.use(express.json({ limit: '2mb' }))
+app.use(cors({ origin: clientOrigin, credentials: true }))
+app.use(express.json({ limit: '512kb' }))
 const PgSession = connectPgSimple(session)
 app.use(session({
   name: 'cpa.sid',
@@ -40,6 +52,25 @@ app.use(session({
   cookie: { httpOnly: true, sameSite: 'lax', secure: isProduction, maxAge: 8 * 60 * 60 * 1000 },
 }))
 
+// CSRF defence in depth: SameSite=Lax already blocks cross-site state change, but
+// a same-site attacker or a CLIENT_ORIGIN misconfiguration would slip past it.
+// Login/register are exempt — they carry no session to abuse.
+const CSRF_EXEMPT = new Set(['/api/auth/login', '/api/auth/register'])
+app.use((request, response, next) => {
+  if (request.method === 'GET' || request.method === 'HEAD' || request.method === 'OPTIONS') return next()
+  if (CSRF_EXEMPT.has(request.path)) return next()
+  const source = request.headers.origin || request.headers.referer
+  if (!source) {
+    if (!isProduction) return next()
+    return response.status(403).json({ message: 'طلب غير موثوق' })
+  }
+  let origin
+  try { origin = new URL(source).origin } catch { return response.status(403).json({ message: 'طلب غير موثوق' }) }
+  const allowed = [clientOrigin, `https://${request.headers.host}`, `http://${request.headers.host}`]
+  if (!allowed.includes(origin)) return response.status(403).json({ message: 'طلب غير موثوق' })
+  next()
+})
+
 const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: 'draft-7', legacyHeaders: false, skipSuccessfulRequests: true, message: { message: 'محاولات كثيرة، حاول لاحقًا بعد ١٥ دقيقة' } })
 const registerLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 30, standardHeaders: 'draft-7', legacyHeaders: false, message: { message: 'محاولات كثيرة لإنشاء حساب، حاول لاحقًا' } })
 const apiLimiter = rateLimit({ windowMs: 60 * 1000, limit: 300, standardHeaders: 'draft-7', legacyHeaders: false })
@@ -48,6 +79,21 @@ app.use('/api/', apiLimiter)
 const ALLOWED_FLOORS = [2, 3, 4, 5, 6, 8, 9, 10]
 const MAX_PATIENT_ROWS = 41
 const SPECIAL_WARDS = ['ردهة الديلزة', 'ردهة العناية المركزة', 'ردهة الخدج']
+// Ward names per floor. Keep in sync with `floors` in src/App.jsx. Charts may only
+// reference a ward on this list, otherwise any string would mint a new wards row.
+const FLOOR_WARDS = {
+  2: ['ردهة رجال', 'ردهة النساء', 'ردهة الخاص'],
+  3: ['الردهة الجراحية', 'ردهة الخاص', 'ردهة CCU'],
+  4: ['ردهة الحوامل', 'ردهة الجراحية'],
+  5: ['ردهة رجال', 'ردهة النساء', 'ردهة الخاص'],
+  6: ['ردهة الخاص', 'الوحدة الأولى', 'الوحدة الثالثة'],
+  8: ['الردهة الخامسة', 'ردهة القسطرة', 'ردهة الخاص'],
+  9: ['ردهة الخاص', 'الردهة الرابعة', 'الردهة الثانية'],
+  10: ['الردهة العصبية', 'ردهة المفاصل', 'الردهة النفسية'],
+}
+const isKnownWard = (floor, wardName) => (
+  Number.isInteger(floor) ? (FLOOR_WARDS[floor] || []).includes(wardName) : SPECIAL_WARDS.includes(wardName)
+)
 // A medicine belongs on the pill administration form when its name names an oral solid.
 const PILL_FORM = /\b(tab|tabs|tablet|tablets|cap|caps|capsule|capsules)\b/i
 // Fixed option lists for the pill form. Keep in sync with src/App.jsx.
@@ -65,12 +111,29 @@ const clampInt = (value, min, max) => {
 }
 const isIsoDate = (value) => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value))
 const cleanText = (value, maxLength) => String(value ?? '').slice(0, maxLength)
+// Session data is a snapshot taken at login, so a demoted, suspended or deleted
+// user would keep their old privileges until the cookie expires. Drop their
+// sessions from the store instead of re-reading the user on every request.
+const revokeUserSessions = async (executor, userId) => {
+  try {
+    await executor.query("DELETE FROM session WHERE (sess->'user'->>'id')::bigint = $1", [userId])
+  } catch (error) { console.error('failed to revoke sessions for user', userId, error) }
+}
 
 app.post('/api/auth/login', loginLimiter, async (request, response) => {
+  // Cap the inputs before bcrypt sees them: bcryptjs is pure JS and runs on the
+  // event loop, so an oversized password would be a cheap CPU-exhaustion vector.
+  const username = cleanText(request.body.username, 80).trim()
+  const password = cleanText(request.body.password, 200)
+  if (!username || !password) return response.status(400).json({ message: 'اسم المستخدم وكلمة المرور مطلوبان' })
   try {
-    const user = await authenticateUser(request.body.username, request.body.password)
+    const user = await authenticateUser(username, password)
     if (!user) return response.status(401).json({ message: 'بيانات الدخول غير صحيحة أو الحساب غير فعال' })
+    // Regenerate first so the pre-login session id cannot be reused after the
+    // privilege upgrade (session fixation).
+    await new Promise((resolve, reject) => request.session.regenerate((error) => error ? reject(error) : resolve()))
     request.session.user = user
+    await new Promise((resolve, reject) => request.session.save((error) => error ? reject(error) : resolve()))
     response.json({ user })
   } catch (error) { console.error('login failed:', error); response.status(500).json({ message: 'تعذر تسجيل الدخول' }) }
 })
@@ -107,8 +170,10 @@ app.get('/api/medicines', requireAuth, async (_request, response) => {
   const result = await query('SELECT id, name, arabic_name FROM medicines ORDER BY name ASC')
   response.json({ medicines: result.rows })
 })
-app.post('/api/medicines', requireAuth, async (request, response) => {
-  const name = String(request.body.name || '').trim()
+// Admin-only: the medicines catalogue is shared, and PUT/DELETE on it are already
+// admin-only, so a normal user must not be able to write rows they cannot clean up.
+app.post('/api/medicines', requireAdmin, async (request, response) => {
+  const name = cleanText(request.body.name, 200).trim()
   if (!name) return response.status(400).json({ message: 'اسم العلاج مطلوب' })
   const result = await query('INSERT INTO medicines (name, created_by) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id, name, arabic_name', [name, request.session.user.id])
   response.status(201).json({ medicine: result.rows[0] })
@@ -175,6 +240,7 @@ app.put('/api/registrations/:id', requireAdmin, async (request, response) => {
       }
     }
     await client.query('COMMIT')
+    if (status === 'rejected') await revokeUserSessions(pool, id)
     response.json({ ok: true })
   } catch (error) {
     await client.query('ROLLBACK')
@@ -212,6 +278,7 @@ app.delete('/api/users/:id', requireAdmin, async (request, response) => {
     await client.query('UPDATE medicines SET created_by = NULL WHERE created_by = $1', [id])
     await client.query('DELETE FROM users WHERE id = $1', [id])
     await client.query('COMMIT')
+    await revokeUserSessions(pool, id)
     response.json({ ok: true })
   } catch (error) {
     await client.query('ROLLBACK')
@@ -253,6 +320,7 @@ app.put('/api/access/by-username', requireAdmin, async (request, response) => {
   const userResult = await query('SELECT id FROM users WHERE username = $1 OR email = $1', [String(request.body.username || '').trim()])
   if (!userResult.rows[0]) return response.status(404).json({ message: 'المستخدم غير موجود' })
   await setUserAccess(userResult.rows[0].id, location, request.session.user.id)
+  await revokeUserSessions(pool, userResult.rows[0].id)
   response.json({ ok: true })
 })
 app.put('/api/access/:userId', requireAdmin, async (request, response) => {
@@ -263,6 +331,7 @@ app.put('/api/access/:userId', requireAdmin, async (request, response) => {
   const userResult = await query('SELECT id FROM users WHERE id = $1', [userId])
   if (!userResult.rows[0]) return response.status(404).json({ message: 'المستخدم غير موجود' })
   await setUserAccess(userId, location, request.session.user.id)
+  await revokeUserSessions(pool, userId)
   response.json({ ok: true })
 })
 
@@ -272,6 +341,7 @@ app.get('/api/chart', requireAuth, async (request, response) => {
   const chartDate = request.query.date
   if (request.query.floor && (floor === null || !ALLOWED_FLOORS.includes(floor))) return response.status(400).json({ message: 'الطابق غير مسموح' })
   if (!wardName || !isIsoDate(chartDate)) return response.status(400).json({ message: 'بيانات الردهة والتاريخ مطلوبة' })
+  if (!isKnownWard(floor, wardName)) return response.status(400).json({ message: 'الردهة غير معروفة' })
   if (!canAccessLocation(request.session.user, floor, wardName)) return response.status(403).json({ message: 'لا تملك صلاحية لهذه الردهة' })
   const wardResult = await query('SELECT id, floor_number, name FROM wards WHERE floor_number IS NOT DISTINCT FROM $1 AND name = $2 ORDER BY id LIMIT 1', [floor, wardName])
   if (!wardResult.rows[0]) return response.json({ chart: null })
@@ -291,6 +361,7 @@ app.put('/api/chart', requireAuth, async (request, response) => {
   const chartDate = request.body.date
   if (request.body.floor && (floor === null || !ALLOWED_FLOORS.includes(floor))) return response.status(400).json({ message: 'الطابق غير مسموح' })
   if (!wardName || !isIsoDate(chartDate)) return response.status(400).json({ message: 'بيانات الردهة والتاريخ مطلوبة' })
+  if (!isKnownWard(floor, wardName)) return response.status(400).json({ message: 'الردهة غير معروفة' })
   if (!canAccessLocation(request.session.user, floor, wardName)) return response.status(403).json({ message: 'لا تملك صلاحية لهذه الردهة' })
 
   const patients = (Array.isArray(request.body.patients) ? request.body.patients : [])
@@ -374,6 +445,7 @@ app.get('/api/pills', requireAuth, async (request, response) => {
   const chartDate = request.query.date
   if (request.query.floor && (floor === null || !ALLOWED_FLOORS.includes(floor))) return response.status(400).json({ message: 'الطابق غير مسموح' })
   if (!wardName || !isIsoDate(chartDate)) return response.status(400).json({ message: 'بيانات الردهة والتاريخ مطلوبة' })
+  if (!isKnownWard(floor, wardName)) return response.status(400).json({ message: 'الردهة غير معروفة' })
   if (!canAccessLocation(request.session.user, floor, wardName)) return response.status(403).json({ message: 'لا تملك صلاحية لهذه الردهة' })
   const chartId = await resolveChartId(floor, wardName, chartDate)
   if (!chartId) return response.json({ pills: null })
@@ -412,6 +484,7 @@ app.put('/api/pills', requireAuth, async (request, response) => {
   const chartDate = request.body.date
   if (request.body.floor && (floor === null || !ALLOWED_FLOORS.includes(floor))) return response.status(400).json({ message: 'الطابق غير مسموح' })
   if (!wardName || !isIsoDate(chartDate)) return response.status(400).json({ message: 'بيانات الردهة والتاريخ مطلوبة' })
+  if (!isKnownWard(floor, wardName)) return response.status(400).json({ message: 'الردهة غير معروفة' })
   if (!canAccessLocation(request.session.user, floor, wardName)) return response.status(403).json({ message: 'لا تملك صلاحية لهذه الردهة' })
   const chartId = await resolveChartId(floor, wardName, chartDate)
   if (!chartId) return response.status(404).json({ message: 'لا يوجد جارت لهذا اليوم' })
@@ -468,15 +541,19 @@ app.get('/api/health', async (_request, response) => {
 })
 
 app.use(express.static(path.join(projectRoot, '..', 'dist')))
-app.use((request, response, next) => {
-  if (request.path.startsWith('/api/')) return next()
+app.use((request, response) => {
+  // A bare next() would skip the 4-arg error handler below and fall through to
+  // Express's default HTML 404, which the JSON-only client cannot parse.
+  if (request.path.startsWith('/api/')) return response.status(404).json({ message: 'المسار غير موجود' })
   response.sendFile(path.join(projectRoot, '..', 'dist', 'index.html'))
 })
 
 // eslint-disable-next-line no-unused-vars
 app.use((error, request, response, next) => {
-  console.error('unhandled error:', error)
   if (response.headersSent) return
+  if (error?.type === 'entity.too.large') return response.status(413).json({ message: 'حجم الطلب كبير جدًا' })
+  if (error?.type === 'entity.parse.failed') return response.status(400).json({ message: 'صيغة الطلب غير صحيحة' })
+  console.error('unhandled error:', error)
   response.status(500).json({ message: 'حدث خطأ غير متوقع' })
 })
 
