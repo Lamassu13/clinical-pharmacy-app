@@ -4,8 +4,12 @@ services:
     runtime: node
     region: oregon
     plan: free
-    buildCommand: npm ci --include=dev && npm run build
-    startCommand: npm run db:init && npm run server
+    # db:init runs the whole of schema.sql. Keep it in the build, not the start command:
+    # a free instance restarts whenever it wakes, and a migration that fails there takes
+    # the app down with it. Here a failure fails the deploy and the running version stays
+    # up. Consequence: a schema.sql change needs a new deploy, not just a restart.
+    buildCommand: npm ci --include=dev && npm run build && npm run db:init
+    startCommand: npm run server
     healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV

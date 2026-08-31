@@ -91,8 +91,11 @@ CREATE TABLE IF NOT EXISTS pill_entries (
   usage_method TEXT NOT NULL DEFAULT '',
   PRIMARY KEY (chart_id, patient_row_number, medicine_id)
 );
-ALTER TABLE pill_entries ADD COLUMN IF NOT EXISTS lead_note TEXT NOT NULL DEFAULT '';
 ALTER TABLE pill_entries ADD COLUMN IF NOT EXISTS note TEXT NOT NULL DEFAULT '';
+-- An earlier `lead_note` column was never wired to the form's leading column, which is a
+-- blank box the nurse fills in by hand on the printed sheet. Databases created before this
+-- keep the column; it defaults to '' so inserts that omit it succeed. Dropping it belongs in
+-- a one-off psql command, not here — this file runs unattended on every deploy.
 
 CREATE TABLE IF NOT EXISTS pill_patient_meta (
   chart_id BIGINT NOT NULL REFERENCES daily_charts(id) ON DELETE CASCADE,

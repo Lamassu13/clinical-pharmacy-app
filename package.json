@@ -8,6 +8,8 @@
     "server": "node server/index.js",
     "server:dev": "node --watch server/index.js",
     "db:init": "node server/migrate.js",
+    "db:backup": "bash scripts/backup-db.sh",
+    "test": "node --test server/*.test.js",
     "create-admin": "node server/create-admin.js",
     "reset-admin": "node server/reset-admin.js",
     "build": "vite build",

@@ -10,6 +10,10 @@ import bcrypt from 'bcryptjs'
 import 'dotenv/config'
 import { checkDatabase, pool, query } from './db.js'
 import { authenticateUser, requireAdmin, requireAuth } from './auth.js'
+import {
+  ALLOWED_FLOORS, MAX_PATIENT_ROWS, SPECIAL_WARDS, isKnownWard, PILL_FORM,
+  DOSE_TIMES, USAGE_METHODS, NOTE_OPTIONS, canAccessLocation, clampInt, isIsoDate, cleanText,
+} from './validation.js'
 
 const app = express()
 const port = Number(process.env.PORT || 3001)
@@ -76,41 +80,6 @@ const registerLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 30, standar
 const apiLimiter = rateLimit({ windowMs: 60 * 1000, limit: 300, standardHeaders: 'draft-7', legacyHeaders: false })
 app.use('/api/', apiLimiter)
 
-const ALLOWED_FLOORS = [2, 3, 4, 5, 6, 8, 9, 10]
-const MAX_PATIENT_ROWS = 41
-const SPECIAL_WARDS = ['ردهة الديلزة', 'ردهة العناية المركزة', 'ردهة الخدج']
-// Ward names per floor. Keep in sync with `floors` in src/App.jsx. Charts may only
-// reference a ward on this list, otherwise any string would mint a new wards row.
-const FLOOR_WARDS = {
-  2: ['ردهة رجال', 'ردهة النساء', 'ردهة الخاص'],
-  3: ['الردهة الجراحية', 'ردهة الخاص', 'ردهة CCU'],
-  4: ['ردهة الحوامل', 'ردهة الجراحية'],
-  5: ['ردهة رجال', 'ردهة النساء', 'ردهة الخاص'],
-  6: ['ردهة الخاص', 'الوحدة الأولى', 'الوحدة الثالثة'],
-  8: ['الردهة الخامسة', 'ردهة القسطرة', 'ردهة الخاص'],
-  9: ['ردهة الخاص', 'الردهة الرابعة', 'الردهة الثانية'],
-  10: ['الردهة العصبية', 'ردهة المفاصل', 'الردهة النفسية'],
-}
-const isKnownWard = (floor, wardName) => (
-  Number.isInteger(floor) ? (FLOOR_WARDS[floor] || []).includes(wardName) : SPECIAL_WARDS.includes(wardName)
-)
-// A medicine belongs on the pill administration form when its name names an oral solid.
-const PILL_FORM = /\b(tab|tabs|tablet|tablets|cap|caps|capsule|capsules)\b/i
-// Fixed option lists for the pill form. Keep in sync with src/App.jsx.
-const DOSE_TIMES = ['٨ صباحًا', '٩ صباحًا', '١٠ صباحًا', '١١ صباحًا', '١٢ ظهرًا', '٢ ظهرًا', '٣ ظهرًا', '٤ عصرًا', '٥ عصرًا', '٦ مساءً', '٨ ليلًا', '٩ ليلًا', '١٠ ليلًا', '١٠ صباحًا - ١٠ مساءً', '١٢ ظهرًا - ١٢ ليلًا', '١٢ ظهرًا - ٨ ليلًا', '٨ صباحًا - ٤ عصرًا - ١٢ ليلًا', '٦ صباحًا - ١٢ ظهرًا - ٦ مساءً - ١٢ ليلًا']
-const USAGE_METHODS = ['حبة بعد الطعام مباشرة', 'حبة قبل الطعام بساعة أو بعده بساعتين', '٢ حبة بعد الطعام مباشرة', 'نصف حبة قبل الطعام', 'نصف حبة بعد الطعام']
-const NOTE_OPTIONS = ['الامتناع عن تناول منتجات الأجبان والألبان قبل وبعد الحبة بساعتين']
-const canAccessLocation = (user, floor, wardName) => {
-  if (user.role === 'admin') return true
-  if (Number.isInteger(floor)) return floor === user.assignedFloor
-  return Array.isArray(user.assignedWards) && user.assignedWards.includes(wardName)
-}
-const clampInt = (value, min, max) => {
-  const parsed = Math.trunc(Number(value))
-  return Number.isFinite(parsed) && parsed >= min && parsed <= max ? parsed : null
-}
-const isIsoDate = (value) => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value))
-const cleanText = (value, maxLength) => String(value ?? '').slice(0, maxLength)
 // Session data is a snapshot taken at login, so a demoted, suspended or deleted
 // user would keep their old privileges until the cookie expires. Drop their
 // sessions from the store instead of re-reading the user on every request.
@@ -453,7 +422,7 @@ app.get('/api/pills', requireAuth, async (request, response) => {
     query('SELECT cc.column_number, cc.medicine_id, m.name, m.arabic_name FROM chart_columns cc JOIN medicines m ON m.id = cc.medicine_id WHERE cc.chart_id = $1', [chartId]),
     query("SELECT row_number, patient_name FROM chart_patients WHERE chart_id = $1 AND patient_name <> '' ORDER BY row_number", [chartId]),
     query('SELECT row_number, column_number, quantity FROM chart_quantities WHERE chart_id = $1 AND quantity > 0', [chartId]),
-    query('SELECT patient_row_number, medicine_id, dose_time, usage_method, lead_note, note FROM pill_entries WHERE chart_id = $1', [chartId]),
+    query('SELECT patient_row_number, medicine_id, dose_time, usage_method, note FROM pill_entries WHERE chart_id = $1', [chartId]),
     query('SELECT patient_row_number, room_number FROM pill_patient_meta WHERE chart_id = $1', [chartId]),
   ])
   const pillColumns = columns.rows.filter((column) => PILL_FORM.test(column.name || ''))
@@ -473,7 +442,7 @@ app.get('/api/pills', requireAuth, async (request, response) => {
     patients: patients.rows.filter((patient) => matrix[patient.row_number]).map((patient) => ({ rowNumber: patient.row_number, name: patient.patient_name })),
     medicines: [...usedMedicineIds].map((id) => medicineInfo.get(id)).filter(Boolean).sort((a, b) => (a.arabicName || a.name).localeCompare(b.arabicName || b.name, 'ar')),
     matrix,
-    entries: entries.rows.map((row) => ({ patientRowNumber: row.patient_row_number, medicineId: row.medicine_id, doseTime: row.dose_time, usageMethod: row.usage_method, leadNote: row.lead_note, note: row.note })),
+    entries: entries.rows.map((row) => ({ patientRowNumber: row.patient_row_number, medicineId: row.medicine_id, doseTime: row.dose_time, usageMethod: row.usage_method, note: row.note })),
     rooms: Object.fromEntries(rooms.rows.map((row) => [row.patient_row_number, row.room_number])),
   }
   response.json({ pills: result })
@@ -495,10 +464,9 @@ app.put('/api/pills', requireAuth, async (request, response) => {
     if (patientRowNumber === null || medicineId === null) return
     const doseTime = DOSE_TIMES.includes(entry?.doseTime) ? entry.doseTime : ''
     const usageMethod = USAGE_METHODS.includes(entry?.usageMethod) ? entry.usageMethod : ''
-    const leadNote = cleanText(entry?.leadNote, 300)
     const note = NOTE_OPTIONS.includes(entry?.note) ? entry.note : ''
-    if (!doseTime && !usageMethod && !leadNote && !note) return
-    byKey.set(`${patientRowNumber}:${medicineId}`, { patientRowNumber, medicineId, doseTime, usageMethod, leadNote, note })
+    if (!doseTime && !usageMethod && !note) return
+    byKey.set(`${patientRowNumber}:${medicineId}`, { patientRowNumber, medicineId, doseTime, usageMethod, note })
   })
   const rows = [...byKey.values()]
   const roomRows = Object.entries(request.body.rooms && typeof request.body.rooms === 'object' ? request.body.rooms : {})
@@ -511,8 +479,8 @@ app.put('/api/pills', requireAuth, async (request, response) => {
     await client.query('DELETE FROM pill_patient_meta WHERE chart_id = $1', [chartId])
     if (rows.length) {
       await client.query(
-        'INSERT INTO pill_entries (chart_id, patient_row_number, medicine_id, dose_time, usage_method, lead_note, note) SELECT $1, prn, mid, dt, um, ln, nt FROM UNNEST($2::int[], $3::bigint[], $4::text[], $5::text[], $6::text[], $7::text[]) AS u(prn, mid, dt, um, ln, nt)',
-        [chartId, rows.map((row) => row.patientRowNumber), rows.map((row) => row.medicineId), rows.map((row) => row.doseTime), rows.map((row) => row.usageMethod), rows.map((row) => row.leadNote), rows.map((row) => row.note)],
+        'INSERT INTO pill_entries (chart_id, patient_row_number, medicine_id, dose_time, usage_method, note) SELECT $1, prn, mid, dt, um, nt FROM UNNEST($2::int[], $3::bigint[], $4::text[], $5::text[], $6::text[]) AS u(prn, mid, dt, um, nt)',
+        [chartId, rows.map((row) => row.patientRowNumber), rows.map((row) => row.medicineId), rows.map((row) => row.doseTime), rows.map((row) => row.usageMethod), rows.map((row) => row.note)],
       )
     }
     if (roomRows.length) {

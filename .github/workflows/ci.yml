@@ -1,0 +1,28 @@
+name: CI
+
+# Render auto-deploys every push to main, so this is the only gate between a commit
+# and production. No secrets and no database: every step here is self-contained.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Parse server sources
+        run: node --check server/index.js && node --check server/auth.js && node --check server/db.js && node --check server/migrate.js && node --check server/validation.js
+      - name: Unit tests
+        run: npm test
+      - name: Build client
+        run: npm run build
