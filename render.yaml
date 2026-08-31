@@ -10,10 +10,9 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      # Set in the Render dashboard to the external Postgres (Neon) connection string.
       - key: DATABASE_URL
-        fromDatabase:
-          name: clinical-pharmacy-db
-          property: connectionString
+        sync: false
       - key: DATABASE_SSL
         value: "true"
       - key: DATABASE_POOL_SIZE
@@ -22,10 +21,3 @@ services:
         generateValue: true
       - key: CLIENT_ORIGIN
         sync: false
-
-databases:
-  - name: clinical-pharmacy-db
-    plan: free
-    region: oregon
-    databaseName: clinical_pharmacy
-    user: clinical_pharmacy
