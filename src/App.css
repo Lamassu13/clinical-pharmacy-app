@@ -438,10 +438,31 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
   border-radius: var(--radius-md);
   direction: rtl;
 }
-.chart-table { border-collapse: separate; border-spacing: 0; min-width: 2800px; direction: rtl; font-size: 11px; }
+/* min-width is the exact sum of the declared columns (155 + 51x51). Anything larger
+   is surplus that auto table layout hands to the one cell without a max-width —
+   the patient column — silently widening it. */
+.chart-table { border-collapse: separate; border-spacing: 0; min-width: 2756px; direction: rtl; font-size: 11px; }
 .chart-table th, .chart-table td { width: 51px; min-width: 51px; height: 38px; border-left: 1px solid var(--chart-grid); border-bottom: 1px solid var(--chart-grid); padding: 0; text-align: center; }
 .chart-table thead th { position: sticky; top: 0; z-index: 3; height: 128px; background: var(--chart-head-bg); vertical-align: bottom; box-shadow: 0 8px 12px -8px #0f2f241f; }
-.chart-table .patient-header, .chart-table .patient-cell { position: sticky; right: 0; z-index: 4; width: 155px; min-width: 155px; background: var(--surface); }
+/* WebKit drops the repaint of sticky table cells during horizontal scroll inside an
+   overflow container (worse with rtl + border-collapse: separate), so the frozen
+   patient column went blank in Safari until you scrolled back. Promoting the cells
+   to their own compositing layer forces a repaint each frame. translateZ on the
+   sticky element itself does not break stickiness — only a transform on an
+   *ancestor* would. background-clip keeps the opaque background off the borders. */
+.chart-table .patient-header, .chart-table .patient-cell {
+  position: sticky;
+  right: 0;
+  z-index: 4;
+  width: 155px;
+  min-width: 155px;
+  max-width: 155px;
+  background: var(--surface);
+  background-clip: padding-box;
+  transform: translateZ(0);
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
 .chart-table .patient-header { z-index: 5; background: var(--surface); color: var(--text); }
 .chart-table .patient-cell { box-shadow: -8px 0 12px -8px #0f2f2440; }
 .patient-cell input { width: 100%; height: 37px; padding: 5px; border: 0; text-align: start; font-variant-numeric: tabular-nums; }
@@ -487,6 +508,9 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 
 /* vertical medicine headers (tuned — do not reorder) */
 .chart-table .patient-header { vertical-align: middle; text-align: center; background: var(--surface); color: var(--text); overflow: hidden; }
+/* The totals row reuses .patient-header, and the rule above would otherwise strip
+   its green background back to plain surface. */
+.chart-table tfoot .patient-header { background: var(--green-100); color: var(--heading); }
 .chart-table .patient-header span { display: block; white-space: nowrap; line-height: 1.8; position: relative; z-index: 1; }
 /* hospital logo as a faint watermark filling the info cell, behind the text */
 .patient-header-logo { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; object-fit: contain; opacity: .12; pointer-events: none; }
@@ -583,7 +607,9 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 	.chart-table thead th { height: 29mm; }
 	.chart-table thead th:not(.patient-header) { width: auto; min-width: 0; max-width: none; height: 29mm; }
 	.chart-table thead th:not(.patient-header) .medicine-select { width: 100%; min-width: 0; max-width: none; height: 28mm; min-height: 28mm; max-height: 28mm; font-size: 5px; }
-	.chart-table .patient-header, .chart-table .patient-cell { width: 28mm; min-width: 28mm; }
+	/* Drop the screen-only compositing hint and width cap — print re-sizes these cells
+	   and a transform must not create a containing block during pagination. */
+	.chart-table .patient-header, .chart-table .patient-cell { width: 28mm; min-width: 28mm; max-width: none; transform: none; }
 	.patient-cell input, .chart-table td input { height: 3.5mm; font-size: 7px; padding: 0; }
 	.chart-table tfoot th, .chart-table tfoot td { height: 3.5mm; font-size: 8px; }
 	/* white paper, black ink only */
