@@ -571,9 +571,9 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 	.table-frame { overflow: visible; max-height: none; width: 100%; }
 	.chart-table { width: 100%; min-width: 0; table-layout: fixed; font-size: 4.5px; }
 	.chart-table th, .chart-table td { width: auto; min-width: 0; height: 3.5mm; line-height: 1; }
-	.chart-table thead th { height: 38mm; }
-	.chart-table thead th:not(.patient-header) { width: auto; min-width: 0; max-width: none; height: 38mm; }
-	.chart-table thead th:not(.patient-header) .medicine-select { width: 100%; min-width: 0; max-width: none; height: 37mm; min-height: 37mm; max-height: 37mm; font-size: 5px; }
+	.chart-table thead th { height: 29mm; }
+	.chart-table thead th:not(.patient-header) { width: auto; min-width: 0; max-width: none; height: 29mm; }
+	.chart-table thead th:not(.patient-header) .medicine-select { width: 100%; min-width: 0; max-width: none; height: 28mm; min-height: 28mm; max-height: 28mm; font-size: 5px; }
 	.chart-table .patient-header, .chart-table .patient-cell { width: 28mm; min-width: 28mm; }
 	.patient-cell input, .chart-table td input { height: 3.5mm; font-size: 7px; padding: 0; }
 	.chart-table tfoot th, .chart-table tfoot td { height: 3.5mm; font-size: 8px; }
