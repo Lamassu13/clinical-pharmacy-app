@@ -32,3 +32,8 @@ secrets.json
 *.njsproj
 *.sln
 *.sw?
+
+# Database dumps — never commit
+*.dump
+*.sql.gz
+cpa.dump
