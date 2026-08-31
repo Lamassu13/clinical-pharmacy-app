@@ -46,6 +46,7 @@ const apiLimiter = rateLimit({ windowMs: 60 * 1000, limit: 300, standardHeaders:
 app.use('/api/', apiLimiter)
 
 const ALLOWED_FLOORS = [2, 3, 4, 5, 6, 8, 9, 10]
+const MAX_PATIENT_ROWS = 41
 const SPECIAL_WARDS = ['ردهة الديلزة', 'ردهة العناية المركزة', 'ردهة الخدج']
 // A medicine belongs on the pill administration form when its name names an oral solid.
 const PILL_FORM = /\b(tab|tabs|tablet|tablets|cap|caps|capsule|capsules)\b/i
@@ -293,13 +294,13 @@ app.put('/api/chart', requireAuth, async (request, response) => {
   if (!canAccessLocation(request.session.user, floor, wardName)) return response.status(403).json({ message: 'لا تملك صلاحية لهذه الردهة' })
 
   const patients = (Array.isArray(request.body.patients) ? request.body.patients : [])
-    .map((patient) => ({ rowNumber: clampInt(patient?.rowNumber, 1, 36), name: cleanText(patient?.name, 200) }))
+    .map((patient) => ({ rowNumber: clampInt(patient?.rowNumber, 1, MAX_PATIENT_ROWS), name: cleanText(patient?.name, 200) }))
     .filter((patient) => patient.rowNumber !== null)
   const columns = (Array.isArray(request.body.columns) ? request.body.columns : [])
     .map((column) => ({ columnNumber: clampInt(column?.columnNumber, 1, 51), medicineName: cleanText(column?.medicineName, 200).trim() }))
     .filter((column) => column.columnNumber !== null)
   const quantities = (Array.isArray(request.body.quantities) ? request.body.quantities : [])
-    .map((entry) => ({ rowNumber: clampInt(entry?.rowNumber, 1, 36), columnNumber: clampInt(entry?.columnNumber, 1, 51), quantity: clampInt(entry?.quantity, 0, 1_000_000) }))
+    .map((entry) => ({ rowNumber: clampInt(entry?.rowNumber, 1, MAX_PATIENT_ROWS), columnNumber: clampInt(entry?.columnNumber, 1, 51), quantity: clampInt(entry?.quantity, 0, 1_000_000) }))
     .filter((entry) => entry.rowNumber !== null && entry.columnNumber !== null && entry.quantity !== null)
 
   const client = await pool.connect()
@@ -410,7 +411,7 @@ app.put('/api/pills', requireAuth, async (request, response) => {
   if (!chartId) return response.status(404).json({ message: 'لا يوجد جارت لهذا اليوم' })
   const byKey = new Map()
   ;(Array.isArray(request.body.entries) ? request.body.entries : []).forEach((entry) => {
-    const patientRowNumber = clampInt(entry?.patientRowNumber, 1, 36)
+    const patientRowNumber = clampInt(entry?.patientRowNumber, 1, MAX_PATIENT_ROWS)
     const medicineId = clampInt(entry?.medicineId, 1, Number.MAX_SAFE_INTEGER)
     if (patientRowNumber === null || medicineId === null) return
     const doseTime = DOSE_TIMES.includes(entry?.doseTime) ? entry.doseTime : ''
@@ -422,7 +423,7 @@ app.put('/api/pills', requireAuth, async (request, response) => {
   })
   const rows = [...byKey.values()]
   const roomRows = Object.entries(request.body.rooms && typeof request.body.rooms === 'object' ? request.body.rooms : {})
-    .map(([key, value]) => ({ patientRowNumber: clampInt(key, 1, 36), roomNumber: cleanText(value, 40).trim() }))
+    .map(([key, value]) => ({ patientRowNumber: clampInt(key, 1, MAX_PATIENT_ROWS), roomNumber: cleanText(value, 40).trim() }))
     .filter((room) => room.patientRowNumber !== null && room.roomNumber)
   const client = await pool.connect()
   try {

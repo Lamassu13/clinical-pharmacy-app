@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS medicines (
 CREATE TABLE IF NOT EXISTS chart_patients (
   id BIGSERIAL PRIMARY KEY,
   chart_id BIGINT NOT NULL REFERENCES daily_charts(id) ON DELETE CASCADE,
-  row_number INTEGER NOT NULL CHECK (row_number BETWEEN 1 AND 36),
+  row_number INTEGER NOT NULL CHECK (row_number BETWEEN 1 AND 41),
   patient_name TEXT NOT NULL DEFAULT '',
   UNIQUE (chart_id, row_number)
 );
@@ -73,7 +73,7 @@ CREATE TABLE IF NOT EXISTS chart_columns (
 
 CREATE TABLE IF NOT EXISTS chart_quantities (
   chart_id BIGINT NOT NULL REFERENCES daily_charts(id) ON DELETE CASCADE,
-  row_number INTEGER NOT NULL CHECK (row_number BETWEEN 1 AND 36),
+  row_number INTEGER NOT NULL CHECK (row_number BETWEEN 1 AND 41),
   column_number INTEGER NOT NULL CHECK (column_number BETWEEN 1 AND 51),
   quantity INTEGER NOT NULL DEFAULT 0 CHECK (quantity >= 0),
   PRIMARY KEY (chart_id, row_number, column_number)
@@ -83,7 +83,7 @@ ALTER TABLE medicines ADD COLUMN IF NOT EXISTS arabic_name TEXT;
 
 CREATE TABLE IF NOT EXISTS pill_entries (
   chart_id BIGINT NOT NULL REFERENCES daily_charts(id) ON DELETE CASCADE,
-  patient_row_number INTEGER NOT NULL CHECK (patient_row_number BETWEEN 1 AND 36),
+  patient_row_number INTEGER NOT NULL CHECK (patient_row_number BETWEEN 1 AND 41),
   medicine_id BIGINT NOT NULL REFERENCES medicines(id) ON DELETE CASCADE,
   dose_time TEXT NOT NULL DEFAULT '',
   usage_method TEXT NOT NULL DEFAULT '',
@@ -94,10 +94,20 @@ ALTER TABLE pill_entries ADD COLUMN IF NOT EXISTS note TEXT NOT NULL DEFAULT '';
 
 CREATE TABLE IF NOT EXISTS pill_patient_meta (
   chart_id BIGINT NOT NULL REFERENCES daily_charts(id) ON DELETE CASCADE,
-  patient_row_number INTEGER NOT NULL CHECK (patient_row_number BETWEEN 1 AND 36),
+  patient_row_number INTEGER NOT NULL CHECK (patient_row_number BETWEEN 1 AND 41),
   room_number TEXT NOT NULL DEFAULT '',
   PRIMARY KEY (chart_id, patient_row_number)
 );
+
+-- Widen the patient-row cap from 36 to 41 on databases created before this change.
+ALTER TABLE chart_patients DROP CONSTRAINT IF EXISTS chart_patients_row_number_check;
+ALTER TABLE chart_patients ADD CONSTRAINT chart_patients_row_number_check CHECK (row_number BETWEEN 1 AND 41);
+ALTER TABLE chart_quantities DROP CONSTRAINT IF EXISTS chart_quantities_row_number_check;
+ALTER TABLE chart_quantities ADD CONSTRAINT chart_quantities_row_number_check CHECK (row_number BETWEEN 1 AND 41);
+ALTER TABLE pill_entries DROP CONSTRAINT IF EXISTS pill_entries_patient_row_number_check;
+ALTER TABLE pill_entries ADD CONSTRAINT pill_entries_patient_row_number_check CHECK (patient_row_number BETWEEN 1 AND 41);
+ALTER TABLE pill_patient_meta DROP CONSTRAINT IF EXISTS pill_patient_meta_patient_row_number_check;
+ALTER TABLE pill_patient_meta ADD CONSTRAINT pill_patient_meta_patient_row_number_check CHECK (patient_row_number BETWEEN 1 AND 41);
 
 CREATE INDEX IF NOT EXISTS daily_charts_date_idx ON daily_charts (chart_date);
 CREATE INDEX IF NOT EXISTS chart_quantities_chart_idx ON chart_quantities (chart_id);

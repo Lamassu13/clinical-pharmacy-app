@@ -532,13 +532,13 @@ label { display: grid; gap: var(--space-2); color: var(--green-800); font-size: 
 	.print-logo { width: 22mm; height: 22mm; }
 	.table-frame { overflow: visible; max-height: none; width: 100%; }
 	.chart-table { width: 100%; min-width: 0; table-layout: fixed; font-size: 4.5px; }
-	.chart-table th, .chart-table td { width: auto; min-width: 0; height: 3.7mm; line-height: 1; }
-	.chart-table thead th { height: 14mm; }
-	.chart-table thead th:not(.patient-header) { width: auto; min-width: 0; max-width: none; height: 14mm; }
-	.chart-table thead th:not(.patient-header) .medicine-select { width: 100%; min-width: 0; max-width: none; height: 13mm; min-height: 13mm; max-height: 13mm; font-size: 6px; }
+	.chart-table th, .chart-table td { width: auto; min-width: 0; height: 3.6mm; line-height: 1; }
+	.chart-table thead th { height: 13mm; }
+	.chart-table thead th:not(.patient-header) { width: auto; min-width: 0; max-width: none; height: 13mm; }
+	.chart-table thead th:not(.patient-header) .medicine-select { width: 100%; min-width: 0; max-width: none; height: 12mm; min-height: 12mm; max-height: 12mm; font-size: 6px; }
 	.chart-table .patient-header, .chart-table .patient-cell { width: 28mm; min-width: 28mm; }
-	.patient-cell input, .chart-table td input { height: 3.7mm; font-size: 7px; padding: 0; }
-	.chart-table tfoot th, .chart-table tfoot td { height: 3.7mm; font-size: 8px; }
+	.patient-cell input, .chart-table td input { height: 3.6mm; font-size: 7px; padding: 0; }
+	.chart-table tfoot th, .chart-table tfoot td { height: 3.6mm; font-size: 8px; }
 	/* white paper, black ink only */
 	.chart-page, .chart-page * { background: #fff !important; color: #000 !important; border-color: #000 !important; box-shadow: none !important; }
 	/* keep the vertical rule beside the patient names (screen relies on a shadow that print drops) */
