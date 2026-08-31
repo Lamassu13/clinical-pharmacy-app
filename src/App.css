@@ -387,7 +387,10 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 .pill-room { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); font-weight: 700; color: var(--heading); white-space: nowrap; }
 .pill-room input { width: 90px; padding: 6px 8px; text-align: center; }
 
-.pill-table { width: 100%; border-collapse: collapse; table-layout: auto; }
+/* The table has a 120px fixed lead column plus four content columns, which
+   exceeds a phone viewport — scroll it inside the card instead of the page. */
+.pill-table-scroll { overflow-x: auto; }
+.pill-table { width: 100%; border-collapse: collapse; table-layout: auto; min-width: 460px; }
 .pill-table th, .pill-table td { border: 1px solid var(--border-strong); padding: 6px 8px; text-align: start; font-size: var(--text-sm); vertical-align: middle; }
 .pill-table thead th { background: var(--green-100); color: var(--heading); font-weight: 700; }
 .pill-table th:first-child, .pill-table td:first-child { width: 120px; min-width: 120px; padding: 4px; }
@@ -539,6 +542,14 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
   .toolbar-actions { width: 100%; }
   .chart-meta { gap: var(--space-2) var(--space-3); }
   .save-state { width: 100%; margin-inline-start: 0; }
+  /* iOS auto-zooms any focused control under 16px. The chart grid is exempt —
+     its 51px columns depend on the small type and it scrolls on its own. */
+  .requests-table input, .requests-table select,
+  .pill-room input, .pills-date input,
+  .medicine-add-row input, .medicine-filter,
+  .login-form input, .medicine-modal input,
+  .pill-table select { font-size: 16px; }
+  .pill-room input { width: 110px; }
 }
 
 /* ============================================================
@@ -561,13 +572,11 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
   .pill-form-foot .pill-sign { border-color: #000; }
   .pill-form-foot .pill-edit-time { color: #000; }
 }
-@media print { @page { size: A4 landscape; margin: 8mm; } body { background: white; } .topbar, .chart-toolbar, .chart-meta, .modal-backdrop { display: none !important; } .chart-page { width: 100%; padding: 0; }.print-heading { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 6px; color: #000; }.print-heading strong, .print-heading span { display: block; }.print-logo { width: 42px; height: 42px; }.table-frame { overflow: visible; max-height: none; border: 1px solid #000; border-radius: 0; }.chart-table { color: #000; background: white; font-size: 7px; }.chart-table th, .chart-table td { border-color: #000; box-shadow: none !important; }.chart-table thead th, .chart-table tfoot th, .chart-table tfoot td, .chart-table .patient-header, .chart-table .patient-cell { background: white; color: #000; }.chart-table thead th { position: static; }.chart-table .patient-header, .chart-table .patient-cell, .chart-table tfoot th, .chart-table tfoot td { position: static; }.chart-table input, .chart-table select { color: #000; background: white; } }
+@media print { @page { size: A4 landscape; margin: 8mm; } body { background: white; } .topbar, .chart-toolbar, .chart-meta, .modal-backdrop { display: none !important; } .chart-page { width: 100%; padding: 0; }.table-frame { overflow: visible; max-height: none; border: 1px solid #000; border-radius: 0; }.chart-table { color: #000; background: white; font-size: 7px; }.chart-table th, .chart-table td { border-color: #000; box-shadow: none !important; }.chart-table thead th, .chart-table tfoot th, .chart-table tfoot td, .chart-table .patient-header, .chart-table .patient-cell { background: white; color: #000; }.chart-table thead th { position: static; }.chart-table .patient-header, .chart-table .patient-cell, .chart-table tfoot th, .chart-table tfoot td { position: static; }.chart-table input, .chart-table select { color: #000; background: white; } }
 @media print {
 	@page { size: A4 landscape; margin: 5mm; }
 	.app-shell { min-height: 0; }
 	.chart-page { width: 100%; padding: 0; }
-	.print-heading { display: none !important; }
-	.print-logo { width: 22mm; height: 22mm; }
 	.table-frame { overflow: visible; max-height: none; width: 100%; }
 	.chart-table { width: 100%; min-width: 0; table-layout: fixed; font-size: 4.5px; }
 	.chart-table th, .chart-table td { width: auto; min-width: 0; height: 3.5mm; line-height: 1; }
