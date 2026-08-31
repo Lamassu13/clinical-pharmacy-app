@@ -446,6 +446,10 @@ label { display: grid; gap: var(--space-2); color: var(--green-800); font-size: 
 /* vertical medicine headers (tuned — do not reorder) */
 .chart-table .patient-header { vertical-align: middle; text-align: center; background: #fff; color: #000; }
 .chart-table .patient-header span { display: block; white-space: nowrap; line-height: 1.8; }
+.patient-header-logo { display: block; width: 42px; height: 42px; margin: 0 auto 4px; object-fit: contain; }
+
+/* per-page print credit (print only) */
+.print-trademark { display: none; }
 .chart-table thead th:not(.patient-header) { width: 51px; min-width: 51px; max-width: 51px; padding: 0; overflow: hidden; vertical-align: middle; }
 .chart-table thead th:not(.patient-header) .medicine-select {
   appearance: none;
@@ -499,7 +503,7 @@ label { display: grid; gap: var(--space-2); color: var(--green-800); font-size: 
    Print — restored to the pre-refresh rules (see commit f7b67b8)
    ============================================================ */
 @media print {
-  @page { size: A4 portrait; margin: 12mm; }
+  @page { size: A4 portrait; margin: 12mm 12mm 15mm; }
   .topbar, .pills-toolbar { display: none !important; }
   .pills-page { width: 100%; padding: 0; }
   .pill-form { border: 1px solid #000; border-radius: 0; box-shadow: none; break-after: page; padding: 0; margin: 0; }
@@ -516,7 +520,7 @@ label { display: grid; gap: var(--space-2); color: var(--green-800); font-size: 
 }
 @media print { @page { size: A4 landscape; margin: 8mm; } body { background: white; } .topbar, .chart-toolbar, .chart-meta, .modal-backdrop { display: none !important; } .chart-page { width: 100%; padding: 0; }.print-heading { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 6px; color: #000; }.print-heading strong, .print-heading span { display: block; }.print-logo { width: 42px; height: 42px; }.table-frame { overflow: visible; max-height: none; border: 1px solid #000; border-radius: 0; }.chart-table { color: #000; background: white; font-size: 7px; }.chart-table th, .chart-table td { border-color: #000; box-shadow: none !important; }.chart-table thead th, .chart-table tfoot th, .chart-table tfoot td, .chart-table .patient-header, .chart-table .patient-cell { background: white; color: #000; }.chart-table thead th { position: static; }.chart-table .patient-header, .chart-table .patient-cell, .chart-table tfoot th, .chart-table tfoot td { position: static; }.chart-table input, .chart-table select { color: #000; background: white; } }
 @media print {
-	@page { size: A4 landscape; margin: 5mm; }
+	@page { size: A4 landscape; margin: 5mm 5mm 13mm; }
 	.chart-page { width: 100%; padding: 0; }
 	.print-heading { display: none !important; }
 	.print-logo { width: 22mm; height: 22mm; }
@@ -527,7 +531,15 @@ label { display: grid; gap: var(--space-2); color: var(--green-800); font-size: 
 	.chart-table thead th:not(.patient-header) { width: auto; min-width: 0; max-width: none; height: 16mm; }
 	.chart-table thead th:not(.patient-header) .medicine-select { width: 100%; min-width: 0; max-width: none; height: 15mm; min-height: 15mm; max-height: 15mm; font-size: 6px; }
 	.chart-table .patient-header, .chart-table .patient-cell { width: 28mm; min-width: 28mm; }
-	.header-watermark { width: 25mm; height: 25mm; opacity: .12; }
 	.patient-cell input, .chart-table td input { height: 4mm; font-size: 7px; padding: 0; }
 	.chart-table tfoot th, .chart-table tfoot td { height: 4mm; font-size: 8px; }
+	/* white paper, black ink only */
+	.chart-page, .chart-page * { background: #fff !important; color: #000 !important; border-color: #000 !important; box-shadow: none !important; }
+	.patient-header-logo { display: block; width: 13mm; height: 13mm; margin: 0 auto 1mm; filter: grayscale(1); }
+}
+
+/* per-page trademark credit — repeats on every printed page */
+@media print {
+	.print-trademark { display: block; position: fixed; left: 0; right: 0; bottom: 4mm; text-align: center; color: #000 !important; font-size: 8px; line-height: 1.35; }
+	.print-trademark strong { display: block; font-size: 9px; font-weight: 700; }
 }
