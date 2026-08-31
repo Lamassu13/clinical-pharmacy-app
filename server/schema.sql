@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS chart_columns (
   chart_id BIGINT NOT NULL REFERENCES daily_charts(id) ON DELETE CASCADE,
   column_number INTEGER NOT NULL CHECK (column_number BETWEEN 1 AND 51),
   medicine_id BIGINT REFERENCES medicines(id),
+  custom_name TEXT,
   UNIQUE (chart_id, column_number)
 );
 
@@ -80,6 +81,7 @@ CREATE TABLE IF NOT EXISTS chart_quantities (
 );
 
 ALTER TABLE medicines ADD COLUMN IF NOT EXISTS arabic_name TEXT;
+ALTER TABLE chart_columns ADD COLUMN IF NOT EXISTS custom_name TEXT;
 
 CREATE TABLE IF NOT EXISTS pill_entries (
   chart_id BIGINT NOT NULL REFERENCES daily_charts(id) ON DELETE CASCADE,

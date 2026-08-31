@@ -1,5 +1,6 @@
 :root {
   --font-sans: 'IBM Plex Sans Arabic', 'IBM Plex Sans', 'Geeza Pro', 'Segoe UI', system-ui, sans-serif;
+  color-scheme: light;
   font-family: var(--font-sans);
   color: #132a27;
   background: #f5f8f6;

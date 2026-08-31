@@ -280,7 +280,7 @@ app.get('/api/chart', requireAuth, async (request, response) => {
   const chartId = chartResult.rows[0].id
   const [patients, columns, quantities] = await Promise.all([
     query('SELECT row_number, patient_name FROM chart_patients WHERE chart_id = $1 ORDER BY row_number', [chartId]),
-    query('SELECT cc.column_number, cc.medicine_id, m.name AS medicine_name FROM chart_columns cc LEFT JOIN medicines m ON m.id = cc.medicine_id WHERE cc.chart_id = $1 ORDER BY cc.column_number', [chartId]),
+    query('SELECT cc.column_number, cc.medicine_id, COALESCE(m.name, cc.custom_name) AS medicine_name FROM chart_columns cc LEFT JOIN medicines m ON m.id = cc.medicine_id WHERE cc.chart_id = $1 ORDER BY cc.column_number', [chartId]),
     query('SELECT row_number, column_number, quantity FROM chart_quantities WHERE chart_id = $1', [chartId]),
   ])
   response.json({ chart: { patients: patients.rows, columns: columns.rows, quantities: quantities.rows } })
@@ -327,18 +327,24 @@ app.put('/api/chart', requireAuth, async (request, response) => {
       await client.query('INSERT INTO chart_patients (chart_id, row_number, patient_name) SELECT $1, rn, name FROM UNNEST($2::int[], $3::text[]) AS u(rn, name)', [chartId, [...patientByRow.keys()], [...patientByRow.values()]])
     }
 
+    // Link a column to a medicine only when its text exactly matches an existing
+    // catalogue entry. Anything else is kept as free text on the column itself, so
+    // typing in the chart never adds rows to the shared medicines list.
     const medicineByColumn = new Map(columns.map((column) => [column.columnNumber, column.medicineName]))
     const wantedMedicines = [...new Set([...medicineByColumn.values()].filter(Boolean))]
     const idByMedicine = new Map()
     if (wantedMedicines.length) {
-      await client.query('INSERT INTO medicines (name, created_by) SELECT UNNEST($1::text[]), $2 ON CONFLICT (name) DO NOTHING', [wantedMedicines, request.session.user.id])
       const known = await client.query('SELECT id, name FROM medicines WHERE name = ANY($1::text[])', [wantedMedicines])
       known.rows.forEach((row) => idByMedicine.set(row.name, row.id))
     }
     if (medicineByColumn.size) {
       const columnNumbers = [...medicineByColumn.keys()]
       const medicineIds = columnNumbers.map((columnNumber) => idByMedicine.get(medicineByColumn.get(columnNumber)) ?? null)
-      await client.query('INSERT INTO chart_columns (chart_id, column_number, medicine_id) SELECT $1, cn, mid FROM UNNEST($2::int[], $3::bigint[]) AS u(cn, mid)', [chartId, columnNumbers, medicineIds])
+      const customNames = columnNumbers.map((columnNumber) => {
+        const text = medicineByColumn.get(columnNumber)
+        return text && !idByMedicine.has(text) ? text : null
+      })
+      await client.query('INSERT INTO chart_columns (chart_id, column_number, medicine_id, custom_name) SELECT $1, cn, mid, cname FROM UNNEST($2::int[], $3::bigint[], $4::text[]) AS u(cn, mid, cname)', [chartId, columnNumbers, medicineIds, customNames])
     }
 
     const quantityByCell = new Map(quantities.map((entry) => [`${entry.rowNumber}:${entry.columnNumber}`, entry]))

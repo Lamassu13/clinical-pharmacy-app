@@ -15,6 +15,7 @@
   --green-900: #053a2f;
 
   /* semantic surfaces & text */
+  color-scheme: light;
   --bg: #f5f8f6;
   --surface: #ffffff;
   --surface-alt: #f0f5f2;
@@ -22,6 +23,9 @@
   --border-strong: #b9cdc2;
   --text: #132a27;
   --text-muted: #4f6b63;
+  --heading: var(--green-800);
+  --chart-grid: #9ca8a1;
+  --chart-head-bg: #f5f8f5;
 
   /* intent colours */
   --primary: var(--green-500);
@@ -74,13 +78,44 @@
   --paper: var(--surface);
 }
 
+/* Dark theme — semantic-token overrides only (toggled via data-theme on <html>) */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0f1714;
+  --surface: #161f1b;
+  --surface-alt: #1c2723;
+  --border: #2b3a34;
+  --border-strong: #3c5049;
+  --text: #e7efeb;
+  --text-muted: #9db0a8;
+  --heading: #7fceac;
+  --primary: #34b485;
+  --primary-hover: #48c497;
+  --primary-tint: #34b48533;
+  --danger: #f2757d;
+  --danger-tint: #f2757d24;
+  --success: #4cc48f;
+  --success-tint: #4cc48f24;
+  --warning: #e0a44a;
+  --warning-tint: #e0a44a24;
+  --green-50: #17231e;
+  --green-100: #1d2c26;
+  --green-200: #294139;
+  --green-300: #3a5850;
+  --chart-grid: #34463f;
+  --chart-head-bg: #1a2621;
+  --shadow-xs: 0 1px 2px #00000040, 0 1px 1px #00000030;
+  --shadow-sm: 0 2px 8px #00000047, 0 1px 3px #00000038;
+  --shadow-md: 0 12px 32px #0000005c, 0 4px 12px #00000047;
+}
+
 [hidden] { display: none !important; }
 
 body { background: var(--bg); color: var(--text); }
 
 h1, h2, p { margin-top: 0; }
-h1 { margin-bottom: var(--space-3); color: var(--green-800); font-size: clamp(24px, 3vw, var(--text-2xl)); line-height: 1.25; }
-h2 { color: var(--green-800); line-height: 1.3; }
+h1 { margin-bottom: var(--space-3); color: var(--heading); font-size: clamp(24px, 3vw, var(--text-2xl)); line-height: 1.25; }
+h2 { color: var(--heading); line-height: 1.3; }
 p { line-height: 1.65; }
 
 .eyebrow { margin: 0 0 var(--space-2); color: var(--danger); font-size: var(--text-xs); font-weight: 700; }
@@ -109,7 +144,7 @@ select {
   background-position: left 12px center;
 }
 
-label { display: grid; gap: var(--space-2); color: var(--green-800); font-size: var(--text-sm); font-weight: 700; }
+label { display: grid; gap: var(--space-2); color: var(--heading); font-size: var(--text-sm); font-weight: 700; }
 
 /* ============================================================
    Buttons
@@ -143,6 +178,8 @@ label { display: grid; gap: var(--space-2); color: var(--green-800); font-size: 
 .back-button, .text-button { background: transparent; color: var(--primary); padding-inline: 6px; }
 .back-button:hover, .text-button:hover { color: var(--primary-hover); background: var(--green-50); }
 .compact { white-space: nowrap; }
+.theme-toggle { display: inline-grid; place-items: center; width: 34px; height: 34px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-alt); color: var(--heading); font-size: 15px; line-height: 1; transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease); }
+.theme-toggle:hover { background: var(--green-50); border-color: var(--green-300); }
 
 /* ============================================================
    Badges / empty & loading states
@@ -240,7 +277,7 @@ label { display: grid; gap: var(--space-2); color: var(--green-800); font-size: 
 .user-menu { color: var(--text-muted); font-size: var(--text-sm); }
 .topbar-brand { border: 0; background: transparent; padding: 0; font: inherit; color: inherit; cursor: pointer; text-align: start; border-radius: var(--radius-md); transition: background var(--dur-fast) var(--ease); }
 .topbar-brand:hover { background: var(--green-50); }
-.topbar-brand strong { display: block; color: var(--green-800); font-size: var(--text-base); }
+.topbar-brand strong { display: block; color: var(--heading); font-size: var(--text-base); }
 .topbar-brand small { display: block; color: var(--text-muted); font-size: var(--text-xs); }
 
 /* ============================================================
@@ -264,7 +301,7 @@ label { display: grid; gap: var(--space-2); color: var(--green-800); font-size: 
   text-align: start;
 }
 .date-chip span { display: block; color: var(--text-muted); font-size: var(--text-xs); }
-.date-chip strong { display: block; color: var(--green-800); font-size: var(--text-lg); }
+.date-chip strong { display: block; color: var(--heading); font-size: var(--text-lg); }
 
 .location-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 245px), 1fr)); gap: var(--space-3); }
 .location-card {
@@ -304,7 +341,7 @@ label { display: grid; gap: var(--space-2); color: var(--green-800); font-size: 
    ============================================================ */
 .requests-table { width: 100%; border-collapse: collapse; background: var(--surface); font-size: var(--text-sm); }
 .requests-table th, .requests-table td { padding: 11px 14px; border: 1px solid var(--border); text-align: start; }
-.requests-table thead th { position: sticky; top: 0; background: var(--green-50); color: var(--green-800); font-weight: 700; }
+.requests-table thead th { position: sticky; top: 0; background: var(--green-50); color: var(--heading); font-weight: 700; }
 .requests-table tbody tr:nth-child(even) td { background: var(--surface-alt); }
 .requests-table tbody tr:hover td { background: var(--green-50); }
 .requests-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
@@ -321,7 +358,7 @@ label { display: grid; gap: var(--space-2); color: var(--green-800); font-size: 
 .pills-page { width: min(100% - var(--space-6), 1100px); margin: 0 auto; padding: var(--space-7) 0; }
 .pills-toolbar { display: flex; align-items: center; gap: var(--space-5); flex-wrap: wrap; margin-bottom: var(--space-5); }
 .pills-toolbar h1 { margin: 0; }
-.pills-date { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); color: var(--green-800); font-weight: 700; }
+.pills-date { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); color: var(--heading); font-weight: 700; }
 .pills-date input { padding: 7px 9px; }
 
 .pill-form {
@@ -343,16 +380,16 @@ label { display: grid; gap: var(--space-2); color: var(--green-800); font-size: 
   flex-wrap: wrap;
 }
 .pill-form-brand { display: flex; align-items: center; gap: var(--space-3); }
-.pill-form-title strong { display: block; color: var(--green-800); }
+.pill-form-title strong { display: block; color: var(--heading); }
 .pill-form-title span, .pill-form-patient span { display: block; color: var(--text-muted); font-size: var(--text-xs); }
 .pill-form-patient { text-align: start; }
 .pill-form-patient strong { display: block; font-size: var(--text-lg); color: var(--text); }
-.pill-room { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); font-weight: 700; color: var(--green-800); white-space: nowrap; }
+.pill-room { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); font-weight: 700; color: var(--heading); white-space: nowrap; }
 .pill-room input { width: 90px; padding: 6px 8px; text-align: center; }
 
 .pill-table { width: 100%; border-collapse: collapse; table-layout: auto; }
 .pill-table th, .pill-table td { border: 1px solid var(--border-strong); padding: 6px 8px; text-align: start; font-size: var(--text-sm); vertical-align: middle; }
-.pill-table thead th { background: var(--green-100); color: var(--green-800); font-weight: 700; }
+.pill-table thead th { background: var(--green-100); color: var(--heading); font-weight: 700; }
 .pill-table th:first-child, .pill-table td:first-child { width: 120px; min-width: 120px; padding: 4px; }
 .pill-table td:nth-child(2) { font-weight: 700; overflow-wrap: anywhere; }
 
@@ -399,10 +436,10 @@ label { display: grid; gap: var(--space-2); color: var(--green-800); font-size: 
   direction: rtl;
 }
 .chart-table { border-collapse: separate; border-spacing: 0; min-width: 2800px; direction: rtl; font-size: 11px; }
-.chart-table th, .chart-table td { width: 51px; min-width: 51px; height: 38px; border-left: 1px solid #9ca8a1; border-bottom: 1px solid #9ca8a1; padding: 0; text-align: center; }
-.chart-table thead th { position: sticky; top: 0; z-index: 3; height: 128px; background: #f5f8f5; vertical-align: bottom; box-shadow: 0 8px 12px -8px #0f2f241f; }
-.chart-table .patient-header, .chart-table .patient-cell { position: sticky; right: 0; z-index: 4; width: 155px; min-width: 155px; background: #fff; }
-.chart-table .patient-header { z-index: 5; background: var(--green-800); color: #fff; }
+.chart-table th, .chart-table td { width: 51px; min-width: 51px; height: 38px; border-left: 1px solid var(--chart-grid); border-bottom: 1px solid var(--chart-grid); padding: 0; text-align: center; }
+.chart-table thead th { position: sticky; top: 0; z-index: 3; height: 128px; background: var(--chart-head-bg); vertical-align: bottom; box-shadow: 0 8px 12px -8px #0f2f241f; }
+.chart-table .patient-header, .chart-table .patient-cell { position: sticky; right: 0; z-index: 4; width: 155px; min-width: 155px; background: var(--surface); }
+.chart-table .patient-header { z-index: 5; background: var(--surface); color: var(--text); }
 .chart-table .patient-cell { box-shadow: -8px 0 12px -8px #0f2f2440; }
 .patient-cell input { width: 100%; height: 37px; padding: 5px; border: 0; text-align: start; font-variant-numeric: tabular-nums; }
 .patient-cell input::placeholder { color: transparent; }
@@ -410,7 +447,7 @@ label { display: grid; gap: var(--space-2); color: var(--green-800); font-size: 
 .chart-table tbody tr:hover td { background: var(--green-50); }
 .chart-table tbody tr:hover .patient-cell { background: var(--green-50); }
 .chart-table tbody tr:nth-child(5n) td { border-bottom-color: var(--border-strong); }
-.chart-table tfoot th, .chart-table tfoot td { position: sticky; bottom: 0; height: 38px; background: var(--green-100); color: var(--green-800); font-weight: 700; box-shadow: 0 -8px 12px -8px #0f2f241f; }
+.chart-table tfoot th, .chart-table tfoot td { position: sticky; bottom: 0; height: 38px; background: var(--green-100); color: var(--heading); font-weight: 700; box-shadow: 0 -8px 12px -8px #0f2f241f; }
 .chart-table tfoot th { z-index: 2; }
 
 .modal-backdrop {
@@ -441,19 +478,19 @@ label { display: grid; gap: var(--space-2); color: var(--green-800); font-size: 
 /* injected date picker inside .chart-meta */
 .date-controls { display: inline-flex; align-items: center; gap: 10px; margin-inline-start: auto; }
 .date-controls label { display: inline-flex; align-items: center; gap: 6px; color: #fff; font-size: var(--text-xs); }
-.date-controls input { width: 150px; padding: 6px 8px; border: 0; color: var(--text); font-size: var(--text-xs); border-radius: var(--radius-sm); }
+.date-controls input { width: 150px; padding: 6px 8px; border: 0; background: var(--surface); color: var(--text); font-size: var(--text-xs); border-radius: var(--radius-sm); }
 .date-controls button { padding: 6px 12px; border: 1px solid #ffffff4d; background: transparent; color: #fff; font-size: var(--text-xs); border-radius: var(--radius-sm); transition: background var(--dur-fast) var(--ease); }
 .date-controls button:hover { background: #ffffff1f; }
 
 /* vertical medicine headers (tuned — do not reorder) */
-.chart-table .patient-header { vertical-align: middle; text-align: center; background: #fff; color: #000; overflow: hidden; }
+.chart-table .patient-header { vertical-align: middle; text-align: center; background: var(--surface); color: var(--text); overflow: hidden; }
 .chart-table .patient-header span { display: block; white-space: nowrap; line-height: 1.8; position: relative; z-index: 1; }
 /* hospital logo as a faint watermark filling the info cell, behind the text */
 .patient-header-logo { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; object-fit: contain; opacity: .12; pointer-events: none; }
 
 /* app credit — fixed corner on every screen, hidden when printing */
 .app-credit { position: fixed; left: 14px; bottom: 10px; z-index: 20; color: var(--text-muted); font-size: var(--text-xs); line-height: 1.3; pointer-events: none; opacity: .75; text-align: start; }
-.app-credit strong { display: block; font-weight: 700; color: var(--green-800); }
+.app-credit strong { display: block; font-weight: 700; color: var(--heading); }
 .chart-table thead th:not(.patient-header) { width: 51px; min-width: 51px; max-width: 51px; padding: 0; overflow: hidden; vertical-align: middle; }
 .chart-table thead th:not(.patient-header) .medicine-select {
   appearance: none;
@@ -478,6 +515,7 @@ label { display: grid; gap: var(--space-2); color: var(--green-800); font-size: 
   text-align-last: center;
   line-height: 1;
   font: inherit;
+  color: var(--text);
   transition: background var(--dur-fast) var(--ease);
 }
 .chart-table thead th:not(.patient-header) .medicine-select::placeholder { color: #9bb0a8; }
