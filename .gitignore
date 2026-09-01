@@ -20,7 +20,10 @@ dist-ssr
 *.key
 *.p12
 secrets.json
+# Firebase Hosting was abandoned for Render; these come back if the CLI is ever run here.
 .firebase/
+.firebaserc
+firebase.json
 
 # Editor directories and files
 .vscode/*
