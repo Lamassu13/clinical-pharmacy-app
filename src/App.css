@@ -464,40 +464,54 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 /* min-width is the exact sum of the declared columns (155 + 51x51). Anything larger
    is surplus that auto table layout hands to the one cell without a max-width —
    the patient column — silently widening it. */
-.chart-table { border-collapse: separate; border-spacing: 0; min-width: 2756px; direction: rtl; font-size: 11px; }
+/* The patient column is frozen structurally, not with position:sticky. Measured on the
+   user's iPad in landscape: sticky fails there in every form — plain, with the scroll
+   container promoted, and with the form controls taken out of the cells — because iOS
+   scrolls overflow containers off the main thread and this grid is 2756px wide. Two
+   tables side by side, with only the doses table scrolling horizontally, has nothing to
+   repaint late. Cost: the medicine header scrolls away vertically, accepted deliberately
+   over a JavaScript-synced header strip that could lag during momentum scrolling.
+   align-items must not stretch — with a max-height here the children would size to the
+   visible height rather than their content, and the doses table would be clipped. */
+.chart-grid {
+  display: flex;
+  align-items: flex-start;
+  direction: rtl;
+  max-height: calc(100svh - 240px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+}
+.chart-names { flex: 0 0 155px; }
+.chart-doses { flex: 1 1 auto; overflow-x: auto; }
+.chart-table { border-collapse: separate; border-spacing: 0; direction: rtl; font-size: 11px; }
+.chart-names .chart-table { width: 155px; min-width: 155px; }
+/* the exact sum of the 51 declared medicine columns */
+.chart-doses .chart-table { min-width: 2601px; }
 .chart-table th, .chart-table td { width: 51px; min-width: 51px; height: 38px; border-left: 1px solid var(--chart-grid); border-bottom: 1px solid var(--chart-grid); padding: 0; text-align: center; }
-.chart-table thead th { position: sticky; top: 0; z-index: 3; height: 128px; background: var(--chart-head-bg); vertical-align: bottom; border-bottom: 2px solid var(--border-strong); }
-/* Do not promote these cells to their own compositing layer. translateZ(0) and
-   backface-visibility were tried here to force a repaint during horizontal scroll and
-   did the opposite: Safari then stopped repainting the layer when its contents changed,
-   so the column stayed blank the whole time a name was being typed and only caught up
-   on blur. Sticky cells must also carry no box-shadow — same class of repaint failure —
-   which is why the separator below is a plain border.
-   background-clip keeps the opaque background off the borders. */
+.chart-table thead th { height: 128px; background: var(--chart-head-bg); vertical-align: bottom; border-bottom: 2px solid var(--border-strong); }
 .chart-table .patient-header, .chart-table .patient-cell {
-  position: sticky;
-  right: 0;
-  z-index: 4;
   width: 155px;
   min-width: 155px;
   max-width: 155px;
   background: var(--surface);
-  background-clip: padding-box;
 }
-.chart-table .patient-header { z-index: 5; background: var(--surface); color: var(--text); }
+.chart-table .patient-header { background: var(--surface); color: var(--text); }
 .chart-table .patient-cell { border-left: 2px solid var(--border-strong); }
 .patient-cell input { width: 100%; height: 37px; padding: 5px; border: 0; text-align: start; font-variant-numeric: tabular-nums; }
 .patient-cell input::placeholder { color: transparent; }
 .chart-table td input { width: 100%; height: 37px; padding: 0; border: 0; text-align: center; font-variant-numeric: tabular-nums; }
 .chart-table tbody tr:hover td { background: var(--green-50); }
 .chart-table tbody tr:hover .patient-cell { background: var(--green-50); }
-/* The row being typed into. Must come after :hover to win on source order — the person
-   entering doses needs to see which patient the row belongs to at a glance. */
-.chart-table tbody tr:focus-within td { background: var(--green-50); }
-.chart-table tbody tr:focus-within .patient-cell { background: var(--green-100); }
-.chart-table tbody tr:nth-child(5n) td { border-bottom-color: var(--border-strong); }
-.chart-table tfoot th, .chart-table tfoot td { position: sticky; bottom: 0; height: 38px; background: var(--green-100); color: var(--heading); font-weight: 700; border-top: 2px solid var(--border-strong); }
-.chart-table tfoot th { z-index: 2; }
+/* The row being typed into. Driven by activeRow rather than :focus-within because the
+   name and the doses now live in two separate tables — focus in one has to light up the
+   matching row in the other. Must come after :hover to win on source order. */
+.chart-table tbody tr.active-row td { background: var(--green-50); }
+.chart-table tbody tr.active-row .patient-cell { background: var(--green-100); }
+.chart-table tbody tr:nth-child(5n) td, .chart-table tbody tr:nth-child(5n) .patient-cell { border-bottom-color: var(--border-strong); }
+.chart-table tfoot th, .chart-table tfoot td { height: 38px; background: var(--green-100); color: var(--heading); font-weight: 700; border-top: 2px solid var(--border-strong); }
 
 .modal-backdrop {
   position: fixed;
@@ -621,13 +635,20 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
   .pill-form-foot .pill-sign { border-color: #000; }
   .pill-form-foot .pill-edit-time { color: #000; }
 }
-@media print { @page { size: A4 landscape; margin: 8mm; } body { background: white; } .topbar, .chart-toolbar, .chart-meta, .modal-backdrop, .active-patient-bar { display: none !important; } .chart-page { width: 100%; padding: 0; }.table-frame { overflow: visible; max-height: none; border: 1px solid #000; border-radius: 0; }.chart-table { color: #000; background: white; font-size: 7px; }.chart-table th, .chart-table td { border-color: #000; box-shadow: none !important; }.chart-table thead th, .chart-table tfoot th, .chart-table tfoot td, .chart-table .patient-header, .chart-table .patient-cell { background: white; color: #000; }.chart-table thead th { position: static; }.chart-table .patient-header, .chart-table .patient-cell, .chart-table tfoot th, .chart-table tfoot td { position: static; }.chart-table input, .chart-table select { color: #000; background: white; } }
+@media print { @page { size: A4 landscape; margin: 8mm; } body { background: white; } .topbar, .chart-toolbar, .chart-meta, .modal-backdrop, .active-patient-bar { display: none !important; } .chart-page { width: 100%; padding: 0; }.chart-grid { overflow: visible; max-height: none; border: 1px solid #000; border-radius: 0; }.chart-doses { overflow: visible; }.chart-table { color: #000; background: white; font-size: 7px; }.chart-table th, .chart-table td { border-color: #000; box-shadow: none !important; }.chart-table thead th, .chart-table tfoot th, .chart-table tfoot td, .chart-table .patient-header, .chart-table .patient-cell { background: white; color: #000; }.chart-table input, .chart-table select { color: #000; background: white; } }
 @media print {
 	@page { size: A4 landscape; margin: 5mm; }
 	.app-shell { min-height: 0; }
 	.chart-page { width: 100%; padding: 0; }
-	.table-frame { overflow: visible; max-height: none; width: 100%; }
-	.chart-table { width: 100%; min-width: 0; table-layout: fixed; font-size: 4.5px; }
+	/* The two tables sit side by side on paper as they do on screen; only the scrolling
+	   and the screen width caps come off. 29mm head + 41 x 3.5mm + 3.5mm totals = 176mm
+	   against 200mm of usable landscape page, so it stays a single sheet. */
+	.chart-grid { max-height: none; overflow: visible; width: 100%; }
+	.chart-names { flex: 0 0 28mm; }
+	.chart-doses { flex: 1 1 auto; overflow: visible; }
+	.chart-names .chart-table { width: 28mm; min-width: 0; }
+	.chart-doses .chart-table { width: 100%; min-width: 0; }
+	.chart-table { table-layout: fixed; font-size: 4.5px; }
 	.chart-table th, .chart-table td { width: auto; min-width: 0; height: 3.5mm; line-height: 1; }
 	.chart-table thead th { height: 29mm; }
 	.chart-table thead th:not(.patient-header) { width: auto; min-width: 0; max-width: none; height: 29mm; }
