@@ -464,14 +464,43 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 /* min-width is the exact sum of the declared columns (155 + 51x51). Anything larger
    is surplus that auto table layout hands to the one cell without a max-width —
    the patient column — silently widening it. */
-/* The patient column is frozen structurally, not with position:sticky. Measured on the
-   user's iPad in landscape: sticky fails there in every form — plain, with the scroll
-   container promoted, and with the form controls taken out of the cells — because iOS
-   scrolls overflow containers off the main thread and this grid is 2756px wide. Two
-   tables side by side, with only the doses table scrolling horizontally, has nothing to
-   repaint late. Cost: the medicine header scrolls away vertically, accepted deliberately
-   over a JavaScript-synced header strip that could lag during momentum scrolling.
-   align-items must not stretch — with a max-height here the children would size to the
+/* Nothing here is position:sticky. Measured on the user's iPad in landscape, sticky fails
+   in every form — plain, with the scroll container promoted, and with the form controls
+   taken out of the frozen cells — because iOS scrolls overflow containers off the main
+   thread and this grid is 2756px wide. So the chart is three strips instead: a header and
+   a totals row that are siblings of the scroller (and therefore cannot scroll away), and
+   between them the body, where only the doses half moves sideways. The header and totals
+   are pushed to match it from JavaScript; the patient names are not driven by script at
+   all, so they can never lag. */
+.chart-frame {
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.chart-head, .chart-foot { display: flex; direction: rtl; padding-inline-end: var(--chart-gutter, 0px); }
+.chart-head { border-bottom: 2px solid var(--border-strong); }
+.chart-foot { border-top: 2px solid var(--border-strong); }
+.chart-head-corner, .chart-foot-corner { flex: 0 0 155px; border-left: 2px solid var(--border-strong); }
+.chart-head-scroll, .chart-foot-scroll { flex: 1 1 auto; overflow-x: hidden; }
+/* position: relative is what keeps the watermark inside this box. The logo is absolutely
+   positioned at inset: 0, so without a positioned ancestor it escapes and stretches across
+   the whole chart. */
+.chart-head-corner {
+  position: relative;
+  overflow: hidden;
+  height: 128px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 11px;
+}
+.chart-head-corner span { display: block; white-space: nowrap; line-height: 1.8; position: relative; z-index: 1; }
+.chart-foot-corner { height: 38px; display: flex; align-items: center; justify-content: center; background: var(--green-100); color: var(--heading); font-weight: 700; font-size: 11px; }
+/* align-items must not stretch — with a max-height here the children would size to the
    visible height rather than their content, and the doses table would be clipped. */
 .chart-grid {
   display: flex;
@@ -480,26 +509,22 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
   max-height: calc(100svh - 240px);
   overflow-y: auto;
   overflow-x: hidden;
-  background: var(--surface);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-md);
 }
 .chart-names { flex: 0 0 155px; }
 .chart-doses { flex: 1 1 auto; overflow-x: auto; }
 .chart-table { border-collapse: separate; border-spacing: 0; direction: rtl; font-size: 11px; }
 .chart-names .chart-table { width: 155px; min-width: 155px; }
 /* the exact sum of the 51 declared medicine columns */
-.chart-doses .chart-table { min-width: 2601px; }
+.chart-doses .chart-table, .chart-head-scroll .chart-table, .chart-foot-scroll .chart-table { min-width: 2601px; }
 .chart-table th, .chart-table td { width: 51px; min-width: 51px; height: 38px; border-left: 1px solid var(--chart-grid); border-bottom: 1px solid var(--chart-grid); padding: 0; text-align: center; }
-.chart-table thead th { height: 128px; background: var(--chart-head-bg); vertical-align: bottom; border-bottom: 2px solid var(--border-strong); }
-.chart-table .patient-header, .chart-table .patient-cell {
+.chart-table thead th { height: 128px; background: var(--chart-head-bg); vertical-align: bottom; border-bottom: 0; }
+.chart-table .patient-cell {
   width: 155px;
   min-width: 155px;
   max-width: 155px;
   background: var(--surface);
+  border-left: 2px solid var(--border-strong);
 }
-.chart-table .patient-header { background: var(--surface); color: var(--text); }
-.chart-table .patient-cell { border-left: 2px solid var(--border-strong); }
 .patient-cell input { width: 100%; height: 37px; padding: 5px; border: 0; text-align: start; font-variant-numeric: tabular-nums; }
 .patient-cell input::placeholder { color: transparent; }
 .chart-table td input { width: 100%; height: 37px; padding: 0; border: 0; text-align: center; font-variant-numeric: tabular-nums; }
@@ -511,7 +536,8 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 .chart-table tbody tr.active-row td { background: var(--green-50); }
 .chart-table tbody tr.active-row .patient-cell { background: var(--green-100); }
 .chart-table tbody tr:nth-child(5n) td, .chart-table tbody tr:nth-child(5n) .patient-cell { border-bottom-color: var(--border-strong); }
-.chart-table tfoot th, .chart-table tfoot td { height: 38px; background: var(--green-100); color: var(--heading); font-weight: 700; border-top: 2px solid var(--border-strong); }
+/* The totals strip carries its own top rule, so the cells inside it must not add another. */
+.chart-table tfoot td { height: 38px; background: var(--green-100); color: var(--heading); font-weight: 700; border-bottom: 0; }
 
 .modal-backdrop {
   position: fixed;
@@ -546,19 +572,14 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 .date-controls button:hover { background: #ffffff1f; }
 
 /* vertical medicine headers (tuned — do not reorder) */
-.chart-table .patient-header { vertical-align: middle; text-align: center; background: var(--surface); color: var(--text); overflow: hidden; }
-/* The totals row reuses .patient-header, and the rule above would otherwise strip
-   its green background back to plain surface. */
-.chart-table tfoot .patient-header { background: var(--green-100); color: var(--heading); }
-.chart-table .patient-header span { display: block; white-space: nowrap; line-height: 1.8; position: relative; z-index: 1; }
 /* hospital logo as a faint watermark filling the info cell, behind the text */
 .patient-header-logo { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; object-fit: contain; opacity: .12; pointer-events: none; }
 
 /* app credit — fixed corner on every screen, hidden when printing */
 .app-credit { position: fixed; left: 14px; bottom: 10px; z-index: 20; color: var(--text-muted); font-size: var(--text-xs); line-height: 1.3; pointer-events: none; opacity: .75; text-align: start; }
 .app-credit strong { display: block; font-weight: 700; color: var(--heading); }
-.chart-table thead th:not(.patient-header) { width: 51px; min-width: 51px; max-width: 51px; padding: 0; overflow: hidden; vertical-align: middle; }
-.chart-table thead th:not(.patient-header) .medicine-select {
+.chart-table thead th { width: 51px; min-width: 51px; max-width: 51px; padding: 0; overflow: hidden; vertical-align: middle; }
+.chart-table thead th .medicine-select {
   appearance: none;
   -webkit-appearance: none;
   box-sizing: border-box;
@@ -584,9 +605,9 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
   color: var(--text);
   transition: background var(--dur-fast) var(--ease);
 }
-.chart-table thead th:not(.patient-header) .medicine-select::placeholder { color: #9bb0a8; }
-.chart-table thead th:not(.patient-header) .medicine-select:hover { background: var(--green-50); }
-.chart-table thead th:not(.patient-header) .medicine-select:focus { background: var(--green-100); box-shadow: none; }
+.chart-table thead th .medicine-select::placeholder { color: #9bb0a8; }
+.chart-table thead th .medicine-select:hover { background: var(--green-50); }
+.chart-table thead th .medicine-select:focus { background: var(--green-100); box-shadow: none; }
 
 /* ============================================================
    Responsive
@@ -635,41 +656,42 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
   .pill-form-foot .pill-sign { border-color: #000; }
   .pill-form-foot .pill-edit-time { color: #000; }
 }
-@media print { @page { size: A4 landscape; margin: 8mm; } body { background: white; } .topbar, .chart-toolbar, .chart-meta, .modal-backdrop, .active-patient-bar { display: none !important; } .chart-page { width: 100%; padding: 0; }.chart-grid { overflow: visible; max-height: none; border: 1px solid #000; border-radius: 0; }.chart-doses { overflow: visible; }.chart-table { color: #000; background: white; font-size: 7px; }.chart-table th, .chart-table td { border-color: #000; box-shadow: none !important; }.chart-table thead th, .chart-table tfoot th, .chart-table tfoot td, .chart-table .patient-header, .chart-table .patient-cell { background: white; color: #000; }.chart-table input, .chart-table select { color: #000; background: white; } }
+@media print { @page { size: A4 landscape; margin: 8mm; } body { background: white; } .topbar, .chart-toolbar, .chart-meta, .modal-backdrop, .active-patient-bar { display: none !important; } .chart-page { width: 100%; padding: 0; }.chart-frame { --chart-gutter: 0px; border: 1px solid #000; border-radius: 0; }.chart-grid { overflow: visible; max-height: none; }.chart-doses, .chart-head-scroll, .chart-foot-scroll { overflow: visible; }.chart-table { color: #000; background: white; font-size: 7px; }.chart-table th, .chart-table td { border-color: #000; box-shadow: none !important; }.chart-table thead th, .chart-table tfoot td, .chart-table .patient-cell, .chart-head-corner, .chart-foot-corner { background: white; color: #000; }.chart-table input, .chart-table select { color: #000; background: white; } }
 @media print {
 	@page { size: A4 landscape; margin: 5mm; }
 	.app-shell { min-height: 0; }
 	.chart-page { width: 100%; padding: 0; }
-	/* The two tables sit side by side on paper as they do on screen; only the scrolling
-	   and the screen width caps come off. 29mm head + 41 x 3.5mm + 3.5mm totals = 176mm
-	   against 200mm of usable landscape page, so it stays a single sheet. */
+	/* The three strips print stacked exactly as they sit on screen; only the scrolling and
+	   the screen width caps come off. Each strip is a 28mm corner plus a flex remainder, so
+	   the three tables get identical column widths from table-layout: fixed. Budget:
+	   29mm head + 41 x 3.5mm + 3.5mm totals = 176mm against 200mm of usable landscape. */
+	.chart-frame { --chart-gutter: 0px; }
 	.chart-grid { max-height: none; overflow: visible; width: 100%; }
-	.chart-names { flex: 0 0 28mm; }
-	.chart-doses { flex: 1 1 auto; overflow: visible; }
+	.chart-names, .chart-head-corner, .chart-foot-corner { flex: 0 0 28mm; }
+	.chart-doses, .chart-head-scroll, .chart-foot-scroll { flex: 1 1 auto; overflow: visible; }
 	.chart-names .chart-table { width: 28mm; min-width: 0; }
-	.chart-doses .chart-table { width: 100%; min-width: 0; }
+	.chart-doses .chart-table, .chart-head-scroll .chart-table, .chart-foot-scroll .chart-table { width: 100%; min-width: 0; }
 	.chart-table { table-layout: fixed; font-size: 4.5px; }
 	.chart-table th, .chart-table td { width: auto; min-width: 0; height: 3.5mm; line-height: 1; }
-	.chart-table thead th { height: 29mm; }
-	.chart-table thead th:not(.patient-header) { width: auto; min-width: 0; max-width: none; height: 29mm; }
-	.chart-table thead th:not(.patient-header) .medicine-select { width: 100%; min-width: 0; max-width: none; height: 28mm; min-height: 28mm; max-height: 28mm; font-size: 5px; }
-	/* Drop the screen width cap — print re-sizes these cells to fit one landscape page. */
-	.chart-table .patient-header, .chart-table .patient-cell { width: 28mm; min-width: 28mm; max-width: none; }
+	.chart-head-corner { height: 29mm; font-size: 5px; }
+	.chart-head-corner span { line-height: 1.5; }
+	.chart-foot-corner { height: 3.5mm; font-size: 8px; }
+	.chart-table thead th { width: auto; min-width: 0; max-width: none; height: 29mm; }
+	.chart-table thead th .medicine-select { width: 100%; min-width: 0; max-width: none; height: 28mm; min-height: 28mm; max-height: 28mm; font-size: 5px; }
 	.patient-cell input, .chart-table td input { height: 3.5mm; font-size: 7px; padding: 0; }
-	.chart-table tfoot th, .chart-table tfoot td { height: 3.5mm; font-size: 8px; }
+	.chart-table .patient-cell { width: 28mm; min-width: 28mm; max-width: none; }
+	.chart-table tfoot td { height: 3.5mm; font-size: 8px; }
 	/* white paper, black ink only */
 	.chart-page, .chart-page * { background: #fff !important; color: #000 !important; border-color: #000 !important; box-shadow: none !important; }
 	/* keep the vertical rule beside the patient names */
-	.chart-table .patient-header, .chart-table .patient-cell { border-left: 2px solid #000 !important; }
-	/* The screen separates the sticky header and totals row with a 2px border. On paper
-	   every cell already has a rule, and the extra pixels eat into the single-page fit. */
-	.chart-table thead th { border-bottom-width: 1px; }
-	.chart-table tfoot th, .chart-table tfoot td { border-top-width: 1px; }
-	/* keep the info cell a positioning context so the watermark stays inside it */
-	.chart-table .patient-header { position: relative; }
+	.chart-table .patient-cell, .chart-head-corner, .chart-foot-corner { border-left: 2px solid #000 !important; }
+	/* On screen the strips are separated by a 2px rule. On paper every cell already has a
+	   rule, and the extra pixels eat into the single-page fit. */
+	.chart-head { border-bottom-width: 1px; }
+	.chart-foot { border-top-width: 1px; }
 	.patient-header-logo { filter: grayscale(1); opacity: .16; }
 	/* empty medicine-column headers print blank (no "دواء" placeholder) */
-	.chart-table thead th:not(.patient-header) .medicine-select::placeholder { color: transparent !important; }
+	.chart-table thead th .medicine-select::placeholder { color: transparent !important; }
 }
 
 @media print {
