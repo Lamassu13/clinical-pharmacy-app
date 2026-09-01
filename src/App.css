@@ -430,6 +430,29 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 .save-state { margin-inline-start: auto; background: transparent !important; border: 0 !important; padding: 0 !important; color: #bfe8cd; }
 .save-state-error { color: #ffd7d3; font-weight: 700; }
 
+/* Which patient is being edited, kept in view even when the on-screen keyboard covers
+   the row or the grid is scrolled to its last columns. Always rendered at a fixed
+   height so focusing a cell never shifts the layout under the finger. */
+.active-patient-bar {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 38px;
+  padding: 0 var(--space-3);
+  margin-bottom: var(--space-2);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+.active-patient-bar strong { color: var(--heading); font-size: var(--text-base); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.active-patient-bar .row-number { margin-inline-start: auto; color: var(--text-muted); white-space: nowrap; }
+.active-patient-bar .muted { color: var(--text-muted); }
+
 .table-frame {
   overflow: auto;
   max-height: calc(100svh - 240px);
@@ -443,13 +466,14 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
    the patient column — silently widening it. */
 .chart-table { border-collapse: separate; border-spacing: 0; min-width: 2756px; direction: rtl; font-size: 11px; }
 .chart-table th, .chart-table td { width: 51px; min-width: 51px; height: 38px; border-left: 1px solid var(--chart-grid); border-bottom: 1px solid var(--chart-grid); padding: 0; text-align: center; }
-.chart-table thead th { position: sticky; top: 0; z-index: 3; height: 128px; background: var(--chart-head-bg); vertical-align: bottom; box-shadow: 0 8px 12px -8px #0f2f241f; }
-/* WebKit drops the repaint of sticky table cells during horizontal scroll inside an
-   overflow container (worse with rtl + border-collapse: separate), so the frozen
-   patient column went blank in Safari until you scrolled back. Promoting the cells
-   to their own compositing layer forces a repaint each frame. translateZ on the
-   sticky element itself does not break stickiness — only a transform on an
-   *ancestor* would. background-clip keeps the opaque background off the borders. */
+.chart-table thead th { position: sticky; top: 0; z-index: 3; height: 128px; background: var(--chart-head-bg); vertical-align: bottom; border-bottom: 2px solid var(--border-strong); }
+/* Do not promote these cells to their own compositing layer. translateZ(0) and
+   backface-visibility were tried here to force a repaint during horizontal scroll and
+   did the opposite: Safari then stopped repainting the layer when its contents changed,
+   so the column stayed blank the whole time a name was being typed and only caught up
+   on blur. Sticky cells must also carry no box-shadow — same class of repaint failure —
+   which is why the separator below is a plain border.
+   background-clip keeps the opaque background off the borders. */
 .chart-table .patient-header, .chart-table .patient-cell {
   position: sticky;
   right: 0;
@@ -459,19 +483,20 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
   max-width: 155px;
   background: var(--surface);
   background-clip: padding-box;
-  transform: translateZ(0);
-  -webkit-backface-visibility: hidden;
-  backface-visibility: hidden;
 }
 .chart-table .patient-header { z-index: 5; background: var(--surface); color: var(--text); }
-.chart-table .patient-cell { box-shadow: -8px 0 12px -8px #0f2f2440; }
+.chart-table .patient-cell { border-left: 2px solid var(--border-strong); }
 .patient-cell input { width: 100%; height: 37px; padding: 5px; border: 0; text-align: start; font-variant-numeric: tabular-nums; }
 .patient-cell input::placeholder { color: transparent; }
 .chart-table td input { width: 100%; height: 37px; padding: 0; border: 0; text-align: center; font-variant-numeric: tabular-nums; }
 .chart-table tbody tr:hover td { background: var(--green-50); }
 .chart-table tbody tr:hover .patient-cell { background: var(--green-50); }
+/* The row being typed into. Must come after :hover to win on source order — the person
+   entering doses needs to see which patient the row belongs to at a glance. */
+.chart-table tbody tr:focus-within td { background: var(--green-50); }
+.chart-table tbody tr:focus-within .patient-cell { background: var(--green-100); }
 .chart-table tbody tr:nth-child(5n) td { border-bottom-color: var(--border-strong); }
-.chart-table tfoot th, .chart-table tfoot td { position: sticky; bottom: 0; height: 38px; background: var(--green-100); color: var(--heading); font-weight: 700; box-shadow: 0 -8px 12px -8px #0f2f241f; }
+.chart-table tfoot th, .chart-table tfoot td { position: sticky; bottom: 0; height: 38px; background: var(--green-100); color: var(--heading); font-weight: 700; border-top: 2px solid var(--border-strong); }
 .chart-table tfoot th { z-index: 2; }
 
 .modal-backdrop {
@@ -596,7 +621,7 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
   .pill-form-foot .pill-sign { border-color: #000; }
   .pill-form-foot .pill-edit-time { color: #000; }
 }
-@media print { @page { size: A4 landscape; margin: 8mm; } body { background: white; } .topbar, .chart-toolbar, .chart-meta, .modal-backdrop { display: none !important; } .chart-page { width: 100%; padding: 0; }.table-frame { overflow: visible; max-height: none; border: 1px solid #000; border-radius: 0; }.chart-table { color: #000; background: white; font-size: 7px; }.chart-table th, .chart-table td { border-color: #000; box-shadow: none !important; }.chart-table thead th, .chart-table tfoot th, .chart-table tfoot td, .chart-table .patient-header, .chart-table .patient-cell { background: white; color: #000; }.chart-table thead th { position: static; }.chart-table .patient-header, .chart-table .patient-cell, .chart-table tfoot th, .chart-table tfoot td { position: static; }.chart-table input, .chart-table select { color: #000; background: white; } }
+@media print { @page { size: A4 landscape; margin: 8mm; } body { background: white; } .topbar, .chart-toolbar, .chart-meta, .modal-backdrop, .active-patient-bar { display: none !important; } .chart-page { width: 100%; padding: 0; }.table-frame { overflow: visible; max-height: none; border: 1px solid #000; border-radius: 0; }.chart-table { color: #000; background: white; font-size: 7px; }.chart-table th, .chart-table td { border-color: #000; box-shadow: none !important; }.chart-table thead th, .chart-table tfoot th, .chart-table tfoot td, .chart-table .patient-header, .chart-table .patient-cell { background: white; color: #000; }.chart-table thead th { position: static; }.chart-table .patient-header, .chart-table .patient-cell, .chart-table tfoot th, .chart-table tfoot td { position: static; }.chart-table input, .chart-table select { color: #000; background: white; } }
 @media print {
 	@page { size: A4 landscape; margin: 5mm; }
 	.app-shell { min-height: 0; }
@@ -607,15 +632,18 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 	.chart-table thead th { height: 29mm; }
 	.chart-table thead th:not(.patient-header) { width: auto; min-width: 0; max-width: none; height: 29mm; }
 	.chart-table thead th:not(.patient-header) .medicine-select { width: 100%; min-width: 0; max-width: none; height: 28mm; min-height: 28mm; max-height: 28mm; font-size: 5px; }
-	/* Drop the screen-only compositing hint and width cap — print re-sizes these cells
-	   and a transform must not create a containing block during pagination. */
-	.chart-table .patient-header, .chart-table .patient-cell { width: 28mm; min-width: 28mm; max-width: none; transform: none; }
+	/* Drop the screen width cap — print re-sizes these cells to fit one landscape page. */
+	.chart-table .patient-header, .chart-table .patient-cell { width: 28mm; min-width: 28mm; max-width: none; }
 	.patient-cell input, .chart-table td input { height: 3.5mm; font-size: 7px; padding: 0; }
 	.chart-table tfoot th, .chart-table tfoot td { height: 3.5mm; font-size: 8px; }
 	/* white paper, black ink only */
 	.chart-page, .chart-page * { background: #fff !important; color: #000 !important; border-color: #000 !important; box-shadow: none !important; }
-	/* keep the vertical rule beside the patient names (screen relies on a shadow that print drops) */
+	/* keep the vertical rule beside the patient names */
 	.chart-table .patient-header, .chart-table .patient-cell { border-left: 2px solid #000 !important; }
+	/* The screen separates the sticky header and totals row with a 2px border. On paper
+	   every cell already has a rule, and the extra pixels eat into the single-page fit. */
+	.chart-table thead th { border-bottom-width: 1px; }
+	.chart-table tfoot th, .chart-table tfoot td { border-top-width: 1px; }
 	/* keep the info cell a positioning context so the watermark stays inside it */
 	.chart-table .patient-header { position: relative; }
 	.patient-header-logo { filter: grayscale(1); opacity: .16; }
