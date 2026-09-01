@@ -514,7 +514,16 @@ function App() {
   useEffect(() => {
     const viewport = window.visualViewport
     if (!viewport) return undefined
-    const apply = () => document.documentElement.style.setProperty('--vv-offset', `${Math.max(0, viewport.offsetTop)}px`)
+    // Only write when it actually changes: setting a custom property on the root element
+    // invalidates style for the whole document, and this grid holds 2000+ inputs. During an
+    // ordinary sideways scroll the offset never moves, so this costs nothing.
+    let lastOffset = -1
+    const apply = () => {
+      const offset = Math.max(0, Math.round(viewport.offsetTop))
+      if (offset === lastOffset) return
+      lastOffset = offset
+      document.documentElement.style.setProperty('--vv-offset', `${offset}px`)
+    }
     viewport.addEventListener('resize', apply)
     viewport.addEventListener('scroll', apply)
     apply()
@@ -527,8 +536,16 @@ function App() {
 
   // Keep the three strips on the same column. Whichever one the pharmacist drags leads and
   // the other two follow, so the header scrolls under a finger just like the quantities do.
-  // The lock is what stops it looping: writing scrollLeft fires another scroll event, which
-  // would otherwise bounce back at the pane that started it.
+  //
+  // An echo is recognised by its value, not by a timer. Writing scrollLeft to a pane makes
+  // it fire a scroll event of its own, and the browser delivers that asynchronously — a
+  // frame or more later. A lock released on requestAnimationFrame is therefore already open
+  // when the echo lands, so the header would become the leader and write back into the
+  // doses pane in the middle of the user's momentum scroll, snatching it. Comparing against
+  // the last value we published drops those echoes however late they arrive. The 0.5px
+  // tolerance is because scrollLeft is fractional and a write can settle a hair away from
+  // what we asked for, which would otherwise read as a fresh scroll and restart the fight.
+  //
   // Also publish the width the vertical scrollbar steals from the body, so the strips
   // outside it reserve the same amount — otherwise every column sits off its own header on
   // platforms that give scrollbars width.
@@ -538,20 +555,29 @@ function App() {
     const frame = chartFrameRef.current
     if (!doses || !grid || !frame) return undefined
     const panes = [chartHeadRef.current, doses, chartFootRef.current].filter(Boolean)
-    let locked = false
+    let lastLeft = null
+    let pending = 0
+    const propagate = (source) => {
+      pending = 0
+      const left = source.scrollLeft
+      if (lastLeft !== null && Math.abs(left - lastLeft) < 0.5) return
+      lastLeft = left
+      panes.forEach((pane) => { if (pane !== source && Math.abs(pane.scrollLeft - left) >= 0.5) pane.scrollLeft = left })
+    }
+    // At most one write per frame; scroll events arrive faster than frames do.
     const follow = (source) => () => {
-      if (locked) return
-      locked = true
-      panes.forEach((pane) => { if (pane !== source) pane.scrollLeft = source.scrollLeft })
-      requestAnimationFrame(() => { locked = false })
+      if (pending) return
+      pending = requestAnimationFrame(() => propagate(source))
     }
     const handlers = panes.map((pane) => [pane, follow(pane)])
     handlers.forEach(([pane, handler]) => pane.addEventListener('scroll', handler, { passive: true }))
     const measureGutter = () => frame.style.setProperty('--chart-gutter', `${grid.offsetWidth - grid.clientWidth}px`)
     window.addEventListener('resize', measureGutter)
     panes.forEach((pane) => { if (pane !== doses) pane.scrollLeft = doses.scrollLeft })
+    lastLeft = doses.scrollLeft
     measureGutter()
     return () => {
+      if (pending) cancelAnimationFrame(pending)
       handlers.forEach(([pane, handler]) => pane.removeEventListener('scroll', handler))
       window.removeEventListener('resize', measureGutter)
     }
