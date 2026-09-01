@@ -547,6 +547,32 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
    matching row in the other. Must come after :hover to win on source order. */
 .chart-table tbody tr.active-row td { background: var(--green-50); }
 .chart-table tbody tr.active-row .patient-cell { background: var(--green-100); }
+/* The medicine name for the cell being typed into, anchored to that cell rather than to
+   anything at the top of the screen. The header row leaves the screen whenever iOS scrolls
+   to reveal a focused input; a label attached to the cell goes wherever the cell goes, so
+   it cannot be taken away. Above the cell by default — iOS leaves more room there than
+   between the input and the keyboard — and below it when the cell is at the top edge. */
+.chart-table td.cell-active { position: relative; z-index: 7; }
+.cell-medicine {
+  position: absolute;
+  bottom: calc(100% + 3px);
+  right: 0;
+  z-index: 8;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 3px 9px;
+  border-radius: var(--radius-sm);
+  background: var(--green-700);
+  color: #fff;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  line-height: 1.5;
+  box-shadow: var(--shadow-sm);
+  pointer-events: none;
+}
+.cell-medicine.below { bottom: auto; top: calc(100% + 3px); }
 .chart-table tbody tr:nth-child(5n) td, .chart-table tbody tr:nth-child(5n) .patient-cell { border-bottom-color: var(--border-strong); }
 /* The totals strip carries its own top rule, so the cells inside it must not add another. */
 .chart-table tfoot td { height: 38px; background: var(--green-100); color: var(--heading); font-weight: 700; border-bottom: 0; }
@@ -668,7 +694,7 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
   .pill-form-foot .pill-sign { border-color: #000; }
   .pill-form-foot .pill-edit-time { color: #000; }
 }
-@media print { @page { size: A4 landscape; margin: 8mm; } body { background: white; } .topbar, .chart-toolbar, .chart-meta, .modal-backdrop, .active-patient-bar { display: none !important; } .chart-page { width: 100%; padding: 0; }.chart-frame { --chart-gutter: 0px; border: 1px solid #000; border-radius: 0; }.chart-grid { overflow: visible; max-height: none; }.chart-doses, .chart-head-scroll, .chart-foot-scroll { overflow: visible; }.chart-table { color: #000; background: white; font-size: 7px; }.chart-table th, .chart-table td { border-color: #000; box-shadow: none !important; }.chart-table thead th, .chart-table tfoot td, .chart-table .patient-cell, .chart-head-corner, .chart-foot-corner { background: white; color: #000; }.chart-table input, .chart-table select { color: #000; background: white; } }
+@media print { @page { size: A4 landscape; margin: 8mm; } body { background: white; } .topbar, .chart-toolbar, .chart-meta, .modal-backdrop, .active-patient-bar, .cell-medicine { display: none !important; } .chart-page { width: 100%; padding: 0; }.chart-frame { --chart-gutter: 0px; border: 1px solid #000; border-radius: 0; }.chart-grid { overflow: visible; max-height: none; }.chart-doses, .chart-head-scroll, .chart-foot-scroll { overflow: visible; }.chart-table { color: #000; background: white; font-size: 7px; }.chart-table th, .chart-table td { border-color: #000; box-shadow: none !important; }.chart-table thead th, .chart-table tfoot td, .chart-table .patient-cell, .chart-head-corner, .chart-foot-corner { background: white; color: #000; }.chart-table input, .chart-table select { color: #000; background: white; } }
 @media print {
 	@page { size: A4 landscape; margin: 5mm; }
 	.app-shell { min-height: 0; }
