@@ -141,11 +141,27 @@ app.get('/api/medicines', requireAuth, async (_request, response) => {
 })
 // Admin-only: the medicines catalogue is shared, and PUT/DELETE on it are already
 // admin-only, so a normal user must not be able to write rows they cannot clean up.
+// Names differing only in case are the same medicine to a pharmacist, but not to the
+// UNIQUE constraint. Checking here rather than with a unique index on lower(name):
+// production may already hold such pairs from the old re-seed, and creating the index
+// would fail inside the build and take the deploy down with it.
+const findMedicineByName = (name, exceptId = null) => query(
+  'SELECT id, name, arabic_name FROM medicines WHERE lower(name) = lower($1) AND ($2::bigint IS NULL OR id <> $2)',
+  [name, exceptId],
+)
 app.post('/api/medicines', requireAdmin, async (request, response) => {
   const name = cleanText(request.body.name, 200).trim()
   if (!name) return response.status(400).json({ message: 'اسم العلاج مطلوب' })
-  const result = await query('INSERT INTO medicines (name, created_by) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id, name, arabic_name', [name, request.session.user.id])
-  response.status(201).json({ medicine: result.rows[0] })
+  try {
+    const existing = await findMedicineByName(name)
+    if (existing.rows[0]) return response.status(409).json({ message: `"${existing.rows[0].name}" موجود في القائمة أصلًا`, medicine: existing.rows[0] })
+    const result = await query('INSERT INTO medicines (name, created_by) VALUES ($1, $2) RETURNING id, name, arabic_name', [name, request.session.user.id])
+    response.status(201).json({ medicine: result.rows[0] })
+  } catch (error) {
+    if (error.code === '23505') return response.status(409).json({ message: `"${name}" موجود في القائمة أصلًا` })
+    console.error('medicine insert failed:', error)
+    response.status(500).json({ message: 'تعذر إضافة الدواء' })
+  }
 })
 app.put('/api/medicines/:id', requireAdmin, async (request, response) => {
   const id = Number(request.params.id)
@@ -154,6 +170,10 @@ app.put('/api/medicines/:id', requireAdmin, async (request, response) => {
   const arabicName = request.body.arabicName === undefined ? null : cleanText(request.body.arabicName, 200).trim()
   if (name !== null && !name) return response.status(400).json({ message: 'اسم العلاج مطلوب' })
   try {
+    if (name !== null) {
+      const clash = await findMedicineByName(name, id)
+      if (clash.rows[0]) return response.status(409).json({ message: `"${clash.rows[0].name}" موجود في القائمة أصلًا`, medicine: clash.rows[0] })
+    }
     const result = await query('UPDATE medicines SET name = COALESCE($2, name), arabic_name = COALESCE($3, arabic_name) WHERE id = $1 RETURNING id, name, arabic_name', [id, name, arabicName])
     if (!result.rows[0]) return response.status(404).json({ message: 'الدواء غير موجود' })
     response.json({ medicine: result.rows[0] })
@@ -169,9 +189,13 @@ app.delete('/api/medicines/:id', requireAdmin, async (request, response) => {
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
-    const target = await client.query('SELECT id FROM medicines WHERE id = $1', [id])
+    const target = await client.query('SELECT id, name FROM medicines WHERE id = $1', [id])
     if (!target.rows[0]) { await client.query('ROLLBACK'); return response.status(404).json({ message: 'الدواء غير موجود' }) }
-    await client.query('UPDATE chart_columns SET medicine_id = NULL WHERE medicine_id = $1', [id])
+    // Keep the name on the charts that already used it. Reading a chart falls back to
+    // custom_name, which is NULL while a column is linked to the catalogue — so nulling
+    // medicine_id alone would blank the column header of every past chart and leave the
+    // quantities under it with nothing to name them.
+    await client.query('UPDATE chart_columns SET custom_name = $2, medicine_id = NULL WHERE medicine_id = $1', [id, target.rows[0].name])
     await client.query('DELETE FROM pill_entries WHERE medicine_id = $1', [id])
     await client.query('DELETE FROM medicines WHERE id = $1', [id])
     await client.query('COMMIT')
