@@ -261,6 +261,21 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
    App shell / top bar
    ============================================================ */
 .app-shell { min-height: 100svh; }
+/* The chart screen is exactly as tall as the visible area and never scrolls as a page —
+   the grid inside it is the only scroller. That is what keeps the medicine header on
+   screen when the keyboard opens: iOS reveals a focused input by scrolling the document,
+   and here there is no document scroll to give it. --app-vh comes from visualViewport,
+   which is the only height that shrinks when the keyboard appears. */
+.app-shell-chart { height: var(--app-vh, 100svh); min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.app-shell-chart .chart-page { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding: var(--space-4) 0; }
+.app-shell-chart .chart-frame { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.app-shell-chart .chart-grid { flex: 1 1 auto; min-height: 80px; max-height: none; }
+/* With the keyboard up there is little height left, so hand the toolbars' share to the
+   grid. They come back the moment it closes. The info bar stays: it is the one strip that
+   names both the patient and the medicine. */
+.app-shell-chart.keyboard-open .topbar,
+.app-shell-chart.keyboard-open .chart-toolbar,
+.app-shell-chart.keyboard-open .chart-meta { display: none; }
 .topbar {
   display: flex;
   justify-content: space-between;
@@ -433,15 +448,14 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 /* Which patient is being edited, kept in view even when the on-screen keyboard covers
    the row or the grid is scrolled to its last columns. Always rendered at a fixed
    height so focusing a cell never shifts the layout under the finger. */
-/* Which patient and which medicine are being entered. It carries the medicine name because
-   the header row of the grid is the first thing the keyboard pushes off screen — reading
-   this strip has to be enough on its own. translateY compensates for the visual viewport
-   offset iOS applies when the keyboard opens; see the effect that publishes --vv-offset. */
+/* Which patient and which medicine are being entered. It carries the medicine name so that
+   reading this one line is enough to know both. It stays in the flow: a translate was tried
+   here to drag it back into view when the keyboard opened, and it only pushed the strip down
+   over the cells the pharmacist was typing into. */
 .active-patient-bar {
   position: sticky;
   top: 0;
   z-index: 6;
-  transform: translateY(var(--vv-offset, 0px));
   display: flex;
   align-items: center;
   gap: var(--space-5);
@@ -673,6 +687,10 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 @media print {
 	@page { size: A4 landscape; margin: 5mm; }
 	.app-shell { min-height: 0; }
+	/* undo the fixed-height screen layout — paper has no viewport to fit */
+	.app-shell-chart { height: auto; display: block; overflow: visible; }
+	.app-shell-chart .chart-page, .app-shell-chart .chart-frame { display: block; }
+	.app-shell-chart .chart-grid { min-height: 0; }
 	.chart-page { width: 100%; padding: 0; }
 	/* The three strips print stacked exactly as they sit on screen; only the scrolling and
 	   the screen width caps come off. Each strip is a 28mm corner plus a flex remainder, so
