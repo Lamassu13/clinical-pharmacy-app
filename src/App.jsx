@@ -31,6 +31,16 @@ const locationBody = (value) => {
   return null
 }
 const apiUrl = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:3001/api' : '/api')
+// Pill entries are held as { "<row>:<medicine key>": {...} }. The medicine key is a name, so
+// split on the first colon only rather than on every one.
+const pillEntryList = (entries) => Object.entries(entries).map(([key, value]) => {
+  const separator = key.indexOf(':')
+  return {
+    patientRowNumber: Number(key.slice(0, separator)),
+    medicineKey: key.slice(separator + 1),
+    doseTime: value.doseTime || '', usageMethod: value.usageMethod || '', note: value.note || '',
+  }
+})
 
 function MedicineRow({ item, onSave, onRemove, busy }) {
   const [name, setName] = useState(item.name)
@@ -109,6 +119,17 @@ function App() {
   const [pillsLoadError, setPillsLoadError] = useState(false)
   const [adminMedicines, setAdminMedicines] = useState([])
   const [medicineFilter, setMedicineFilter] = useState('')
+  // The session cookie lasts 8 hours. When it lapses the server answers 401, and the save
+  // loop below used to retry a rejected request every 4 seconds forever while the pharmacist
+  // carried on typing into a grid that could no longer be saved. Raising this instead swaps
+  // the screen for a sign-in card without unmounting App, so the typed chart stays in state
+  // and is saved the moment they are back in — rather than lost.
+  const [sessionExpired, setSessionExpired] = useState(false)
+  const isExpired = useCallback((response) => {
+    if (response.status !== 401) return false
+    setSessionExpired(true)
+    return true
+  }, [])
   const today = new Date(`${selectedDate}T12:00:00`).toLocaleDateString('ar-IQ')
   const editTime = new Date().toLocaleString('ar-IQ', { dateStyle: 'short', timeStyle: 'short' })
   const totals = useMemo(() => quantities[0].map((_, columnIndex) => quantities.reduce((sum, row) => sum + (Number(row[columnIndex]) || 0), 0)), [quantities])
@@ -130,6 +151,8 @@ function App() {
       if (!response.ok) throw new Error(result.message || 'تعذر تسجيل الدخول')
       setCurrentUser(result.user)
       setIsLoggedIn(true)
+      // Back on the same screen with the same unsaved chart; the autosave effect resumes.
+      setSessionExpired(false)
     } catch (error) { setLoginError(error.message || 'تعذر الاتصال بالخادم') } finally { setBusy(false) }
   }
   const submitRegister = async (event) => {
@@ -154,6 +177,7 @@ function App() {
     setFloor(null)
     setSelected(null)
     setCredentials({ username: '', password: '' })
+    setSessionExpired(false)
   }, [])
   const loadRegistrations = useCallback(async () => {
     setRegistrationsError('')
@@ -299,7 +323,15 @@ function App() {
   const collapseRow = useCallback((rowIndex) => {
     setPatientNames((current) => { const next = current.filter((_, index) => index !== rowIndex); next.push(''); return next })
     setQuantities((current) => { const next = current.filter((_, index) => index !== rowIndex); next.push(Array(CHART_COLUMNS).fill('')); return next })
-  }, [])
+    // The pill form's dose times and room numbers are keyed by row number and live only on
+    // the server, so they have to be pulled up by one as well. Left behind, they reattach to
+    // whoever moves into the row — the next patient inherits the deleted one's room number.
+    if (!selected || selected.mode === 'pills') return
+    fetch(`${apiUrl}/chart/collapse-row`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+      body: JSON.stringify({ floor: selected.floor, ward: selected.ward, date: selectedDate, rowNumber: rowIndex + 1 }),
+    }).catch(() => undefined)
+  }, [selected, selectedDate])
   const buildChartBody = useCallback((date) => ({
     floor: selected?.floor ?? null,
     ward: selected?.ward,
@@ -318,10 +350,7 @@ function App() {
   const flushPills = useCallback(() => {
     if (!selected || selected.mode !== 'pills' || !isLoggedIn || !pillsData) return
     if (loadedPillsKey !== `${selected.floor || 'special'}-${selected.ward}-${selectedDate}`) return
-    const entries = Object.entries(pillEntries).map(([key, value]) => {
-      const [patientRowNumber, medicineId] = key.split(':').map(Number)
-      return { patientRowNumber, medicineId, doseTime: value.doseTime || '', usageMethod: value.usageMethod || '', note: value.note || '' }
-    })
+    const entries = pillEntryList(pillEntries)
     try { fetch(`${apiUrl}/pills`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', keepalive: true, body: JSON.stringify({ floor: selected.floor, ward: selected.ward, date: selectedDate, entries, rooms: pillRooms }) }) } catch { /* retry on next visit */ }
   }, [isLoggedIn, loadedPillsKey, pillEntries, pillRooms, pillsData, selected, selectedDate])
   const goHome = useCallback(() => {
@@ -355,10 +384,21 @@ function App() {
     })
   }, [])
 
+  // iOS Safari — the iPad this is used on — routinely never fires `beforeunload`: switching
+  // apps, locking the screen or closing the tab can put the page straight into the back/forward
+  // cache. `pagehide` and a hidden `visibilitychange` do fire there, so the last edits made
+  // before the pharmacist walks away reach the server instead of being dropped.
   useEffect(() => {
     const handler = () => { if (selected?.mode === 'pills') flushPills(); else flushChart() }
+    const onVisibilityChange = () => { if (document.visibilityState === 'hidden') handler() }
     window.addEventListener('beforeunload', handler)
-    return () => window.removeEventListener('beforeunload', handler)
+    window.addEventListener('pagehide', handler)
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => {
+      window.removeEventListener('beforeunload', handler)
+      window.removeEventListener('pagehide', handler)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
   }, [selected, flushChart, flushPills])
 
   useEffect(() => { if (isLoggedIn) loadMedicines() }, [isLoggedIn, loadMedicines])
@@ -382,6 +422,10 @@ function App() {
       try {
         const params = new URLSearchParams({ floor: selected.floor || '', ward: selected.ward, date: selectedDate })
         const response = await fetch(`${apiUrl}/chart?${params}`, { credentials: 'include' })
+        // Raise the sign-in card, then keep retrying: a load overwrites nothing that was
+        // typed (the grid is still empty when the very first load is the one that fails),
+        // so once they are signed back in the next attempt simply succeeds.
+        isExpired(response)
         if (!response.ok) throw new Error('load failed')
         const result = await response.json()
         if (cancelled) return
@@ -410,15 +454,18 @@ function App() {
     }
     load()
     return () => { cancelled = true; clearTimeout(retryTimer) }
-  }, [selected, selectedDate])
+  }, [selected, selectedDate, isExpired])
 
   useEffect(() => {
     const chartKey = selected ? `${selected.floor || 'special'}-${selected.ward}-${selectedDate}` : null
-    if (!selected || selected.mode === 'pills' || !isLoggedIn || chartLoading || loadedChartKey !== chartKey) return undefined
+    // Holding off while the session is expired is what stops the 4-second retry loop. The
+    // effect re-runs when it clears, which saves everything typed in the meantime.
+    if (!selected || selected.mode === 'pills' || !isLoggedIn || sessionExpired || chartLoading || loadedChartKey !== chartKey) return undefined
     let retryTimer
     const save = async () => {
       try {
         const response = await fetch(`${apiUrl}/chart`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(buildChartBody(selectedDate)) })
+        if (isExpired(response)) return
         if (!response.ok) throw new Error('save failed')
         setSaveError(false)
       } catch {
@@ -428,7 +475,7 @@ function App() {
     }
     const timer = setTimeout(save, 1200)
     return () => { clearTimeout(timer); clearTimeout(retryTimer) }
-  }, [buildChartBody, chartLoading, isLoggedIn, loadedChartKey, selected, selectedDate])
+  }, [buildChartBody, chartLoading, isExpired, isLoggedIn, loadedChartKey, selected, selectedDate, sessionExpired])
 
   useEffect(() => {
     if (!selected || selected.mode !== 'pills') return undefined
@@ -443,12 +490,13 @@ function App() {
       try {
         const params = new URLSearchParams({ floor: selected.floor || '', ward: selected.ward, date: selectedDate })
         const response = await fetch(`${apiUrl}/pills?${params}`, { credentials: 'include' })
+        isExpired(response)
         if (!response.ok) throw new Error('load failed')
         const result = await response.json()
         if (cancelled) return
         setPillsData(result.pills || null)
         const seed = {}
-        ;(result.pills?.entries || []).forEach((entry) => { seed[`${entry.patientRowNumber}:${entry.medicineId}`] = { doseTime: entry.doseTime || '', usageMethod: entry.usageMethod || '', note: entry.note || '' } })
+        ;(result.pills?.entries || []).forEach((entry) => { seed[`${entry.patientRowNumber}:${entry.medicineKey}`] = { doseTime: entry.doseTime || '', usageMethod: entry.usageMethod || '', note: entry.note || '' } })
         setPillEntries(seed)
         setPillRooms(result.pills?.rooms || {})
         setPillsLoadError(false)
@@ -463,20 +511,18 @@ function App() {
     }
     load()
     return () => { cancelled = true; clearTimeout(retryTimer) }
-  }, [selected, selectedDate])
+  }, [selected, selectedDate, isExpired])
 
   useEffect(() => {
-    if (!selected || selected.mode !== 'pills' || !isLoggedIn || pillsLoading) return undefined
+    if (!selected || selected.mode !== 'pills' || !isLoggedIn || sessionExpired || pillsLoading) return undefined
     const pillsKey = `${selected.floor || 'special'}-${selected.ward}-${selectedDate}`
     if (loadedPillsKey !== pillsKey || !pillsData) return undefined
     let retryTimer
     const save = async () => {
-      const entries = Object.entries(pillEntries).map(([key, value]) => {
-        const [patientRowNumber, medicineId] = key.split(':').map(Number)
-        return { patientRowNumber, medicineId, doseTime: value.doseTime || '', usageMethod: value.usageMethod || '', note: value.note || '' }
-      })
+      const entries = pillEntryList(pillEntries)
       try {
         const response = await fetch(`${apiUrl}/pills`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ floor: selected.floor, ward: selected.ward, date: selectedDate, entries, rooms: pillRooms }) })
+        if (isExpired(response)) return
         if (!response.ok) throw new Error('save failed')
         setPillsSaveError(false)
       } catch {
@@ -486,7 +532,7 @@ function App() {
     }
     const timer = setTimeout(save, 1200)
     return () => { clearTimeout(timer); clearTimeout(retryTimer) }
-  }, [isLoggedIn, loadedPillsKey, pillEntries, pillRooms, pillsData, pillsLoading, selected, selectedDate])
+  }, [isExpired, isLoggedIn, loadedPillsKey, pillEntries, pillRooms, pillsData, pillsLoading, selected, selectedDate, sessionExpired])
 
   const changeDate = useCallback((nextDate) => {
     flushChart()
@@ -555,7 +601,10 @@ function App() {
       handlers.forEach(([pane, handler]) => pane.removeEventListener('scroll', handler))
       window.removeEventListener('resize', measureGutter)
     }
-  }, [selected])
+    // sessionExpired: the sign-in card replaces the chart, so coming back builds new strip
+    // elements. Without re-running, these listeners stay bound to the discarded ones and the
+    // three strips no longer scroll together.
+  }, [selected, sessionExpired])
 
   const changeDateRef = useRef(changeDate)
   const copyToNextDayRef = useRef(copyToNextDay)
@@ -576,7 +625,9 @@ function App() {
     copyButton.addEventListener('click', () => copyToNextDayRef.current())
     meta.append(controls)
     return () => { controls.remove() }
-  }, [selected, selectedDate])
+    // sessionExpired: same reason as above — the date controls are appended to a .chart-meta
+    // that is rebuilt when the chart comes back, so they have to be appended again.
+  }, [selected, selectedDate, sessionExpired])
   useEffect(() => {
     const cards = document.querySelectorAll('.location-card:not(.special)')
     cards.forEach((card) => {
@@ -599,6 +650,10 @@ function App() {
 
   if (!isLoggedIn) return <main className="login-shell"><AppCredit /><section className="login-card"><img className="hospital-logo login-logo" width="116" height="116" src={hospitalLogo} alt="شعار مستشفى بغداد التعليمي" /><p className="eyebrow">مستشفى بغداد التعليمي</p><h1>وحدة الصيدلة السريرية</h1><p className="login-intro">سجل الدخول للوصول إلى جداول الجارت اليومية</p><form onSubmit={submitLogin} className="login-form"><label>اسم المستخدم<input value={credentials.username} onChange={(event) => setCredentials({ ...credentials, username: event.target.value })} required /></label><label>كلمة المرور<input type="password" value={credentials.password} onChange={(event) => setCredentials({ ...credentials, password: event.target.value })} required /></label>{loginError && <p className="form-error" role="alert">{loginError}</p>}<button className="primary-button" type="submit" disabled={busy}>{busy ? 'جارٍ الدخول…' : <>تسجيل الدخول <span>←</span></>}</button></form><button type="button" className="secondary-button" onClick={() => { setAuthView('register'); setLoginError('') }}>إنشاء حساب</button><p className="security-note">الحسابات الجديدة بانتظار موافقة المدير</p></section></main>
 
+  // Swapping the screen rather than logging out: App stays mounted, so the chart the
+  // pharmacist was in the middle of typing is still in state and is saved on the way back in.
+  if (sessionExpired) return <main className="login-shell"><AppCredit /><section className="login-card"><img className="hospital-logo login-logo" width="116" height="116" src={hospitalLogo} alt="شعار مستشفى بغداد التعليمي" /><p className="eyebrow">انتهت الجلسة</p><h1>سجّل الدخول من جديد</h1><p className="login-intro">مضت مدة طويلة على تسجيل دخولك. ما كتبته محفوظ في الجهاز ولم يضع — سجّل الدخول وسيُحفظ فورًا وتعود إلى الشاشة نفسها.</p><form onSubmit={submitLogin} className="login-form"><label>اسم المستخدم<input value={credentials.username} onChange={(event) => setCredentials({ ...credentials, username: event.target.value })} required /></label><label>كلمة المرور<input type="password" value={credentials.password} onChange={(event) => setCredentials({ ...credentials, password: event.target.value })} required /></label>{loginError && <p className="form-error" role="alert">{loginError}</p>}<button className="primary-button" type="submit" disabled={busy}>{busy ? 'جارٍ الدخول…' : <>متابعة العمل <span>←</span></>}</button></form><button type="button" className="text-button" onClick={logout}>تسجيل الخروج والبدء من جديد</button></section></main>
+
   const adminHeader = <header className="topbar"><button type="button" className="topbar-brand" onClick={goHome} aria-label="العودة إلى اختيار الطابق"><img className="hospital-logo header-logo" width="42" height="42" src={hospitalLogo} alt="" /><span><strong>الصيدلة السريرية</strong><small>مستشفى بغداد التعليمي</small></span></button><nav className="user-menu"><ThemeToggle theme={theme} onToggle={toggleTheme} /><button onClick={() => setAdminView('requests')} className={adminView === 'requests' ? 'secondary-button compact' : 'text-button'}>طلبات الانضمام</button><button onClick={() => setAdminView('medicines')} className={adminView === 'medicines' ? 'secondary-button compact' : 'text-button'}>إدارة الأدوية</button><button onClick={() => setAdminView('users')} className={adminView === 'users' ? 'secondary-button compact' : 'text-button'}>جميع المستخدمين</button><button onClick={() => setAdminView(null)} className="text-button">→ عودة</button></nav></header>
 
   if (adminView === 'requests' && currentUser?.role === 'admin') return <main className="app-shell"><AppCredit />{adminHeader}<section className="dashboard"><div className="section-heading"><div><p className="eyebrow">إدارة الحسابات</p><h1>طلبات الانضمام</h1><p>عند القبول اختر الطابق أو الردهة المسموح بها للمستخدم.</p></div><button className="secondary-button" onClick={loadRegistrations}>تحديث</button></div>{registrationsError && <p className="form-error" role="alert">{registrationsError}</p>}{adminSuccess && <p className="form-success" role="status">{adminSuccess}</p>}{registrations.length === 0 ? <div className="empty-state"><strong>لا توجد طلبات</strong><span>لا توجد طلبات انضمام قيد الانتظار حاليًا.</span></div> : <div className="table-frame"><table className="requests-table"><thead><tr><th>الاسم الكامل</th><th>اسم المستخدم</th><th>الهاتف</th><th>البريد الإلكتروني</th><th>رقم البصمة</th><th>الطابق / الردهة</th><th>إجراء</th></tr></thead><tbody>{registrations.map((item) => <tr key={item.id}><td>{item.full_name}</td><td>{item.username}</td><td>{item.phone}</td><td>{item.email}</td><td>{item.fingerprint_number}</td><td><select value={pendingFloor[item.id] || ''} onChange={(event) => setPendingFloor((current) => ({ ...current, [item.id]: event.target.value }))}><option value="">اختر</option><optgroup label="الطوابق">{floors.map((floorOption) => <option key={floorOption.number} value={floorOption.number}>الطابق {floorOption.number}</option>)}</optgroup><optgroup label="ردهات خاصة">{specialWards.map((ward) => <option key={ward} value={ward}>{ward}</option>)}</optgroup></select></td><td className="requests-actions"><button className="primary-button compact" disabled={busy} onClick={() => approveRegistration(item.id)}>قبول</button><button className="danger-button compact" disabled={busy} onClick={() => rejectRegistration(item.id)}>رفض</button></td></tr>)}</tbody></table></div>}</section></main>
@@ -608,7 +663,7 @@ function App() {
   if (adminView === 'medicines' && currentUser?.role === 'admin') return <main className="app-shell"><AppCredit />{adminHeader}<section className="dashboard"><div className="section-heading"><div><p className="eyebrow">الأدوية</p><h1>إدارة الأدوية</h1><p>أضف دواءً، عدّل الاسم الإنجليزي أو العربي، أو احذفه. الاسم العربي يظهر في استمارة الحبوب.</p></div></div>{registrationsError && <p className="form-error" role="alert">{registrationsError}</p>}{adminSuccess && <p className="form-success" role="status">{adminSuccess}</p>}<form className="medicine-add-row" onSubmit={addMedicine}><input placeholder="اسم دواء جديد (إنجليزي)" value={newMedicine} onChange={(event) => setNewMedicine(event.target.value)} /><button className="primary-button compact" type="submit" disabled={busy || !newMedicine.trim()}>{busy ? 'جارٍ الإضافة…' : 'إضافة'}</button></form><input className="medicine-filter" placeholder="بحث في الأدوية…" value={medicineFilter} onChange={(event) => setMedicineFilter(event.target.value)} /><div className="table-frame"><table className="requests-table"><thead><tr><th>الاسم (إنجليزي)</th><th>الاسم بالعربية</th><th>إجراء</th></tr></thead><tbody>{adminMedicines.filter((item) => !medicineFilter.trim() || `${item.name} ${item.arabic_name || ''}`.toLowerCase().includes(medicineFilter.trim().toLowerCase())).map((item) => <MedicineRow key={`${item.id}:${item.name}:${item.arabic_name || ''}`} item={item} onSave={saveMedicine} onRemove={removeMedicine} busy={busy} />)}</tbody></table></div></section></main>
 
   const wardLabel = selected ? (selected.floor ? `الطابق ${selected.floor} - ${selected.ward}` : selected.ward) : ''
-  if (selected && selected.mode === 'pills') return <main className="app-shell"><AppCredit /><header className="topbar"><button type="button" className="topbar-brand" onClick={goHome} aria-label="العودة إلى اختيار الطابق"><img className="hospital-logo header-logo" width="42" height="42" src={hospitalLogo} alt="" /><span><strong>الصيدلة السريرية</strong><small>مستشفى بغداد التعليمي</small></span></button><div className="user-menu"><ThemeToggle theme={theme} onToggle={toggleTheme} /><span>{currentUser?.fullName || 'مستخدم'}</span><button onClick={logout} className="text-button">تسجيل الخروج</button></div></header><section className="pills-page"><div className="chart-toolbar pills-toolbar"><button className="back-button" onClick={() => { flushPills(); setSelected(null) }}>→ العودة للردهات</button><div><p className="eyebrow">استمارة إعطاء الحبوب</p><h1>{wardLabel}</h1></div><div className="toolbar-actions"><label className="pills-date">التاريخ <input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} /></label><span aria-live="polite" className={(pillsSaveError || pillsLoadError) ? 'save-state save-state-error' : 'save-state'}>{pillsLoadError ? '⚠ تعذر تحميل الاستمارة — إعادة المحاولة…' : pillsSaveError ? '⚠ لم يُحفظ — تُعاد المحاولة…' : '● محفوظ تلقائيًا'}</span><button className="primary-button compact" onClick={() => window.print()}>طباعة</button></div></div>{pillsLoading ? <div className="empty-state"><span className="spinner" /><span>جارٍ تحميل الاستمارة…</span></div> : !pillsData ? <div className="empty-state"><strong>لا يوجد جارت لهذا اليوم</strong><span>سجّل جارت هذه الردهة أولًا، ثم ستُبنى استمارة الحبوب تلقائيًا.</span></div> : pillsData.patients.length === 0 ? <div className="empty-state"><strong>لا حبوب لعرضها</strong><span>لا يوجد مريض لديه علاج أقراص أو كبسولات (Tab / Cap) في جارت هذا اليوم.</span></div> : pillsData.patients.map((patient) => <article className="pill-form" key={patient.rowNumber}><div className="pill-form-head"><div className="pill-form-patient"><strong>{patient.name}</strong><span>{today}</span></div><label className="pill-room">رقم الغرفة <input value={pillRooms[patient.rowNumber] || ''} onChange={(event) => setPillRooms((current) => ({ ...current, [patient.rowNumber]: event.target.value }))} /></label><div className="pill-form-brand"><div className="pill-form-title"><strong>مستشفى بغداد التعليمي</strong><span>وحدة الصيدلة السريرية</span><span>{wardLabel}</span></div><img className="hospital-logo header-logo" width="42" height="42" src={hospitalLogo} alt="" /></div></div><div className="pill-table-scroll"><table className="pill-table"><thead><tr><th></th><th>العلاج</th><th>وقت الجرعة</th><th>طريقة الاستخدام</th><th>الملاحظات</th></tr></thead><tbody>{pillsData.medicines.filter((med) => (pillsData.matrix[patient.rowNumber] || []).includes(med.id)).map((med) => { const key = `${patient.rowNumber}:${med.id}`; const entry = pillEntries[key] || { doseTime: '', usageMethod: '', note: '' }; return <tr key={med.id}><td className="pill-lead-cell"></td><td>{med.arabicName || med.name}</td><td><PillSelect value={entry.doseTime} options={doseTimes} onChange={(nextValue) => setPillEntries((current) => ({ ...current, [key]: { ...entry, doseTime: nextValue } }))} /></td><td><PillSelect value={entry.usageMethod} options={usageMethods} onChange={(nextValue) => setPillEntries((current) => ({ ...current, [key]: { ...entry, usageMethod: nextValue } }))} /></td><td><PillSelect value={entry.note} options={noteOptions} onChange={(nextValue) => setPillEntries((current) => ({ ...current, [key]: { ...entry, note: nextValue } }))} /></td></tr> })}</tbody></table></div><div className="pill-form-foot"><span className="pill-sign">توقيع الصيدلاني السريري</span><span className="pill-edit-time">وقت التحرير: {editTime}</span></div></article>)}</section></main>
+  if (selected && selected.mode === 'pills') return <main className="app-shell"><AppCredit /><header className="topbar"><button type="button" className="topbar-brand" onClick={goHome} aria-label="العودة إلى اختيار الطابق"><img className="hospital-logo header-logo" width="42" height="42" src={hospitalLogo} alt="" /><span><strong>الصيدلة السريرية</strong><small>مستشفى بغداد التعليمي</small></span></button><div className="user-menu"><ThemeToggle theme={theme} onToggle={toggleTheme} /><span>{currentUser?.fullName || 'مستخدم'}</span><button onClick={logout} className="text-button">تسجيل الخروج</button></div></header><section className="pills-page"><div className="chart-toolbar pills-toolbar"><button className="back-button" onClick={() => { flushPills(); setSelected(null) }}>→ العودة للردهات</button><div><p className="eyebrow">استمارة إعطاء الحبوب</p><h1>{wardLabel}</h1></div><div className="toolbar-actions"><label className="pills-date">التاريخ <input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} /></label><span aria-live="polite" className={(pillsSaveError || pillsLoadError) ? 'save-state save-state-error' : 'save-state'}>{pillsLoadError ? '⚠ تعذر تحميل الاستمارة — إعادة المحاولة…' : pillsSaveError ? '⚠ لم يُحفظ — تُعاد المحاولة…' : '● محفوظ تلقائيًا'}</span><button className="primary-button compact" onClick={() => window.print()}>طباعة</button></div></div>{pillsLoading ? <div className="empty-state"><span className="spinner" /><span>جارٍ تحميل الاستمارة…</span></div> : !pillsData ? <div className="empty-state"><strong>لا يوجد جارت لهذا اليوم</strong><span>سجّل جارت هذه الردهة أولًا، ثم ستُبنى استمارة الحبوب تلقائيًا.</span></div> : pillsData.patients.length === 0 ? <div className="empty-state"><strong>لا حبوب لعرضها</strong><span>لا يوجد مريض لديه علاج أقراص أو كبسولات (Tab / Cap) في جارت هذا اليوم.</span></div> : pillsData.patients.map((patient) => <article className="pill-form" key={patient.rowNumber}><div className="pill-form-head"><div className="pill-form-patient"><strong>{patient.name}</strong><span>{today}</span></div><label className="pill-room">رقم الغرفة <input value={pillRooms[patient.rowNumber] || ''} onChange={(event) => setPillRooms((current) => ({ ...current, [patient.rowNumber]: event.target.value }))} /></label><div className="pill-form-brand"><div className="pill-form-title"><strong>مستشفى بغداد التعليمي</strong><span>وحدة الصيدلة السريرية</span><span>{wardLabel}</span></div><img className="hospital-logo header-logo" width="42" height="42" src={hospitalLogo} alt="" /></div></div><div className="pill-table-scroll"><table className="pill-table"><thead><tr><th></th><th>العلاج</th><th>وقت الجرعة</th><th>طريقة الاستخدام</th><th>الملاحظات</th></tr></thead><tbody>{pillsData.medicines.filter((med) => (pillsData.matrix[patient.rowNumber] || []).includes(med.key)).map((med) => { const key = `${patient.rowNumber}:${med.key}`; const entry = pillEntries[key] || { doseTime: '', usageMethod: '', note: '' }; return <tr key={med.key}><td className="pill-lead-cell"></td><td>{med.arabicName || med.name}</td><td><PillSelect value={entry.doseTime} options={doseTimes} onChange={(nextValue) => setPillEntries((current) => ({ ...current, [key]: { ...entry, doseTime: nextValue } }))} /></td><td><PillSelect value={entry.usageMethod} options={usageMethods} onChange={(nextValue) => setPillEntries((current) => ({ ...current, [key]: { ...entry, usageMethod: nextValue } }))} /></td><td><PillSelect value={entry.note} options={noteOptions} onChange={(nextValue) => setPillEntries((current) => ({ ...current, [key]: { ...entry, note: nextValue } }))} /></td></tr> })}</tbody></table></div><div className="pill-form-foot"><span className="pill-sign">توقيع الصيدلاني السريري</span><span className="pill-edit-time">وقت التحرير: {editTime}</span></div></article>)}</section></main>
 
   return <main className="app-shell"><AppCredit /><header className="topbar"><button type="button" className="topbar-brand" onClick={goHome} aria-label="العودة إلى اختيار الطابق"><img className="hospital-logo header-logo" width="42" height="42" src={hospitalLogo} alt="" /><span><strong>الصيدلة السريرية</strong><small>مستشفى بغداد التعليمي</small></span></button><nav className="user-menu"><ThemeToggle theme={theme} onToggle={toggleTheme} />{currentUser?.role === 'admin' && <button className="text-button" onClick={() => setAdminView('requests')}>طلبات الانضمام</button>}{currentUser?.role === 'admin' && <button className="text-button" onClick={() => setAdminView('medicines')}>إدارة الأدوية</button>}{currentUser?.role === 'admin' && <button className="text-button" onClick={() => setAdminView('users')}>جميع المستخدمين</button>}<span>{currentUser?.fullName || 'مستخدم'}</span><button onClick={logout} className="text-button">تسجيل الخروج</button></nav></header>{!selected && !floor ? <section className="dashboard"><div className="section-heading"><div><p className="eyebrow">مساحة العمل اليومية</p><h1>اختر الطابق أو الردهة</h1><p>ابدأ باختيار موقع الجارت الذي تريد تسجيله أو مراجعته.</p></div><div className="date-chip"><span>اليوم</span><strong>{today}</strong></div></div><div className="location-grid">{floors.map((item) => <button className="location-card" key={item.number} onClick={() => setFloor(item)}><span className="floor-number">{item.number}</span><span><strong>الطابق {item.number}</strong><small>{item.wards.length} أروقة فرعية</small></span><span className="arrow">←</span></button>)}{specialWards.map((ward) => <div className="location-card special" key={ward}><span className="floor-number">✚</span><span><strong>{ward}</strong></span><span className="ward-card-actions"><button className="secondary-button compact" onClick={() => setSelected({ floor: null, ward, mode: 'chart' })}>الجارت</button><button className="primary-button compact" onClick={() => setSelected({ floor: null, ward, mode: 'pills' })}>الحبوب</button></span></div>)}</div></section> : !selected ? <section className="dashboard"><button className="back-button" onClick={() => setFloor(null)}>→ العودة للطوابق</button><div className="section-heading"><div><p className="eyebrow">الطابق {floor.number}</p><h1>اختر الردهة</h1><p>اختر «الجارت» لتسجيل الجرعات، أو «الحبوب» لاستمارة إعطاء الحبوب.</p></div></div><div className="location-grid">{floor.wards.map((ward) => <div className="location-card" key={ward}><span className="floor-number">{floor.number}</span><span><strong>{ward}</strong></span><span className="ward-card-actions"><button className="secondary-button compact" onClick={() => setSelected({ floor: floor.number, ward, mode: 'chart' })}>الجارت</button><button className="primary-button compact" onClick={() => setSelected({ floor: floor.number, ward, mode: 'pills' })}>الحبوب</button></span></div>)}</div></section> : <section className="chart-page"><div className="chart-toolbar"><button className="back-button" onClick={() => { flushChart(); setSelected(null) }}>→ العودة للردهات</button><div><p className="eyebrow">الجارت اليومي</p><h1>{wardLabel}</h1></div><div className="toolbar-actions">{currentUser?.role === 'admin' && <button className="secondary-button" onClick={() => { setRegistrationsError(''); setShowMedicineForm(true) }}>+ علاج جديد</button>}<button className="primary-button compact" onClick={() => window.print()}>طباعة A4</button></div></div><div className="chart-meta">{selected.floor && <span>الطابق: <b>{selected.floor}</b></span>}<span>الفرع: <b>{selected.ward}</b></span><span>التاريخ: <b>{today}</b></span><span aria-live="polite" className={(saveError || loadError) ? 'save-state save-state-error' : 'save-state'}>{loadError ? '⚠ تعذر تحميل الجارت — إعادة المحاولة…' : saveError ? '⚠ لم يُحفظ — تُعاد المحاولة…' : '● محفوظ تلقائيًا'}</span></div><datalist id="medicine-options">{medicines.map((medicine) => <option key={medicine} value={medicine} />)}</datalist><div className="active-patient-bar" aria-live="polite">{activeRow >= 0 ? <><span className="bar-item"><span className="bar-key">المريض</span><strong>{patientNames[activeRow]?.trim() || 'بلا اسم'}</strong><span className="bar-num">صف {activeRow + 1}</span></span>{activeColumn >= 0 && <span className="bar-item"><span className="bar-key">العلاج</span><strong>{columnMedicines[activeColumn]?.trim() || 'بلا اسم'}</strong><span className="bar-num">عمود {activeColumn + 1}</span></span>}</> : <span className="muted">اضغط داخل خلية ليظهر المريض والعلاج هنا</span>}</div><div className="chart-frame" ref={chartFrameRef}><div className="chart-head"><div className="chart-head-corner"><img className="patient-header-logo" src={hospitalLogo} alt="" /><span>مستشفى بغداد التعليمي</span><span>وحدة الصيدلة السريرية</span>{selected.floor && <span>الطابق {selected.floor}</span>}<span>{selected.ward}</span><span>{today}</span></div><div className="chart-head-scroll" ref={chartHeadRef}><table className="chart-table"><thead><tr>{Array.from({ length: CHART_COLUMNS }, (_, index) => <th key={index}><input className="medicine-select" list="medicine-options" value={columnMedicines[index]} onChange={(event) => setColumnMedicines((current) => current.map((medicine, medicineIndex) => medicineIndex === index ? event.target.value : medicine))} placeholder="دواء" title="اكتب أول حروف الدواء" /></th>)}</tr></thead></table></div></div><div className="chart-grid" ref={chartGridRef} onFocusCapture={(event) => { const row = event.target.closest('tr[data-row]'); if (row) setActiveRow(Number(row.dataset.row)); const cell = event.target.closest('td[data-col]'); setActiveColumn(cell ? Number(cell.dataset.col) : -1); if (cell && chartGridRef.current) setLabelBelow(cell.getBoundingClientRect().top - chartGridRef.current.getBoundingClientRect().top < 34) }} onBlurCapture={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) { setActiveRow(-1); setActiveColumn(-1) } }}><div className="chart-names"><table className="chart-table"><tbody>{patientNames.map((name, rowIndex) => <tr key={rowIndex} data-row={rowIndex} className={activeRow === rowIndex ? 'active-row' : undefined}><th className="patient-cell"><input value={name} onChange={(event) => setPatientNames((current) => current.map((patient, index) => index === rowIndex ? event.target.value : patient))} onFocus={() => { editingRowStart.current = { row: rowIndex, name } }} onBlur={() => { const start = editingRowStart.current; if (start.row === rowIndex && start.name.trim() && !name.trim()) collapseRow(rowIndex) }} placeholder={`مريض ${rowIndex + 1}`} /></th></tr>)}</tbody></table></div><div className="chart-doses" ref={chartDosesRef}><table className="chart-table"><tbody>{patientNames.map((name, rowIndex) => <tr key={rowIndex} data-row={rowIndex} className={activeRow === rowIndex ? 'active-row' : undefined}>{Array.from({ length: CHART_COLUMNS }, (_, columnIndex) => <td key={columnIndex} data-col={columnIndex} className={activeRow === rowIndex && activeColumn === columnIndex ? 'cell-active' : undefined}><input inputMode="numeric" pattern="[0-9]*" value={quantities[rowIndex][columnIndex]} onChange={(event) => updateQuantity(rowIndex, columnIndex, event.target.value)} />{activeRow === rowIndex && activeColumn === columnIndex && columnMedicines[columnIndex].trim() && <span className={labelBelow ? 'cell-medicine below' : 'cell-medicine'}>{columnMedicines[columnIndex].trim()}</span>}</td>)}</tr>)}</tbody></table></div></div><div className="chart-foot"><div className="chart-foot-corner">المجموع</div><div className="chart-foot-scroll" ref={chartFootRef}><table className="chart-table"><tfoot><tr>{totals.map((total, index) => <td key={index}>{total || ''}</td>)}</tr></tfoot></table></div></div></div>{showMedicineForm && <div className="modal-backdrop" onClick={() => setShowMedicineForm(false)}><form className="medicine-modal" role="dialog" aria-modal="true" aria-labelledby="add-medicine-title" onSubmit={addMedicine} onClick={(event) => event.stopPropagation()}><button type="button" className="close-button" aria-label="إغلاق" onClick={() => setShowMedicineForm(false)}>×</button><p className="eyebrow">قائمة الأدوية العامة</p><h2 id="add-medicine-title">إضافة علاج جديد</h2>{registrationsError && <p className="form-error" role="alert">{registrationsError}</p>}<label>اسم العلاج<input autoFocus value={newMedicine} onChange={(event) => setNewMedicine(event.target.value)} required /></label><button className="primary-button" type="submit">إضافة إلى القائمة</button></form></div>}</section>}</main>
 }

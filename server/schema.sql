@@ -83,15 +83,40 @@ CREATE TABLE IF NOT EXISTS chart_quantities (
 ALTER TABLE medicines ADD COLUMN IF NOT EXISTS arabic_name TEXT;
 ALTER TABLE chart_columns ADD COLUMN IF NOT EXISTS custom_name TEXT;
 
+-- Keyed by the medicine's normalised name, not by a catalogue id. A chart column is free
+-- text: it links to the catalogue when it matches one, and stands alone when it does not.
+-- Keying on the id meant an unlinked column could hold no dose times at all, and deleting
+-- a medicine from the catalogue cascaded away the dose times on every past printed form.
 CREATE TABLE IF NOT EXISTS pill_entries (
   chart_id BIGINT NOT NULL REFERENCES daily_charts(id) ON DELETE CASCADE,
   patient_row_number INTEGER NOT NULL CHECK (patient_row_number BETWEEN 1 AND 41),
-  medicine_id BIGINT NOT NULL REFERENCES medicines(id) ON DELETE CASCADE,
+  medicine_key TEXT NOT NULL,
   dose_time TEXT NOT NULL DEFAULT '',
   usage_method TEXT NOT NULL DEFAULT '',
-  PRIMARY KEY (chart_id, patient_row_number, medicine_id)
+  PRIMARY KEY (chart_id, patient_row_number, medicine_key)
 );
 ALTER TABLE pill_entries ADD COLUMN IF NOT EXISTS note TEXT NOT NULL DEFAULT '';
+-- Move a database created before the re-key above off medicine_id. Guarded on the old column
+-- still existing, because this file runs unattended on every deploy and the statements inside
+-- are not individually idempotent. Fresh databases skip the whole block.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'pill_entries' AND column_name = 'medicine_id') THEN
+    ALTER TABLE pill_entries ADD COLUMN IF NOT EXISTS medicine_key TEXT;
+    UPDATE pill_entries pe SET medicine_key = lower(btrim(regexp_replace(m.name, '\s+', ' ', 'g')))
+      FROM medicines m WHERE m.id = pe.medicine_id AND pe.medicine_key IS NULL;
+    -- Nothing left to name it by: the catalogue row is already gone.
+    DELETE FROM pill_entries WHERE medicine_key IS NULL;
+    -- Two catalogue rows differing only in case collapse to one key here.
+    DELETE FROM pill_entries pe USING pill_entries other
+      WHERE pe.chart_id = other.chart_id AND pe.patient_row_number = other.patient_row_number
+        AND pe.medicine_key = other.medicine_key AND pe.medicine_id > other.medicine_id;
+    ALTER TABLE pill_entries ALTER COLUMN medicine_key SET NOT NULL;
+    ALTER TABLE pill_entries DROP CONSTRAINT IF EXISTS pill_entries_pkey;
+    ALTER TABLE pill_entries ADD PRIMARY KEY (chart_id, patient_row_number, medicine_key);
+    ALTER TABLE pill_entries DROP COLUMN medicine_id;
+  END IF;
+END $$;
 -- An earlier `lead_note` column was never wired to the form's leading column, which is a
 -- blank box the nurse fills in by hand on the printed sheet. Databases created before this
 -- keep the column; it defaults to '' so inserts that omit it succeed. Dropping it belongs in

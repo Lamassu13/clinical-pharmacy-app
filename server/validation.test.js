@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   ALLOWED_FLOORS, FLOOR_WARDS, SPECIAL_WARDS, isKnownWard, PILL_FORM,
-  canAccessLocation, clampInt, isIsoDate, cleanText,
+  canAccessLocation, clampInt, isIsoDate, cleanText, normalizeMedicineKey, medicineKeySql,
 } from './validation.js'
 
 const admin = { role: 'admin' }
@@ -84,4 +84,26 @@ test('PILL_FORM: matches an oral solid but not a name that merely contains "cap"
   assert.equal(PILL_FORM.test('Aspirin 100mg Tablets'), true)
   assert.equal(PILL_FORM.test('Captopril 25mg'), false)
   assert.equal(PILL_FORM.test('Meronem 1g Vial'), false)
+})
+
+test('normalizeMedicineKey: case and repeated spaces name the same medicine', () => {
+  // The bug this exists to stop: a column typed slightly differently from the catalogue
+  // entry stayed unlinked, and an unlinked column never reached the pill form.
+  const key = normalizeMedicineKey('Amoxicillin Cap')
+  assert.equal(normalizeMedicineKey('amoxicillin cap'), key)
+  assert.equal(normalizeMedicineKey('  Amoxicillin   Cap  '), key)
+  assert.equal(normalizeMedicineKey('AMOXICILLIN\tCAP'), key)
+  assert.notEqual(normalizeMedicineKey('Amoxicillin Tab'), key)
+})
+
+test('normalizeMedicineKey: never returns a non-string', () => {
+  assert.equal(normalizeMedicineKey(undefined), '')
+  assert.equal(normalizeMedicineKey(null), '')
+  assert.equal(normalizeMedicineKey(''), '')
+  assert.equal(normalizeMedicineKey('   '), '')
+})
+
+test('medicineKeySql: builds the SQL twin around the column it is given', () => {
+  assert.equal(medicineKeySql('name'), "lower(btrim(regexp_replace(name, '\\s+', ' ', 'g')))")
+  assert.ok(medicineKeySql('cc.custom_name').includes('cc.custom_name'))
 })

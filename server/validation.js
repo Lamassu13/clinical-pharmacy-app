@@ -21,6 +21,15 @@ export const isKnownWard = (floor, wardName) => (
 )
 // A medicine belongs on the pill administration form when its name names an oral solid.
 export const PILL_FORM = /\b(tab|tabs|tablet|tablets|cap|caps|capsule|capsules)\b/i
+// Two spellings of the same medicine are the same medicine to a pharmacist: "Amoxicillin Cap",
+// "amoxicillin cap" and "Amoxicillin  Cap" all name one drug. Everything that has to match a
+// typed chart column against the catalogue — or against a pill entry — compares this key
+// instead of the raw text, which is what used to drop a whole column from the pill form.
+export const normalizeMedicineKey = (value) => String(value ?? '').trim().replace(/\s+/g, ' ').toLowerCase()
+// The SQL twin of normalizeMedicineKey, for matching a JS-normalised key against a column.
+// `column` is always a literal written here, never request data. Postgres `lower` and `\s`
+// agree with the JS versions across the ASCII range, which is all a medicine name uses.
+export const medicineKeySql = (column) => `lower(btrim(regexp_replace(${column}, '\\s+', ' ', 'g')))`
 // Fixed option lists for the pill form. Keep in sync with src/App.jsx.
 export const DOSE_TIMES = ['٨ صباحًا', '٩ صباحًا', '١٠ صباحًا', '١١ صباحًا', '١٢ ظهرًا', '٢ ظهرًا', '٣ ظهرًا', '٤ عصرًا', '٥ عصرًا', '٦ مساءً', '٨ ليلًا', '٩ ليلًا', '١٠ ليلًا', '١٠ صباحًا - ١٠ مساءً', '١٢ ظهرًا - ١٢ ليلًا', '١٢ ظهرًا - ٨ ليلًا', '٨ صباحًا - ٤ عصرًا - ١٢ ليلًا', '٦ صباحًا - ١٢ ظهرًا - ٦ مساءً - ١٢ ليلًا']
 export const USAGE_METHODS = ['حبة بعد الطعام مباشرة', 'حبة قبل الطعام بساعة أو بعده بساعتين', '٢ حبة بعد الطعام مباشرة', 'نصف حبة قبل الطعام', 'نصف حبة بعد الطعام']

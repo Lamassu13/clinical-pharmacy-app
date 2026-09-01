@@ -13,6 +13,7 @@ import { authenticateUser, requireAdmin, requireAuth } from './auth.js'
 import {
   ALLOWED_FLOORS, MAX_PATIENT_ROWS, SPECIAL_WARDS, isKnownWard, PILL_FORM,
   DOSE_TIMES, USAGE_METHODS, NOTE_OPTIONS, canAccessLocation, clampInt, isIsoDate, cleanText,
+  normalizeMedicineKey, medicineKeySql,
 } from './validation.js'
 
 const app = express()
@@ -146,8 +147,8 @@ app.get('/api/medicines', requireAuth, async (_request, response) => {
 // production may already hold such pairs from the old re-seed, and creating the index
 // would fail inside the build and take the deploy down with it.
 const findMedicineByName = (name, exceptId = null) => query(
-  'SELECT id, name, arabic_name FROM medicines WHERE lower(name) = lower($1) AND ($2::bigint IS NULL OR id <> $2)',
-  [name, exceptId],
+  `SELECT id, name, arabic_name FROM medicines WHERE ${medicineKeySql('name')} = $1 AND ($2::bigint IS NULL OR id <> $2)`,
+  [normalizeMedicineKey(name), exceptId],
 )
 app.post('/api/medicines', requireAdmin, async (request, response) => {
   const name = cleanText(request.body.name, 200).trim()
@@ -196,7 +197,8 @@ app.delete('/api/medicines/:id', requireAdmin, async (request, response) => {
     // medicine_id alone would blank the column header of every past chart and leave the
     // quantities under it with nothing to name them.
     await client.query('UPDATE chart_columns SET custom_name = $2, medicine_id = NULL WHERE medicine_id = $1', [id, target.rows[0].name])
-    await client.query('DELETE FROM pill_entries WHERE medicine_id = $1', [id])
+    // pill_entries are keyed by the medicine's name, not its catalogue id, so the dose times
+    // and usage methods on every past form survive the catalogue row going away.
     await client.query('DELETE FROM medicines WHERE id = $1', [id])
     await client.query('COMMIT')
     response.json({ ok: true })
@@ -391,22 +393,27 @@ app.put('/api/chart', requireAuth, async (request, response) => {
       await client.query('INSERT INTO chart_patients (chart_id, row_number, patient_name) SELECT $1, rn, name FROM UNNEST($2::int[], $3::text[]) AS u(rn, name)', [chartId, [...patientByRow.keys()], [...patientByRow.values()]])
     }
 
-    // Link a column to a medicine only when its text exactly matches an existing
-    // catalogue entry. Anything else is kept as free text on the column itself, so
-    // typing in the chart never adds rows to the shared medicines list.
+    // Link a column to a medicine when its text names an existing catalogue entry, ignoring
+    // case and repeated spaces — "amoxicillin  cap" and "Amoxicillin Cap" are one medicine to
+    // a pharmacist. Matching the raw string meant a column typed a hair differently stayed
+    // unlinked, and an unlinked column never reached the pill form at all. Anything with no
+    // catalogue match is still kept as free text on the column itself, so typing in the chart
+    // never adds rows to the shared medicines list.
     const medicineByColumn = new Map(columns.map((column) => [column.columnNumber, column.medicineName]))
-    const wantedMedicines = [...new Set([...medicineByColumn.values()].filter(Boolean))]
-    const idByMedicine = new Map()
-    if (wantedMedicines.length) {
-      const known = await client.query('SELECT id, name FROM medicines WHERE name = ANY($1::text[])', [wantedMedicines])
-      known.rows.forEach((row) => idByMedicine.set(row.name, row.id))
+    const wantedKeys = [...new Set([...medicineByColumn.values()].filter(Boolean).map(normalizeMedicineKey))]
+    const idByKey = new Map()
+    if (wantedKeys.length) {
+      // A catalogue predating the duplicate check can hold two rows with one key; the oldest
+      // wins, so the same typed column always links to the same row rather than alternating.
+      const known = await client.query(`SELECT id, name FROM medicines WHERE ${medicineKeySql('name')} = ANY($1::text[]) ORDER BY id`, [wantedKeys])
+      known.rows.forEach((row) => { const key = normalizeMedicineKey(row.name); if (!idByKey.has(key)) idByKey.set(key, row.id) })
     }
     if (medicineByColumn.size) {
       const columnNumbers = [...medicineByColumn.keys()]
-      const medicineIds = columnNumbers.map((columnNumber) => idByMedicine.get(medicineByColumn.get(columnNumber)) ?? null)
+      const medicineIds = columnNumbers.map((columnNumber) => idByKey.get(normalizeMedicineKey(medicineByColumn.get(columnNumber))) ?? null)
       const customNames = columnNumbers.map((columnNumber) => {
         const text = medicineByColumn.get(columnNumber)
-        return text && !idByMedicine.has(text) ? text : null
+        return text && !idByKey.has(normalizeMedicineKey(text)) ? text : null
       })
       await client.query('INSERT INTO chart_columns (chart_id, column_number, medicine_id, custom_name) SELECT $1, cn, mid, cname FROM UNNEST($2::int[], $3::bigint[], $4::text[]) AS u(cn, mid, cname)', [chartId, columnNumbers, medicineIds, customNames])
     }
@@ -442,31 +449,53 @@ app.get('/api/pills', requireAuth, async (request, response) => {
   if (!canAccessLocation(request.session.user, floor, wardName)) return response.status(403).json({ message: 'لا تملك صلاحية لهذه الردهة' })
   const chartId = await resolveChartId(floor, wardName, chartDate)
   if (!chartId) return response.json({ pills: null })
+  // LEFT JOIN, not JOIN: a column whose text is not in the catalogue has a NULL medicine_id
+  // and lives in custom_name. An inner join dropped those columns outright, which is how a
+  // medicine the pharmacist could plainly see in the chart never appeared on the pill form.
   const [columns, patients, quantities, entries, rooms] = await Promise.all([
-    query('SELECT cc.column_number, cc.medicine_id, m.name, m.arabic_name FROM chart_columns cc JOIN medicines m ON m.id = cc.medicine_id WHERE cc.chart_id = $1', [chartId]),
+    query('SELECT cc.column_number, cc.custom_name, m.name, m.arabic_name FROM chart_columns cc LEFT JOIN medicines m ON m.id = cc.medicine_id WHERE cc.chart_id = $1', [chartId]),
     query("SELECT row_number, patient_name FROM chart_patients WHERE chart_id = $1 AND patient_name <> '' ORDER BY row_number", [chartId]),
     query('SELECT row_number, column_number, quantity FROM chart_quantities WHERE chart_id = $1 AND quantity > 0', [chartId]),
-    query('SELECT patient_row_number, medicine_id, dose_time, usage_method, note FROM pill_entries WHERE chart_id = $1', [chartId]),
+    query('SELECT patient_row_number, medicine_key, dose_time, usage_method, note FROM pill_entries WHERE chart_id = $1', [chartId]),
     query('SELECT patient_row_number, room_number FROM pill_patient_meta WHERE chart_id = $1', [chartId]),
   ])
-  const pillColumns = columns.rows.filter((column) => PILL_FORM.test(column.name || ''))
-  const medicineByColumn = new Map(pillColumns.map((column) => [column.column_number, column.medicine_id]))
+  // Whatever the column is called on the chart is what names the medicine here.
+  const pillColumns = columns.rows
+    .map((column) => ({ columnNumber: column.column_number, name: column.name || column.custom_name || '', arabicName: column.arabic_name || '' }))
+    .filter((column) => PILL_FORM.test(column.name))
+  // An unlinked column may still name a catalogue medicine (an old chart saved before the
+  // matching was case-insensitive). Look those up by key so they keep their Arabic name.
+  const unresolved = [...new Set(pillColumns.filter((column) => !column.arabicName).map((column) => normalizeMedicineKey(column.name)))]
+  if (unresolved.length) {
+    const found = await query(`SELECT name, arabic_name FROM medicines WHERE ${medicineKeySql('name')} = ANY($1::text[])`, [unresolved])
+    const arabicByKey = new Map(found.rows.map((row) => [normalizeMedicineKey(row.name), row.arabic_name || '']))
+    // Only fill the blanks — a column already linked to the catalogue has the right name.
+    pillColumns.forEach((column) => {
+      if (!column.arabicName) column.arabicName = arabicByKey.get(normalizeMedicineKey(column.name)) || ''
+    })
+  }
+  const keyByColumn = new Map(pillColumns.map((column) => [column.columnNumber, normalizeMedicineKey(column.name)]))
   const nameByRow = new Map(patients.rows.map((patient) => [patient.row_number, patient.patient_name]))
   const matrix = {}
-  const usedMedicineIds = new Set()
+  const usedKeys = new Set()
   quantities.rows.forEach((cell) => {
-    const medicineId = medicineByColumn.get(cell.column_number)
-    if (medicineId === undefined || !nameByRow.has(cell.row_number)) return
+    const medicineKey = keyByColumn.get(cell.column_number)
+    if (medicineKey === undefined || !nameByRow.has(cell.row_number)) return
     if (!matrix[cell.row_number]) matrix[cell.row_number] = []
-    if (!matrix[cell.row_number].includes(medicineId)) matrix[cell.row_number].push(medicineId)
-    usedMedicineIds.add(medicineId)
+    if (!matrix[cell.row_number].includes(medicineKey)) matrix[cell.row_number].push(medicineKey)
+    usedKeys.add(medicineKey)
   })
-  const medicineInfo = new Map(pillColumns.map((column) => [column.medicine_id, { id: column.medicine_id, name: column.name, arabicName: column.arabic_name || '' }]))
+  // Two chart columns can spell one medicine differently; the first spelling names it.
+  const medicineInfo = new Map()
+  pillColumns.forEach((column) => {
+    const key = normalizeMedicineKey(column.name)
+    if (!medicineInfo.has(key)) medicineInfo.set(key, { key, name: column.name, arabicName: column.arabicName })
+  })
   const result = {
     patients: patients.rows.filter((patient) => matrix[patient.row_number]).map((patient) => ({ rowNumber: patient.row_number, name: patient.patient_name })),
-    medicines: [...usedMedicineIds].map((id) => medicineInfo.get(id)).filter(Boolean).sort((a, b) => (a.arabicName || a.name).localeCompare(b.arabicName || b.name, 'ar')),
+    medicines: [...usedKeys].map((key) => medicineInfo.get(key)).filter(Boolean).sort((a, b) => (a.arabicName || a.name).localeCompare(b.arabicName || b.name, 'ar')),
     matrix,
-    entries: entries.rows.map((row) => ({ patientRowNumber: row.patient_row_number, medicineId: row.medicine_id, doseTime: row.dose_time, usageMethod: row.usage_method, note: row.note })),
+    entries: entries.rows.map((row) => ({ patientRowNumber: row.patient_row_number, medicineKey: row.medicine_key, doseTime: row.dose_time, usageMethod: row.usage_method, note: row.note })),
     rooms: Object.fromEntries(rooms.rows.map((row) => [row.patient_row_number, row.room_number])),
   }
   response.json({ pills: result })
@@ -484,13 +513,13 @@ app.put('/api/pills', requireAuth, async (request, response) => {
   const byKey = new Map()
   ;(Array.isArray(request.body.entries) ? request.body.entries : []).forEach((entry) => {
     const patientRowNumber = clampInt(entry?.patientRowNumber, 1, MAX_PATIENT_ROWS)
-    const medicineId = clampInt(entry?.medicineId, 1, Number.MAX_SAFE_INTEGER)
-    if (patientRowNumber === null || medicineId === null) return
+    const medicineKey = normalizeMedicineKey(cleanText(entry?.medicineKey, 200))
+    if (patientRowNumber === null || !medicineKey) return
     const doseTime = DOSE_TIMES.includes(entry?.doseTime) ? entry.doseTime : ''
     const usageMethod = USAGE_METHODS.includes(entry?.usageMethod) ? entry.usageMethod : ''
     const note = NOTE_OPTIONS.includes(entry?.note) ? entry.note : ''
     if (!doseTime && !usageMethod && !note) return
-    byKey.set(`${patientRowNumber}:${medicineId}`, { patientRowNumber, medicineId, doseTime, usageMethod, note })
+    byKey.set(`${patientRowNumber}:${medicineKey}`, { patientRowNumber, medicineKey, doseTime, usageMethod, note })
   })
   const rows = [...byKey.values()]
   const roomRows = Object.entries(request.body.rooms && typeof request.body.rooms === 'object' ? request.body.rooms : {})
@@ -503,8 +532,8 @@ app.put('/api/pills', requireAuth, async (request, response) => {
     await client.query('DELETE FROM pill_patient_meta WHERE chart_id = $1', [chartId])
     if (rows.length) {
       await client.query(
-        'INSERT INTO pill_entries (chart_id, patient_row_number, medicine_id, dose_time, usage_method, note) SELECT $1, prn, mid, dt, um, nt FROM UNNEST($2::int[], $3::bigint[], $4::text[], $5::text[], $6::text[]) AS u(prn, mid, dt, um, nt)',
-        [chartId, rows.map((row) => row.patientRowNumber), rows.map((row) => row.medicineId), rows.map((row) => row.doseTime), rows.map((row) => row.usageMethod), rows.map((row) => row.note)],
+        'INSERT INTO pill_entries (chart_id, patient_row_number, medicine_key, dose_time, usage_method, note) SELECT $1, prn, mk, dt, um, nt FROM UNNEST($2::int[], $3::text[], $4::text[], $5::text[], $6::text[]) AS u(prn, mk, dt, um, nt)',
+        [chartId, rows.map((row) => row.patientRowNumber), rows.map((row) => row.medicineKey), rows.map((row) => row.doseTime), rows.map((row) => row.usageMethod), rows.map((row) => row.note)],
       )
     }
     if (roomRows.length) {
@@ -519,6 +548,51 @@ app.put('/api/pills', requireAuth, async (request, response) => {
     await client.query('ROLLBACK')
     console.error('pill save failed:', error)
     response.status(400).json({ message: 'تعذر حفظ الاستمارة' })
+  } finally { client.release() }
+})
+
+// Deleting a patient's name in the chart pulls every row below it up one. The pill form's
+// dose times and room numbers are keyed by that row number and live only in the database, so
+// without this they stay behind and reattach to whoever moves up into the row — a room number
+// on the wrong patient's printed administration form. Reinsert rather than UPDATE ... - 1:
+// the primary key is checked per row, so shifting rows in an unspecified order collides.
+app.post('/api/chart/collapse-row', requireAuth, async (request, response) => {
+  const floor = request.body.floor ? clampInt(request.body.floor, 2, 10) : null
+  const wardName = cleanText(request.body.ward, 120).trim()
+  const chartDate = request.body.date
+  const rowNumber = clampInt(request.body.rowNumber, 1, MAX_PATIENT_ROWS)
+  if (request.body.floor && (floor === null || !ALLOWED_FLOORS.includes(floor))) return response.status(400).json({ message: 'الطابق غير مسموح' })
+  if (!wardName || !isIsoDate(chartDate) || rowNumber === null) return response.status(400).json({ message: 'بيانات الردهة والتاريخ والصف مطلوبة' })
+  if (!isKnownWard(floor, wardName)) return response.status(400).json({ message: 'الردهة غير معروفة' })
+  if (!canAccessLocation(request.session.user, floor, wardName)) return response.status(403).json({ message: 'لا تملك صلاحية لهذه الردهة' })
+  const chartId = await resolveChartId(floor, wardName, chartDate)
+  // Nothing saved for this day yet, so there is no pill data to keep in step.
+  if (!chartId) return response.json({ ok: true })
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    const entries = await client.query('SELECT patient_row_number, medicine_key, dose_time, usage_method, note FROM pill_entries WHERE chart_id = $1 AND patient_row_number > $2 ORDER BY patient_row_number', [chartId, rowNumber])
+    const rooms = await client.query('SELECT patient_row_number, room_number FROM pill_patient_meta WHERE chart_id = $1 AND patient_row_number > $2 ORDER BY patient_row_number', [chartId, rowNumber])
+    await client.query('DELETE FROM pill_entries WHERE chart_id = $1 AND patient_row_number >= $2', [chartId, rowNumber])
+    await client.query('DELETE FROM pill_patient_meta WHERE chart_id = $1 AND patient_row_number >= $2', [chartId, rowNumber])
+    if (entries.rowCount) {
+      await client.query(
+        'INSERT INTO pill_entries (chart_id, patient_row_number, medicine_key, dose_time, usage_method, note) SELECT $1, prn, mk, dt, um, nt FROM UNNEST($2::int[], $3::text[], $4::text[], $5::text[], $6::text[]) AS u(prn, mk, dt, um, nt)',
+        [chartId, entries.rows.map((row) => row.patient_row_number - 1), entries.rows.map((row) => row.medicine_key), entries.rows.map((row) => row.dose_time), entries.rows.map((row) => row.usage_method), entries.rows.map((row) => row.note)],
+      )
+    }
+    if (rooms.rowCount) {
+      await client.query(
+        'INSERT INTO pill_patient_meta (chart_id, patient_row_number, room_number) SELECT $1, prn, rn FROM UNNEST($2::int[], $3::text[]) AS u(prn, rn)',
+        [chartId, rooms.rows.map((row) => row.patient_row_number - 1), rooms.rows.map((row) => row.room_number)],
+      )
+    }
+    await client.query('COMMIT')
+    response.json({ ok: true })
+  } catch (error) {
+    await client.query('ROLLBACK')
+    console.error('collapse row failed:', error)
+    response.status(500).json({ message: 'تعذر إزاحة بيانات الحبوب' })
   } finally { client.release() }
 })
 
