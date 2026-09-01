@@ -504,28 +504,34 @@ function App() {
   // below tear down and re-create its DOM node on every single keystroke — a full
   // reflow of a 2756px table with 2000+ inputs, which is what smeared the sticky
   // patient column. The effect now only re-runs when the ward or date actually changes.
-  // Push the header and totals strips to wherever the doses half has been scrolled, and
-  // publish the width the vertical scrollbar steals from the body so the strips outside
-  // it can reserve the same amount — otherwise every column sits off its own header on
-  // platforms with classic scrollbars. Only these two strips are driven from JavaScript;
-  // the patient names are pure CSS and cannot lag behind a scroll.
+  // Keep the three strips on the same column. Whichever one the pharmacist drags leads and
+  // the other two follow, so the header scrolls under a finger just like the quantities do.
+  // The lock is what stops it looping: writing scrollLeft fires another scroll event, which
+  // would otherwise bounce back at the pane that started it.
+  // Also publish the width the vertical scrollbar steals from the body, so the strips
+  // outside it reserve the same amount — otherwise every column sits off its own header on
+  // platforms that give scrollbars width.
   useEffect(() => {
     const doses = chartDosesRef.current
     const grid = chartGridRef.current
     const frame = chartFrameRef.current
     if (!doses || !grid || !frame) return undefined
-    const sync = () => {
-      const left = doses.scrollLeft
-      if (chartHeadRef.current) chartHeadRef.current.scrollLeft = left
-      if (chartFootRef.current) chartFootRef.current.scrollLeft = left
+    const panes = [chartHeadRef.current, doses, chartFootRef.current].filter(Boolean)
+    let locked = false
+    const follow = (source) => () => {
+      if (locked) return
+      locked = true
+      panes.forEach((pane) => { if (pane !== source) pane.scrollLeft = source.scrollLeft })
+      requestAnimationFrame(() => { locked = false })
     }
+    const handlers = panes.map((pane) => [pane, follow(pane)])
+    handlers.forEach(([pane, handler]) => pane.addEventListener('scroll', handler, { passive: true }))
     const measureGutter = () => frame.style.setProperty('--chart-gutter', `${grid.offsetWidth - grid.clientWidth}px`)
-    doses.addEventListener('scroll', sync, { passive: true })
     window.addEventListener('resize', measureGutter)
-    sync()
+    panes.forEach((pane) => { if (pane !== doses) pane.scrollLeft = doses.scrollLeft })
     measureGutter()
     return () => {
-      doses.removeEventListener('scroll', sync)
+      handlers.forEach(([pane, handler]) => pane.removeEventListener('scroll', handler))
       window.removeEventListener('resize', measureGutter)
     }
   }, [selected])

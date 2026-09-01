@@ -482,7 +482,12 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 .chart-head { border-bottom: 2px solid var(--border-strong); }
 .chart-foot { border-top: 2px solid var(--border-strong); }
 .chart-head-corner, .chart-foot-corner { flex: 0 0 155px; border-left: 2px solid var(--border-strong); }
-.chart-head-scroll, .chart-foot-scroll { flex: 1 1 auto; overflow-x: hidden; }
+/* Draggable like the body is — the header is where you go looking for a distant medicine,
+   so it has to scroll under your finger too. Their scrollbars are hidden: the doses half
+   already shows one, and three stacked bars would be noise and would eat into the header's
+   fixed height. */
+.chart-head-scroll, .chart-foot-scroll { flex: 1 1 auto; overflow-x: auto; scrollbar-width: none; }
+.chart-head-scroll::-webkit-scrollbar, .chart-foot-scroll::-webkit-scrollbar { height: 0; }
 /* position: relative is what keeps the watermark inside this box. The logo is absolutely
    positioned at inset: 0, so without a positioned ancestor it escapes and stretches across
    the whole chart. */
