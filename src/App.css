@@ -522,7 +522,12 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
   font-size: 11px;
 }
 .chart-head-corner span { display: block; white-space: nowrap; line-height: 1.8; position: relative; z-index: 1; }
-.chart-foot-corner { height: 38px; display: flex; align-items: center; justify-content: center; background: var(--green-100); color: var(--heading); font-weight: 700; font-size: 11px; }
+/* A flex column of labels, one per totals row, so "المجموع" and "المجموع المضاعف" line up
+   with the rows they name. Each label carries the row height rather than the corner having a
+   fixed one, so the corner grows by exactly one row when Thursday adds the doubled line. */
+.chart-foot-corner { display: flex; flex-direction: column; background: var(--green-100); color: var(--heading); font-weight: 700; font-size: 11px; }
+.chart-foot-corner span { height: 38px; display: flex; align-items: center; justify-content: center; }
+.chart-table tfoot tr.doubled-row td { background: var(--green-50); }
 /* align-items must not stretch — with a max-height here the children would size to the
    visible height rather than their content, and the doses table would be clipped. */
 .chart-grid {
@@ -743,7 +748,10 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 	   is untouched. */
 	.chart-head-corner { height: 35mm; font-size: 10px; }
 	.chart-head-corner span { line-height: 1.5; }
-	.chart-foot-corner { height: 3.5mm; font-size: 8px; }
+	/* The corner is sized by its labels, one per totals row, so Thursday's doubled line adds
+	   exactly 3.5mm: 183mm becomes 186.5mm against the 200mm of usable landscape. */
+	.chart-foot-corner { height: auto; font-size: 8px; }
+	.chart-foot-corner span { height: 3.5mm; }
 	.chart-table thead th { width: auto; min-width: 0; max-width: none; height: 35mm; }
 	/* The name is set vertically, so the font size spends the header's HEIGHT, not its width,
 	   and the input cannot wrap or shrink — it just clips. Going 5px -> 7px costs 1.4x the run
