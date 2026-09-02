@@ -703,8 +703,9 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
   .pill-form.print-last { break-after: auto; }
   .pill-pick { display: none !important; }
   /* The leading column is the box the nurse fills in by hand, so give it room to write in.
-     height on a cell is a minimum, so this sets the whole row's height. */
-  .pill-table td:first-child { height: 50px; }
+     height on a cell is a minimum, so this sets the whole row's height. Measured cost: at
+     100px a form holds 7 medicines on one A4 sheet, and an eighth pushes it onto a second. */
+  .pill-table td:first-child { height: 100px; }
   .pill-form-head { border-color: #000; }
   .pill-room input { border: 0; border-bottom: 1px solid #000; color: #000; padding: 0 2px; }
   .pill-table th, .pill-table td { border-color: #000; color: #000; font-size: 12px; }
