@@ -395,6 +395,11 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 
 /* The table has a 120px fixed lead column plus four content columns, which
    exceeds a phone viewport — scroll it inside the card instead of the page. */
+/* Screen-only: picks which patients go on paper. Never printed. */
+.pill-pick { display: inline-flex; align-items: center; gap: var(--space-2); padding: 4px 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface-alt); color: var(--text-muted); font-size: var(--text-xs); font-weight: 700; cursor: pointer; user-select: none; white-space: nowrap; }
+.pill-pick:hover { border-color: var(--green-700); color: var(--text); }
+.pill-pick input { width: 15px; height: 15px; margin: 0; accent-color: var(--green-700); cursor: pointer; }
+.pill-pick:has(input:checked) { border-color: var(--green-700); background: var(--green-50); color: var(--green-700); }
 .pill-table-scroll { overflow-x: auto; }
 .pill-table { width: 100%; border-collapse: collapse; table-layout: auto; min-width: 460px; }
 .pill-table th, .pill-table td { border: 1px solid var(--border-strong); padding: 6px 8px; text-align: start; font-size: var(--text-sm); vertical-align: middle; }
@@ -690,6 +695,16 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
   .pills-page { page: pills; width: 100%; padding: 0; }
   .pill-form { page: pills; border: 1px solid #000; border-radius: 0; box-shadow: none; break-after: page; padding: 0; margin: 0; }
   .pill-form:last-child { break-after: auto; }
+  /* Printing a chosen few: the unpicked forms stay on screen and leave the paper. The break
+     has to come off whichever form prints LAST, not off :last-child — if the final patient is
+     unpicked, :last-child is display:none and the break stays on the form before it, which
+     ends the job on a blank sheet. */
+  .pill-form.not-printing { display: none !important; }
+  .pill-form.print-last { break-after: auto; }
+  .pill-pick { display: none !important; }
+  /* The leading column is the box the nurse fills in by hand, so give it room to write in.
+     height on a cell is a minimum, so this sets the whole row's height. */
+  .pill-table td:first-child { height: 50px; }
   .pill-form-head { border-color: #000; }
   .pill-room input { border: 0; border-bottom: 1px solid #000; color: #000; padding: 0 2px; }
   .pill-table th, .pill-table td { border-color: #000; color: #000; font-size: 12px; }
