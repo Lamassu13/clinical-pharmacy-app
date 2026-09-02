@@ -9,7 +9,7 @@ import rateLimit from 'express-rate-limit'
 import bcrypt from 'bcryptjs'
 import 'dotenv/config'
 import { checkDatabase, pool, query } from './db.js'
-import { authenticateUser, requireAdmin, requireAuth } from './auth.js'
+import { authenticateUser, requireAdmin, requireAuth, requireManager } from './auth.js'
 import {
   ALLOWED_FLOORS, MAX_PATIENT_ROWS, SPECIAL_WARDS, isKnownWard, PILL_FORM,
   DOSE_TIMES, USAGE_METHODS, NOTE_OPTIONS, canAccessLocation, clampInt, isIsoDate, cleanText,
@@ -150,7 +150,7 @@ const findMedicineByName = (name, exceptId = null) => query(
   `SELECT id, name, arabic_name FROM medicines WHERE ${medicineKeySql('name')} = $1 AND ($2::bigint IS NULL OR id <> $2)`,
   [normalizeMedicineKey(name), exceptId],
 )
-app.post('/api/medicines', requireAdmin, async (request, response) => {
+app.post('/api/medicines', requireManager, async (request, response) => {
   const name = cleanText(request.body.name, 200).trim()
   if (!name) return response.status(400).json({ message: 'اسم العلاج مطلوب' })
   try {
@@ -164,7 +164,7 @@ app.post('/api/medicines', requireAdmin, async (request, response) => {
     response.status(500).json({ message: 'تعذر إضافة الدواء' })
   }
 })
-app.put('/api/medicines/:id', requireAdmin, async (request, response) => {
+app.put('/api/medicines/:id', requireManager, async (request, response) => {
   const id = Number(request.params.id)
   if (!Number.isInteger(id) || id < 1) return response.status(400).json({ message: 'معرّف غير صحيح' })
   const name = request.body.name === undefined ? null : cleanText(request.body.name, 200).trim()
@@ -184,7 +184,7 @@ app.put('/api/medicines/:id', requireAdmin, async (request, response) => {
     response.status(500).json({ message: 'تعذر تحديث الدواء' })
   }
 })
-app.delete('/api/medicines/:id', requireAdmin, async (request, response) => {
+app.delete('/api/medicines/:id', requireManager, async (request, response) => {
   const id = Number(request.params.id)
   if (!Number.isInteger(id) || id < 1) return response.status(400).json({ message: 'معرّف غير صحيح' })
   const client = await pool.connect()
@@ -244,7 +244,7 @@ app.put('/api/registrations/:id', requireAdmin, async (request, response) => {
   } finally { client.release() }
 })
 
-app.get('/api/users', requireAdmin, async (_request, response) => {
+app.get('/api/users', requireManager, async (_request, response) => {
   const result = await query(`SELECT u.id, u.full_name, u.username, u.email, u.phone, u.role, u.account_status,
     COALESCE((SELECT array_agg(floor_number ORDER BY floor_number) FROM user_floor_access WHERE user_id = u.id), '{}') AS floors,
     COALESCE((SELECT array_agg(ward_name ORDER BY ward_name) FROM user_ward_access WHERE user_id = u.id), '{}') AS wards
@@ -282,6 +282,40 @@ app.delete('/api/users/:id', requireAdmin, async (request, response) => {
   } finally { client.release() }
 })
 
+// Manager-only, never requireManager: a supervisor able to reach this could promote itself to
+// admin, which would make the whole distinction decorative.
+const ASSIGNABLE_ROLES = ['admin', 'supervisor', 'user']
+app.put('/api/users/:id/role', requireAdmin, async (request, response) => {
+  const id = Number(request.params.id)
+  const role = request.body.role
+  if (!Number.isInteger(id) || id < 1) return response.status(400).json({ message: 'معرّف غير صحيح' })
+  if (!ASSIGNABLE_ROLES.includes(role)) return response.status(400).json({ message: 'الدور غير صحيح' })
+  // Changing your own role is how an admin locks itself out by accident, and it is the one
+  // case the last-admin count below cannot protect against on its own.
+  if (id === Number(request.session.user.id)) return response.status(400).json({ message: 'لا يمكنك تغيير دور حسابك الخاص' })
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    const target = await client.query('SELECT role FROM users WHERE id = $1', [id])
+    if (!target.rows[0]) { await client.query('ROLLBACK'); return response.status(404).json({ message: 'المستخدم غير موجود' }) }
+    if (target.rows[0].role === role) { await client.query('ROLLBACK'); return response.json({ ok: true, role }) }
+    if (target.rows[0].role === 'admin') {
+      const admins = await client.query("SELECT COUNT(*)::int AS count FROM users WHERE role = 'admin'")
+      if (admins.rows[0].count <= 1) { await client.query('ROLLBACK'); return response.status(400).json({ message: 'لا يمكن تنزيل آخر مدير في النظام' }) }
+    }
+    await client.query('UPDATE users SET role = $2 WHERE id = $1', [id, role])
+    await client.query('COMMIT')
+    // The role lives in the session snapshot, so without this a demoted admin keeps admin
+    // rights until their cookie expires — up to eight hours.
+    await revokeUserSessions(pool, id)
+    response.json({ ok: true, role })
+  } catch (error) {
+    await client.query('ROLLBACK')
+    console.error('role change failed:', error)
+    response.status(500).json({ message: 'تعذر تغيير الدور' })
+  } finally { client.release() }
+})
+
 app.get('/api/access', requireAdmin, async (_request, response) => {
   const result = await query('SELECT u.id, u.username, u.full_name, ufa.floor_number FROM users u LEFT JOIN user_floor_access ufa ON ufa.user_id = u.id ORDER BY u.full_name')
   response.json({ access: result.rows })
@@ -309,7 +343,7 @@ const setUserAccess = async (userId, location, assignedBy) => {
     await client.query('COMMIT')
   } catch (error) { await client.query('ROLLBACK'); throw error } finally { client.release() }
 }
-app.put('/api/access/by-username', requireAdmin, async (request, response) => {
+app.put('/api/access/by-username', requireManager, async (request, response) => {
   const location = resolveLocation(request.body)
   if (!location) return response.status(400).json({ message: 'الطابق أو الردهة غير مسموح' })
   const userResult = await query('SELECT id FROM users WHERE username = $1 OR email = $1', [String(request.body.username || '').trim()])
@@ -318,7 +352,7 @@ app.put('/api/access/by-username', requireAdmin, async (request, response) => {
   await revokeUserSessions(pool, userResult.rows[0].id)
   response.json({ ok: true })
 })
-app.put('/api/access/:userId', requireAdmin, async (request, response) => {
+app.put('/api/access/:userId', requireManager, async (request, response) => {
   const location = resolveLocation(request.body)
   const userId = Number(request.params.userId)
   if (!location) return response.status(400).json({ message: 'الطابق أو الردهة غير مسموح' })

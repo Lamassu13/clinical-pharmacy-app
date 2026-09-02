@@ -129,6 +129,11 @@ CREATE TABLE IF NOT EXISTS pill_patient_meta (
   PRIMARY KEY (chart_id, patient_row_number)
 );
 
+-- Admit the supervisor role on databases created when only admin and user existed. Same
+-- drop-then-add shape as the row-number widening below, so the deploy can run it every time.
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
+ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin', 'supervisor', 'user'));
+
 -- Widen the patient-row cap from 36 to 41 on databases created before this change.
 ALTER TABLE chart_patients DROP CONSTRAINT IF EXISTS chart_patients_row_number_check;
 ALTER TABLE chart_patients ADD CONSTRAINT chart_patients_row_number_check CHECK (row_number BETWEEN 1 AND 41);

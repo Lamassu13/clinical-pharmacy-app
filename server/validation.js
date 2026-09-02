@@ -35,7 +35,8 @@ export const DOSE_TIMES = ['٨ صباحًا', '٩ صباحًا', '١٠ صباح�
 export const USAGE_METHODS = ['حبة بعد الطعام مباشرة', 'حبة قبل الطعام بساعة أو بعده بساعتين', '٢ حبة بعد الطعام مباشرة', 'نصف حبة قبل الطعام', 'نصف حبة بعد الطعام']
 export const NOTE_OPTIONS = ['الامتناع عن تناول منتجات الأجبان والألبان قبل وبعد الحبة بساعتين']
 export const canAccessLocation = (user, floor, wardName) => {
-  if (user.role === 'admin') return true
+  // A supervisor oversees the whole unit, so every floor and ward is in scope for them too.
+  if (user.role === 'admin' || user.role === 'supervisor') return true
   if (Number.isInteger(floor)) return floor === user.assignedFloor
   return Array.isArray(user.assignedWards) && user.assignedWards.includes(wardName)
 }

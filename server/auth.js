@@ -6,8 +6,18 @@ export const requireAuth = (request, response, next) => {
   next()
 }
 
+// Reserved for what must stay with the manager alone: join requests, deleting users, and
+// changing roles. A supervisor allowed to change roles could promote itself.
 export const requireAdmin = (request, response, next) => {
   if (request.session.user?.role !== 'admin') return response.status(403).json({ message: 'صلاحية المدير مطلوبة' })
+  next()
+}
+
+// The day-to-day administration a supervisor shares with the manager: the medicines
+// catalogue, seeing the user list, and assigning where people work.
+const MANAGER_ROLES = new Set(['admin', 'supervisor'])
+export const requireManager = (request, response, next) => {
+  if (!MANAGER_ROLES.has(request.session.user?.role)) return response.status(403).json({ message: 'صلاحية إدارية مطلوبة' })
   next()
 }
 

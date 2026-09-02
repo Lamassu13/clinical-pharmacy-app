@@ -107,3 +107,17 @@ test('medicineKeySql: builds the SQL twin around the column it is given', () => 
   assert.equal(medicineKeySql('name'), "lower(btrim(regexp_replace(name, '\\s+', ' ', 'g')))")
   assert.ok(medicineKeySql('cc.custom_name').includes('cc.custom_name'))
 })
+
+test('canAccessLocation: a supervisor oversees every floor and ward', () => {
+  const supervisor = { role: 'supervisor', assignedFloor: null, assignedWards: [] }
+  assert.equal(canAccessLocation(supervisor, 5, 'ردهة رجال'), true)
+  assert.equal(canAccessLocation(supervisor, 10, 'الردهة النفسية'), true)
+  assert.equal(canAccessLocation(supervisor, null, 'ردهة الديلزة'), true)
+})
+
+test('canAccessLocation: an unknown role is never treated as privileged', () => {
+  // Guards against a typo or a stale session blob quietly granting the whole unit.
+  for (const role of ['Supervisor', 'supervisors', 'superviso', 'admin ', '', undefined]) {
+    assert.equal(canAccessLocation({ role, assignedFloor: null, assignedWards: [] }, 5, 'ردهة رجال'), false, `role ${JSON.stringify(role)} must not pass`)
+  }
+})
