@@ -698,7 +698,12 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
   .app-shell { min-height: 0; }
   .topbar, .pills-toolbar { display: none !important; }
   .pills-page { page: pills; width: 100%; padding: 0; }
-  .pill-form { page: pills; border: 1px solid #000; border-radius: 0; box-shadow: none; break-after: page; padding: 0; margin: 0; }
+  /* Fill the sheet and become a column, so the signature block can be pushed to the foot of
+     the page instead of trailing the table. @page pills leaves 297 - 26.5 - 16 = 254.5mm of
+     content height; 253mm keeps a hair of slack so rounding cannot spill a sliver onto a
+     second sheet. A form with more medicines than fit simply runs longer and its footer
+     lands at the bottom of its last page. */
+  .pill-form { page: pills; border: 1px solid #000; border-radius: 0; box-shadow: none; break-after: page; padding: 0; margin: 0; display: flex; flex-direction: column; min-height: 253mm; }
   .pill-form:last-child { break-after: auto; }
   /* Printing a chosen few: the unpicked forms stay on screen and leave the paper. The break
      has to come off whichever form prints LAST, not off :last-child — if the final patient is
@@ -717,7 +722,9 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
   .pill-table thead th { background: white; }
   .pill-select select { display: none; }
   .pill-select-value { color: #000; }
-  .pill-form-foot { color: #000; }
+  /* auto replaces the screen's fixed 100px gap: whatever room the table leaves becomes the
+     gap, so the signature sits on the bottom edge however many medicines are listed. */
+  .pill-form-foot { color: #000; margin-top: auto; }
   .pill-form-foot .pill-sign { border-color: #000; }
   .pill-form-foot .pill-edit-time { color: #000; }
 }
