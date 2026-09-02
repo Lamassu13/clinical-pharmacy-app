@@ -736,7 +736,12 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 	/* Keep the three strips together — the totals must not slide onto a second page. */
 	.chart-frame, .chart-head, .chart-grid, .chart-foot { break-inside: avoid; }
 	.chart-frame { overflow: visible; }
-	.chart-head-corner { height: 35mm; font-size: 5px; }
+	/* 5px left the box almost empty. 10px fills it and still clears the sides: the widest
+	   line (مستشفى بغداد التعليمي) measures 22.6mm inside a 26mm interior, so 1.7mm stays
+	   free either side even with the longest ward name. 11px cuts that to 0.56mm, which is
+	   too little to trust. Only the text grows — the box is a fixed 35mm, so the page budget
+	   is untouched. */
+	.chart-head-corner { height: 35mm; font-size: 10px; }
 	.chart-head-corner span { line-height: 1.5; }
 	.chart-foot-corner { height: 3.5mm; font-size: 8px; }
 	.chart-table thead th { width: auto; min-width: 0; max-width: none; height: 35mm; }
