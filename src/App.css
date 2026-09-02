@@ -708,7 +708,7 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 	/* The three strips print stacked exactly as they sit on screen; only the scrolling and
 	   the screen width caps come off. Each strip is a 28mm corner plus a flex remainder, so
 	   the three tables get identical column widths from table-layout: fixed. Budget:
-	   29mm head + 41 x 3.5mm + 3.5mm totals = 176mm against 200mm of usable landscape. */
+	   35mm head + 41 x 3.5mm + 3.5mm totals = 183mm against 200mm of usable landscape. */
 	.chart-frame { --chart-gutter: 0px; }
 	.chart-grid { max-height: none; overflow: visible; width: 100%; }
 	.chart-names, .chart-head-corner, .chart-foot-corner { flex: 0 0 28mm; }
@@ -720,17 +720,28 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 	/* Keep the three strips together — the totals must not slide onto a second page. */
 	.chart-frame, .chart-head, .chart-grid, .chart-foot { break-inside: avoid; }
 	.chart-frame { overflow: visible; }
-	.chart-head-corner { height: 29mm; font-size: 5px; }
+	.chart-head-corner { height: 35mm; font-size: 5px; }
 	.chart-head-corner span { line-height: 1.5; }
 	.chart-foot-corner { height: 3.5mm; font-size: 8px; }
-	.chart-table thead th { width: auto; min-width: 0; max-width: none; height: 29mm; }
-	.chart-table thead th .medicine-select { width: 100%; min-width: 0; max-width: none; height: 28mm; min-height: 28mm; max-height: 28mm; font-size: 5px; }
+	.chart-table thead th { width: auto; min-width: 0; max-width: none; height: 35mm; }
+	/* The name is set vertically, so the font size spends the header's HEIGHT, not its width,
+	   and the input cannot wrap or shrink — it just clips. Going 5px -> 7px costs 1.4x the run
+	   length, which at the old 28mm left the longest cataloged name (Clexane prefilled syringe
+	   4000 IU) needing 27.8mm of 28mm: no margin at all, and a typed column name one character
+	   longer would have been cut. 34mm restores the headroom — about 40 characters — and the
+	   page can afford it: 35mm head + 41 x 3.5mm + 3.5mm totals = 183mm against 200mm usable. */
+	.chart-table thead th .medicine-select { width: 100%; min-width: 0; max-width: none; height: 34mm; min-height: 34mm; max-height: 34mm; font-size: 7px; }
 	/* height on a table cell is a minimum, not a fixed size, and box-sizing means the cell's
 	   3.5mm already includes its border — so an input of exactly 3.5mm overflowed and
 	   stretched every row, plus the baseline gap an inline-block leaves under itself. Over
 	   41 rows that was ~22mm of invisible growth, which is what pushed the totals onto a
 	   second page. Let the input take its text's height and block it out of the baseline. */
-	.patient-cell input, .chart-table td input { display: block; height: auto; font-size: 7px; line-height: 1; padding: 0; border: 0; }
+	.patient-cell input, .chart-table td input { display: block; height: auto; line-height: 1; padding: 0; border: 0; }
+	.patient-cell input { font-size: 7px; }
+	/* The quantities only: the row's content box is 12.2px, so 8px still leaves 4.2px spare
+	   and the row keeps its 3.5mm. Patient names stay at 7px — they were not part of the ask,
+	   and they compete for a fixed 28mm column rather than for row height. */
+	.chart-table td input { font-size: 8px; }
 	.chart-table .patient-cell { width: 28mm; min-width: 28mm; max-width: none; }
 	.chart-table tfoot td { height: 3.5mm; font-size: 8px; }
 	/* white paper, black ink only */
