@@ -253,7 +253,13 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 .login-form input, .medicine-modal input { width: 100%; padding: 12px 14px; }
 .security-note { margin: var(--space-6) 0 0; color: var(--text-muted); font-size: var(--text-xs); text-align: center; }
 
-.hospital-logo { object-fit: contain; background: #fff; border-radius: var(--radius-sm); }
+/* The logo is now a transparent PNG, so it sits directly on the surface with no white
+   plate or grey frame around it. The mark itself is black line art, which would vanish
+   against the dark surface — so the plate comes back in dark mode only, where it earns
+   its keep. The chart watermark (.patient-header-logo) is deliberately not included:
+   a plate behind a 12%-opacity watermark would show up as a pale square on the grid. */
+.hospital-logo { object-fit: contain; border-radius: var(--radius-sm); }
+:root[data-theme="dark"] .hospital-logo { background: #fff; padding: 2px; }
 .login-logo { display: block; width: 116px; height: 116px; margin-bottom: var(--space-5); border-radius: var(--radius-md); }
 .header-logo { width: 42px; height: 42px; }
 
