@@ -630,7 +630,7 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 .patient-header-logo { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; object-fit: contain; opacity: .12; pointer-events: none; }
 
 /* app credit — fixed corner on every screen, hidden when printing */
-.app-credit { position: fixed; left: 14px; bottom: 10px; z-index: 20; color: var(--text-muted); font-size: var(--text-xs); line-height: 1.3; pointer-events: none; opacity: .75; text-align: start; }
+.app-credit { position: fixed; left: 0; right: 0; bottom: 10px; z-index: 20; color: var(--text-muted); font-size: var(--text-xs); line-height: 1.3; pointer-events: none; opacity: .75; text-align: center; }
 .app-credit strong { display: block; font-weight: 700; color: var(--heading); }
 .chart-table thead th { width: 51px; min-width: 51px; max-width: 51px; padding: 0; overflow: hidden; vertical-align: middle; }
 .chart-table thead th .medicine-select {
