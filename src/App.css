@@ -736,11 +736,12 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 	/* The three strips print stacked exactly as they sit on screen; only the scrolling and
 	   the screen width caps come off. Each strip is a 28mm corner plus a flex remainder, so
 	   the three tables get identical column widths from table-layout: fixed.
-	   Budget: 28mm head + 41 x 2.8mm + 2.8mm totals ≈ 146mm. Not 200mm: iPad Safari forces
-	   its own ~9.5mm margins and prints its URL/date/page bars, leaving roughly 160-175mm of
-	   real printable height in landscape. At 183mm the frame overflowed that and break-inside:
-	   avoid gave up, dropping the whole grid to a second page. Measured to stay one page down
-	   to a 160mm page box. */
+	   Budget: 24mm head + 41 x 2.4mm + 2.4mm totals ≈ 128mm. Not 200mm: iPad Safari forces its
+	   own margins and prints URL/date/page bars that no CSS can remove, and iPadOS gives no
+	   way to switch them off. The user reported the chart only fitting at 95% scaling when the
+	   frame was 149.4mm, which puts the real printable height at ~142mm. 128mm leaves ~14mm of
+	   headroom so it prints on one page at 100% with no manual scaling. Measured to hold one
+	   page down to a 130mm content box. */
 	.chart-frame { --chart-gutter: 0px; }
 	.chart-grid { max-height: none; overflow: visible; width: 100%; }
 	.chart-names, .chart-head-corner, .chart-foot-corner { flex: 0 0 28mm; }
@@ -748,38 +749,43 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 	.chart-names .chart-table { width: 28mm; min-width: 0; }
 	.chart-doses .chart-table, .chart-head-scroll .chart-table, .chart-foot-scroll .chart-table { width: 100%; min-width: 0; }
 	.chart-table { table-layout: fixed; font-size: 4.5px; }
-	.chart-table th, .chart-table td { width: auto; min-width: 0; height: 2.8mm; line-height: 1; vertical-align: middle; }
+	.chart-table th, .chart-table td { width: auto; min-width: 0; height: 2.4mm; line-height: 1; vertical-align: middle; }
 	/* Keep the three strips together — the totals must not slide onto a second page. */
 	.chart-frame, .chart-head, .chart-grid, .chart-foot { break-inside: avoid; }
 	.chart-frame { overflow: visible; }
 	/* 10px fills the box: the widest line (مستشفى بغداد التعليمي) measures 22.6mm inside a
 	   ~26mm interior, and the six lines at line-height 1.5 stack to ~24mm inside the 28mm box.
 	   Only the text is sized here — height is set below with the header row. */
-	.chart-head-corner { height: 28mm; font-size: 10px; }
+	.chart-head-corner { height: 24mm; font-size: 10px; }
 	.chart-head-corner span { line-height: 1.5; }
 	/* The corner is sized by its labels, one per totals row, so Thursday's doubled line adds
 	   exactly one 2.8mm row. */
 	.chart-foot-corner { height: auto; font-size: 8px; }
-	.chart-foot-corner span { height: 2.8mm; }
-	.chart-table thead th { width: auto; min-width: 0; max-width: none; height: 28mm; }
+	.chart-foot-corner span { height: 2.4mm; }
+	.chart-table thead th { width: auto; min-width: 0; max-width: none; height: 24mm; }
 	/* The name is set vertically, so the font size spends the header's HEIGHT, not its width,
 	   and the input cannot wrap or shrink — it just clips. At 7px a 27mm box holds about 26
 	   characters; only the two 33-char "Clexane prefilled syringe 4000/6000 IU" entries clip,
 	   by ~1mm of the leading word. The header cannot grow further without pushing the chart
 	   past what the iPad can print on one page. */
-	.chart-table thead th .medicine-select { width: 100%; min-width: 0; max-width: none; height: 27mm; min-height: 27mm; max-height: 27mm; font-size: 7px; }
+	.chart-table thead th .medicine-select { width: 100%; min-width: 0; max-width: none; height: 23mm; min-height: 23mm; max-height: 23mm; font-size: 7px; }
 	/* height on a table cell is a minimum, not a fixed size, and box-sizing means the cell's
 	   3.5mm already includes its border — so an input of exactly 3.5mm overflowed and
 	   stretched every row, plus the baseline gap an inline-block leaves under itself. Over
 	   41 rows that was ~22mm of invisible growth, which is what pushed the totals onto a
 	   second page. Let the input take its text's height and block it out of the baseline. */
-	.patient-cell input, .chart-table td input { display: block; height: auto; line-height: 1; padding: 0; border: 0; }
+	/* The explicit height is what actually shortens the row. With height:auto Chrome gives an
+	   <input> its font's NORMAL line box and ignores line-height:1 — 7px text became a 2.65mm
+	   row, and asking for 2.6/2.5/2.4mm changed nothing because the cell could not go under
+	   its content. The patient-name column set that floor, which is also why shrinking only
+	   the quantity font had no effect. Pinning the field to 1.9mm lets the 2.4mm row hold. */
+	.patient-cell input, .chart-table td input { display: block; height: 1.9mm; line-height: 1; padding: 0; border: 0; }
 	.patient-cell input { font-size: 7px; }
 	/* Rows are now 2.8mm — content box ~10px — so the quantities come back to 7px to sit
 	   inside it cleanly. Patient names were already 7px. */
 	.chart-table td input { font-size: 7px; }
 	.chart-table .patient-cell { width: 28mm; min-width: 28mm; max-width: none; }
-	.chart-table tfoot td { height: 2.8mm; font-size: 8px; }
+	.chart-table tfoot td { height: 2.4mm; font-size: 8px; }
 	/* white paper, black ink only */
 	.chart-page, .chart-page * { background: #fff !important; color: #000 !important; border-color: #000 !important; box-shadow: none !important; }
 	/* keep the vertical rule beside the patient names */
