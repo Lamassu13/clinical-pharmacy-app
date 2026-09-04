@@ -83,6 +83,14 @@ CREATE TABLE IF NOT EXISTS chart_quantities (
 ALTER TABLE medicines ADD COLUMN IF NOT EXISTS arabic_name TEXT;
 ALTER TABLE chart_columns ADD COLUMN IF NOT EXISTS custom_name TEXT;
 
+-- Optimistic-concurrency counter. PUT /api/chart replaces the whole chart (delete + reinsert
+-- its patients/columns/quantities) on every autosave, so two clients on the same ward/date —
+-- plausible on a shared iPad — could otherwise each PUT a full snapshot taken before the
+-- other's edit landed, and the later request would silently erase it. The server only accepts
+-- a PUT whose expectedVersion matches this counter, and bumps it on every accepted save; a
+-- mismatch means someone else saved first, and the client reconciles instead of overwriting.
+ALTER TABLE daily_charts ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 0;
+
 -- Keyed by the medicine's normalised name, not by a catalogue id. A chart column is free
 -- text: it links to the catalogue when it matches one, and stands alone when it does not.
 -- Keying on the id meant an unlinked column could hold no dose times at all, and deleting

@@ -377,12 +377,13 @@ app.get('/api/chart', requireAuth, async (request, response) => {
   const chartResult = await query('SELECT id FROM daily_charts WHERE ward_id = $1 AND chart_date = $2', [wardResult.rows[0].id, chartDate])
   if (!chartResult.rows[0]) return response.json({ chart: null })
   const chartId = chartResult.rows[0].id
-  const [patients, columns, quantities] = await Promise.all([
+  const [patients, columns, quantities, chartRow] = await Promise.all([
     query('SELECT row_number, patient_name FROM chart_patients WHERE chart_id = $1 ORDER BY row_number', [chartId]),
     query('SELECT cc.column_number, cc.medicine_id, COALESCE(m.name, cc.custom_name) AS medicine_name FROM chart_columns cc LEFT JOIN medicines m ON m.id = cc.medicine_id WHERE cc.chart_id = $1 ORDER BY cc.column_number', [chartId]),
     query('SELECT row_number, column_number, quantity FROM chart_quantities WHERE chart_id = $1', [chartId]),
+    query('SELECT version FROM daily_charts WHERE id = $1', [chartId]),
   ])
-  response.json({ chart: { patients: patients.rows, columns: columns.rows, quantities: quantities.rows } })
+  response.json({ chart: { patients: patients.rows, columns: columns.rows, quantities: quantities.rows, version: chartRow.rows[0].version } })
 })
 app.put('/api/chart', requireAuth, async (request, response) => {
   const floor = request.body.floor ? clampInt(request.body.floor, 2, 10) : null
@@ -402,6 +403,9 @@ app.put('/api/chart', requireAuth, async (request, response) => {
   const quantities = (Array.isArray(request.body.quantities) ? request.body.quantities : [])
     .map((entry) => ({ rowNumber: clampInt(entry?.rowNumber, 1, MAX_PATIENT_ROWS), columnNumber: clampInt(entry?.columnNumber, 1, 51), quantity: clampInt(entry?.quantity, 0, 1_000_000) }))
     .filter((entry) => entry.rowNumber !== null && entry.columnNumber !== null && entry.quantity !== null)
+  // 0 means "I have no chart yet" — the correct baseline for a first save, since a plain
+  // INSERT with no existing row always succeeds regardless of this value.
+  const expectedVersion = clampInt(request.body.expectedVersion, 0, Number.MAX_SAFE_INTEGER) ?? 0
 
   const client = await pool.connect()
   try {
@@ -412,7 +416,23 @@ app.put('/api/chart', requireAuth, async (request, response) => {
     if (!wardRow) {
       wardRow = (await client.query('INSERT INTO wards (floor_number, name, is_special) VALUES ($1, $2, $3) RETURNING id', [floor, wardName, floor === null])).rows[0]
     }
-    const chartResult = await client.query('INSERT INTO daily_charts (ward_id, chart_date, created_by, updated_by) VALUES ($1, $2, $3, $3) ON CONFLICT (ward_id, chart_date) DO UPDATE SET updated_by = EXCLUDED.updated_by, updated_at = NOW() RETURNING id', [wardRow.id, chartDate, request.session.user.id])
+    // Optimistic concurrency: an UPDATE only applies (and only then does the WHERE let the
+    // row through to RETURNING) when this client's expectedVersion still matches what's in
+    // the database. A first-ever save for this ward/date hits the plain INSERT branch
+    // instead — there's no existing row to conflict with, so it always succeeds. Losing the
+    // race here rolls back before any of the patients/columns/quantities tables are touched.
+    const chartResult = await client.query(
+      `INSERT INTO daily_charts (ward_id, chart_date, created_by, updated_by, version) VALUES ($1, $2, $3, $3, 1)
+       ON CONFLICT (ward_id, chart_date) DO UPDATE
+         SET updated_by = EXCLUDED.updated_by, updated_at = NOW(), version = daily_charts.version + 1
+         WHERE daily_charts.version = $4
+       RETURNING id, version`,
+      [wardRow.id, chartDate, request.session.user.id, expectedVersion],
+    )
+    if (!chartResult.rows[0]) {
+      await client.query('ROLLBACK')
+      return response.status(409).json({ message: 'الجارت تغيّر من جهاز آخر، يجري تحديثه', conflict: true })
+    }
     const chartId = chartResult.rows[0].id
     await client.query('DELETE FROM chart_patients WHERE chart_id = $1', [chartId])
     await client.query('DELETE FROM chart_columns WHERE chart_id = $1', [chartId])
@@ -458,7 +478,7 @@ app.put('/api/chart', requireAuth, async (request, response) => {
       await client.query('INSERT INTO chart_quantities (chart_id, row_number, column_number, quantity) SELECT $1, rn, cn, qty FROM UNNEST($2::int[], $3::int[], $4::int[]) AS u(rn, cn, qty)', [chartId, quantityList.map((entry) => entry.rowNumber), quantityList.map((entry) => entry.columnNumber), quantityList.map((entry) => entry.quantity)])
     }
     await client.query('COMMIT')
-    response.json({ ok: true, chartId })
+    response.json({ ok: true, chartId, version: chartResult.rows[0].version })
   } catch (error) {
     await client.query('ROLLBACK')
     console.error('chart save failed:', error)
