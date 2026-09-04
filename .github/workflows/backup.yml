@@ -20,7 +20,7 @@ permissions:
   contents: read
 
 env:
-  B2_BUCKET: cpa-db-backups
+  B2_BUCKET: clinical-pharmacy-db-backup
 
 jobs:
   backup:

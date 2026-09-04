@@ -20,7 +20,7 @@ If you are developing a production application, we recommend using TypeScript wi
 The production database is backed up automatically once a day by
 [`.github/workflows/backup.yml`](.github/workflows/backup.yml), which runs
 `scripts/backup-db.sh` and uploads the resulting dump to a **private** Backblaze B2 bucket
-(`cpa-db-backups`). This repo is public, so backups never touch the repo itself or GitHub
+(`clinical-pharmacy-db-backup`). This repo is public, so backups never touch the repo itself or GitHub
 Actions artifacts — both are publicly downloadable on a public repo.
 
 **One-time setup**, in the repo's Settings → Secrets and variables → Actions, add:
@@ -28,7 +28,7 @@ Actions artifacts — both are publicly downloadable on a public repo.
 | Secret | Value |
 |---|---|
 | `DATABASE_URL` | Same connection string configured in the Render dashboard |
-| `B2_KEY_ID` | A Backblaze application key ID, scoped to only the `cpa-db-backups` bucket |
+| `B2_KEY_ID` | A Backblaze application key ID, scoped to only the `clinical-pharmacy-db-backup` bucket |
 | `B2_APPLICATION_KEY` | The matching application key |
 
 The bucket needs a lifecycle rule (set in Backblaze's bucket settings) to expire files after
