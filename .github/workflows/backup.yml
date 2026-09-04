@@ -1,0 +1,60 @@
+name: Backup database
+
+# Daily off-site backup of the production Postgres database to a private Backblaze B2
+# bucket. This repo is public, so a dump must never land in the repo or in a workflow
+# artifact — both are publicly downloadable on a public repo. B2 is the only destination
+# here, reached with an application key scoped to just the one backup bucket.
+#
+# Needs three repository secrets (Settings -> Secrets and variables -> Actions):
+#   DATABASE_URL        same connection string the Render app uses
+#   B2_KEY_ID            Backblaze application key ID, scoped to the backup bucket only
+#   B2_APPLICATION_KEY   the matching application key
+# See README.md "Backups" for setup and restore instructions.
+
+on:
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+env:
+  B2_BUCKET: cpa-db-backups
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install a current pg_dump (PGDG apt repo)
+        # pg_dump must be the same version as the database server, or newer — never older.
+        # Neon supports Postgres 14 through 18, and a project can be on any of them, so this
+        # installs 18 (the newest) rather than pinning to whatever this project happens to
+        # run today: a newer pg_dump can always dump an older server, not the reverse.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y postgresql-client-18
+
+      - name: Install the b2 CLI
+        run: pipx install b2==4.7.1
+
+      - name: Dump the database
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          CPA_BACKUP_DIR: ${{ runner.temp }}/backups
+          PG_DUMP: /usr/lib/postgresql/18/bin/pg_dump
+        run: bash scripts/backup-db.sh
+
+      - name: Upload to Backblaze B2
+        env:
+          B2_APPLICATION_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
+        run: |
+          set -euo pipefail
+          b2 account authorize
+          dump_file="$(ls -t "${{ runner.temp }}/backups"/*.dump | head -n1)"
+          b2 file upload "$B2_BUCKET" "$dump_file" "backups/cpa-$(date -u +%Y%m%d).dump"
