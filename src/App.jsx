@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import hospitalLogo from './assets/hospital-logo.png'
+import LoginTrainingClip from './LoginTrainingClip.jsx'
 import './App.css'
 
 const floors = [
@@ -107,6 +108,7 @@ function App() {
   const [medicines, setMedicines] = useState([])
   const [columnMedicines, setColumnMedicines] = useState(() => Array(CHART_COLUMNS).fill(''))
   const [showMedicineForm, setShowMedicineForm] = useState(false)
+  const [showTrainingClip, setShowTrainingClip] = useState(false)
   // Row currently being typed into, for the patient banner above the grid. One state
   // change per focus move — far cheaper than the re-render every keystroke already costs.
   const [activeRow, setActiveRow] = useState(-1)
@@ -795,10 +797,16 @@ function App() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [showMedicineForm])
+  useEffect(() => {
+    if (!showTrainingClip) return undefined
+    const onKey = (event) => { if (event.key === 'Escape') setShowTrainingClip(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [showTrainingClip])
 
   if (!isLoggedIn && authView === 'register') return <main className="login-shell"><AppCredit /><section className="login-card"><img className="hospital-logo login-logo" width="116" height="116" src={hospitalLogo} alt="شعار مستشفى بغداد التعليمي" /><p className="eyebrow">مستشفى بغداد التعليمي</p><h1>إنشاء حساب جديد</h1><p className="login-intro">أدخل بياناتك، وسيتم تفعيل الحساب بعد موافقة المدير</p><form onSubmit={submitRegister} className="login-form"><label>الاسم الكامل<input value={registerForm.fullName} onChange={(event) => setRegisterForm({ ...registerForm, fullName: event.target.value })} required /></label><label>اسم المستخدم<input value={registerForm.username} onChange={(event) => setRegisterForm({ ...registerForm, username: event.target.value })} required /></label><label>رقم الهاتف<input type="tel" value={registerForm.phone} onChange={(event) => setRegisterForm({ ...registerForm, phone: event.target.value })} required /></label><label>البريد الإلكتروني<input type="email" value={registerForm.email} onChange={(event) => setRegisterForm({ ...registerForm, email: event.target.value })} required /></label><label>رقم البصمة<input value={registerForm.fingerprintNumber} onChange={(event) => setRegisterForm({ ...registerForm, fingerprintNumber: event.target.value })} required /></label><label>كلمة المرور<input type="password" minLength={6} value={registerForm.password} onChange={(event) => setRegisterForm({ ...registerForm, password: event.target.value })} required /></label>{registerError && <p className="form-error" role="alert">{registerError}</p>}{registerSuccess && <p className="form-success" role="status">{registerSuccess}</p>}<button className="primary-button" type="submit" disabled={busy}>{busy ? 'جارٍ الإرسال…' : <>إنشاء الحساب <span>←</span></>}</button></form><button type="button" className="text-button" onClick={() => { setAuthView('login'); setRegisterError(''); setRegisterSuccess('') }}>لديك حساب؟ تسجيل الدخول</button></section></main>
 
-  if (!isLoggedIn) return <main className="login-shell"><AppCredit /><section className="login-card"><img className="hospital-logo login-logo" width="116" height="116" src={hospitalLogo} alt="شعار مستشفى بغداد التعليمي" /><p className="eyebrow">مستشفى بغداد التعليمي</p><h1>وحدة الصيدلة السريرية</h1><p className="login-intro">سجل الدخول للوصول إلى جداول الجارت اليومية</p><form onSubmit={submitLogin} className="login-form"><label>اسم المستخدم<input value={credentials.username} onChange={(event) => setCredentials({ ...credentials, username: event.target.value })} required /></label><label>كلمة المرور<input type="password" value={credentials.password} onChange={(event) => setCredentials({ ...credentials, password: event.target.value })} required /></label>{loginError && <p className="form-error" role="alert">{loginError}</p>}<button className="primary-button" type="submit" disabled={busy}>{busy ? 'جارٍ الدخول…' : <>تسجيل الدخول <span>←</span></>}</button></form><button type="button" className="secondary-button" onClick={() => { setAuthView('register'); setLoginError('') }}>إنشاء حساب</button><p className="security-note">الحسابات الجديدة بانتظار موافقة المدير</p></section></main>
+  if (!isLoggedIn) return <main className="login-shell"><AppCredit /><section className="login-card"><img className="hospital-logo login-logo" width="116" height="116" src={hospitalLogo} alt="شعار مستشفى بغداد التعليمي" /><p className="eyebrow">مستشفى بغداد التعليمي</p><h1>وحدة الصيدلة السريرية</h1><p className="login-intro">سجل الدخول للوصول إلى جداول الجارت اليومية</p><form onSubmit={submitLogin} className="login-form"><label>اسم المستخدم<input value={credentials.username} onChange={(event) => setCredentials({ ...credentials, username: event.target.value })} required /></label><label>كلمة المرور<input type="password" value={credentials.password} onChange={(event) => setCredentials({ ...credentials, password: event.target.value })} required /></label>{loginError && <p className="form-error" role="alert">{loginError}</p>}<button className="primary-button" type="submit" disabled={busy}>{busy ? 'جارٍ الدخول…' : <>تسجيل الدخول <span>←</span></>}</button></form><button type="button" className="secondary-button" onClick={() => { setAuthView('register'); setLoginError('') }}>إنشاء حساب</button><button type="button" className="text-button" onClick={() => setShowTrainingClip(true)}>▶ شاهد شرح تسجيل الدخول</button><p className="security-note">الحسابات الجديدة بانتظار موافقة المدير</p></section>{showTrainingClip && <div className="modal-backdrop" onClick={() => setShowTrainingClip(false)}><div className="training-clip-modal" role="dialog" aria-modal="true" aria-label="شرح تسجيل الدخول" onClick={(event) => event.stopPropagation()}><button type="button" className="close-button" aria-label="إغلاق" onClick={() => setShowTrainingClip(false)}>×</button><LoginTrainingClip /></div></div>}</main>
 
   // Swapping the screen rather than logging out: App stays mounted, so the chart the
   // pharmacist was in the middle of typing is still in state and is saved on the way back in.
