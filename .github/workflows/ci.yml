@@ -1,7 +1,8 @@
 name: CI
 
 # Render auto-deploys every push to main, so this is the only gate between a commit
-# and production. No secrets and no database: every step here is self-contained.
+# and production. No secrets: the Postgres service below is a disposable container
+# scoped to this job, not a database anything else can reach.
 on:
   push:
     branches: [main]
@@ -11,6 +12,20 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: clinical_pharmacy
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: clinical_pharmacy_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -24,5 +39,12 @@ jobs:
         run: node --check server/index.js && node --check server/auth.js && node --check server/db.js && node --check server/migrate.js && node --check server/validation.js
       - name: Unit tests
         run: npm test
+        env:
+          # No .env.test file exists in CI, so these are the real config for the
+          # Unit tests step; the server tests refuse to run against any database
+          # whose name doesn't contain "clinical_pharmacy_test" as a safety net.
+          DATABASE_URL: postgresql://clinical_pharmacy:ci-only-password@localhost:5432/clinical_pharmacy_test
+          DATABASE_SSL: 'false'
+          BCRYPT_COST: '4'
       - name: Build client
         run: npm run build

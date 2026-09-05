@@ -677,6 +677,12 @@ app.use((error, request, response, next) => {
   response.status(500).json({ message: 'حدث خطأ غير متوقع' })
 })
 
-app.listen(port, () => {
-  console.log(`Clinical Pharmacy API listening on http://localhost:${port}`)
-})
+// Guarded so tests can `import app from './index.js'` and drive it with a real HTTP
+// client on an ephemeral port, without a second server also bound to `port`.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  app.listen(port, () => {
+    console.log(`Clinical Pharmacy API listening on http://localhost:${port}`)
+  })
+}
+
+export default app

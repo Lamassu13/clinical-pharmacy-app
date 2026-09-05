@@ -69,9 +69,31 @@ npm run build && npm run server
 | Create the first admin account | `npm run create-admin "Full Name" username email phone fingerprint password` |
 | Reset a locked-out admin's password | `ADMIN_PASSWORD=newpass npm run reset-admin username` |
 | Apply a schema change | `npm run db:init` — safe to re-run; every statement is additive (`CREATE ... IF NOT EXISTS` / `ALTER ... ADD COLUMN IF NOT EXISTS`), nothing destructive |
-| Run the test suite | `npm test` |
+| Run the test suite | `npm test` — see **Tests** below for one-time local setup |
 | Lint | `npm run lint` |
 | Manual, on-demand database backup | `npm run db:backup` — see **Backups** below for the automatic daily one |
+
+## Tests
+
+`server/*.test.js` are two kinds of test in one suite: `validation.test.js` checks pure
+functions with no I/O, while `auth.test.js` and `chart.test.js` boot the real Express app on
+an ephemeral port and drive it with real HTTP requests (login, save a chart, hit a 409
+conflict, etc.) against a real Postgres database — not a mock.
+
+That database must be a **separate, empty-is-fine local database**, never your real dev or
+production one — the suite truncates every table before each test. One-time setup:
+
+```bash
+createdb -O clinical_pharmacy clinical_pharmacy_test   # run as a Postgres superuser
+cp .env.test.example .env.test                          # then fill in your local DB password
+```
+
+`npm test` picks up `.env.test` automatically (via `pretest`, which also applies the schema)
+and refuses to run against any database whose name doesn't contain `clinical_pharmacy_test`,
+as a safety net against a copy-paste mistake pointing it at the wrong `DATABASE_URL`.
+
+CI (`.github/workflows/ci.yml`) doesn't need this file — it starts its own disposable Postgres
+container for the same job.
 
 ## Deployment
 
