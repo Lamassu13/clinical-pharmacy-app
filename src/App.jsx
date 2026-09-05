@@ -37,6 +37,13 @@ function App() {
   const [busy, setBusy] = useState(false)
   const [floor, setFloor] = useState(null)
   const [selected, setSelected] = useState(null)
+  // The floor-picker dashboard: today's ward-status/top-medicines summary and the
+  // manager's announcements. Loaded only while that screen is actually showing.
+  const [dashboardData, setDashboardData] = useState(null)
+  const [announcements, setAnnouncements] = useState([])
+  const [announcementDraft, setAnnouncementDraft] = useState('')
+  const [announcementError, setAnnouncementError] = useState('')
+  const [announcementBusy, setAnnouncementBusy] = useState(false)
   const [medicines, setMedicines] = useState([])
   const [columnMedicines, setColumnMedicines] = useState(() => Array(CHART_COLUMNS).fill(''))
   const [showMedicineForm, setShowMedicineForm] = useState(false)
@@ -536,6 +543,46 @@ function App() {
     return () => clearInterval(timer)
   }, [selected, loadMedicines])
 
+  // The floor-picker dashboard only — loaded while it's the screen actually showing, not
+  // carried along while a chart or admin screen is open.
+  useEffect(() => {
+    if (!isLoggedIn || floor || selected) return undefined
+    let cancelled = false
+    const date = isoDate(new Date())
+    fetch(`${apiUrl}/dashboard?date=${date}`, { credentials: 'include' })
+      .then((response) => { isExpired(response); return response.ok ? response.json() : null })
+      .then((result) => { if (!cancelled && result) setDashboardData(result) })
+      .catch(() => undefined)
+    fetch(`${apiUrl}/announcements`, { credentials: 'include' })
+      .then((response) => { isExpired(response); return response.ok ? response.json() : null })
+      .then((result) => { if (!cancelled && result) setAnnouncements(result.announcements) })
+      .catch(() => undefined)
+    return () => { cancelled = true }
+  }, [isLoggedIn, floor, selected, isExpired])
+
+  const postAnnouncement = useCallback(async () => {
+    const message = announcementDraft.trim()
+    if (!message) return
+    setAnnouncementError('')
+    setAnnouncementBusy(true)
+    try {
+      const response = await fetch(`${apiUrl}/announcements`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ message }) })
+      if (isExpired(response)) return
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.message || 'تعذر نشر الإعلان')
+      setAnnouncements((current) => [result.announcement, ...current].slice(0, 5))
+      setAnnouncementDraft('')
+    } catch (error) { setAnnouncementError(error.message || 'تعذر الاتصال بالخادم') } finally { setAnnouncementBusy(false) }
+  }, [announcementDraft, isExpired])
+  const deleteAnnouncement = useCallback(async (id) => {
+    if (!(await askConfirm('حذف هذا الإعلان؟'))) return
+    try {
+      const response = await fetch(`${apiUrl}/announcements/${id}`, { method: 'DELETE', credentials: 'include' })
+      if (isExpired(response) || !response.ok) return
+      setAnnouncements((current) => current.filter((item) => item.id !== id))
+    } catch { /* the next dashboard visit will show the current list */ }
+  }, [askConfirm, isExpired])
+
   useEffect(() => {
     if (!selected || selected.mode === 'pills') return undefined
     const chartKey = `${selected.floor || 'special'}-${selected.ward}-${selectedDate}`
@@ -863,7 +910,7 @@ function App() {
   const lastPrintingRow = printingRows[printingRows.length - 1]
   if (selected && selected.mode === 'pills') return <PillsScreen wardLabel={wardLabel} today={today} editTime={editTime} currentUser={currentUser} theme={theme} onToggleTheme={toggleTheme} onLogout={logout} goHome={goHome} onBack={() => { flushPills(); setSelected(null) }} selectedDate={selectedDate} onChangeDate={setSelectedDate} pillsLoading={pillsLoading} pillsData={pillsData} pillsSaveError={pillsSaveError} pillsLoadError={pillsLoadError} pillEntries={pillEntries} setPillEntries={setPillEntries} pillRooms={pillRooms} setPillRooms={setPillRooms} pillSelection={pillSelection} onTogglePatient={togglePillPatient} printScope={printScope} lastPrintingRow={lastPrintingRow} onPrint={startPillsPrint} confirmModal={confirmModal} />
 
-  return <main className="app-shell"><AppCredit /><header className="topbar"><TopBarBrand onClick={goHome} /><nav className="user-menu"><ThemeToggle theme={theme} onToggle={toggleTheme} />{isAdmin && <button className="text-button" onClick={() => setAdminView('requests')}>طلبات الانضمام</button>}{isManager && <button className="text-button" onClick={() => setAdminView('medicines')}>إدارة الأدوية</button>}{isManager && <button className="text-button" onClick={() => setAdminView('users')}>جميع المستخدمين</button>}<span>{currentUser?.fullName || 'مستخدم'}</span><button onClick={logout} className="text-button">تسجيل الخروج</button></nav></header>{justLoggedIn && <div className="login-dissolve" aria-hidden="true"><img className="login-dissolve-logo" src={hospitalLogo} alt="" /><p className="login-dissolve-title">وحدة الصيدلة السريرية</p></div>}{!selected && !floor ? <FloorPickerScreen today={today} onPickFloor={setFloor} onOpen={setSelected} /> : !selected ? <WardPickerScreen floor={floor} onBack={() => setFloor(null)} onOpen={setSelected} /> : <ChartScreen selected={selected} wardLabel={wardLabel} today={today} todayWeekday={todayWeekday} isManager={isManager} onBack={() => { flushChart(); setSelected(null) }} onGoToPills={() => { flushChart(); setSelected({ ...selected, mode: 'pills' }) }} onExportPdf={exportChartPdf} saveError={saveError} loadError={loadError} copyError={copyError} chartConflictNotice={chartConflictNotice} medicines={medicines} patientNames={patientNames} columnMedicines={columnMedicines} quantities={quantities} totals={totals} isThursday={isThursday} activeRow={activeRow} activeColumn={activeColumn} labelBelow={labelBelow} setActiveRow={setActiveRow} setActiveColumn={setActiveColumn} setLabelBelow={setLabelBelow} onSetColumnMedicine={setColumnMedicine} onSetPatientName={setPatientName} onUpdateQuantity={updateQuantity} onCollapseRow={collapseRow} editingRowStart={editingRowStart} chartFrameRef={chartFrameRef} chartHeadRef={chartHeadRef} chartGridRef={chartGridRef} chartDosesRef={chartDosesRef} chartFootRef={chartFootRef} showMedicineForm={showMedicineForm} onOpenMedicineForm={() => { setRegistrationsError(''); setShowMedicineForm(true) }} onCloseMedicineForm={() => setShowMedicineForm(false)} onAddMedicine={addMedicine} newMedicine={newMedicine} setNewMedicine={setNewMedicine} registrationsError={registrationsError} />}{confirmModal}</main>
+  return <main className="app-shell"><AppCredit /><header className="topbar"><TopBarBrand onClick={goHome} /><nav className="user-menu"><ThemeToggle theme={theme} onToggle={toggleTheme} />{isAdmin && <button className="text-button" onClick={() => setAdminView('requests')}>طلبات الانضمام</button>}{isManager && <button className="text-button" onClick={() => setAdminView('medicines')}>إدارة الأدوية</button>}{isManager && <button className="text-button" onClick={() => setAdminView('users')}>جميع المستخدمين</button>}<span>{currentUser?.fullName || 'مستخدم'}</span><button onClick={logout} className="text-button">تسجيل الخروج</button></nav></header>{justLoggedIn && <div className="login-dissolve" aria-hidden="true"><img className="login-dissolve-logo" src={hospitalLogo} alt="" /><p className="login-dissolve-title">وحدة الصيدلة السريرية</p></div>}{!selected && !floor ? <FloorPickerScreen today={today} onPickFloor={setFloor} onOpen={setSelected} dashboard={dashboardData} announcements={announcements} isManager={isManager} announcementDraft={announcementDraft} setAnnouncementDraft={setAnnouncementDraft} announcementError={announcementError} announcementBusy={announcementBusy} onPostAnnouncement={postAnnouncement} onDeleteAnnouncement={deleteAnnouncement} /> : !selected ? <WardPickerScreen floor={floor} onBack={() => setFloor(null)} onOpen={setSelected} /> : <ChartScreen selected={selected} wardLabel={wardLabel} today={today} todayWeekday={todayWeekday} isManager={isManager} onBack={() => { flushChart(); setSelected(null) }} onGoToPills={() => { flushChart(); setSelected({ ...selected, mode: 'pills' }) }} onExportPdf={exportChartPdf} saveError={saveError} loadError={loadError} copyError={copyError} chartConflictNotice={chartConflictNotice} medicines={medicines} patientNames={patientNames} columnMedicines={columnMedicines} quantities={quantities} totals={totals} isThursday={isThursday} activeRow={activeRow} activeColumn={activeColumn} labelBelow={labelBelow} setActiveRow={setActiveRow} setActiveColumn={setActiveColumn} setLabelBelow={setLabelBelow} onSetColumnMedicine={setColumnMedicine} onSetPatientName={setPatientName} onUpdateQuantity={updateQuantity} onCollapseRow={collapseRow} editingRowStart={editingRowStart} chartFrameRef={chartFrameRef} chartHeadRef={chartHeadRef} chartGridRef={chartGridRef} chartDosesRef={chartDosesRef} chartFootRef={chartFootRef} showMedicineForm={showMedicineForm} onOpenMedicineForm={() => { setRegistrationsError(''); setShowMedicineForm(true) }} onCloseMedicineForm={() => setShowMedicineForm(false)} onAddMedicine={addMedicine} newMedicine={newMedicine} setNewMedicine={setNewMedicine} registrationsError={registrationsError} />}{confirmModal}</main>
 }
 
 export default App

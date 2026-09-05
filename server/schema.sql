@@ -152,7 +152,16 @@ ALTER TABLE pill_entries ADD CONSTRAINT pill_entries_patient_row_number_check CH
 ALTER TABLE pill_patient_meta DROP CONSTRAINT IF EXISTS pill_patient_meta_patient_row_number_check;
 ALTER TABLE pill_patient_meta ADD CONSTRAINT pill_patient_meta_patient_row_number_check CHECK (patient_row_number BETWEEN 1 AND 41);
 
+-- Notices from the manager/admin shown on the dashboard everyone lands on after login.
+CREATE TABLE IF NOT EXISTS announcements (
+  id BIGSERIAL PRIMARY KEY,
+  message TEXT NOT NULL,
+  created_by BIGINT REFERENCES users(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE INDEX IF NOT EXISTS daily_charts_date_idx ON daily_charts (chart_date);
 CREATE INDEX IF NOT EXISTS chart_quantities_chart_idx ON chart_quantities (chart_id);
 CREATE INDEX IF NOT EXISTS users_account_status_idx ON users (account_status);
 CREATE INDEX IF NOT EXISTS pill_entries_chart_idx ON pill_entries (chart_id);
+CREATE INDEX IF NOT EXISTS announcements_created_at_idx ON announcements (created_at DESC);

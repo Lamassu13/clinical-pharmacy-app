@@ -123,16 +123,18 @@ p { line-height: 1.65; }
 /* ============================================================
    Form controls
    ============================================================ */
-input, select {
+input, select, textarea {
   border: 1px solid var(--border-strong);
   background: var(--surface);
   color: var(--text);
   border-radius: var(--radius-sm);
   padding: 9px 12px;
   outline: none;
+  font-family: inherit;
+  font-size: var(--text-sm);
   transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
 }
-input:focus, select:focus { border-color: var(--primary); box-shadow: var(--ring); }
+input:focus, select:focus, textarea:focus { border-color: var(--primary); box-shadow: var(--ring); }
 
 select {
   appearance: none;
@@ -357,6 +359,7 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 
 .location-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 245px), 1fr)); gap: var(--space-3); }
 .location-card {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--space-4);
@@ -372,6 +375,60 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 .location-card:hover { border-color: var(--green-300); transform: translateY(-3px); box-shadow: var(--shadow-sm); }
 .location-card strong, .location-card small { display: block; }
 .location-card small { margin-top: var(--space-1); color: var(--text-muted); font-size: var(--text-xs); }
+/* Whether that floor/ward already has a chart for today — from GET /api/dashboard. */
+.location-status-dot {
+  position: absolute;
+  top: var(--space-3);
+  inset-inline-start: var(--space-3);
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: var(--success);
+}
+.location-status-dot.not-started { background: var(--surface); border: 2px solid var(--border-strong); }
+
+/* Visually hidden but still announced — the status dot above is decorative on its own. */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+
+/* ============================================================
+   Dashboard widgets — ward status, top medicines, announcements
+   ============================================================ */
+.dashboard-widgets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); margin-bottom: var(--space-6); }
+@media (max-width: 900px) { .dashboard-widgets { grid-template-columns: 1fr; } }
+.dashboard-widget {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4) var(--space-5);
+  box-shadow: var(--shadow-xs);
+}
+.dashboard-widget-head { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-4); }
+.dashboard-widget-icon { display: grid; place-items: center; width: 44px; height: 44px; flex-shrink: 0; border-radius: var(--radius-md); background: var(--green-100); color: var(--primary); }
+.dashboard-widget-head strong { display: block; font-size: var(--text-base); }
+.dashboard-widget-head span { display: block; color: var(--text-muted); font-size: var(--text-xs); }
+.dashboard-widget-empty { color: var(--text-muted); font-size: var(--text-sm); }
+
+.ward-status-row { display: flex; align-items: baseline; gap: var(--space-2); margin-bottom: var(--space-3); }
+.ward-status-row .stat-good { color: var(--success); font-size: var(--text-2xl); line-height: 1; }
+.ward-status-row .stat-pending { color: var(--warning); font-size: var(--text-lg); line-height: 1; margin-inline-start: auto; }
+.ward-status-row span { color: var(--text-muted); font-size: var(--text-sm); }
+.progress-track { height: 8px; border-radius: 999px; background: var(--warning-tint); overflow: hidden; }
+.progress-fill { height: 100%; border-radius: 999px; background: var(--success); }
+
+.top-medicines-list { display: flex; flex-direction: column; gap: var(--space-3); }
+.top-medicines-row { display: flex; align-items: center; gap: var(--space-3); }
+.top-medicines-name { flex: 0 0 42%; color: var(--text); font-size: var(--text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.top-medicines-bar-track { flex: 1 1 auto; height: 8px; border-radius: 999px; background: var(--surface-alt); overflow: hidden; }
+.top-medicines-bar-fill { height: 100%; border-radius: 999px; background: var(--primary); }
+.top-medicines-qty { flex: 0 0 auto; text-align: end; color: var(--heading); font-size: var(--text-sm); font-weight: 700; }
+
+.announcement-list { display: flex; flex-direction: column; gap: var(--space-3); margin: 0 0 var(--space-4); list-style: none; padding: 0; }
+.announcement-item { border-inline-start: 3px solid var(--green-300); padding-inline-start: var(--space-3); }
+.announcement-item p { margin: 0 0 var(--space-1); color: var(--text); font-size: var(--text-sm); line-height: 1.6; }
+.announcement-meta { display: flex; align-items: center; gap: var(--space-2); color: var(--text-muted); font-size: var(--text-xs); }
+.announcement-meta button { margin-inline-start: auto; background: transparent; border: 0; color: var(--danger); font-size: var(--text-xs); cursor: pointer; padding: 0; }
+.announcement-compose { display: flex; gap: var(--space-2); }
+.announcement-compose textarea { flex: 1 1 auto; resize: vertical; min-height: 40px; }
 .floor-number {
   display: grid;
   place-items: center;

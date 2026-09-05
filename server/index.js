@@ -271,6 +271,7 @@ app.delete('/api/users/:id', requireAdmin, async (request, response) => {
     await client.query('UPDATE daily_charts SET created_by = $1 WHERE created_by = $2', [actingAdmin, id])
     await client.query('UPDATE daily_charts SET updated_by = $1 WHERE updated_by = $2', [actingAdmin, id])
     await client.query('UPDATE medicines SET created_by = NULL WHERE created_by = $1', [id])
+    await client.query('UPDATE announcements SET created_by = NULL WHERE created_by = $1', [id])
     await client.query('DELETE FROM users WHERE id = $1', [id])
     await client.query('COMMIT')
     await revokeUserSessions(pool, id)
@@ -361,6 +362,62 @@ app.put('/api/access/:userId', requireManager, async (request, response) => {
   if (!userResult.rows[0]) return response.status(404).json({ message: 'المستخدم غير موجود' })
   await setUserAccess(userId, location, request.session.user.id)
   await revokeUserSessions(pool, userId)
+  response.json({ ok: true })
+})
+
+// The dashboard shown right after login: which of the known floors/wards already have a
+// chart for the given date, and today's top medicines by quantity across every ward. No
+// patient data here — the floor/ward grid itself is already visible to every logged-in user
+// (a non-manager's own screen just hides the cards they cannot open), so this is no more
+// sensitive than that.
+app.get('/api/dashboard', requireAuth, async (request, response) => {
+  const date = request.query.date
+  if (!isIsoDate(date)) return response.status(400).json({ message: 'التاريخ مطلوب' })
+  const [started, topMedicines] = await Promise.all([
+    query('SELECT w.floor_number, w.name FROM wards w JOIN daily_charts dc ON dc.ward_id = w.id WHERE dc.chart_date = $1', [date]),
+    query(
+      `SELECT COALESCE(m.name, cc.custom_name) AS name, SUM(cq.quantity)::int AS quantity
+       FROM chart_quantities cq
+       JOIN chart_columns cc ON cc.chart_id = cq.chart_id AND cc.column_number = cq.column_number
+       JOIN daily_charts dc ON dc.id = cq.chart_id
+       LEFT JOIN medicines m ON m.id = cc.medicine_id
+       WHERE dc.chart_date = $1 AND cq.quantity > 0
+       GROUP BY COALESCE(m.name, cc.custom_name)
+       ORDER BY quantity DESC
+       LIMIT 5`,
+      [date],
+    ),
+  ])
+  response.json({
+    startedWards: started.rows.map((row) => ({ floor: row.floor_number, ward: row.name })),
+    topMedicines: topMedicines.rows.filter((row) => row.name).map((row) => ({ name: row.name, quantity: row.quantity })),
+  })
+})
+
+const ANNOUNCEMENT_MAX_LENGTH = 500
+app.get('/api/announcements', requireAuth, async (_request, response) => {
+  const result = await query(
+    `SELECT a.id, a.message, a.created_at, u.full_name AS author_name
+     FROM announcements a LEFT JOIN users u ON u.id = a.created_by
+     ORDER BY a.created_at DESC LIMIT 5`,
+  )
+  response.json({ announcements: result.rows })
+})
+app.post('/api/announcements', requireManager, async (request, response) => {
+  const message = cleanText(request.body.message, ANNOUNCEMENT_MAX_LENGTH).trim()
+  if (!message) return response.status(400).json({ message: 'نص الإعلان مطلوب' })
+  const result = await query(
+    `INSERT INTO announcements (message, created_by) VALUES ($1, $2)
+     RETURNING id, message, created_at, (SELECT full_name FROM users WHERE id = $2) AS author_name`,
+    [message, request.session.user.id],
+  )
+  response.status(201).json({ announcement: result.rows[0] })
+})
+app.delete('/api/announcements/:id', requireManager, async (request, response) => {
+  const id = Number(request.params.id)
+  if (!Number.isInteger(id) || id < 1) return response.status(400).json({ message: 'معرّف غير صحيح' })
+  const result = await query('DELETE FROM announcements WHERE id = $1 RETURNING id', [id])
+  if (!result.rows[0]) return response.status(404).json({ message: 'الإعلان غير موجود' })
   response.json({ ok: true })
 })
 
