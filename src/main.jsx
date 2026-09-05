@@ -16,3 +16,9 @@ createRoot(document.getElementById('root')).render(
     <App />
   </StrictMode>,
 )
+
+// Registered only in production: a dev-mode service worker would cache Vite's dev
+// assets and fight with hot-reload the next time the code changes.
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'))
+}
