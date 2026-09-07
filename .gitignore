@@ -41,3 +41,6 @@ firebase.json
 *.dump
 *.sql.gz
 cpa.dump
+
+# graphify knowledge-graph build output
+graphify-out/
