@@ -13,6 +13,7 @@ import SessionExpiredScreen from './screens/SessionExpiredScreen.jsx'
 import AdminRequestsScreen from './screens/AdminRequestsScreen.jsx'
 import AdminUsersScreen from './screens/AdminUsersScreen.jsx'
 import AdminMedicinesScreen from './screens/AdminMedicinesScreen.jsx'
+import AdminFloorsScreen from './screens/AdminFloorsScreen.jsx'
 import PillsScreen from './screens/PillsScreen.jsx'
 import FloorPickerScreen from './screens/FloorPickerScreen.jsx'
 import WardPickerScreen from './screens/WardPickerScreen.jsx'
@@ -120,6 +121,12 @@ function App() {
   }, [])
   const [adminMedicines, setAdminMedicines] = useState([])
   const [medicineFilter, setMedicineFilter] = useState('')
+  // Floor-management screen: the bulk chart-purge form. purgeTargets holds floor numbers
+  // and/or special-ward names; purgeAll overrides it with "every ward".
+  const [purgeFrom, setPurgeFrom] = useState('')
+  const [purgeTo, setPurgeTo] = useState('')
+  const [purgeAll, setPurgeAll] = useState(false)
+  const [purgeTargets, setPurgeTargets] = useState(() => new Set())
   // The session cookie lasts 8 hours. When it lapses the server answers 401, and the save
   // loop below used to retry a rejected request every 4 seconds forever while the pharmacist
   // carried on typing into a grid that could no longer be saved. Raising this instead swaps
@@ -322,6 +329,29 @@ function App() {
       setAdminSuccess(`تم حذف "${name}"`)
     } catch (error) { setRegistrationsError(error.message || 'تعذر الاتصال بالخادم') } finally { setBusy(false) }
   }, [askConfirm])
+  const togglePurgeTarget = useCallback((key) => setPurgeTargets((current) => {
+    const next = new Set(current)
+    if (next.has(key)) next.delete(key); else next.add(key)
+    return next
+  }), [])
+  const purgeCharts = useCallback(async () => {
+    if (!purgeFrom || !purgeTo) { setRegistrationsError('اختر تاريخ البداية والنهاية'); return }
+    const floorNumbers = [...purgeTargets].filter((key) => typeof key === 'number')
+    const wardNames = [...purgeTargets].filter((key) => typeof key === 'string')
+    if (!purgeAll && floorNumbers.length === 0 && wardNames.length === 0) { setRegistrationsError('اختر طابقًا واحدًا على الأقل أو فعّل "كل الطوابق والردهات"'); return }
+    const scopeText = purgeAll ? 'كل الطوابق والردهات' : `${floorNumbers.length + wardNames.length} موقعًا مختارًا`
+    if (!(await askConfirm(`مسح جميع الجارتات من ${purgeFrom} إلى ${purgeTo} — ${scopeText}؟ لا يمكن التراجع عن هذا نهائيًا.`))) return
+    setRegistrationsError(''); setAdminSuccess(''); setBusy(true)
+    try {
+      const body = purgeAll ? { from: purgeFrom, to: purgeTo, all: true } : { from: purgeFrom, to: purgeTo, floors: floorNumbers, wards: wardNames }
+      const response = await fetch(`${apiUrl}/charts/purge`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body) })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.message || 'تعذر مسح الجارتات')
+      setAdminSuccess(`تم مسح ${result.deleted} جارت`)
+      setPurgeTargets(new Set())
+      setPurgeAll(false)
+    } catch (error) { setRegistrationsError(error.message || 'تعذر الاتصال بالخادم') } finally { setBusy(false) }
+  }, [askConfirm, purgeAll, purgeFrom, purgeTo, purgeTargets])
   useEffect(() => {
     setRegistrationsError(''); setAdminSuccess('')
     if (adminView === 'requests') loadRegistrations()
@@ -548,7 +578,9 @@ function App() {
   // The floor-picker dashboard only — loaded while it's the screen actually showing, not
   // carried along while a chart or admin screen is open.
   useEffect(() => {
-    if (!isLoggedIn || floor || selected) return undefined
+    // Also re-runs when adminView clears, so returning from a screen that changed things
+    // (a chart purge, an announcement) lands on fresh numbers rather than the stale set.
+    if (!isLoggedIn || floor || selected || adminView) return undefined
     let cancelled = false
     const date = isoDate(new Date())
     const periodQuery = isManager ? `&period=${medicinesPeriod}` : ''
@@ -561,7 +593,7 @@ function App() {
       .then((result) => { if (!cancelled && result) setAnnouncements(result.announcements) })
       .catch(() => undefined)
     return () => { cancelled = true }
-  }, [isLoggedIn, floor, selected, isExpired, isManager, medicinesPeriod])
+  }, [isLoggedIn, floor, selected, adminView, isExpired, isManager, medicinesPeriod])
 
   const postAnnouncement = useCallback(async () => {
     const message = announcementDraft.trim()
@@ -893,11 +925,13 @@ function App() {
 
   if (sessionExpired) return <SessionExpiredScreen credentials={credentials} setCredentials={setCredentials} loginError={loginError} busy={busy} onSubmit={submitLogin} onLogout={logout} confirmModal={confirmModal} />
 
-  const adminHeader = <header className="topbar"><TopBarBrand onClick={goHome} /><nav className="user-menu"><ThemeToggle theme={theme} onToggle={toggleTheme} />{isAdmin && <button onClick={() => setAdminView('requests')} className={adminView === 'requests' ? 'secondary-button compact' : 'text-button'}>طلبات الانضمام</button>}<button onClick={() => setAdminView('medicines')} className={adminView === 'medicines' ? 'secondary-button compact' : 'text-button'}>إدارة الأدوية</button><button onClick={() => setAdminView('users')} className={adminView === 'users' ? 'secondary-button compact' : 'text-button'}>جميع المستخدمين</button><button onClick={() => setAdminView(null)} className="text-button">→ عودة</button></nav></header>
+  const adminHeader = <header className="topbar"><TopBarBrand onClick={goHome} /><nav className="user-menu"><ThemeToggle theme={theme} onToggle={toggleTheme} />{isAdmin && <button onClick={() => setAdminView('requests')} className={adminView === 'requests' ? 'secondary-button compact' : 'text-button'}>طلبات الانضمام</button>}<button onClick={() => setAdminView('medicines')} className={adminView === 'medicines' ? 'secondary-button compact' : 'text-button'}>إدارة الأدوية</button><button onClick={() => setAdminView('floors')} className={adminView === 'floors' ? 'secondary-button compact' : 'text-button'}>إدارة الطوابق</button><button onClick={() => setAdminView('users')} className={adminView === 'users' ? 'secondary-button compact' : 'text-button'}>جميع المستخدمين</button><button onClick={() => setAdminView(null)} className="text-button">→ عودة</button></nav></header>
 
   if (adminView === 'requests' && isAdmin) return <AdminRequestsScreen adminHeader={adminHeader} registrations={registrations} registrationsError={registrationsError} adminSuccess={adminSuccess} pendingFloor={pendingFloor} setPendingFloor={setPendingFloor} busy={busy} onReload={loadRegistrations} onApprove={approveRegistration} onReject={rejectRegistration} confirmModal={confirmModal} />
 
   if (adminView === 'users' && isManager) return <AdminUsersScreen adminHeader={adminHeader} allUsers={allUsers} currentUser={currentUser} isAdmin={isAdmin} registrationsError={registrationsError} adminSuccess={adminSuccess} busy={busy} onReload={loadUsers} onChangeRole={changeUserRole} onAssignLocation={assignLocationToUser} onDeleteUser={deleteUser} confirmModal={confirmModal} />
+
+  if (adminView === 'floors' && isManager) return <AdminFloorsScreen adminHeader={adminHeader} purgeFrom={purgeFrom} setPurgeFrom={setPurgeFrom} purgeTo={purgeTo} setPurgeTo={setPurgeTo} purgeAll={purgeAll} setPurgeAll={setPurgeAll} purgeTargets={purgeTargets} onToggleTarget={togglePurgeTarget} busy={busy} registrationsError={registrationsError} adminSuccess={adminSuccess} onPurge={purgeCharts} confirmModal={confirmModal} />
 
   // adminMedicines holds the catalogue exactly as the server returned it, so its length is
   // the number of rows in the database; the filter only narrows what the table draws.
@@ -913,7 +947,7 @@ function App() {
   const lastPrintingRow = printingRows[printingRows.length - 1]
   if (selected && selected.mode === 'pills') return <PillsScreen wardLabel={wardLabel} today={today} editTime={editTime} currentUser={currentUser} theme={theme} onToggleTheme={toggleTheme} onLogout={logout} goHome={goHome} onBack={() => { flushPills(); setSelected(null) }} selectedDate={selectedDate} onChangeDate={setSelectedDate} pillsLoading={pillsLoading} pillsData={pillsData} pillsSaveError={pillsSaveError} pillsLoadError={pillsLoadError} pillEntries={pillEntries} setPillEntries={setPillEntries} pillRooms={pillRooms} setPillRooms={setPillRooms} pillSelection={pillSelection} onTogglePatient={togglePillPatient} printScope={printScope} lastPrintingRow={lastPrintingRow} onPrint={startPillsPrint} confirmModal={confirmModal} />
 
-  return <main className="app-shell"><AppCredit /><header className="topbar"><TopBarBrand onClick={goHome} /><nav className="user-menu"><ThemeToggle theme={theme} onToggle={toggleTheme} />{isAdmin && <button className="text-button" onClick={() => setAdminView('requests')}>طلبات الانضمام</button>}{isManager && <button className="text-button" onClick={() => setAdminView('medicines')}>إدارة الأدوية</button>}{isManager && <button className="text-button" onClick={() => setAdminView('users')}>جميع المستخدمين</button>}<span>{currentUser?.fullName || 'مستخدم'}</span><button onClick={logout} className="text-button">تسجيل الخروج</button></nav></header>{justLoggedIn && <div className="login-dissolve" aria-hidden="true"><img className="login-dissolve-logo" src={hospitalLogo} alt="" /><p className="login-dissolve-title">وحدة الصيدلة السريرية</p></div>}{!selected && !floor ? <FloorPickerScreen today={today} onPickFloor={setFloor} onOpen={setSelected} dashboard={dashboardData} announcements={announcements} isManager={isManager} medicinesPeriod={medicinesPeriod} setMedicinesPeriod={setMedicinesPeriod} announcementDraft={announcementDraft} setAnnouncementDraft={setAnnouncementDraft} announcementError={announcementError} announcementBusy={announcementBusy} onPostAnnouncement={postAnnouncement} onDeleteAnnouncement={deleteAnnouncement} /> : !selected ? <WardPickerScreen floor={floor} onBack={() => setFloor(null)} onOpen={setSelected} /> : <ChartScreen selected={selected} wardLabel={wardLabel} today={today} todayWeekday={todayWeekday} isManager={isManager} onBack={() => { flushChart(); setSelected(null) }} onGoToPills={() => { flushChart(); setSelected({ ...selected, mode: 'pills' }) }} onExportPdf={exportChartPdf} saveError={saveError} loadError={loadError} copyError={copyError} chartConflictNotice={chartConflictNotice} medicines={medicines} patientNames={patientNames} columnMedicines={columnMedicines} quantities={quantities} totals={totals} isThursday={isThursday} activeRow={activeRow} activeColumn={activeColumn} labelBelow={labelBelow} setActiveRow={setActiveRow} setActiveColumn={setActiveColumn} setLabelBelow={setLabelBelow} onSetColumnMedicine={setColumnMedicine} onSetPatientName={setPatientName} onUpdateQuantity={updateQuantity} onCollapseRow={collapseRow} editingRowStart={editingRowStart} chartFrameRef={chartFrameRef} chartHeadRef={chartHeadRef} chartGridRef={chartGridRef} chartDosesRef={chartDosesRef} chartFootRef={chartFootRef} showMedicineForm={showMedicineForm} onOpenMedicineForm={() => { setRegistrationsError(''); setShowMedicineForm(true) }} onCloseMedicineForm={() => setShowMedicineForm(false)} onAddMedicine={addMedicine} newMedicine={newMedicine} setNewMedicine={setNewMedicine} registrationsError={registrationsError} />}{confirmModal}</main>
+  return <main className="app-shell"><AppCredit /><header className="topbar"><TopBarBrand onClick={goHome} /><nav className="user-menu"><ThemeToggle theme={theme} onToggle={toggleTheme} />{isAdmin && <button className="text-button" onClick={() => setAdminView('requests')}>طلبات الانضمام</button>}{isManager && <button className="text-button" onClick={() => setAdminView('medicines')}>إدارة الأدوية</button>}{isManager && <button className="text-button" onClick={() => setAdminView('floors')}>إدارة الطوابق</button>}{isManager && <button className="text-button" onClick={() => setAdminView('users')}>جميع المستخدمين</button>}<span>{currentUser?.fullName || 'مستخدم'}</span><button onClick={logout} className="text-button">تسجيل الخروج</button></nav></header>{justLoggedIn && <div className="login-dissolve" aria-hidden="true"><img className="login-dissolve-logo" src={hospitalLogo} alt="" /><p className="login-dissolve-title">وحدة الصيدلة السريرية</p></div>}{!selected && !floor ? <FloorPickerScreen today={today} onPickFloor={setFloor} onOpen={setSelected} dashboard={dashboardData} announcements={announcements} isManager={isManager} medicinesPeriod={medicinesPeriod} setMedicinesPeriod={setMedicinesPeriod} announcementDraft={announcementDraft} setAnnouncementDraft={setAnnouncementDraft} announcementError={announcementError} announcementBusy={announcementBusy} onPostAnnouncement={postAnnouncement} onDeleteAnnouncement={deleteAnnouncement} /> : !selected ? <WardPickerScreen floor={floor} onBack={() => setFloor(null)} onOpen={setSelected} /> : <ChartScreen selected={selected} wardLabel={wardLabel} today={today} todayWeekday={todayWeekday} isManager={isManager} onBack={() => { flushChart(); setSelected(null) }} onGoToPills={() => { flushChart(); setSelected({ ...selected, mode: 'pills' }) }} onExportPdf={exportChartPdf} saveError={saveError} loadError={loadError} copyError={copyError} chartConflictNotice={chartConflictNotice} medicines={medicines} patientNames={patientNames} columnMedicines={columnMedicines} quantities={quantities} totals={totals} isThursday={isThursday} activeRow={activeRow} activeColumn={activeColumn} labelBelow={labelBelow} setActiveRow={setActiveRow} setActiveColumn={setActiveColumn} setLabelBelow={setLabelBelow} onSetColumnMedicine={setColumnMedicine} onSetPatientName={setPatientName} onUpdateQuantity={updateQuantity} onCollapseRow={collapseRow} editingRowStart={editingRowStart} chartFrameRef={chartFrameRef} chartHeadRef={chartHeadRef} chartGridRef={chartGridRef} chartDosesRef={chartDosesRef} chartFootRef={chartFootRef} showMedicineForm={showMedicineForm} onOpenMedicineForm={() => { setRegistrationsError(''); setShowMedicineForm(true) }} onCloseMedicineForm={() => setShowMedicineForm(false)} onAddMedicine={addMedicine} newMedicine={newMedicine} setNewMedicine={setNewMedicine} registrationsError={registrationsError} />}{confirmModal}</main>
 }
 
 export default App

@@ -451,6 +451,30 @@ app.delete('/api/announcements/:id', requireManager, async (request, response) =
   response.json({ ok: true })
 })
 
+// Bulk-delete charts (floor-management screen). Irreversible: dropping a daily_charts row
+// cascades to its patients, columns, quantities and both pill tables. Manager-gated, and it
+// only ever touches whole (ward, date) charts inside the given inclusive date range — either
+// every ward (`all`) or a chosen set of numbered floors and/or special wards.
+app.post('/api/charts/purge', requireManager, async (request, response) => {
+  const { from, to } = request.body
+  if (!isIsoDate(from) || !isIsoDate(to)) return response.status(400).json({ message: 'التاريخ مطلوب' })
+  if (from > to) return response.status(400).json({ message: 'تاريخ البداية بعد تاريخ النهاية' })
+  const all = request.body.all === true
+  const floors = Array.isArray(request.body.floors) ? [...new Set(request.body.floors.map(Number).filter((n) => ALLOWED_FLOORS.includes(n)))] : []
+  const wards = Array.isArray(request.body.wards) ? [...new Set(request.body.wards.filter((w) => SPECIAL_WARDS.includes(w)))] : []
+  if (!all && floors.length === 0 && wards.length === 0) return response.status(400).json({ message: 'اختر طابقًا واحدًا على الأقل أو كل الطوابق' })
+
+  const result = all
+    ? await query('DELETE FROM daily_charts WHERE chart_date >= $1 AND chart_date <= $2', [from, to])
+    : await query(
+      `DELETE FROM daily_charts
+       WHERE chart_date >= $1 AND chart_date <= $2
+         AND ward_id IN (SELECT id FROM wards WHERE floor_number = ANY($3::int[]) OR (floor_number IS NULL AND name = ANY($4::text[])))`,
+      [from, to, floors, wards],
+    )
+  response.json({ deleted: result.rowCount })
+})
+
 app.get('/api/chart', requireAuth, async (request, response) => {
   const floor = request.query.floor ? clampInt(request.query.floor, 2, 10) : null
   const wardName = cleanText(request.query.ward, 120).trim()
