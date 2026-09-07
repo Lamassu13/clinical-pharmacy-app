@@ -30,8 +30,8 @@ export default function FloorPickerScreen({
     <div className="location-grid">{floors.map((item) => {
       const started = startedFloors.has(item.number)
       return <button className="location-card" key={item.number} onClick={() => onPickFloor(item)}>
-        <span className={started ? 'location-status-dot' : 'location-status-dot not-started'} aria-hidden="true" />
-        <span className="sr-only">{started ? 'بدأت جارتها اليوم' : 'لم تبدأ بعد'}</span>
+        {isManager && <span className={started ? 'location-status-dot' : 'location-status-dot not-started'} aria-hidden="true" />}
+        {isManager && <span className="sr-only">{started ? 'بدأت جارتها اليوم' : 'لم تبدأ بعد'}</span>}
         <span className="floor-number">{item.number}</span>
         <span><strong>الطابق {item.number}</strong><small>{item.wards.length} أروقة فرعية</small></span>
         <span className="arrow">←</span>
@@ -39,8 +39,8 @@ export default function FloorPickerScreen({
     })}{specialWards.map((ward) => {
       const started = startedSpecialWards.has(ward)
       return <div className="location-card special" key={ward}>
-        <span className={started ? 'location-status-dot' : 'location-status-dot not-started'} aria-hidden="true" />
-        <span className="sr-only">{started ? 'بدأت جارتها اليوم' : 'لم تبدأ بعد'}</span>
+        {isManager && <span className={started ? 'location-status-dot' : 'location-status-dot not-started'} aria-hidden="true" />}
+        {isManager && <span className="sr-only">{started ? 'بدأت جارتها اليوم' : 'لم تبدأ بعد'}</span>}
         <span className="floor-number">✚</span>
         <span><strong>{ward}</strong></span>
         <span className="ward-card-actions"><button className="secondary-button compact" onClick={() => onOpen({ floor: null, ward, mode: 'chart' })}>الجارت</button><button className="primary-button compact" onClick={() => onOpen({ floor: null, ward, mode: 'pills' })}>الحبوب</button></span>

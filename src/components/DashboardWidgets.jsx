@@ -1,7 +1,6 @@
-// Three information widgets shown above the floor/ward grid: how many wards have started
-// today's chart, today's top medicines by quantity across every ward, and notices posted by
-// the manager/admin. All three are read by every logged-in user; only a manager can post or
-// remove an announcement.
+// Information widgets shown above the floor/ward grid: today's top medicines by quantity and
+// notices posted by the manager/admin, plus — for a manager only — how many wards have
+// started today's chart. Only a manager can post or remove an announcement.
 const PERIOD_LABELS = { today: 'اليوم', week: 'أسبوع', month: 'شهر' }
 
 export default function DashboardWidgets({
@@ -17,25 +16,27 @@ export default function DashboardWidgets({
     : 'بمجموع كميات طابقك اليوم'
 
   return (
-    <div className="dashboard-widgets">
-      <div className="dashboard-widget">
-        <div className="dashboard-widget-head">
-          <span className="dashboard-widget-icon" aria-hidden="true">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="4" width="14" height="17" rx="2"></rect><path d="M9 3.5h6a1 1 0 0 1 1 1V6H8V4.5a1 1 0 0 1 1-1Z"></path><path d="m9 13 2 2 4-4"></path></svg>
-          </span>
-          <div>
-            <strong>حالة الردهات اليوم</strong>
-            <span>من أصل {totalCount} ردهة وطابق</span>
+    <div className={isManager ? 'dashboard-widgets' : 'dashboard-widgets two-up'}>
+      {isManager && (
+        <div className="dashboard-widget">
+          <div className="dashboard-widget-head">
+            <span className="dashboard-widget-icon" aria-hidden="true">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="4" width="14" height="17" rx="2"></rect><path d="M9 3.5h6a1 1 0 0 1 1 1V6H8V4.5a1 1 0 0 1 1-1Z"></path><path d="m9 13 2 2 4-4"></path></svg>
+            </span>
+            <div>
+              <strong>حالة الردهات اليوم</strong>
+              <span>من أصل {totalCount} ردهة وطابق</span>
+            </div>
           </div>
+          <div className="ward-status-row">
+            <strong className="stat-good">{startedCount}</strong>
+            <span>بدأت جارتها</span>
+            <strong className="stat-pending">{notStartedCount}</strong>
+            <span>لم تبدأ بعد</span>
+          </div>
+          <div className="progress-track"><div className="progress-fill" style={{ width: `${startedPct}%` }} /></div>
         </div>
-        <div className="ward-status-row">
-          <strong className="stat-good">{startedCount}</strong>
-          <span>بدأت جارتها</span>
-          <strong className="stat-pending">{notStartedCount}</strong>
-          <span>لم تبدأ بعد</span>
-        </div>
-        <div className="progress-track"><div className="progress-fill" style={{ width: `${startedPct}%` }} /></div>
-      </div>
+      )}
 
       <div className="dashboard-widget">
         <div className="dashboard-widget-head">
