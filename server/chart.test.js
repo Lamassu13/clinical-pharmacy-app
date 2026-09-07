@@ -13,7 +13,11 @@ const DATE = '2026-01-15'
 let server, baseUrl
 test.before(async () => { ({ server, baseUrl } = await startServer(app)) })
 test.after(async () => { server.close(); await pool.end() })
-test.beforeEach(() => resetDatabase())
+test.beforeEach(async () => {
+  await resetDatabase()
+  // A chart column may only name a catalogue medicine, so the round-trip tests need one.
+  await pool.query("INSERT INTO medicines (name) VALUES ('Amoxicillin Cap')")
+})
 
 const loginAs = async (userOptions) => {
   const user = await createUser(userOptions)
@@ -88,6 +92,31 @@ test('PUT /api/chart: a stale expectedVersion is rejected with a 409 conflict an
   const fetched = await client.get(`/api/chart?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=${DATE}`)
   assert.equal(fetched.body.chart.version, 2)
   assert.equal(fetched.body.chart.patients[0].patient_name, 'Second save', 'the rejected stale write must not have landed')
+})
+
+test('PUT /api/chart: a column naming a medicine outside the catalogue is dropped, never stored as free text', async () => {
+  const client = await loginAs({ role: 'user', floor: FLOOR })
+  const saved = await client.put('/api/chart', buildChartBody({
+    columns: [
+      { columnNumber: 1, medicineName: 'Amoxicillin Cap' },
+      { columnNumber: 2, medicineName: 'Totally Made Up Syrup' },
+    ],
+  }))
+  assert.equal(saved.status, 200)
+
+  const fetched = await client.get(`/api/chart?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=${DATE}`)
+  assert.equal(fetched.body.chart.columns.length, 1, 'only the catalogue column is kept')
+  assert.equal(fetched.body.chart.columns[0].column_number, 1)
+  assert.equal(fetched.body.chart.columns[0].medicine_name, 'Amoxicillin Cap')
+})
+
+test('PUT /api/chart: a column matches the catalogue ignoring case and extra spaces', async () => {
+  const client = await loginAs({ role: 'user', floor: FLOOR })
+  await client.put('/api/chart', buildChartBody({ columns: [{ columnNumber: 1, medicineName: '  amoxicillin   cap ' }] }))
+
+  const fetched = await client.get(`/api/chart?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=${DATE}`)
+  assert.equal(fetched.body.chart.columns.length, 1)
+  assert.equal(fetched.body.chart.columns[0].medicine_name, 'Amoxicillin Cap')
 })
 
 test('PUT /api/chart: rejects an unknown ward name for the given floor', async () => {

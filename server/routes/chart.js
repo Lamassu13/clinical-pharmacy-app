@@ -125,12 +125,11 @@ router.put('/chart', requireAuth, async (request, response) => {
       await client.query('INSERT INTO chart_patients (chart_id, row_number, patient_name) SELECT $1, rn, name FROM UNNEST($2::int[], $3::text[]) AS u(rn, name)', [chartId, [...patientByRow.keys()], [...patientByRow.values()]])
     }
 
-    // Link a column to a medicine when its text names an existing catalogue entry, ignoring
-    // case and repeated spaces — "amoxicillin  cap" and "Amoxicillin Cap" are one medicine to
-    // a pharmacist. Matching the raw string meant a column typed a hair differently stayed
-    // unlinked, and an unlinked column never reached the pill form at all. Anything with no
-    // catalogue match is still kept as free text on the column itself, so typing in the chart
-    // never adds rows to the shared medicines list.
+    // A column may only name a medicine that already exists in the shared catalogue, matched
+    // ignoring case and repeated spaces — "amoxicillin  cap" and "Amoxicillin Cap" are one
+    // medicine to a pharmacist. A column whose text matches nothing is simply dropped (no
+    // custom_name is ever written from the chart): the client rejects unknown names at the
+    // input, and this is the backstop so typing in the chart can never introduce a medicine.
     const medicineByColumn = new Map(columns.map((column) => [column.columnNumber, column.medicineName]))
     const wantedKeys = [...new Set([...medicineByColumn.values()].filter(Boolean).map(normalizeMedicineKey))]
     const idByKey = new Map()
@@ -140,14 +139,14 @@ router.put('/chart', requireAuth, async (request, response) => {
       const known = await client.query(`SELECT id, name FROM medicines WHERE ${medicineKeySql('name')} = ANY($1::text[]) ORDER BY id`, [wantedKeys])
       known.rows.forEach((row) => { const key = normalizeMedicineKey(row.name); if (!idByKey.has(key)) idByKey.set(key, row.id) })
     }
-    if (medicineByColumn.size) {
-      const columnNumbers = [...medicineByColumn.keys()]
-      const medicineIds = columnNumbers.map((columnNumber) => idByKey.get(normalizeMedicineKey(medicineByColumn.get(columnNumber))) ?? null)
-      const customNames = columnNumbers.map((columnNumber) => {
-        const text = medicineByColumn.get(columnNumber)
-        return text && !idByKey.has(normalizeMedicineKey(text)) ? text : null
-      })
-      await client.query('INSERT INTO chart_columns (chart_id, column_number, medicine_id, custom_name) SELECT $1, cn, mid, cname FROM UNNEST($2::int[], $3::bigint[], $4::text[]) AS u(cn, mid, cname)', [chartId, columnNumbers, medicineIds, customNames])
+    const linkedColumns = [...medicineByColumn.keys()]
+      .map((columnNumber) => ({ columnNumber, medicineId: idByKey.get(normalizeMedicineKey(medicineByColumn.get(columnNumber))) ?? null }))
+      .filter((entry) => entry.medicineId !== null)
+    if (linkedColumns.length) {
+      await client.query(
+        'INSERT INTO chart_columns (chart_id, column_number, medicine_id, custom_name) SELECT $1, cn, mid, NULL FROM UNNEST($2::int[], $3::bigint[]) AS u(cn, mid)',
+        [chartId, linkedColumns.map((entry) => entry.columnNumber), linkedColumns.map((entry) => entry.medicineId)],
+      )
     }
 
     const quantityByCell = new Map(quantities.map((entry) => [`${entry.rowNumber}:${entry.columnNumber}`, entry]))
