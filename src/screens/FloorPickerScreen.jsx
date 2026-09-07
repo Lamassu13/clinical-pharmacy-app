@@ -16,7 +16,7 @@ export default function FloorPickerScreen({
   const totalCount = floors.length + specialWards.length
   const startedCount = startedFloors.size + startedSpecialWards.size
 
-  return <section className="dashboard"><div className="section-heading"><div><p className="eyebrow">مساحة العمل اليومية</p><h1>اختر الطابق أو الردهة</h1><p>ابدأ باختيار موقع الجارت الذي تريد تسجيله أو مراجعته.</p></div><div className="date-chip"><span>اليوم</span><strong>{today}</strong></div></div>
+  return <section className="dashboard"><div className="section-heading"><div><h1>اختر الطابق أو الردهة</h1></div><div className="date-chip"><span>اليوم</span><strong>{today}</strong></div></div>
 
     <DashboardWidgets
       startedCount={startedCount} totalCount={totalCount} topMedicines={dashboard?.topMedicines ?? []}

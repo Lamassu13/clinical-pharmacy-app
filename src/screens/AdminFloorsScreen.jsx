@@ -10,9 +10,7 @@ export default function AdminFloorsScreen({
 }) {
   return <main className="app-shell"><AppCredit />{adminHeader}<section className="dashboard">
     <div className="section-heading"><div>
-      <p className="eyebrow">إدارة الطوابق</p>
       <h1>مسح الجارتات</h1>
-      <p>حذف جارتات فترة زمنية معيّنة لكل الطوابق أو لطوابق/ردهات مختارة. لا يمكن التراجع عن الحذف.</p>
     </div></div>
     {registrationsError && <p className="form-error" role="alert">{registrationsError}</p>}
     {adminSuccess && <p className="form-success" role="status">{adminSuccess}</p>}
