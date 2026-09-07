@@ -365,50 +365,80 @@ app.put('/api/access/:userId', requireManager, async (request, response) => {
   response.json({ ok: true })
 })
 
-// The dashboard shown right after login: which of the known floors/wards already have a
-// chart for the given date, and today's top medicines by quantity across every ward. No
-// patient data here — the floor/ward grid itself is already visible to every logged-in user
-// (a non-manager's own screen just hides the cards they cannot open), so this is no more
-// sensitive than that.
+// The dashboard shown right after login. Two parts:
+//  - startedWards: which known floors/wards have a chart for `date` that a pharmacist has
+//    actually begun — at least one named patient AND at least one entered quantity, so a
+//    chart that was only opened (the first autosave writes an empty row) does not count.
+//  - topMedicines: the highest-quantity medicines. A manager sees every ward over a chosen
+//    window (today / week / month); anyone else sees only their own floor or wards, for the
+//    day. No patient names in either — the floor/ward grid is already visible to everyone.
+const PERIOD_DAYS = { today: 1, week: 7, month: 30 }
 app.get('/api/dashboard', requireAuth, async (request, response) => {
   const date = request.query.date
   if (!isIsoDate(date)) return response.status(400).json({ message: 'التاريخ مطلوب' })
+  const user = request.session.user
+  const isManager = user.role === 'admin' || user.role === 'supervisor'
+  const days = isManager ? (PERIOD_DAYS[request.query.period] ?? PERIOD_DAYS.month) : PERIOD_DAYS.today
+
+  // A non-manager's medicine totals are scoped to whatever they can actually reach.
+  let scopeClause = ''
+  const medicineParams = [date, days]
+  if (!isManager) {
+    if (Number.isInteger(user.assignedFloor)) {
+      medicineParams.push(user.assignedFloor)
+      scopeClause = `AND w.floor_number = $${medicineParams.length}`
+    } else if (Array.isArray(user.assignedWards) && user.assignedWards.length) {
+      medicineParams.push(user.assignedWards)
+      scopeClause = `AND w.floor_number IS NULL AND w.name = ANY($${medicineParams.length}::text[])`
+    } else {
+      scopeClause = 'AND FALSE'
+    }
+  }
+
   const [started, topMedicines] = await Promise.all([
-    query('SELECT w.floor_number, w.name FROM wards w JOIN daily_charts dc ON dc.ward_id = w.id WHERE dc.chart_date = $1', [date]),
+    query(
+      `SELECT w.floor_number, w.name
+       FROM wards w
+       JOIN daily_charts dc ON dc.ward_id = w.id
+       WHERE dc.chart_date = $1
+         AND EXISTS (SELECT 1 FROM chart_patients cp WHERE cp.chart_id = dc.id AND cp.patient_name <> '')
+         AND EXISTS (SELECT 1 FROM chart_quantities cq WHERE cq.chart_id = dc.id AND cq.quantity > 0)`,
+      [date],
+    ),
     query(
       `SELECT COALESCE(m.name, cc.custom_name) AS name, SUM(cq.quantity)::int AS quantity
        FROM chart_quantities cq
        JOIN chart_columns cc ON cc.chart_id = cq.chart_id AND cc.column_number = cq.column_number
        JOIN daily_charts dc ON dc.id = cq.chart_id
+       JOIN wards w ON w.id = dc.ward_id
        LEFT JOIN medicines m ON m.id = cc.medicine_id
-       WHERE dc.chart_date = $1 AND cq.quantity > 0
+       WHERE dc.chart_date > ($1::date - $2::int) AND dc.chart_date <= $1::date AND cq.quantity > 0 ${scopeClause}
        GROUP BY COALESCE(m.name, cc.custom_name)
        ORDER BY quantity DESC
        LIMIT 5`,
-      [date],
+      medicineParams,
     ),
   ])
   response.json({
     startedWards: started.rows.map((row) => ({ floor: row.floor_number, ward: row.name })),
     topMedicines: topMedicines.rows.filter((row) => row.name).map((row) => ({ name: row.name, quantity: row.quantity })),
+    medicinesPeriod: isManager ? (PERIOD_DAYS[request.query.period] ? request.query.period : 'month') : 'today',
+    medicinesScope: isManager ? 'all' : 'own',
   })
 })
 
+// created_by is kept for the audit trail and the user-deletion cascade, but the dashboard
+// shows every notice under one unit signature, not the individual poster's name.
 const ANNOUNCEMENT_MAX_LENGTH = 500
 app.get('/api/announcements', requireAuth, async (_request, response) => {
-  const result = await query(
-    `SELECT a.id, a.message, a.created_at, u.full_name AS author_name
-     FROM announcements a LEFT JOIN users u ON u.id = a.created_by
-     ORDER BY a.created_at DESC LIMIT 5`,
-  )
+  const result = await query('SELECT id, message, created_at FROM announcements ORDER BY created_at DESC LIMIT 5')
   response.json({ announcements: result.rows })
 })
 app.post('/api/announcements', requireManager, async (request, response) => {
   const message = cleanText(request.body.message, ANNOUNCEMENT_MAX_LENGTH).trim()
   if (!message) return response.status(400).json({ message: 'نص الإعلان مطلوب' })
   const result = await query(
-    `INSERT INTO announcements (message, created_by) VALUES ($1, $2)
-     RETURNING id, message, created_at, (SELECT full_name FROM users WHERE id = $2) AS author_name`,
+    'INSERT INTO announcements (message, created_by) VALUES ($1, $2) RETURNING id, message, created_at',
     [message, request.session.user.id],
   )
   response.status(201).json({ announcement: result.rows[0] })

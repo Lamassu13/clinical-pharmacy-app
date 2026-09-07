@@ -4,8 +4,10 @@ import app from './index.js'
 import { pool } from './db.js'
 import { startServer, resetDatabase, createUser, ApiClient } from './test-helpers.js'
 
-const DATE = '2026-04-01'
-const OTHER_DATE = '2026-04-02'
+const DATE = '2026-04-15'
+const NEXT_DAY = '2026-04-16'
+const FIVE_DAYS_AGO = '2026-04-10'
+const THREE_WEEKS_AGO = '2026-03-26'
 
 let server, baseUrl
 test.before(async () => { ({ server, baseUrl } = await startServer(app)) })
@@ -20,9 +22,10 @@ const loginAs = async (userOptions) => {
   return client
 }
 
-// Seeds one chart directly (bypassing the API) so the dashboard aggregation has real rows
-// to read, independent of the chart-save logic already covered by chart.test.js.
-const seedChart = async ({ floor, ward, date, createdBy, columns, quantities }) => {
+// Seeds one chart directly (bypassing the API) so the dashboard aggregation has real rows to
+// read. `patients`/`quantities` default to one of each, which is what makes a ward count as
+// "started"; pass [] explicitly to seed a chart that was only opened.
+const seedChart = async ({ floor, ward, date, createdBy, columns = [], quantities = [{ rowNumber: 1, columnNumber: 1, quantity: 1 }], patients = [{ rowNumber: 1, name: 'مريض' }] }) => {
   const wardRow = (await pool.query(
     'INSERT INTO wards (floor_number, name, is_special) VALUES ($1, $2, $3) RETURNING id',
     [floor, ward, floor === null],
@@ -31,6 +34,9 @@ const seedChart = async ({ floor, ward, date, createdBy, columns, quantities }) 
     'INSERT INTO daily_charts (ward_id, chart_date, created_by, updated_by, version) VALUES ($1, $2, $3, $3, 1) RETURNING id',
     [wardRow.id, date, createdBy],
   )).rows[0]
+  for (const patient of patients) {
+    await pool.query('INSERT INTO chart_patients (chart_id, row_number, patient_name) VALUES ($1, $2, $3)', [chartRow.id, patient.rowNumber, patient.name])
+  }
   for (const column of columns) {
     await pool.query('INSERT INTO chart_columns (chart_id, column_number, medicine_id, custom_name) VALUES ($1, $2, $3, $4)', [chartRow.id, column.columnNumber, column.medicineId ?? null, column.customName ?? null])
   }
@@ -42,35 +48,36 @@ const seedChart = async ({ floor, ward, date, createdBy, columns, quantities }) 
 
 test('GET /api/dashboard: refuses an anonymous request and a missing/malformed date', async () => {
   const anon = new ApiClient(baseUrl)
-  const anonResponse = await anon.get(`/api/dashboard?date=${DATE}`)
-  assert.equal(anonResponse.status, 401)
+  assert.equal((await anon.get(`/api/dashboard?date=${DATE}`)).status, 401)
 
-  const client = await loginAs({ role: 'user' })
-  const noDate = await client.get('/api/dashboard')
-  assert.equal(noDate.status, 400)
-  const badDate = await client.get('/api/dashboard?date=2026-13-40')
-  assert.equal(badDate.status, 400)
+  const client = await loginAs({ role: 'user', floor: 5 })
+  assert.equal((await client.get('/api/dashboard')).status, 400)
+  assert.equal((await client.get('/api/dashboard?date=2026-13-40')).status, 400)
 })
 
-test('GET /api/dashboard: reports which wards have a chart on the given date, and only that date', async () => {
-  const user = await createUser({ role: 'user' })
-  await seedChart({ floor: 5, ward: 'ردهة رجال', date: DATE, createdBy: user.id, columns: [], quantities: [] })
-  await seedChart({ floor: null, ward: 'ردهة الديلزة', date: DATE, createdBy: user.id, columns: [], quantities: [] })
-  // A chart on a different date must not count toward DATE's status.
-  await seedChart({ floor: 3, ward: 'ردهة CCU', date: OTHER_DATE, createdBy: user.id, columns: [], quantities: [] })
+test('GET /api/dashboard startedWards: a ward counts only with a named patient AND an entered quantity, on that date', async () => {
+  const user = await createUser({ role: 'user', floor: 5 })
+  // Real work — named patient + quantity.
+  await seedChart({ floor: 5, ward: 'ردهة رجال', date: DATE, createdBy: user.id })
+  await seedChart({ floor: null, ward: 'ردهة الديلزة', date: DATE, createdBy: user.id })
+  // Only opened — blank patient rows, no quantities. Must NOT count.
+  await seedChart({ floor: 3, ward: 'ردهة CCU', date: DATE, createdBy: user.id, patients: [{ rowNumber: 1, name: '' }], quantities: [] })
+  // Names typed but no dose entered yet. Must NOT count.
+  await seedChart({ floor: 4, ward: 'ردهة الحوامل', date: DATE, createdBy: user.id, patients: [{ rowNumber: 1, name: 'مريضة' }], quantities: [] })
+  // A quantity but every patient row still blank. Must NOT count.
+  await seedChart({ floor: 6, ward: 'الوحدة الأولى', date: DATE, createdBy: user.id, patients: [{ rowNumber: 1, name: '' }], quantities: [{ rowNumber: 1, columnNumber: 1, quantity: 4 }] })
+  // Real work, but a different day.
+  await seedChart({ floor: 2, ward: 'ردهة رجال', date: NEXT_DAY, createdBy: user.id })
 
   const client = await loginAs({ role: 'admin' })
-  const response = await client.get(`/api/dashboard?date=${DATE}`)
-  assert.equal(response.status, 200)
-  const started = response.body.startedWards
+  const started = (await client.get(`/api/dashboard?date=${DATE}`)).body.startedWards
   assert.equal(started.length, 2)
   assert.ok(started.some((item) => item.floor === 5 && item.ward === 'ردهة رجال'))
   assert.ok(started.some((item) => item.floor === null && item.ward === 'ردهة الديلزة'))
-  assert.ok(!started.some((item) => item.ward === 'ردهة CCU'))
 })
 
-test('GET /api/dashboard: ranks medicines by total quantity across every ward on that date, using the catalogue name or the free-text column name', async () => {
-  const user = await createUser({ role: 'user' })
+test('GET /api/dashboard topMedicines (manager): sums across every ward, ranks by quantity, and honours the period window', async () => {
+  const user = await createUser({ role: 'user', floor: 5 })
   const medicine = (await pool.query("INSERT INTO medicines (name) VALUES ('Amoxicillin Cap') RETURNING id")).rows[0]
 
   await seedChart({
@@ -79,74 +86,99 @@ test('GET /api/dashboard: ranks medicines by total quantity across every ward on
     quantities: [{ rowNumber: 1, columnNumber: 1, quantity: 5 }, { rowNumber: 2, columnNumber: 1, quantity: 3 }, { rowNumber: 1, columnNumber: 2, quantity: 2 }],
   })
   await seedChart({
-    floor: 6, ward: 'الوحدة الأولى', date: DATE, createdBy: user.id,
+    floor: 6, ward: 'الوحدة الأولى', date: FIVE_DAYS_AGO, createdBy: user.id,
     columns: [{ columnNumber: 1, medicineId: medicine.id }],
     quantities: [{ rowNumber: 1, columnNumber: 1, quantity: 10 }],
   })
-  // A zero quantity must not count, and a different date must not contribute at all.
   await seedChart({
-    floor: 8, ward: 'ردهة الخاص', date: DATE, createdBy: user.id,
+    floor: 8, ward: 'ردهة الخاص', date: THREE_WEEKS_AGO, createdBy: user.id,
     columns: [{ columnNumber: 1, medicineId: medicine.id }],
-    quantities: [{ rowNumber: 1, columnNumber: 1, quantity: 0 }],
+    quantities: [{ rowNumber: 1, columnNumber: 1, quantity: 100 }],
   })
 
   const client = await loginAs({ role: 'admin' })
-  const response = await client.get(`/api/dashboard?date=${DATE}`)
-  assert.equal(response.status, 200)
-  const byName = Object.fromEntries(response.body.topMedicines.map((item) => [item.name, item.quantity]))
-  assert.equal(byName['Amoxicillin Cap'], 18) // 5 + 3 + 10, the zero-quantity row excluded
-  assert.equal(byName['Custom Syrup'], 2)
-  assert.equal(response.body.topMedicines[0].name, 'Amoxicillin Cap', 'the highest total must be ranked first')
+
+  const today = (await client.get(`/api/dashboard?date=${DATE}&period=today`)).body
+  assert.equal(today.medicinesPeriod, 'today')
+  assert.deepEqual(today.topMedicines.map((m) => [m.name, m.quantity]), [['Amoxicillin Cap', 8], ['Custom Syrup', 2]])
+
+  const week = (await client.get(`/api/dashboard?date=${DATE}&period=week`)).body
+  assert.equal(week.medicinesPeriod, 'week')
+  assert.equal(week.topMedicines.find((m) => m.name === 'Amoxicillin Cap').quantity, 18) // 8 today + 10 five days ago
+
+  const month = (await client.get(`/api/dashboard?date=${DATE}&period=month`)).body
+  assert.equal(month.topMedicines.find((m) => m.name === 'Amoxicillin Cap').quantity, 118) // + 100 three weeks ago
+  assert.equal(month.topMedicines[0].name, 'Amoxicillin Cap', 'highest total ranked first')
+
+  // No/invalid period defaults to month for a manager.
+  assert.equal((await client.get(`/api/dashboard?date=${DATE}`)).body.medicinesPeriod, 'month')
+  assert.equal((await client.get(`/api/dashboard?date=${DATE}&period=decade`)).body.medicinesPeriod, 'month')
+})
+
+test('GET /api/dashboard topMedicines (plain user): only their own floor, only the day, no matter what period they pass', async () => {
+  const seeder = await createUser({ role: 'user', floor: 5 })
+  const medicine = (await pool.query("INSERT INTO medicines (name) VALUES ('Amoxicillin Cap') RETURNING id")).rows[0]
+  // Their floor, today.
+  await seedChart({ floor: 5, ward: 'ردهة رجال', date: DATE, createdBy: seeder.id, columns: [{ columnNumber: 1, medicineId: medicine.id }], quantities: [{ rowNumber: 1, columnNumber: 1, quantity: 7 }] })
+  // Their floor, but yesterday — outside the day window.
+  await seedChart({ floor: 5, ward: 'ردهة النساء', date: FIVE_DAYS_AGO, createdBy: seeder.id, columns: [{ columnNumber: 1, medicineId: medicine.id }], quantities: [{ rowNumber: 1, columnNumber: 1, quantity: 50 }] })
+  // A different floor, today — not theirs.
+  await seedChart({ floor: 6, ward: 'الوحدة الأولى', date: DATE, createdBy: seeder.id, columns: [{ columnNumber: 1, medicineId: medicine.id }], quantities: [{ rowNumber: 1, columnNumber: 1, quantity: 99 }] })
+
+  const client = await loginAs({ role: 'user', floor: 5 })
+  const body = (await client.get(`/api/dashboard?date=${DATE}&period=month`)).body
+  assert.equal(body.medicinesScope, 'own')
+  assert.equal(body.medicinesPeriod, 'today')
+  assert.deepEqual(body.topMedicines.map((m) => [m.name, m.quantity]), [['Amoxicillin Cap', 7]])
+})
+
+test('GET /api/dashboard topMedicines (special-ward pharmacist): only their assigned wards', async () => {
+  const seeder = await createUser({ role: 'user', floor: 5 })
+  const medicine = (await pool.query("INSERT INTO medicines (name) VALUES ('Meronem 1g Vial') RETURNING id")).rows[0]
+  await seedChart({ floor: null, ward: 'ردهة الديلزة', date: DATE, createdBy: seeder.id, columns: [{ columnNumber: 1, medicineId: medicine.id }], quantities: [{ rowNumber: 1, columnNumber: 1, quantity: 4 }] })
+  await seedChart({ floor: null, ward: 'ردهة الخدج', date: DATE, createdBy: seeder.id, columns: [{ columnNumber: 1, medicineId: medicine.id }], quantities: [{ rowNumber: 1, columnNumber: 1, quantity: 30 }] })
+
+  const client = await loginAs({ role: 'user', ward: 'ردهة الديلزة' })
+  const body = (await client.get(`/api/dashboard?date=${DATE}`)).body
+  assert.deepEqual(body.topMedicines.map((m) => [m.name, m.quantity]), [['Meronem 1g Vial', 4]])
 })
 
 test('GET/POST/DELETE /api/announcements: a plain user can only read; a manager can post and remove', async () => {
   const anon = new ApiClient(baseUrl)
   assert.equal((await anon.get('/api/announcements')).status, 401)
-  // requireManager (like requireAdmin elsewhere) checks the role directly rather than first
-  // checking for a session, so an anonymous request gets 403, not 401 — matches every other
-  // requireManager/requireAdmin route in this app.
+  // requireManager (like requireAdmin) checks the role directly rather than first checking for
+  // a session, so an anonymous write gets 403, not 401 — matches every requireManager route.
   assert.equal((await anon.post('/api/announcements', { message: 'x' })).status, 403)
 
-  const plainUser = await loginAs({ role: 'user' })
+  const plainUser = await loginAs({ role: 'user', floor: 5 })
   assert.equal((await plainUser.get('/api/announcements')).status, 200)
-  const forbidden = await plainUser.post('/api/announcements', { message: 'محاولة من مستخدم عادي' })
-  assert.equal(forbidden.status, 403)
+  assert.equal((await plainUser.post('/api/announcements', { message: 'محاولة من مستخدم عادي' })).status, 403)
 
   const manager = await loginAs({ role: 'supervisor' })
-  const empty = await manager.get('/api/announcements')
-  assert.deepEqual(empty.body.announcements, [])
-
-  const blank = await manager.post('/api/announcements', { message: '   ' })
-  assert.equal(blank.status, 400)
+  assert.deepEqual((await manager.get('/api/announcements')).body.announcements, [])
+  assert.equal((await manager.post('/api/announcements', { message: '   ' })).status, 400)
 
   const created = await manager.post('/api/announcements', { message: 'الرجاء التأكد من مطابقة الأسماء' })
   assert.equal(created.status, 201)
   assert.equal(created.body.announcement.message, 'الرجاء التأكد من مطابقة الأسماء')
-  assert.ok(created.body.announcement.author_name)
+  assert.equal(created.body.announcement.author_name, undefined, 'the poster name is not exposed')
 
   const listed = await plainUser.get('/api/announcements')
   assert.equal(listed.body.announcements.length, 1)
   assert.equal(listed.body.announcements[0].id, created.body.announcement.id)
 
-  const deniedDelete = await plainUser.delete(`/api/announcements/${created.body.announcement.id}`)
-  assert.equal(deniedDelete.status, 403)
-
-  const deleted = await manager.delete(`/api/announcements/${created.body.announcement.id}`)
-  assert.equal(deleted.status, 200)
-  const afterDelete = await plainUser.get('/api/announcements')
-  assert.deepEqual(afterDelete.body.announcements, [])
-
-  const missing = await manager.delete('/api/announcements/999999')
-  assert.equal(missing.status, 404)
+  assert.equal((await plainUser.delete(`/api/announcements/${created.body.announcement.id}`)).status, 403)
+  assert.equal((await manager.delete(`/api/announcements/${created.body.announcement.id}`)).status, 200)
+  assert.deepEqual((await plainUser.get('/api/announcements')).body.announcements, [])
+  assert.equal((await manager.delete('/api/announcements/999999')).status, 404)
 })
 
 test('DELETE /api/users/:id: does not fail on a user who posted an announcement', async () => {
   const manager = await loginAs({ role: 'admin' })
-  const author = await createUser({ role: 'user' })
+  const author = await createUser({ role: 'user', floor: 5 })
   await pool.query("INSERT INTO announcements (message, created_by) VALUES ('إعلان', $1)", [author.id])
 
-  const response = await manager.delete(`/api/users/${author.id}`)
-  assert.equal(response.status, 200)
+  assert.equal((await manager.delete(`/api/users/${author.id}`)).status, 200)
   const row = await pool.query('SELECT created_by FROM announcements')
   assert.equal(row.rows[0].created_by, null)
 })

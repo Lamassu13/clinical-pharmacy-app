@@ -2,14 +2,19 @@
 // today's chart, today's top medicines by quantity across every ward, and notices posted by
 // the manager/admin. All three are read by every logged-in user; only a manager can post or
 // remove an announcement.
+const PERIOD_LABELS = { today: 'اليوم', week: 'أسبوع', month: 'شهر' }
+
 export default function DashboardWidgets({
-  startedCount, totalCount, topMedicines, announcements,
-  isManager, announcementDraft, setAnnouncementDraft, announcementError, announcementBusy,
+  startedCount, totalCount, topMedicines, medicinesScope, medicinesPeriod, setMedicinesPeriod,
+  announcements, isManager, announcementDraft, setAnnouncementDraft, announcementError, announcementBusy,
   onPostAnnouncement, onDeleteAnnouncement,
 }) {
   const notStartedCount = totalCount - startedCount
   const startedPct = totalCount ? Math.round((startedCount / totalCount) * 100) : 0
   const maxQty = topMedicines.length ? Math.max(...topMedicines.map((item) => item.quantity)) : 1
+  const medicinesSubtitle = medicinesScope === 'all'
+    ? `بمجموع الكميات عبر كل الردهات — ${PERIOD_LABELS[medicinesPeriod] || 'شهر'}`
+    : 'بمجموع كميات طابقك اليوم'
 
   return (
     <div className="dashboard-widgets">
@@ -38,11 +43,24 @@ export default function DashboardWidgets({
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"></rect><path d="M12 3v18"></path></svg>
           </span>
           <div>
-            <strong>الأدوية الأكثر صرفًا اليوم</strong>
-            <span>بمجموع الكميات عبر كل الردهات</span>
+            <strong>الأدوية الأكثر صرفًا</strong>
+            <span>{medicinesSubtitle}</span>
           </div>
         </div>
-        {topMedicines.length === 0 ? <p className="dashboard-widget-empty">لا توجد كميات مسجّلة اليوم بعد.</p> : (
+        {isManager && (
+          <div className="top-medicines-periods" role="group" aria-label="مدة احتساب الأدوية">
+            {['today', 'week', 'month'].map((period) => (
+              <button
+                key={period}
+                type="button"
+                className={medicinesPeriod === period ? 'active' : undefined}
+                aria-pressed={medicinesPeriod === period}
+                onClick={() => setMedicinesPeriod(period)}
+              >{PERIOD_LABELS[period]}</button>
+            ))}
+          </div>
+        )}
+        {topMedicines.length === 0 ? <p className="dashboard-widget-empty">لا توجد كميات مسجّلة في هذه المدة.</p> : (
           <div className="top-medicines-list">
             {topMedicines.map((item) => (
               <div className="top-medicines-row" key={item.name}>
@@ -71,7 +89,7 @@ export default function DashboardWidgets({
               <li className="announcement-item" key={item.id}>
                 <p>{item.message}</p>
                 <div className="announcement-meta">
-                  <span>{item.author_name || 'الإدارة'} — {new Date(item.created_at).toLocaleString('ar-IQ', { dateStyle: 'short', timeStyle: 'short' })}</span>
+                  <span>مسؤول وحدة الصيدلة السريرية — {new Date(item.created_at).toLocaleString('ar-IQ', { dateStyle: 'short', timeStyle: 'short' })}</span>
                   {isManager && <button type="button" onClick={() => onDeleteAnnouncement(item.id)}>حذف</button>}
                 </div>
               </li>

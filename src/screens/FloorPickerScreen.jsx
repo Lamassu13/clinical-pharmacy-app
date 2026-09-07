@@ -6,6 +6,7 @@ import DashboardWidgets from '../components/DashboardWidgets.jsx'
 // renders all of them.
 export default function FloorPickerScreen({
   today, onPickFloor, onOpen, dashboard, announcements, isManager,
+  medicinesPeriod, setMedicinesPeriod,
   announcementDraft, setAnnouncementDraft, announcementError, announcementBusy,
   onPostAnnouncement, onDeleteAnnouncement,
 }) {
@@ -19,6 +20,7 @@ export default function FloorPickerScreen({
 
     <DashboardWidgets
       startedCount={startedCount} totalCount={totalCount} topMedicines={dashboard?.topMedicines ?? []}
+      medicinesScope={dashboard?.medicinesScope ?? 'own'} medicinesPeriod={medicinesPeriod} setMedicinesPeriod={setMedicinesPeriod}
       announcements={announcements} isManager={isManager}
       announcementDraft={announcementDraft} setAnnouncementDraft={setAnnouncementDraft}
       announcementError={announcementError} announcementBusy={announcementBusy}
