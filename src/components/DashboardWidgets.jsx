@@ -21,7 +21,7 @@ export default function DashboardWidgets({
         <div className="dashboard-widget">
           <div className="dashboard-widget-head">
             <span className="dashboard-widget-icon" aria-hidden="true">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="4" width="14" height="17" rx="2"></rect><path d="M9 3.5h6a1 1 0 0 1 1 1V6H8V4.5a1 1 0 0 1 1-1Z"></path><path d="m9 13 2 2 4-4"></path></svg>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="8.25" fill="currentColor" fillOpacity="0.14" stroke="none"></circle><circle cx="12" cy="12" r="8.25" strokeOpacity="0.25"></circle><path d="M12 3.75A8.25 8.25 0 1 1 3.75 12"></path><circle cx="12" cy="12" r="2" fill="currentColor" stroke="none"></circle></svg>
             </span>
             <div>
               <strong>حالة الردهات اليوم</strong>
@@ -41,7 +41,7 @@ export default function DashboardWidgets({
       <div className="dashboard-widget">
         <div className="dashboard-widget-head">
           <span className="dashboard-widget-icon" aria-hidden="true">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"></rect><path d="M12 3v18"></path></svg>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="8.5" width="18" height="7" rx="3.5" transform="rotate(-45 12 12)" fill="currentColor" fillOpacity="0.14" stroke="none"></rect><rect x="3" y="8.5" width="18" height="7" rx="3.5" transform="rotate(-45 12 12)"></rect><line x1="12" y1="8.5" x2="12" y2="15.5" transform="rotate(-45 12 12)"></line></svg>
           </span>
           <div>
             <strong>الأدوية الأكثر صرفًا</strong>
@@ -77,7 +77,7 @@ export default function DashboardWidgets({
       <div className="dashboard-widget">
         <div className="dashboard-widget-head">
           <span className="dashboard-widget-icon" aria-hidden="true">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M3 11v2a2 2 0 0 0 2 2h1l3 5V4L6 9H5a2 2 0 0 0-2 2Z"></path><path d="M14 8a4 4 0 0 1 0 8"></path><path d="M18 5a8 8 0 0 1 0 14"></path></svg>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="2" fill="currentColor" fillOpacity="0.14" stroke="none"></rect><rect x="3.5" y="5" width="17" height="15" rx="2"></rect><circle cx="12" cy="3.25" r="1.25" fill="currentColor" stroke="none"></circle><line x1="7.5" y1="10" x2="16.5" y2="10"></line><line x1="7.5" y1="13.5" x2="16.5" y2="13.5"></line><line x1="7.5" y1="17" x2="13" y2="17"></line></svg>
           </span>
           <div>
             <strong>إعلانات الإدارة</strong>
