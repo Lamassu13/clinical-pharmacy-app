@@ -4,16 +4,13 @@
 const PERIOD_LABELS = { today: 'اليوم', week: 'أسبوع', month: 'شهر' }
 
 export default function DashboardWidgets({
-  startedCount, totalCount, topMedicines, medicinesScope, medicinesPeriod, setMedicinesPeriod,
+  startedCount, totalCount, topMedicines, medicinesPeriod, setMedicinesPeriod,
   announcements, isManager, announcementDraft, setAnnouncementDraft, announcementError, announcementBusy,
   onPostAnnouncement, onDeleteAnnouncement,
 }) {
   const notStartedCount = totalCount - startedCount
   const startedPct = totalCount ? Math.round((startedCount / totalCount) * 100) : 0
   const maxQty = topMedicines.length ? Math.max(...topMedicines.map((item) => item.quantity)) : 1
-  const medicinesSubtitle = medicinesScope === 'all'
-    ? `بمجموع الكميات عبر كل الردهات — ${PERIOD_LABELS[medicinesPeriod] || 'شهر'}`
-    : 'بمجموع كميات طابقك اليوم'
 
   return (
     <div className={isManager ? 'dashboard-widgets' : 'dashboard-widgets two-up'}>
@@ -23,10 +20,7 @@ export default function DashboardWidgets({
             <span className="dashboard-widget-icon" aria-hidden="true">
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="8.25" fill="currentColor" fillOpacity="0.14" stroke="none"></circle><circle cx="12" cy="12" r="8.25" strokeOpacity="0.25"></circle><path d="M12 3.75A8.25 8.25 0 1 1 3.75 12"></path><circle cx="12" cy="12" r="2" fill="currentColor" stroke="none"></circle></svg>
             </span>
-            <div>
-              <strong>حالة الردهات اليوم</strong>
-              <span>من أصل {totalCount} ردهة وطابق</span>
-            </div>
+            <strong>حالة الردهات اليوم</strong>
           </div>
           <div className="ward-status-row">
             <strong className="stat-good">{startedCount}</strong>
@@ -43,10 +37,7 @@ export default function DashboardWidgets({
           <span className="dashboard-widget-icon" aria-hidden="true">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="8.5" width="18" height="7" rx="3.5" transform="rotate(-45 12 12)" fill="currentColor" fillOpacity="0.14" stroke="none"></rect><rect x="3" y="8.5" width="18" height="7" rx="3.5" transform="rotate(-45 12 12)"></rect><line x1="12" y1="8.5" x2="12" y2="15.5" transform="rotate(-45 12 12)"></line></svg>
           </span>
-          <div>
-            <strong>الأدوية الأكثر صرفًا</strong>
-            <span>{medicinesSubtitle}</span>
-          </div>
+          <strong>الأدوية الأكثر صرفًا</strong>
         </div>
         {isManager && (
           <div className="top-medicines-periods" role="group" aria-label="مدة احتساب الأدوية">
@@ -79,10 +70,7 @@ export default function DashboardWidgets({
           <span className="dashboard-widget-icon" aria-hidden="true">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="2" fill="currentColor" fillOpacity="0.14" stroke="none"></rect><rect x="3.5" y="5" width="17" height="15" rx="2"></rect><circle cx="12" cy="3.25" r="1.25" fill="currentColor" stroke="none"></circle><line x1="7.5" y1="10" x2="16.5" y2="10"></line><line x1="7.5" y1="13.5" x2="16.5" y2="13.5"></line><line x1="7.5" y1="17" x2="13" y2="17"></line></svg>
           </span>
-          <div>
-            <strong>إعلانات الإدارة</strong>
-            <span>من المدير والمسؤولين</span>
-          </div>
+          <strong>إعلانات الإدارة</strong>
         </div>
         {announcements.length === 0 ? <p className="dashboard-widget-empty">لا توجد إعلانات حاليًا.</p> : (
           <ul className="announcement-list">

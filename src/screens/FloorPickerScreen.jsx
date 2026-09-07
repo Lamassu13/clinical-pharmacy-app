@@ -20,7 +20,7 @@ export default function FloorPickerScreen({
 
     <DashboardWidgets
       startedCount={startedCount} totalCount={totalCount} topMedicines={dashboard?.topMedicines ?? []}
-      medicinesScope={dashboard?.medicinesScope ?? 'own'} medicinesPeriod={medicinesPeriod} setMedicinesPeriod={setMedicinesPeriod}
+      medicinesPeriod={medicinesPeriod} setMedicinesPeriod={setMedicinesPeriod}
       announcements={announcements} isManager={isManager}
       announcementDraft={announcementDraft} setAnnouncementDraft={setAnnouncementDraft}
       announcementError={announcementError} announcementBusy={announcementBusy}
