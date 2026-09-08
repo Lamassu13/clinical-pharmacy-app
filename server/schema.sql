@@ -41,11 +41,12 @@ CREATE TABLE IF NOT EXISTS daily_charts (
   id BIGSERIAL PRIMARY KEY,
   ward_id BIGINT NOT NULL REFERENCES wards(id),
   chart_date DATE NOT NULL,
+  slot TEXT NOT NULL DEFAULT 'main',
   created_by BIGINT NOT NULL REFERENCES users(id),
   updated_by BIGINT NOT NULL REFERENCES users(id),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE (ward_id, chart_date)
+  UNIQUE (ward_id, chart_date, slot)
 );
 
 CREATE TABLE IF NOT EXISTS medicines (
@@ -90,6 +91,18 @@ ALTER TABLE chart_columns ADD COLUMN IF NOT EXISTS custom_name TEXT;
 -- a PUT whose expectedVersion matches this counter, and bumps it on every accepted save; a
 -- mismatch means someone else saved first, and the client reconciles instead of overwriting.
 ALTER TABLE daily_charts ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 0;
+
+-- A ward/day can hold a second, fully independent chart ("الجارت الإضافي"): same structure,
+-- its own patients/columns/quantities and its own pill form. `slot` is 'main' for every
+-- existing chart and 'extra' for the added one; the ward/date uniqueness now includes it.
+ALTER TABLE daily_charts ADD COLUMN IF NOT EXISTS slot TEXT NOT NULL DEFAULT 'main';
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'daily_charts_ward_id_chart_date_key') THEN
+    ALTER TABLE daily_charts
+      DROP CONSTRAINT daily_charts_ward_id_chart_date_key,
+      ADD CONSTRAINT daily_charts_ward_id_chart_date_slot_key UNIQUE (ward_id, chart_date, slot);
+  END IF;
+END $$;
 
 -- Keyed by the medicine's normalised name, not by a catalogue id. A chart column is free
 -- text: it links to the catalogue when it matches one, and stands alone when it does not.

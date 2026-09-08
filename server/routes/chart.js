@@ -9,12 +9,16 @@ import {
 
 const router = express.Router()
 
-// Look up the daily_charts row id for a (floor, ward, date), or null if none exists.
+// A ward/day holds a 'main' chart and, optionally, an 'extra' one ("الجارت الإضافي").
+export const CHART_SLOTS = ['main', 'extra']
+export const readSlot = (value) => (CHART_SLOTS.includes(value) ? value : 'main')
+
+// Look up the daily_charts row id for a (floor, ward, date, slot), or null if none exists.
 // Exported because the pills routes in index.js still call it.
-const resolveChartId = async (floor, wardName, chartDate) => {
+const resolveChartId = async (floor, wardName, chartDate, slot = 'main') => {
   const wardResult = await query('SELECT id FROM wards WHERE floor_number IS NOT DISTINCT FROM $1 AND name = $2 ORDER BY id LIMIT 1', [floor, wardName])
   if (!wardResult.rows[0]) return null
-  const chartResult = await query('SELECT id FROM daily_charts WHERE ward_id = $1 AND chart_date = $2', [wardResult.rows[0].id, chartDate])
+  const chartResult = await query('SELECT id FROM daily_charts WHERE ward_id = $1 AND chart_date = $2 AND slot = $3', [wardResult.rows[0].id, chartDate, readSlot(slot)])
   return chartResult.rows[0] ? chartResult.rows[0].id : null
 }
 
@@ -50,9 +54,10 @@ router.get('/chart', requireAuth, async (request, response) => {
   if (!wardName || !isIsoDate(chartDate)) return response.status(400).json({ message: 'بيانات الردهة والتاريخ مطلوبة' })
   if (!isKnownWard(floor, wardName)) return response.status(400).json({ message: 'الردهة غير معروفة' })
   if (!canAccessLocation(request.session.user, floor, wardName)) return response.status(403).json({ message: 'لا تملك صلاحية لهذه الردهة' })
+  const slot = readSlot(request.query.slot)
   const wardResult = await query('SELECT id, floor_number, name FROM wards WHERE floor_number IS NOT DISTINCT FROM $1 AND name = $2 ORDER BY id LIMIT 1', [floor, wardName])
   if (!wardResult.rows[0]) return response.json({ chart: null })
-  const chartResult = await query('SELECT id FROM daily_charts WHERE ward_id = $1 AND chart_date = $2', [wardResult.rows[0].id, chartDate])
+  const chartResult = await query('SELECT id FROM daily_charts WHERE ward_id = $1 AND chart_date = $2 AND slot = $3', [wardResult.rows[0].id, chartDate, slot])
   if (!chartResult.rows[0]) return response.json({ chart: null })
   const chartId = chartResult.rows[0].id
   const [patients, columns, quantities, chartRow] = await Promise.all([
@@ -71,6 +76,7 @@ router.put('/chart', requireAuth, async (request, response) => {
   if (!wardName || !isIsoDate(chartDate)) return response.status(400).json({ message: 'بيانات الردهة والتاريخ مطلوبة' })
   if (!isKnownWard(floor, wardName)) return response.status(400).json({ message: 'الردهة غير معروفة' })
   if (!canAccessLocation(request.session.user, floor, wardName)) return response.status(403).json({ message: 'لا تملك صلاحية لهذه الردهة' })
+  const slot = readSlot(request.body.slot)
 
   const patients = (Array.isArray(request.body.patients) ? request.body.patients : [])
     .map((patient) => ({ rowNumber: clampInt(patient?.rowNumber, 1, MAX_PATIENT_ROWS), name: cleanText(patient?.name, 200) }))
@@ -100,12 +106,12 @@ router.put('/chart', requireAuth, async (request, response) => {
     // instead — there's no existing row to conflict with, so it always succeeds. Losing the
     // race here rolls back before any of the patients/columns/quantities tables are touched.
     const chartResult = await client.query(
-      `INSERT INTO daily_charts (ward_id, chart_date, created_by, updated_by, version) VALUES ($1, $2, $3, $3, 1)
-       ON CONFLICT (ward_id, chart_date) DO UPDATE
+      `INSERT INTO daily_charts (ward_id, chart_date, slot, created_by, updated_by, version) VALUES ($1, $2, $5, $3, $3, 1)
+       ON CONFLICT (ward_id, chart_date, slot) DO UPDATE
          SET updated_by = EXCLUDED.updated_by, updated_at = NOW(), version = daily_charts.version + 1
          WHERE daily_charts.version = $4
        RETURNING id, version`,
-      [wardRow.id, chartDate, request.session.user.id, expectedVersion],
+      [wardRow.id, chartDate, request.session.user.id, expectedVersion, slot],
     )
     if (!chartResult.rows[0]) {
       await client.query('ROLLBACK')
@@ -177,7 +183,7 @@ router.post('/chart/collapse-row', requireAuth, async (request, response) => {
   if (!wardName || !isIsoDate(chartDate) || rowNumber === null) return response.status(400).json({ message: 'بيانات الردهة والتاريخ والصف مطلوبة' })
   if (!isKnownWard(floor, wardName)) return response.status(400).json({ message: 'الردهة غير معروفة' })
   if (!canAccessLocation(request.session.user, floor, wardName)) return response.status(403).json({ message: 'لا تملك صلاحية لهذه الردهة' })
-  const chartId = await resolveChartId(floor, wardName, chartDate)
+  const chartId = await resolveChartId(floor, wardName, chartDate, readSlot(request.body.slot))
   // Nothing saved for this day yet, so there is no pill data to keep in step.
   if (!chartId) return response.json({ ok: true })
   const client = await pool.connect()

@@ -125,6 +125,34 @@ test('PUT /api/chart: rejects an unknown ward name for the given floor', async (
   assert.equal(response.status, 400)
 })
 
+test('PUT /api/chart: the extra slot is a separate chart for the same ward and date', async () => {
+  const client = await loginAs({ role: 'user', floor: FLOOR })
+  await client.put('/api/chart', buildChartBody({ patients: [{ rowNumber: 1, name: 'Main sheet patient' }] }))
+  const extra = await client.put('/api/chart', buildChartBody({ slot: 'extra', patients: [{ rowNumber: 1, name: 'Extra sheet patient' }] }))
+  assert.equal(extra.status, 200)
+  assert.equal(extra.body.version, 1, 'the extra chart starts its own version count')
+
+  const main = await client.get(`/api/chart?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=${DATE}`)
+  const fetchedExtra = await client.get(`/api/chart?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=${DATE}&slot=extra`)
+  assert.equal(main.body.chart.patients[0].patient_name, 'Main sheet patient')
+  assert.equal(fetchedExtra.body.chart.patients[0].patient_name, 'Extra sheet patient')
+
+  // An unknown slot value falls back to 'main', never a third chart.
+  const bogus = await client.get(`/api/chart?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=${DATE}&slot=nonsense`)
+  assert.equal(bogus.body.chart.patients[0].patient_name, 'Main sheet patient')
+})
+
+test('POST /api/charts/purge: removes both slots of a ward/date', async () => {
+  const user = await loginAs({ role: 'user', floor: FLOOR })
+  await user.put('/api/chart', buildChartBody())
+  await user.put('/api/chart', buildChartBody({ slot: 'extra' }))
+
+  const manager = await loginAs({ role: 'admin' })
+  const purged = await manager.post('/api/charts/purge', { from: DATE, to: DATE, floors: [FLOOR] })
+  assert.equal(purged.status, 200)
+  assert.equal(purged.body.deleted, 2)
+})
+
 test('canAccessLocation via the API: a supervisor reaches a floor with no explicit assignment', async () => {
   const client = await loginAs({ role: 'supervisor' })
   const response = await client.get(`/api/chart?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=${DATE}`)

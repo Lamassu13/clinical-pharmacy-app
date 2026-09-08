@@ -501,12 +501,13 @@ function App() {
     if (!selected || selected.mode === 'pills') return
     fetch(`${apiUrl}/chart/collapse-row`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-      body: JSON.stringify({ floor: selected.floor, ward: selected.ward, date: selectedDate, rowNumber: rowIndex + 1 }),
+      body: JSON.stringify({ floor: selected.floor, ward: selected.ward, date: selectedDate, slot: selected.slot || 'main', rowNumber: rowIndex + 1 }),
     }).catch(() => undefined)
   }, [askConfirm, patientNames, selected, selectedDate])
   const buildChartBody = useCallback((date) => ({
     floor: selected?.floor ?? null,
     ward: selected?.ward,
+    slot: selected?.slot ?? 'main',
     date,
     patients: patientNames.map((name, index) => ({ rowNumber: index + 1, name })),
     columns: columnMedicines.map((medicineName, index) => ({ columnNumber: index + 1, medicineName })),
@@ -519,7 +520,7 @@ function App() {
   // comment on chartVersionRef above for why a plain overwrite in either direction is wrong.
   const reconcileChartConflict = useCallback(async (date) => {
     if (!selected) return
-    const params = new URLSearchParams({ floor: selected.floor || '', ward: selected.ward, date })
+    const params = new URLSearchParams({ floor: selected.floor || '', ward: selected.ward, slot: selected.slot || 'main', date })
     const response = await fetch(`${apiUrl}/chart?${params}`, { credentials: 'include' })
     if (!response.ok) return
     const result = await response.json()
@@ -590,14 +591,14 @@ function App() {
   // so we never overwrite unknown server state with a blank grid.
   const flushChart = useCallback(() => {
     if (!selected || selected.mode === 'pills' || !isLoggedIn) return
-    if (loadedChartKey !== `${selected.floor || 'special'}-${selected.ward}-${selectedDate}`) return
+    if (loadedChartKey !== `${selected.floor || 'special'}-${selected.ward}-${selectedDate}-${selected.slot || 'main'}`) return
     try { fetch(`${apiUrl}/chart`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', keepalive: true, body: JSON.stringify(buildChartBody(selectedDate)) }) } catch { /* the debounced autosave or next visit will retry */ }
   }, [buildChartBody, isLoggedIn, loadedChartKey, selected, selectedDate])
   const flushPills = useCallback(() => {
     if (!selected || selected.mode !== 'pills' || !isLoggedIn || !pillsData) return
-    if (loadedPillsKey !== `${selected.floor || 'special'}-${selected.ward}-${selectedDate}`) return
+    if (loadedPillsKey !== `${selected.floor || 'special'}-${selected.ward}-${selectedDate}-${selected.slot || 'main'}`) return
     const entries = pillEntryList(pillEntries)
-    try { fetch(`${apiUrl}/pills`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', keepalive: true, body: JSON.stringify({ floor: selected.floor, ward: selected.ward, date: selectedDate, entries, rooms: pillRooms }) }) } catch { /* retry on next visit */ }
+    try { fetch(`${apiUrl}/pills`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', keepalive: true, body: JSON.stringify({ floor: selected.floor, ward: selected.ward, slot: selected.slot || 'main', date: selectedDate, entries, rooms: pillRooms }) }) } catch { /* retry on next visit */ }
   }, [isLoggedIn, loadedPillsKey, pillEntries, pillRooms, pillsData, selected, selectedDate])
   const goHome = useCallback(() => {
     if (selected?.mode === 'pills') flushPills(); else flushChart()
@@ -633,7 +634,8 @@ function App() {
   // There is no router, so the tab title is the only cue for which screen is open.
   useEffect(() => {
     const base = 'وحدة الصيدلة السريرية'
-    const ward = selected ? (selected.floor ? `الطابق ${selected.floor} - ${selected.ward}` : selected.ward) : ''
+    const wardName = selected ? (selected.floor ? `الطابق ${selected.floor} - ${selected.ward}` : selected.ward) : ''
+    const ward = selected?.slot === 'extra' ? `${wardName} — إضافي` : wardName
     let screen = 'اختر الطابق'
     if (!isLoggedIn) screen = authView === 'register' ? 'إنشاء حساب' : 'تسجيل الدخول'
     else if (adminView === 'requests') screen = 'طلبات الانضمام'
@@ -653,7 +655,8 @@ function App() {
     if (!selected) return
     const ward = selected.floor ? `الطابق ${selected.floor} - ${selected.ward}` : selected.ward
     const previousTitle = document.title
-    document.title = `جارت ${ward} ${selectedDate}`.replace(/[\\/:*?"<>|]/g, '-')
+    const kind = selected.slot === 'extra' ? 'جارت إضافي' : 'جارت'
+    document.title = `${kind} ${ward} ${selectedDate}`.replace(/[\\/:*?"<>|]/g, '-')
     const restore = () => { document.title = previousTitle; window.removeEventListener('afterprint', restore) }
     window.addEventListener('afterprint', restore)
     window.print()
@@ -739,7 +742,7 @@ function App() {
 
   useEffect(() => {
     if (!selected || selected.mode === 'pills') return undefined
-    const chartKey = `${selected.floor || 'special'}-${selected.ward}-${selectedDate}`
+    const chartKey = `${selected.floor || 'special'}-${selected.ward}-${selectedDate}-${selected.slot || 'main'}`
     const draftKey = `cpa-chart-draft:${chartKey}`
     setChartLoading(true)
     setLoadedChartKey(null)
@@ -750,7 +753,7 @@ function App() {
     let retryTimer
     const load = async () => {
       try {
-        const params = new URLSearchParams({ floor: selected.floor || '', ward: selected.ward, date: selectedDate })
+        const params = new URLSearchParams({ floor: selected.floor || '', ward: selected.ward, slot: selected.slot || 'main', date: selectedDate })
         const response = await fetch(`${apiUrl}/chart?${params}`, { credentials: 'include' })
         // Raise the sign-in card, then keep retrying: a load overwrites nothing that was
         // typed (the grid is still empty when the very first load is the one that fails),
@@ -796,7 +799,7 @@ function App() {
   // server yet. `base` is the last state this tab knows was actually saved, so the load
   // effect's merge can tell a real edit apart from a stale copy of old server data.
   useEffect(() => {
-    const chartKey = selected ? `${selected.floor || 'special'}-${selected.ward}-${selectedDate}` : null
+    const chartKey = selected ? `${selected.floor || 'special'}-${selected.ward}-${selectedDate}-${selected.slot || 'main'}` : null
     if (!selected || selected.mode === 'pills' || loadedChartKey !== chartKey) return undefined
     try {
       localStorage.setItem(`cpa-chart-draft:${chartKey}`, JSON.stringify({ base: lastSyncedChartRef.current, current: { patientNames, columnMedicines, quantities } }))
@@ -805,7 +808,7 @@ function App() {
   }, [columnMedicines, loadedChartKey, patientNames, quantities, selected, selectedDate])
 
   useEffect(() => {
-    const chartKey = selected ? `${selected.floor || 'special'}-${selected.ward}-${selectedDate}` : null
+    const chartKey = selected ? `${selected.floor || 'special'}-${selected.ward}-${selectedDate}-${selected.slot || 'main'}` : null
     // Holding off while the session is expired is what stops the 4-second retry loop. The
     // effect re-runs when it clears, which saves everything typed in the meantime.
     if (!selected || selected.mode === 'pills' || !isLoggedIn || sessionExpired || chartLoading || loadedChartKey !== chartKey) return undefined
@@ -854,7 +857,7 @@ function App() {
 
   useEffect(() => {
     if (!selected || selected.mode !== 'pills') return undefined
-    const pillsKey = `${selected.floor || 'special'}-${selected.ward}-${selectedDate}`
+    const pillsKey = `${selected.floor || 'special'}-${selected.ward}-${selectedDate}-${selected.slot || 'main'}`
     setPillsLoading(true)
     setLoadedPillsKey(null)
     setPillsSaveStatus('saved')
@@ -867,7 +870,7 @@ function App() {
     let retryTimer
     const load = async () => {
       try {
-        const params = new URLSearchParams({ floor: selected.floor || '', ward: selected.ward, date: selectedDate })
+        const params = new URLSearchParams({ floor: selected.floor || '', ward: selected.ward, slot: selected.slot || 'main', date: selectedDate })
         const response = await fetch(`${apiUrl}/pills?${params}`, { credentials: 'include' })
         isExpired(response)
         if (!response.ok) throw new Error('load failed')
@@ -894,14 +897,14 @@ function App() {
 
   useEffect(() => {
     if (!selected || selected.mode !== 'pills' || !isLoggedIn || sessionExpired || pillsLoading) return undefined
-    const pillsKey = `${selected.floor || 'special'}-${selected.ward}-${selectedDate}`
+    const pillsKey = `${selected.floor || 'special'}-${selected.ward}-${selectedDate}-${selected.slot || 'main'}`
     if (loadedPillsKey !== pillsKey || !pillsData) return undefined
     let retryTimer
     const save = async () => {
       const entries = pillEntryList(pillEntries)
       try {
         setPillsSaveStatus('saving')
-        const response = await fetch(`${apiUrl}/pills`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ floor: selected.floor, ward: selected.ward, date: selectedDate, entries, rooms: pillRooms }) })
+        const response = await fetch(`${apiUrl}/pills`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ floor: selected.floor, ward: selected.ward, slot: selected.slot || 'main', date: selectedDate, entries, rooms: pillRooms }) })
         if (isExpired(response)) return
         if (!response.ok) throw new Error('save failed')
         setPillsSaveStatus('saved')
@@ -931,7 +934,7 @@ function App() {
       // which is still tracking the chart being copied FROM. Fetching it fresh keeps the
       // overwrite version-gated too: a genuine concurrent edit on nextDate in the moment
       // between this GET and the PUT below still 409s instead of silently being discarded.
-      const params = new URLSearchParams({ floor: selected.floor || '', ward: selected.ward, date: nextDate })
+      const params = new URLSearchParams({ floor: selected.floor || '', ward: selected.ward, slot: selected.slot || 'main', date: nextDate })
       const targetResponse = await fetch(`${apiUrl}/chart?${params}`, { credentials: 'include' })
       const targetResult = targetResponse.ok ? await targetResponse.json() : { chart: null }
       const body = { ...buildChartBody(nextDate), expectedVersion: targetResult.chart ? targetResult.chart.version : 0 }
@@ -999,8 +1002,12 @@ function App() {
   }, [selected, sessionExpired])
 
   useEffect(() => {
-    const cards = document.querySelectorAll('.location-card:not(.special)')
-    cards.forEach((card) => {
+    // The floor-number filter is the floor picker's job only. On the ward picker (a floor is
+    // selected) the same `.location-card:not(.special)` selector matches ward cards whose
+    // `.floor-number` is a glyph, not a number — so keep them all shown; the user already
+    // cleared the floor gate to reach them.
+    document.querySelectorAll('.location-card:not(.special)').forEach((card) => {
+      if (floor) { card.hidden = false; return }
       const number = Number(card.querySelector('.floor-number')?.textContent)
       card.hidden = !isManager && number !== currentUser?.assignedFloor
     })
@@ -1049,10 +1056,12 @@ function App() {
   const visibleMedicines = adminMedicines.filter((item) => !medicineSearch || `${item.name} ${item.arabic_name || ''}`.toLowerCase().includes(medicineSearch))
   if (adminView === 'medicines' && isManager) return <AdminMedicinesScreen adminHeader={appHeader} adminMedicines={adminMedicines} visibleMedicines={visibleMedicines} medicineSearch={medicineSearch} medicineFilter={medicineFilter} setMedicineFilter={setMedicineFilter} newMedicine={newMedicine} setNewMedicine={setNewMedicine} registrationsError={registrationsError} adminSuccess={adminSuccess} busy={busy} onAddMedicine={addMedicine} onSaveMedicine={saveMedicine} onRemoveMedicine={removeMedicine} confirmModal={confirmModal} />
 
-  const wardLabel = selected ? (selected.floor ? `الطابق ${selected.floor} - ${selected.ward}` : selected.ward) : ''
+  const wardLabel = selected
+    ? `${selected.floor ? `الطابق ${selected.floor} - ${selected.ward}` : selected.ward}${selected.slot === 'extra' ? ' — إضافي' : ''}`
+    : ''
   // True once THIS ward+date's chart has finished loading. Until then the grid is covered and
   // made inert, so a slow or failed load cannot be typed into and then silently overwritten.
-  const chartReadyKey = selected && selected.mode !== 'pills' ? `${selected.floor || 'special'}-${selected.ward}-${selectedDate}` : null
+  const chartReadyKey = selected && selected.mode !== 'pills' ? `${selected.floor || 'special'}-${selected.ward}-${selectedDate}-${selected.slot || 'main'}` : null
   const chartReady = chartReadyKey !== null && loadedChartKey === chartReadyKey
   // The last form that actually prints must not force a page break after itself, or the job
   // ends on a blank sheet. Which form that is depends on the selection, so :last-child cannot

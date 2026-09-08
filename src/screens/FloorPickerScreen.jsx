@@ -44,7 +44,7 @@ export default function FloorPickerScreen({
         {isManager && <span className="sr-only">{started ? 'بدأت جارتها اليوم' : 'لم تبدأ بعد'}</span>}
         <span className="floor-number"><WardGlyph /></span>
         <span><strong>{ward}</strong><small>ردهة مستقلة</small></span>
-        <span className="ward-card-actions"><button className="secondary-button compact" onClick={() => onOpen({ floor: null, ward, mode: 'chart' })}>الجارت</button><button className="primary-button compact" onClick={() => onOpen({ floor: null, ward, mode: 'pills' })}>الحبوب</button></span>
+        <span className="ward-card-actions"><button className="secondary-button compact" onClick={() => onOpen({ floor: null, ward, mode: 'chart', slot: 'main' })}>الجارت</button><button className="secondary-button compact" onClick={() => onOpen({ floor: null, ward, mode: 'chart', slot: 'extra' })}>الجارت الإضافي</button><button className="primary-button compact" onClick={() => onOpen({ floor: null, ward, mode: 'pills' })}>الحبوب</button></span>
       </div>
     })}</div>
   </section>

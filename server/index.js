@@ -15,7 +15,7 @@ import {
   DOSE_TIMES, USAGE_METHODS, NOTE_OPTIONS, canAccessLocation, clampInt, isIsoDate, cleanText,
   normalizeMedicineKey, medicineKeySql,
 } from './validation.js'
-import chartRoutes, { resolveChartId } from './routes/chart.js'
+import chartRoutes, { resolveChartId, readSlot } from './routes/chart.js'
 
 const app = express()
 const port = Number(process.env.PORT || 3001)
@@ -462,7 +462,7 @@ app.get('/api/pills', requireAuth, async (request, response) => {
   if (!wardName || !isIsoDate(chartDate)) return response.status(400).json({ message: 'بيانات الردهة والتاريخ مطلوبة' })
   if (!isKnownWard(floor, wardName)) return response.status(400).json({ message: 'الردهة غير معروفة' })
   if (!canAccessLocation(request.session.user, floor, wardName)) return response.status(403).json({ message: 'لا تملك صلاحية لهذه الردهة' })
-  const chartId = await resolveChartId(floor, wardName, chartDate)
+  const chartId = await resolveChartId(floor, wardName, chartDate, readSlot(request.query.slot))
   if (!chartId) return response.json({ pills: null })
   // LEFT JOIN, not JOIN: a column whose text is not in the catalogue has a NULL medicine_id
   // and lives in custom_name. An inner join dropped those columns outright, which is how a
@@ -523,7 +523,7 @@ app.put('/api/pills', requireAuth, async (request, response) => {
   if (!wardName || !isIsoDate(chartDate)) return response.status(400).json({ message: 'بيانات الردهة والتاريخ مطلوبة' })
   if (!isKnownWard(floor, wardName)) return response.status(400).json({ message: 'الردهة غير معروفة' })
   if (!canAccessLocation(request.session.user, floor, wardName)) return response.status(403).json({ message: 'لا تملك صلاحية لهذه الردهة' })
-  const chartId = await resolveChartId(floor, wardName, chartDate)
+  const chartId = await resolveChartId(floor, wardName, chartDate, readSlot(request.body.slot))
   if (!chartId) return response.status(404).json({ message: 'لا يوجد جارت لهذا اليوم' })
   const byKey = new Map()
   ;(Array.isArray(request.body.entries) ? request.body.entries : []).forEach((entry) => {

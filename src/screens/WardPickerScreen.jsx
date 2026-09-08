@@ -24,7 +24,8 @@ export default function WardPickerScreen({ floor, today, dashboard, isManager, o
         <span className="floor-number"><WardGlyph /></span>
         <span><strong>{ward}</strong></span>
         <span className="ward-card-actions">
-          <button className="secondary-button compact" onClick={() => onOpen({ floor: floor.number, ward, mode: 'chart' })}>الجارت</button>
+          <button className="secondary-button compact" onClick={() => onOpen({ floor: floor.number, ward, mode: 'chart', slot: 'main' })}>الجارت</button>
+          <button className="secondary-button compact" onClick={() => onOpen({ floor: floor.number, ward, mode: 'chart', slot: 'extra' })}>الجارت الإضافي</button>
           <button className="primary-button compact" onClick={() => onOpen({ floor: floor.number, ward, mode: 'pills' })}>الحبوب</button>
         </span>
       </div>
