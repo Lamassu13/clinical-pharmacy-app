@@ -73,8 +73,6 @@ function App() {
   const [newMedicine, setNewMedicine] = useState('')
   const [patientNames, setPatientNames] = useState(() => Array.from({ length: PATIENT_ROWS }, () => ''))
   const [quantities, setQuantities] = useState(() => Array.from({ length: PATIENT_ROWS }, () => Array(CHART_COLUMNS).fill('')))
-  // Which row was focused and what it held, so blur only collapses the row it started on.
-  const editingRowStart = useRef({ row: -1, name: '' })
   // The chart is three strips: a header, the scrolling body, and the totals. Only the
   // doses half of the body scrolls sideways; the other two are pushed to match it.
   const chartFrameRef = useRef(null)
@@ -85,7 +83,11 @@ function App() {
   const [selectedDate, setSelectedDate] = useState(() => isoDate(new Date()))
   const [chartLoading, setChartLoading] = useState(false)
   const [loadedChartKey, setLoadedChartKey] = useState(null)
-  const [saveError, setSaveError] = useState(false)
+  // The autosave lifecycle, shown verbatim in the chart's status line: 'pending' (edits not
+  // yet flushed — the 1.2s debounce is running), 'saving' (a PUT is in flight), 'saved' (the
+  // server has confirmed), 'error' (the PUT failed and is being retried). It starts at
+  // 'saved' so a freshly loaded, untouched chart does not claim unsaved work.
+  const [chartSaveStatus, setChartSaveStatus] = useState('saved')
   const [loadError, setLoadError] = useState(false)
   const [copyError, setCopyError] = useState(false)
   // Optimistic-concurrency bookkeeping for PUT /api/chart (see server/schema.sql's
@@ -97,7 +99,12 @@ function App() {
   // the other on a shared iPad.
   const chartVersionRef = useRef(0)
   const lastSyncedChartRef = useRef({ patientNames: [], columnMedicines: [], quantities: [] })
-  const [chartConflictNotice, setChartConflictNotice] = useState(false)
+  // Set by reconcileChartConflict after a cross-device merge: { changes, snapshot }. `changes`
+  // is the per-field list of cells this tab's value lost to another device (shown in the
+  // banner); `snapshot` is this tab's pre-merge grid, kept so "undo the merge" can put it
+  // back. null while there is nothing to acknowledge. Unlike a transient notice it stays up
+  // until the pharmacist explicitly dismisses it or undoes — a changed dose must be seen.
+  const [chartConflict, setChartConflict] = useState(null)
   const [pillsData, setPillsData] = useState(null)
   const [pillEntries, setPillEntries] = useState({})
   const [pillRooms, setPillRooms] = useState({})
@@ -148,6 +155,9 @@ function App() {
   const today = new Date(`${selectedDate}T12:00:00`).toLocaleDateString('ar-IQ')
   // The weekday the chart is for. Noon-anchored like `today` so it cannot slip a day.
   const todayWeekday = new Date(`${selectedDate}T12:00:00`).toLocaleDateString('ar-IQ', { weekday: 'long' })
+  // The chart defaults to today; the date picker can move it. When it is not today, the
+  // status bar says so — a past-dated chart looks identical to the live one otherwise.
+  const dateIsToday = selectedDate === isoDate(new Date())
   // Built from two calls on purpose: Intl throws a TypeError if `weekday` is combined with
   // `dateStyle`, so the day name has to be formatted separately and prefixed.
   const editedAt = new Date()
@@ -471,7 +481,11 @@ function App() {
     }))
   }, [patientNames, specialColumns])
   // Remove a patient row and pull every following row up one, keeping the grid at PATIENT_ROWS.
-  const collapseRow = useCallback((rowIndex) => {
+  // Triggered only by the explicit ✕ on the active row, and gated by a confirm: this deletes
+  // the patient's whole dose line and renumbers every row below it, and there is no undo.
+  const collapseRow = useCallback(async (rowIndex) => {
+    const label = patientNames[rowIndex]?.trim() || `مريض ${rowIndex + 1}`
+    if (!(await askConfirm(`حذف صف «${label}»؟ ستُحذف كل جرعاته وستنتقل الصفوف التالية صفًّا واحدًا للأعلى — بلا تراجع.`))) return
     setPatientNames((current) => { const next = current.filter((_, index) => index !== rowIndex); next.push(''); return next })
     setQuantities((current) => { const next = current.filter((_, index) => index !== rowIndex); next.push(Array(CHART_COLUMNS).fill('')); return next })
     // The pill form's dose times and room numbers are keyed by row number and live only on
@@ -482,7 +496,7 @@ function App() {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
       body: JSON.stringify({ floor: selected.floor, ward: selected.ward, date: selectedDate, rowNumber: rowIndex + 1 }),
     }).catch(() => undefined)
-  }, [selected, selectedDate])
+  }, [askConfirm, patientNames, selected, selectedDate])
   const buildChartBody = useCallback((date) => ({
     floor: selected?.floor ?? null,
     ward: selected?.ward,
@@ -503,14 +517,44 @@ function App() {
     if (!response.ok) return
     const result = await response.json()
     const fresh = parseChartRows(result.chart)
-    const merged = mergeChartSnapshots(lastSyncedChartRef.current, { patientNames, columnMedicines, quantities }, fresh)
+    const mine = { patientNames, columnMedicines, quantities }
+    const merged = mergeChartSnapshots(lastSyncedChartRef.current, mine, fresh)
+    // Every field where the merge took another device's value instead of this tab's — the
+    // list the banner shows so a changed dose is never silent.
+    const changes = []
+    merged.patientNames.forEach((name, row) => {
+      if (name !== (mine.patientNames[row] ?? '')) changes.push({ what: `اسم صف ${row + 1}`, from: mine.patientNames[row] || '—', to: name || '—' })
+    })
+    merged.columnMedicines.forEach((name, col) => {
+      if (name !== (mine.columnMedicines[col] ?? '')) changes.push({ what: `دواء عمود ${col + 1}`, from: mine.columnMedicines[col] || '—', to: name || '—' })
+    })
+    merged.quantities.forEach((cells, row) => cells.forEach((value, col) => {
+      if (value !== (mine.quantities[row]?.[col] ?? '')) changes.push({ what: `صف ${row + 1} · عمود ${col + 1}`, from: mine.quantities[row]?.[col] || '—', to: value || '—' })
+    }))
     setPatientNames(merged.patientNames)
     setColumnMedicines(merged.columnMedicines)
     setQuantities(merged.quantities)
     chartVersionRef.current = result.chart ? result.chart.version : 0
-    lastSyncedChartRef.current = merged
-    setChartConflictNotice(true)
+    // The server truth is `fresh`, not `merged` — `merged` still holds this tab's own edits
+    // that haven't been PUT yet. Leaving lastSynced at `fresh` keeps the grid "dirty" so the
+    // autosave effect re-sends those edits against the now-current version (and only marks
+    // them synced once that PUT returns 200).
+    lastSyncedChartRef.current = fresh
+    if (changes.length) setChartConflict({ changes, snapshot: mine })
   }, [columnMedicines, patientNames, quantities, selected])
+  // "تراجع عن الدمج": restore this tab's pre-merge grid over the merged one. The autosave
+  // effect then re-PUTs it at the now-current version, overriding the other device's change —
+  // the banner already showed the pharmacist exactly what that means.
+  const undoChartMerge = useCallback(() => {
+    setChartConflict((conflict) => {
+      if (!conflict) return null
+      setPatientNames(conflict.snapshot.patientNames)
+      setColumnMedicines(conflict.snapshot.columnMedicines)
+      setQuantities(conflict.snapshot.quantities)
+      return null
+    })
+  }, [])
+  const dismissChartConflict = useCallback(() => setChartConflict(null), [])
   // Fire an immediate save (survives navigation / tab close) — only once the grid is loaded,
   // so we never overwrite unknown server state with a blank grid.
   const flushChart = useCallback(() => {
@@ -643,7 +687,7 @@ function App() {
     const draftKey = `cpa-chart-draft:${chartKey}`
     setChartLoading(true)
     setLoadedChartKey(null)
-    setSaveError(false)
+    setChartSaveStatus('saved')
     setLoadError(false)
     setCopyError(false)
     let cancelled = false
@@ -677,7 +721,7 @@ function App() {
         // next PUT actually succeeds, so it must still read as "pending" if that save 409s.
         lastSyncedChartRef.current = fresh
         if (draft) { try { localStorage.removeItem(draftKey) } catch { /* best effort */ } }
-        setChartConflictNotice(false)
+        setChartConflict(null)
         setLoadError(false)
         setLoadedChartKey(chartKey)
         setChartLoading(false)
@@ -709,8 +753,20 @@ function App() {
     // Holding off while the session is expired is what stops the 4-second retry loop. The
     // effect re-runs when it clears, which saves everything typed in the meantime.
     if (!selected || selected.mode === 'pills' || !isLoggedIn || sessionExpired || chartLoading || loadedChartKey !== chartKey) return undefined
+    // Only claim "unsaved" when the grid actually differs from what the server last confirmed;
+    // the effect also re-runs on navigation-shaped dep changes that carry no real edit.
+    const synced = lastSyncedChartRef.current
+    const dirty = JSON.stringify(patientNames) !== JSON.stringify(synced.patientNames)
+      || JSON.stringify(columnMedicines) !== JSON.stringify(synced.columnMedicines)
+      || JSON.stringify(quantities) !== JSON.stringify(synced.quantities)
+    // Nothing changed since the last confirmed save (the effect also re-runs on navigation-
+    // shaped dep changes): don't re-PUT identical data — it would only bump the row version
+    // and make other open tabs 409 for no reason.
+    if (!dirty) return undefined
+    setChartSaveStatus('pending')
     let retryTimer
     const save = async () => {
+      setChartSaveStatus('saving')
       try {
         const response = await fetch(`${apiUrl}/chart`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(buildChartBody(selectedDate)) })
         if (isExpired(response)) return
@@ -719,7 +775,6 @@ function App() {
         // updated chartVersionRef, so retrying almost immediately (not the 4s network-error
         // backoff below) resends exactly those edits against the now-current version.
         if (response.status === 409) {
-          setSaveError(false)
           await reconcileChartConflict(selectedDate)
           retryTimer = setTimeout(save, 400)
           return
@@ -731,10 +786,9 @@ function App() {
         // Everything the localStorage mirror was protecting has now actually reached the
         // server — an empty draft is indistinguishable from no draft, so just drop it.
         try { localStorage.removeItem(`cpa-chart-draft:${chartKey}`) } catch { /* best effort */ }
-        setSaveError(false)
-        setChartConflictNotice(false)
+        setChartSaveStatus('saved')
       } catch {
-        setSaveError(true)
+        setChartSaveStatus('error')
         retryTimer = setTimeout(save, 4000)
       }
     }
@@ -959,6 +1013,10 @@ function App() {
   if (adminView === 'medicines' && isManager) return <AdminMedicinesScreen adminHeader={adminHeader} adminMedicines={adminMedicines} visibleMedicines={visibleMedicines} medicineSearch={medicineSearch} medicineFilter={medicineFilter} setMedicineFilter={setMedicineFilter} newMedicine={newMedicine} setNewMedicine={setNewMedicine} registrationsError={registrationsError} adminSuccess={adminSuccess} busy={busy} onAddMedicine={addMedicine} onSaveMedicine={saveMedicine} onRemoveMedicine={removeMedicine} confirmModal={confirmModal} />
 
   const wardLabel = selected ? (selected.floor ? `الطابق ${selected.floor} - ${selected.ward}` : selected.ward) : ''
+  // True once THIS ward+date's chart has finished loading. Until then the grid is covered and
+  // made inert, so a slow or failed load cannot be typed into and then silently overwritten.
+  const chartReadyKey = selected && selected.mode !== 'pills' ? `${selected.floor || 'special'}-${selected.ward}-${selectedDate}` : null
+  const chartReady = chartReadyKey !== null && loadedChartKey === chartReadyKey
   // The last form that actually prints must not force a page break after itself, or the job
   // ends on a blank sheet. Which form that is depends on the selection, so :last-child cannot
   // express it — a hidden last patient would leave the break on the one before it.
@@ -966,7 +1024,7 @@ function App() {
   const lastPrintingRow = printingRows[printingRows.length - 1]
   if (selected && selected.mode === 'pills') return <PillsScreen wardLabel={wardLabel} today={today} editTime={editTime} currentUser={currentUser} theme={theme} onToggleTheme={toggleTheme} onLogout={logout} goHome={goHome} onBack={() => { flushPills(); setSelected(null) }} selectedDate={selectedDate} onChangeDate={setSelectedDate} pillsLoading={pillsLoading} pillsData={pillsData} pillsSaveError={pillsSaveError} pillsLoadError={pillsLoadError} pillEntries={pillEntries} setPillEntries={setPillEntries} pillRooms={pillRooms} setPillRooms={setPillRooms} pillSelection={pillSelection} onTogglePatient={togglePillPatient} printScope={printScope} lastPrintingRow={lastPrintingRow} onPrint={startPillsPrint} confirmModal={confirmModal} />
 
-  return <main className="app-shell"><AppCredit /><header className="topbar"><TopBarBrand onClick={goHome} /><nav className="user-menu"><ThemeToggle theme={theme} onToggle={toggleTheme} />{isAdmin && <button className="text-button" onClick={() => setAdminView('requests')}>طلبات الانضمام</button>}{isManager && <button className="text-button" onClick={() => setAdminView('medicines')}>إدارة الأدوية</button>}{isManager && <button className="text-button" onClick={() => setAdminView('floors')}>إدارة الطوابق</button>}{isManager && <button className="text-button" onClick={() => setAdminView('users')}>جميع المستخدمين</button>}<span>{currentUser?.fullName || 'مستخدم'}</span><button onClick={logout} className="text-button">تسجيل الخروج</button></nav></header>{justLoggedIn && <div className="login-dissolve" aria-hidden="true"><img className="login-dissolve-logo" src={hospitalLogo} alt="" /><p className="login-dissolve-title">وحدة الصيدلة السريرية</p></div>}{!selected && !floor ? <FloorPickerScreen today={today} onPickFloor={setFloor} onOpen={setSelected} dashboard={dashboardData} announcements={announcements} isManager={isManager} medicinesPeriod={medicinesPeriod} setMedicinesPeriod={setMedicinesPeriod} announcementDraft={announcementDraft} setAnnouncementDraft={setAnnouncementDraft} announcementError={announcementError} announcementBusy={announcementBusy} onPostAnnouncement={postAnnouncement} onDeleteAnnouncement={deleteAnnouncement} /> : !selected ? <WardPickerScreen floor={floor} onBack={() => setFloor(null)} onOpen={setSelected} /> : <ChartScreen selected={selected} wardLabel={wardLabel} today={today} todayWeekday={todayWeekday} isManager={isManager} onBack={() => { flushChart(); setSelected(null) }} onGoToPills={() => { flushChart(); setSelected({ ...selected, mode: 'pills' }) }} onExportPdf={exportChartPdf} saveError={saveError} loadError={loadError} copyError={copyError} chartConflictNotice={chartConflictNotice} medicines={medicines} patientNames={patientNames} columnMedicines={columnMedicines} quantities={quantities} totals={totals} isThursday={isThursday} activeRow={activeRow} activeColumn={activeColumn} labelBelow={labelBelow} setActiveRow={setActiveRow} setActiveColumn={setActiveColumn} setLabelBelow={setLabelBelow} onSetColumnMedicine={setColumnMedicine} onCommitColumnMedicine={commitColumnMedicine} columnMedicineNotice={columnMedicineNotice} onSetPatientName={setPatientName} onUpdateQuantity={updateQuantity} onCollapseRow={collapseRow} editingRowStart={editingRowStart} chartFrameRef={chartFrameRef} chartHeadRef={chartHeadRef} chartGridRef={chartGridRef} chartDosesRef={chartDosesRef} chartFootRef={chartFootRef} showMedicineForm={showMedicineForm} onOpenMedicineForm={() => { setRegistrationsError(''); setShowMedicineForm(true) }} onCloseMedicineForm={() => setShowMedicineForm(false)} onAddMedicine={addMedicine} newMedicine={newMedicine} setNewMedicine={setNewMedicine} registrationsError={registrationsError} />}{confirmModal}</main>
+  return <main className="app-shell"><AppCredit /><header className="topbar"><TopBarBrand onClick={goHome} /><nav className="user-menu"><ThemeToggle theme={theme} onToggle={toggleTheme} />{isAdmin && <button className="text-button" onClick={() => setAdminView('requests')}>طلبات الانضمام</button>}{isManager && <button className="text-button" onClick={() => setAdminView('medicines')}>إدارة الأدوية</button>}{isManager && <button className="text-button" onClick={() => setAdminView('floors')}>إدارة الطوابق</button>}{isManager && <button className="text-button" onClick={() => setAdminView('users')}>جميع المستخدمين</button>}<span>{currentUser?.fullName || 'مستخدم'}</span><button onClick={logout} className="text-button">تسجيل الخروج</button></nav></header>{justLoggedIn && <div className="login-dissolve" aria-hidden="true"><img className="login-dissolve-logo" src={hospitalLogo} alt="" /><p className="login-dissolve-title">وحدة الصيدلة السريرية</p></div>}{!selected && !floor ? <FloorPickerScreen today={today} onPickFloor={setFloor} onOpen={setSelected} dashboard={dashboardData} announcements={announcements} isManager={isManager} medicinesPeriod={medicinesPeriod} setMedicinesPeriod={setMedicinesPeriod} announcementDraft={announcementDraft} setAnnouncementDraft={setAnnouncementDraft} announcementError={announcementError} announcementBusy={announcementBusy} onPostAnnouncement={postAnnouncement} onDeleteAnnouncement={deleteAnnouncement} /> : !selected ? <WardPickerScreen floor={floor} onBack={() => setFloor(null)} onOpen={setSelected} /> : <ChartScreen selected={selected} wardLabel={wardLabel} today={today} todayWeekday={todayWeekday} isManager={isManager} onBack={() => { flushChart(); setSelected(null) }} onGoToPills={() => { flushChart(); setSelected({ ...selected, mode: 'pills' }) }} onExportPdf={exportChartPdf} dateIsToday={dateIsToday} chartSaveStatus={chartSaveStatus} loadError={loadError} copyError={copyError} chartReady={chartReady} chartConflict={chartConflict} onUndoMerge={undoChartMerge} onDismissConflict={dismissChartConflict} medicines={medicines} patientNames={patientNames} columnMedicines={columnMedicines} quantities={quantities} totals={totals} isThursday={isThursday} activeRow={activeRow} activeColumn={activeColumn} labelBelow={labelBelow} setActiveRow={setActiveRow} setActiveColumn={setActiveColumn} setLabelBelow={setLabelBelow} onSetColumnMedicine={setColumnMedicine} onCommitColumnMedicine={commitColumnMedicine} columnMedicineNotice={columnMedicineNotice} onSetPatientName={setPatientName} onUpdateQuantity={updateQuantity} onCollapseRow={collapseRow} chartFrameRef={chartFrameRef} chartHeadRef={chartHeadRef} chartGridRef={chartGridRef} chartDosesRef={chartDosesRef} chartFootRef={chartFootRef} showMedicineForm={showMedicineForm} onOpenMedicineForm={() => { setRegistrationsError(''); setShowMedicineForm(true) }} onCloseMedicineForm={() => setShowMedicineForm(false)} onAddMedicine={addMedicine} newMedicine={newMedicine} setNewMedicine={setNewMedicine} registrationsError={registrationsError} />}{confirmModal}</main>
 }
 
 export default App
