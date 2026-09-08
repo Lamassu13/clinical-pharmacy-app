@@ -1,7 +1,5 @@
 import hospitalLogo from '../assets/hospital-logo.png'
 import AppCredit from '../components/AppCredit.jsx'
-import ThemeToggle from '../components/ThemeToggle.jsx'
-import TopBarBrand from '../components/TopBarBrand.jsx'
 import PillSelect from '../components/PillSelect.jsx'
 import { doseTimes, usageMethods, noteOptions } from '../constants.js'
 
@@ -13,7 +11,7 @@ const doseTimeGroups = [
 ]
 
 export default function PillsScreen({
-  wardLabel, today, editTime, currentUser, theme, onToggleTheme, onLogout, goHome, onBack,
+  header, wardLabel, today, editTime, onBack,
   selectedDate, onChangeDate, pillsLoading, pillsData, pillsSaveStatus, pillsLoadError,
   pillEntries, setPillEntries, pillRooms, setPillRooms, pillSelection, onTogglePatient,
   printScope, lastPrintingRow, onPrint, confirmModal,
@@ -35,14 +33,7 @@ export default function PillsScreen({
 
   return <main className="app-shell">
     <AppCredit />
-    <header className="topbar">
-      <TopBarBrand onClick={goHome} />
-      <div className="user-menu">
-        <ThemeToggle theme={theme} onToggle={onToggleTheme} />
-        <span>{currentUser?.fullName || 'مستخدم'}</span>
-        <button onClick={onLogout} className="text-button">تسجيل الخروج</button>
-      </div>
-    </header>
+    {header}
 
     <section className="pills-page">
       <div className="chart-toolbar pills-toolbar">

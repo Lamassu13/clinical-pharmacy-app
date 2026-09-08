@@ -349,11 +349,55 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 }
 .topbar-brand, .user-menu, .toolbar-actions { display: flex; align-items: center; gap: var(--space-3); }
 .user-menu, .toolbar-actions { flex-wrap: wrap; }
-.user-menu { color: var(--text-muted); font-size: var(--text-sm); }
+.user-menu { color: var(--text-muted); font-size: var(--text-sm); justify-content: flex-end; gap: var(--space-2); }
 .topbar-brand { border: 0; background: transparent; padding: 0; font: inherit; color: inherit; cursor: pointer; text-align: start; border-radius: var(--radius-md); transition: background var(--dur-fast) var(--ease); }
 .topbar-brand:hover { background: var(--green-50); }
 .topbar-brand strong { display: block; color: var(--heading); font-size: var(--text-base); }
 .topbar-brand small { display: block; color: var(--text-muted); font-size: var(--text-xs); }
+
+/* Trailing header cluster: the admin disclosure, a hairline, then the user's own controls.
+   The rule between the two groups is what stops the row reading as one undifferentiated line
+   of links + name + sign-out. */
+.topbar-divider { align-self: stretch; width: 1px; min-height: 22px; margin-inline: var(--space-1); background: var(--border); }
+.topbar-user { color: var(--text); font-weight: 500; }
+
+.admin-menu { position: relative; }
+.admin-menu > summary {
+  display: inline-flex; align-items: center; gap: var(--space-1);
+  padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius-md);
+  background: var(--surface-alt); color: var(--heading);
+  font-size: var(--text-sm); font-weight: 600; line-height: 1; cursor: pointer;
+  list-style: none;
+  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+.admin-menu > summary::-webkit-details-marker { display: none; }
+.admin-menu > summary:hover { background: var(--green-50); border-color: var(--green-300); }
+.admin-menu[open] > summary { background: var(--green-50); border-color: var(--green-300); }
+.admin-menu > summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.admin-menu-at { color: var(--text-muted); font-weight: 400; }
+.admin-menu-chevron { transition: transform var(--dur-fast) var(--ease); }
+.admin-menu[open] > summary .admin-menu-chevron { transform: rotate(180deg); }
+
+.admin-menu-list {
+  position: absolute; inset-inline-start: 0; top: calc(100% + var(--space-2));
+  z-index: 40; min-width: 210px;
+  display: flex; flex-direction: column; gap: 2px;
+  padding: var(--space-1);
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-md); box-shadow: var(--shadow-md);
+}
+.admin-menu-list button {
+  width: 100%; padding: 9px 10px;
+  border: 0; border-radius: var(--radius-sm);
+  background: transparent; color: var(--text);
+  font: inherit; font-size: var(--text-sm); font-weight: 500;
+  text-align: start; white-space: nowrap; cursor: pointer;
+  transition: background var(--dur-fast) var(--ease);
+}
+.admin-menu-list button:hover { background: var(--green-50); }
+.admin-menu-list button:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+.admin-menu-list button[aria-current="true"] { background: var(--green-50); color: var(--primary-hover); font-weight: 700; }
+.admin-menu-exit { margin-top: var(--space-1); padding-top: 11px; border-top: 1px solid var(--border); color: var(--text-muted); }
 
 /* ============================================================
    Dashboards / location grid
@@ -1072,7 +1116,13 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 @media (max-width: 700px) {
   .login-card { padding: var(--space-6) var(--space-5); }
   .topbar { align-items: flex-start; gap: var(--space-3); }
-  .user-menu { width: 100%; }
+  .user-menu { width: 100%; justify-content: flex-start; }
+  .topbar-divider { display: none; }
+  /* On a phone the floating panel has nowhere to float — drop it inline as an accordion
+     that pushes the rest of the row down, so nothing can spill past the viewport edge. */
+  .admin-menu { width: 100%; }
+  .admin-menu > summary { display: flex; justify-content: space-between; }
+  .admin-menu-list { position: static; min-width: 0; margin-top: var(--space-1); box-shadow: none; border-radius: var(--radius-sm); }
   .dashboard, .chart-page { width: min(100% - var(--space-4), 1380px); padding: var(--space-6) 0; }
   .section-heading, .chart-toolbar { align-items: flex-start; flex-direction: column; }
   .date-chip { width: 100%; }
