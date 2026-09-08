@@ -100,12 +100,14 @@ function App() {
   // the other on a shared iPad.
   const chartVersionRef = useRef(0)
   const lastSyncedChartRef = useRef({ patientNames: [], columnMedicines: [], quantities: [] })
-  // Set by reconcileChartConflict after a cross-device merge: { changes, snapshot }. `changes`
-  // is the per-field list of cells this tab's value lost to another device (shown in the
-  // banner); `snapshot` is this tab's pre-merge grid, kept so "undo the merge" can put it
-  // back. null while there is nothing to acknowledge. Unlike a transient notice it stays up
-  // until the pharmacist explicitly dismisses it or undoes — a changed dose must be seen.
+  // Set by reconcileChartConflict after a cross-device merge: { changes }. Each change is a
+  // per-field record of a cell this tab's value lost to another device. null while there is
+  // nothing to acknowledge; unlike a transient notice it stays up until the pharmacist
+  // resolves it. While it is set the grid is inert, so the panel behaves as a modal.
   const [chartConflict, setChartConflict] = useState(null)
+  // The cell that had focus when a 409 arrived — captured before the grid goes inert (which
+  // blurs it to <body>), restored after the panel closes.
+  const conflictReturnFocusRef = useRef(null)
   const [pillsData, setPillsData] = useState(null)
   const [pillEntries, setPillEntries] = useState({})
   const [pillRooms, setPillRooms] = useState({})
@@ -529,12 +531,14 @@ function App() {
     // Every field where the merge took another device's value instead of this tab's. Each
     // entry carries its coordinate and both values so the banner can offer a per-field
     // "keep mine" — `mine` gets written back on resolve, `theirs` is the merged (adopted) value.
+    // `what` is the label, `coord` the صف/عمود reference kept in its own field so the label
+    // can ellipsise without eating the one thing that tells two same-named patients apart.
     const changes = []
     merged.patientNames.forEach((name, row) => {
-      if (name !== (mine.patientNames[row] ?? '')) changes.push({ kind: 'name', row, what: `اسم صف ${row + 1}`, mine: mine.patientNames[row] || '', theirs: name || '' })
+      if (name !== (mine.patientNames[row] ?? '')) changes.push({ kind: 'name', row, what: 'اسم المريض', coord: `صف ${row + 1}`, mine: mine.patientNames[row] || '', theirs: name || '' })
     })
     merged.columnMedicines.forEach((name, col) => {
-      if (name !== (mine.columnMedicines[col] ?? '')) changes.push({ kind: 'medicine', col, what: `دواء عمود ${col + 1}`, mine: mine.columnMedicines[col] || '', theirs: name || '' })
+      if (name !== (mine.columnMedicines[col] ?? '')) changes.push({ kind: 'medicine', col, what: 'دواء العمود', coord: `عمود ${col + 1}`, mine: mine.columnMedicines[col] || '', theirs: name || '' })
     })
     merged.quantities.forEach((cells, row) => cells.forEach((value, col) => {
       if (value === (mine.quantities[row]?.[col] ?? '')) return
@@ -542,7 +546,7 @@ function App() {
       // headers to find out whose dose another device changed.
       const who = merged.patientNames[row]?.trim() || mine.patientNames[row]?.trim() || `صف ${row + 1}`
       const drug = merged.columnMedicines[col]?.trim() || mine.columnMedicines[col]?.trim() || `عمود ${col + 1}`
-      changes.push({ kind: 'quantity', row, col, what: `${who} — ${drug} (صف ${row + 1}/عمود ${col + 1})`, mine: mine.quantities[row]?.[col] || '', theirs: value || '' })
+      changes.push({ kind: 'quantity', row, col, what: `${who} — ${drug}`, coord: `صف ${row + 1}/عمود ${col + 1}`, mine: mine.quantities[row]?.[col] || '', theirs: value || '' })
     }))
     setPatientNames(merged.patientNames)
     setColumnMedicines(merged.columnMedicines)
@@ -553,8 +557,26 @@ function App() {
     // autosave effect re-sends those edits against the now-current version (and only marks
     // them synced once that PUT returns 200).
     lastSyncedChartRef.current = fresh
-    if (changes.length) setChartConflict({ changes })
+    if (changes.length) {
+      conflictReturnFocusRef.current = document.activeElement
+      setChartConflict({ changes })
+    }
   }, [columnMedicines, patientNames, quantities, selected])
+  // After the merge panel closes and the grid un-inerts, hand focus back to the cell the
+  // pharmacist was in — focusing the element (not just the coordinates) re-runs the grid's
+  // onFocusCapture and restores the active row/column highlight.
+  useEffect(() => {
+    if (chartConflict) return
+    const target = conflictReturnFocusRef.current
+    conflictReturnFocusRef.current = null
+    if (!target) return
+    requestAnimationFrame(() => {
+      const el = document.body.contains(target) && target !== document.body
+        ? target
+        : chartGridRef.current?.querySelector('td[data-col] input')
+      el?.focus?.()
+    })
+  }, [chartConflict])
   // "تطبيق": accept the merge as shown, except for the fields the pharmacist ticked "keep mine"
   // on — those are written back to this tab's pre-merge value, and the autosave effect then
   // re-PUTs the corrected grid at the now-current version. Ticking none is a plain "reviewed".

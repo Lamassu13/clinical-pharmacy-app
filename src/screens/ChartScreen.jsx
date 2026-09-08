@@ -127,12 +127,12 @@ export default function ChartScreen({
   </section>
 }
 
-// The cross-device merge review. Fields are grouped by kind (doses first — the higher-stakes
-// field); ticking a row keeps this tab's value, unticked accepts the other device's. A global
-// and per-group "استرجع قيمتي" tick every row in scope. "تطبيق" applies the ticked reverts
-// and restores focus to wherever it was. The head is role="alert" so a screen reader learns a
-// merge landed without the panel stealing focus from a half-typed cell; the 30-row list is
-// left for the reader to page through, not fired off in one burst.
+// The cross-device merge review. The merge is already applied to grid state; this is the
+// review-and-revert step. The grid is inert while it's open, so it behaves as a modal:
+// it takes focus on mount and traps Tab until تطبيق. Fields are grouped by kind (doses
+// first — the higher-stakes field); ticking a row (or a group / all) returns that field to
+// this tab's value, unticked leaves the other device's. App restores focus to the grid cell
+// the pharmacist was in once the panel closes.
 const CONFLICT_GROUPS = [
   { kind: 'quantity', label: 'جرعات' },
   { kind: 'medicine', label: 'أدوية' },
@@ -141,11 +141,10 @@ const CONFLICT_GROUPS = [
 
 function ConflictPanel({ conflict, onResolve }) {
   const [keepMine, setKeepMine] = useState(() => new Set())
-  const restoreRef = useRef(null)
-  // Runs for the first conflict and again if a second 409 replaces it without unmounting —
-  // clears stale ticks (their indices point into the old changes array) and re-captures the
-  // element to hand focus back to.
-  useEffect(() => { restoreRef.current = document.activeElement; setKeepMine(new Set()) }, [conflict])
+  const panelRef = useRef(null)
+  // Runs for the first conflict and again if a second 409 replaces it without unmounting:
+  // reset ticks (their indices point into the old changes array) and re-take focus.
+  useEffect(() => { setKeepMine(new Set()); panelRef.current?.focus() }, [conflict])
 
   const rows = conflict.changes.map((change, index) => ({ ...change, index }))
   const groups = CONFLICT_GROUPS
@@ -161,27 +160,35 @@ function ConflictPanel({ conflict, onResolve }) {
     if (next.has(index)) next.delete(index); else next.add(index)
     return next
   })
-  const allOn = rows.length > 0 && rows.every((row) => keepMine.has(row.index))
-  const resolve = () => {
-    onResolve([...keepMine].map((index) => conflict.changes[index]))
-    restoreRef.current?.focus?.()
-  }
+  const someOn = (scope) => scope.some((row) => keepMine.has(row.index))
+  const allRowsOn = rows.length > 0 && rows.every((row) => keepMine.has(row.index))
 
-  return <section className="chart-conflict" aria-labelledby="chart-conflict-head" aria-describedby="chart-conflict-sub">
-    <div className="chart-conflict-head" role="alert">
+  return <section className="chart-conflict" role="dialog" aria-modal="true" tabIndex={-1} ref={panelRef}
+    aria-labelledby="chart-conflict-head" aria-describedby="chart-conflict-sub"
+    onKeyDown={(event) => {
+      if (event.key !== 'Tab') return
+      const focusable = event.currentTarget.querySelectorAll('input, button')
+      const edge = event.shiftKey ? focusable[0] : focusable[focusable.length - 1]
+      if (document.activeElement === edge || document.activeElement === event.currentTarget) {
+        event.preventDefault();
+        (event.shiftKey ? focusable[focusable.length - 1] : focusable[0]).focus()
+      }
+    }}>
+    <div className="chart-conflict-head">
       <strong id="chart-conflict-head">⟳ دُمجت تعديلات من جهاز آخر</strong>
-      <span id="chart-conflict-sub">{conflict.changes.length} حقلًا تغيّر — علّم ما تريد استرجاع قيمتك فيه، أو اقبل تعديلات الجهاز الآخر كما هي.</span>
+      <span id="chart-conflict-sub">دُمجت {conflict.changes.length} حقول من جهاز آخر — علّم ما تريد إرجاعه إلى قيمتك، والباقي يبقى كما دُمج.</span>
     </div>
     <label className="conflict-all">
-      <input type="checkbox" checked={allOn} onChange={() => setRows(rows, !allOn)} />
-      <span>استرجع قيمتي في كل الحقول</span>
+      {/* indeterminate reflects "some but not all ticked" — a bare `checked` would read "none". */}
+      <input type="checkbox" checked={allRowsOn} ref={(el) => { if (el) el.indeterminate = someOn(rows) && !allRowsOn }} onChange={() => setRows(rows, !allRowsOn)} />
+      <span>أرجِع كل الحقول إلى قيمتي</span>
     </label>
     <div className="chart-conflict-groups">
       {groups.map((group) => {
         const groupOn = group.rows.every((row) => keepMine.has(row.index))
         return <div className="conflict-group" key={group.kind}>
           <label className="conflict-group-head">
-            <input type="checkbox" checked={groupOn} onChange={() => setRows(group.rows, !groupOn)} />
+            <input type="checkbox" checked={groupOn} ref={(el) => { if (el) el.indeterminate = someOn(group.rows) && !groupOn }} onChange={() => setRows(group.rows, !groupOn)} />
             <span>{group.label}</span>
             <span className="conflict-group-count">{group.rows.length}</span>
           </label>
@@ -189,9 +196,10 @@ function ConflictPanel({ conflict, onResolve }) {
             {group.rows.map((row) => <li key={row.index}>
               <label>
                 <input type="checkbox" checked={keepMine.has(row.index)} onChange={() => toggleOne(row.index)}
-                  aria-label={`استرجع قيمتي في ${row.what}: ${row.mine || 'فارغ'} بدل ${row.theirs || 'فارغ'}`} />
+                  aria-label={`أرجِع ${row.what} ${row.coord} إلى قيمتي: كانت ${row.mine || 'فارغة'}، صارت ${row.theirs || 'فارغة'}`} />
                 <span className="conflict-what">{row.what}</span>
-                <span className="conflict-vals"><b>{row.mine || '—'}</b> ← <b>{row.theirs || '—'}</b></span>
+                <span className="conflict-coord">{row.coord}</span>
+                <span className="conflict-vals">كانت <b>{row.mine || '—'}</b> · صارت <b>{row.theirs || '—'}</b></span>
               </label>
             </li>)}
           </ul>
@@ -200,9 +208,9 @@ function ConflictPanel({ conflict, onResolve }) {
     </div>
     <div className="chart-conflict-actions">
       <span className="conflict-hint">{keepMine.size
-        ? `${keepMine.size} حقلًا ستُستعاد إلى قيمتك`
-        : 'ستُقبل كل تعديلات الجهاز الآخر'}</span>
-      <button type="button" className="primary-button compact" onClick={resolve}>تطبيق</button>
+        ? `${keepMine.size} حقلًا سيعود إلى قيمتك`
+        : 'كل التعديلات المدمجة ستبقى كما هي'}</span>
+      <button type="button" className="primary-button compact" onClick={() => onResolve([...keepMine].map((index) => conflict.changes[index]))}>تطبيق</button>
     </div>
   </section>
 }

@@ -604,9 +604,9 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 .save-state-pending { color: #ffe0a8; font-weight: 700; }
 .save-state-saving { color: #d7ece0; }
 
-/* Cross-device merge review. An amber frame (a merge landed) around a calm interior: fields
-   grouped by kind, hairlines in --border not --warning, --primary ticks. The pharmacist reads
-   what another iPad changed, per field, and ticks what to take back. */
+/* Cross-device merge review — a modal while the grid is inert behind it. An amber frame plus
+   a tinted header band say "a merge landed"; the interior stays calm (grouped by kind,
+   --border hairlines, --primary ticks). The pharmacist ticks what to return to their value. */
 .chart-conflict {
   margin: 0 0 var(--space-3);
   padding: var(--space-3) var(--space-4);
@@ -615,24 +615,47 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
   border-radius: var(--radius-md);
   color: var(--text);
 }
-.chart-conflict-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2) var(--space-3); }
+/* Full-bleed tinted band: negative margins cancel the panel's own padding. */
+.chart-conflict-head {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2) var(--space-3);
+  margin: calc(-1 * var(--space-3)) calc(-1 * var(--space-4)) var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--warning-tint);
+  border-bottom: 1px solid var(--warning);
+  border-radius: calc(var(--radius-md) - 2px) calc(var(--radius-md) - 2px) 0 0;
+}
 .chart-conflict-head strong { color: var(--text); font-size: var(--text-base); }
 .chart-conflict-head span { color: var(--text-muted); font-size: var(--text-sm); }
-.conflict-all { display: flex; align-items: center; gap: var(--space-2); margin: var(--space-3) 0 var(--space-2); font-weight: 700; cursor: pointer; }
-.chart-conflict-groups { max-height: 260px; overflow-y: auto; }
+.conflict-all { display: flex; align-items: center; gap: var(--space-2); margin: 0 0 var(--space-2); font-weight: 700; cursor: pointer; }
+/* Scroll shadows (Lea Verou): a shadow shows only while there is more list in that direction. */
+.chart-conflict-groups {
+  max-height: 260px;
+  overflow-y: auto;
+  background:
+    linear-gradient(var(--surface) 30%, transparent) top / 100% 20px no-repeat,
+    linear-gradient(transparent, var(--surface) 70%) bottom / 100% 20px no-repeat,
+    radial-gradient(farthest-side at 50% 0, #12332618, transparent) top / 100% 7px no-repeat,
+    radial-gradient(farthest-side at 50% 100%, #12332618, transparent) bottom / 100% 7px no-repeat;
+  background-attachment: local, local, scroll, scroll;
+}
 .conflict-group + .conflict-group { margin-top: var(--space-3); }
-.conflict-group-head { display: flex; align-items: center; gap: var(--space-2); padding: 4px 0; font-weight: 700; cursor: pointer; }
+/* Tinted strip so a group header reads as a section, not one more selectable row. */
+.conflict-group-head { display: flex; align-items: center; gap: var(--space-2); padding: 5px var(--space-2); background: var(--surface-alt); border-radius: var(--radius-sm); font-weight: 700; cursor: pointer; }
 .conflict-group-count { margin-inline-start: var(--space-1); padding: 0 6px; border-radius: 999px; background: var(--surface-alt); color: var(--text-muted); font-size: var(--text-xs); font-weight: 700; }
 .chart-conflict-list { margin: 0; padding: 0; list-style: none; font-size: var(--text-sm); }
 .chart-conflict-list li { border-top: 1px solid var(--border); }
-.chart-conflict-list label { display: flex; align-items: center; gap: var(--space-3); padding: 7px 2px; cursor: pointer; }
+.chart-conflict-list label { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); padding: 7px 2px; cursor: pointer; }
 .chart-conflict input[type="checkbox"] { flex: 0 0 auto; width: 18px; height: 18px; accent-color: var(--primary); }
-.chart-conflict input[type="checkbox"]:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
-.chart-conflict-list .conflict-what { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.chart-conflict-list .conflict-vals { flex: 0 0 auto; white-space: nowrap; }
-.chart-conflict-list .conflict-vals b { font-variant-numeric: tabular-nums; font-weight: 700; }
+.chart-conflict input[type="checkbox"]:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+.chart-conflict-list .conflict-what { flex: 1 1 auto; min-width: 4ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chart-conflict-list .conflict-coord { flex: 0 0 auto; color: var(--text-muted); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+.chart-conflict-list .conflict-vals { flex: 0 0 auto; white-space: nowrap; color: var(--text-muted); }
+.chart-conflict-list .conflict-vals b { color: var(--text); font-variant-numeric: tabular-nums; font-weight: 700; }
 .chart-conflict-actions { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-top: var(--space-3); }
 .chart-conflict-actions .conflict-hint { color: var(--text-muted); font-size: var(--text-sm); }
+/* The grid can't be typed into while the load cover or the merge modal is up — dim it so a
+   dead-feeling grid always has a visible cause. */
+.chart-head[inert], .chart-grid[inert] { opacity: .55; }
 
 /* Which patient is being edited, kept in view even when the on-screen keyboard covers
    the row or the grid is scrolled to its last columns. Always rendered at a fixed
