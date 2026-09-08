@@ -615,9 +615,6 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
   .pill-form-brand .pill-form-title strong { font-size: var(--text-xs); color: var(--text-muted); font-weight: 700; }
   .pill-form-brand .header-logo { width: 28px; height: 28px; }
 
-  /* The lead column is the print-only hand-write box; it has nothing to show on screen. */
-  .pill-table th:first-child, .pill-table td:first-child { width: 0; min-width: 0; padding: 0; border: 0; }
-
   /* The three dropdown columns get a real field affordance and a 44px-ish target instead
      of reading as plain text; the empty state shows a muted prompt (blank on paper). */
   .pill-table td:nth-child(n+3) { padding: 3px; }
