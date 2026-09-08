@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import hospitalLogo from '../assets/hospital-logo.png'
 import ChartDoseRow from '../components/ChartDoseRow.jsx'
 import { CHART_COLUMNS } from '../constants.js'
@@ -8,10 +8,10 @@ import { CHART_COLUMNS } from '../constants.js'
 // lapses does not unmount the half-typed chart.
 export default function ChartScreen({
   selected, wardLabel, today, todayWeekday, isManager, dateIsToday, onBack, onGoToPills, onExportPdf,
-  chartSaveStatus, loadError, copyError, chartReady, chartConflict, onUndoMerge, onDismissConflict,
+  chartSaveStatus, loadError, copyError, chartReady, chartConflict, onResolveConflict,
   medicines, patientNames, columnMedicines, quantities, totals, isThursday,
   activeRow, activeColumn, labelBelow, setActiveRow, setActiveColumn, setLabelBelow,
-  onSetColumnMedicine, onCommitColumnMedicine, columnMedicineNotice, onDismissNotice,
+  onSetColumnMedicine, onCommitColumnMedicine, columnMedicineNotice, onDismissNotice, onApplySuggestion,
   onSetPatientName, onUpdateQuantity, onCollapseRow,
   chartFrameRef, chartHeadRef, chartGridRef, chartDosesRef, chartFootRef,
   showMedicineForm, onOpenMedicineForm, onCloseMedicineForm, onAddMedicine,
@@ -47,37 +47,33 @@ export default function ChartScreen({
       {selected.floor && <span>الطابق: <b>{selected.floor}</b></span>}
       <span>الفرع: <b>{selected.ward}</b></span>
       <span>التاريخ: <b>{today}</b> — <b>{todayWeekday}</b></span>
-      <span aria-live="polite" className={saveClass}>{saveText}</span>
-      {copyError && <span className="save-state save-state-error" role="alert">⚠ تعذر نسخ الجارت — تحقق من الاتصال وأعد المحاولة</span>}
-      {!dateIsToday && <span className="chart-date-warning" role="status">⚠ أنت تحرّر جارت {today} — {todayWeekday}، وليس تاريخ اليوم</span>}
     </div>
-
-    {chartConflict && <div className="chart-conflict" role="alert">
-      <div className="chart-conflict-head">
-        <strong>⟳ دُمجت تعديلات من جهاز آخر</strong>
-        <span>{chartConflict.changes.length} حقلًا تغيّرت قيمته — راجعها</span>
-      </div>
-      <ul className="chart-conflict-list">
-        {chartConflict.changes.map((change, index) => <li key={index}>
-          {change.what}: <b>{change.from}</b> ← <b>{change.to}</b>
-        </li>)}
-      </ul>
-      <div className="chart-conflict-actions">
-        <button type="button" className="secondary-button compact" onClick={onUndoMerge}>تراجع عن الدمج</button>
-        <button type="button" className="primary-button compact" onClick={onDismissConflict}>حسنًا، راجعت</button>
-      </div>
-    </div>}
 
     <datalist id="medicine-options">{medicines.map((medicine) => <option key={medicine} value={medicine} />)}</datalist>
 
-    <div className="active-patient-bar" aria-live="polite">{activeRow >= 0
-      ? <><span className="bar-item"><span className="bar-key">المريض</span><strong>{patientNames[activeRow]?.trim() || 'بلا اسم'}</strong><span className="bar-num">صف {activeRow + 1}</span></span>{activeColumn >= 0 && <span className="bar-item"><span className="bar-key">العلاج</span><strong>{columnMedicines[activeColumn]?.trim() || 'بلا اسم'}</strong><span className="bar-num">عمود {activeColumn + 1}</span></span>}</>
-      : <span className="muted">اضغط داخل خلية ليظهر المريض والعلاج هنا</span>}</div>
+    {/* The only strip that stays put while the grid scrolls, so the status that matters at a
+        hand-off — is it saved, is this today's chart — rides here, not in the scrolling meta row. */}
+    <div className="active-patient-bar">
+      <div className="bar-focus" aria-live="polite">{activeRow >= 0
+        ? <><span className="bar-item"><span className="bar-key">المريض</span><strong>{patientNames[activeRow]?.trim() || 'بلا اسم'}</strong><span className="bar-num">صف {activeRow + 1}</span></span>{activeColumn >= 0 && <span className="bar-item"><span className="bar-key">العلاج</span><strong>{columnMedicines[activeColumn]?.trim() || 'بلا اسم'}</strong><span className="bar-num">عمود {activeColumn + 1}</span></span>}</>
+        : <span className="muted">اضغط داخل خلية ليظهر المريض والعلاج هنا</span>}</div>
+      {!dateIsToday && <span className="bar-date-warning">⚠ جارت {today} — ليس اليوم</span>}
+      {copyError && <span className="save-state save-state-error" role="alert">⚠ تعذّر نسخ الجارت</span>}
+      <span aria-live="polite" className={saveClass}>{saveText}</span>
+    </div>
 
-    {/* Held until the next valid commit or an explicit dismiss — no auto-timeout: on a shared
-        iPad the pharmacist usually looks up before a self-clearing notice can be read. */}
-    {columnMedicineNotice && <p className="form-error chart-medicine-notice" role="alert">
-      <span>{columnMedicineNotice}</span>
+    {chartConflict && <ConflictPanel conflict={chartConflict} onResolve={onResolveConflict} />}
+
+    {/* One notice at a time: a merge to review outranks a mistyped column header. Held until
+        the next valid commit or an explicit dismiss — no auto-timeout, since on a shared iPad
+        the pharmacist usually looks up before a self-clearing notice can be read. */}
+    {!chartConflict && columnMedicineNotice && <p className="form-error chart-medicine-notice" role="alert">
+      <span>
+        {columnMedicineNotice.text}{' '}
+        {columnMedicineNotice.suggestion
+          ? <>هل تقصد <button type="button" className="notice-suggest" onClick={() => onApplySuggestion(columnMedicineNotice.column, columnMedicineNotice.suggestion)}>«{columnMedicineNotice.suggestion}»</button>؟</>
+          : isManager ? 'أضِف الدواء أولًا من «إدارة الأدوية».' : 'اطلب من المشرف إضافته إلى القائمة.'}
+      </span>
       <button type="button" className="notice-dismiss" aria-label="إخفاء التنبيه" onClick={onDismissNotice}>×</button>
     </p>}
 
@@ -124,5 +120,40 @@ export default function ChartScreen({
       const edge = event.shiftKey ? f[0] : f[f.length - 1]
       if (document.activeElement === edge) { event.preventDefault(); (event.shiftKey ? f[f.length - 1] : f[0]).focus() }
     }}><button type="button" className="close-button" aria-label="إغلاق" onClick={onCloseMedicineForm}>×</button><p className="modal-kicker">قائمة الأدوية العامة</p><h2 id="add-medicine-title">إضافة علاج جديد</h2>{registrationsError && <p className="form-error" role="alert">{registrationsError}</p>}<label>اسم العلاج<input autoFocus value={newMedicine} onChange={(event) => setNewMedicine(event.target.value)} required /></label><button className="primary-button" type="submit">إضافة إلى القائمة</button></form></div>}
+  </section>
+}
+
+// The cross-device merge review. One row per changed field; ticking a row restores this
+// tab's value, unticked accepts the other device's. "تطبيق" applies the ticked reverts and
+// closes — ticking none is a plain "reviewed, all good". A focus-managed region, not
+// role="alert": a 30-field merge should be read at the pharmacist's pace, not fired at the
+// screen reader in one uninterruptible burst.
+function ConflictPanel({ conflict, onResolve }) {
+  const [keepMine, setKeepMine] = useState(() => new Set())
+  const panelRef = useRef(null)
+  useEffect(() => { panelRef.current?.focus() }, [])
+  const toggle = (index) => setKeepMine((current) => {
+    const next = new Set(current)
+    if (next.has(index)) next.delete(index); else next.add(index)
+    return next
+  })
+  return <section className="chart-conflict" tabIndex={-1} ref={panelRef} aria-labelledby="chart-conflict-head">
+    <div className="chart-conflict-head">
+      <strong id="chart-conflict-head">⟳ دُمجت تعديلات من جهاز آخر</strong>
+      <span>{conflict.changes.length} حقلًا تغيّر — علّم ما تريد استرجاع قيمتك فيه</span>
+    </div>
+    <ul className="chart-conflict-list">
+      {conflict.changes.map((change, index) => <li key={index}>
+        <label>
+          <input type="checkbox" checked={keepMine.has(index)} onChange={() => toggle(index)} aria-label={`استرجع قيمتي في ${change.what}`} />
+          <span className="conflict-what">{change.what}</span>
+          <span className="conflict-vals"><b>{change.mine || '—'}</b> ← <b>{change.theirs || '—'}</b></span>
+        </label>
+      </li>)}
+    </ul>
+    <div className="chart-conflict-actions">
+      <span className="conflict-hint">{keepMine.size ? `${keepMine.size} حقلًا ستُستعاد إلى قيمتك` : 'ستُقبل كل التغييرات كما هي'}</span>
+      <button type="button" className="primary-button compact" onClick={() => onResolve([...keepMine].map((index) => conflict.changes[index]))}>تطبيق</button>
+    </div>
   </section>
 }

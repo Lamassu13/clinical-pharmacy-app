@@ -32,6 +32,30 @@ export const toEnglishDigits = (value) => value.replace(/[٠-٩]/g, (digit) => S
 // still has to be recognised. toEnglishDigits runs first so "سرنجة ٥ سيسي" and "syringe 5cc"
 // normalise the same way.
 export const medicineKey = (value) => toEnglishDigits(String(value ?? '')).trim().replace(/\s+/g, ' ').toLowerCase()
+
+// Levenshtein distance, single-row iterative (older iPadOS Safari safe).
+const editDistance = (a, b) => {
+  const row = Array.from({ length: b.length + 1 }, (_, i) => i)
+  for (let i = 1; i <= a.length; i++) {
+    let prev = row[0]
+    row[0] = i
+    for (let j = 1; j <= b.length; j++) {
+      const cur = row[j]
+      row[j] = a[i - 1] === b[j - 1] ? prev : Math.min(prev, row[j], row[j - 1]) + 1
+      prev = cur
+    }
+  }
+  return row[b.length]
+}
+// The one catalogue name that is a near-miss of `query`, or '' when zero or several qualify —
+// guessing between two real drug names is worse than offering nothing on a medication field.
+export const nearestMedicine = (query, catalogue) => {
+  const q = medicineKey(query)
+  if (q.length < 3) return ''
+  const limit = Math.min(3, Math.floor(q.length / 4) + 1)
+  const hits = catalogue.filter((name) => editDistance(q, medicineKey(name)) <= limit)
+  return hits.length === 1 ? hits[0] : ''
+}
 // One per patient on the ward: a giving set and a cannula each get used once.
 export const UNIT_ONE = /\biv\s*-?\s*set\b|كانيول|cannula|canula/
 // The 5cc syringe. The digit is required: without it "Clexane prefilled syringe 4000 IU",

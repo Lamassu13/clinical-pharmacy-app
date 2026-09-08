@@ -585,28 +585,28 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
   cursor: pointer;
 }
 .chart-medicine-notice .notice-dismiss:hover { background: #0000000f; }
+/* Inline "did you mean «X»" fix inside the notice text. */
+.chart-medicine-notice .notice-suggest {
+  padding: 1px 6px;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.chart-medicine-notice .notice-suggest:hover { background: #0000000f; }
 .chart-meta b { color: #eafaf0; font-weight: 700; }
 .chart-meta > span.date-controls { background: transparent; border: 0; padding: 0; }
 .save-state { margin-inline-start: auto; background: transparent !important; border: 0 !important; padding: 0 !important; color: #bfe8cd; }
 .save-state-error { color: #ffd7d3; font-weight: 700; }
 .save-state-pending { color: #ffe0a8; font-weight: 700; }
 .save-state-saving { color: #d7ece0; }
-/* Editing a non-today chart is unguarded next to every other hazard on this screen, so the
-   warning breaks the chip row and spans it as a full-width amber bar. It stays a child of
-   .chart-meta (which print hides) so it never reaches the printed sheet. */
-.chart-meta > .chart-date-warning {
-  flex-basis: 100%;
-  order: 9;
-  justify-content: center;
-  background: var(--warning);
-  border-color: var(--warning);
-  color: #fff;
-  font-weight: 700;
-}
 
-/* Cross-device merge notice. Persistent and amber — it outranks the calm green save line
-   and the red network-error line: a dose changed by another iPad has to be read and
-   acknowledged, not allowed to auto-clear on the next save. */
+/* Cross-device merge review. Persistent and amber — a dose changed by another iPad has to be
+   read and acted on, not allowed to auto-clear on the next save. Each row carries a checkbox
+   to restore this tab's value; "تطبيق" applies the ticked ones and closes. */
 .chart-conflict {
   margin: 0 0 var(--space-3);
   padding: var(--space-3) var(--space-4);
@@ -615,12 +615,20 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
   border-radius: var(--radius-md);
   color: var(--text);
 }
+.chart-conflict:focus-visible { outline: 2px solid var(--warning); outline-offset: 2px; }
 .chart-conflict-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2) var(--space-3); }
 .chart-conflict-head strong { color: var(--warning); font-size: var(--text-base); }
 .chart-conflict-head span { color: var(--text-muted); font-size: var(--text-sm); }
-.chart-conflict-list { margin: var(--space-2) 0 var(--space-3); padding-inline-start: var(--space-5); max-height: 168px; overflow-y: auto; font-size: var(--text-sm); line-height: 1.7; }
-.chart-conflict-list b { font-variant-numeric: tabular-nums; font-weight: 700; }
-.chart-conflict-actions { display: flex; gap: var(--space-3); }
+.chart-conflict-list { margin: var(--space-2) 0 var(--space-3); padding: 0; list-style: none; max-height: 200px; overflow-y: auto; font-size: var(--text-sm); }
+.chart-conflict-list li { border-top: 1px solid var(--warning); }
+.chart-conflict-list li:first-child { border-top: 0; }
+.chart-conflict-list label { display: flex; align-items: center; gap: var(--space-3); padding: 6px 2px; cursor: pointer; }
+.chart-conflict-list input[type="checkbox"] { flex: 0 0 auto; width: 18px; height: 18px; accent-color: var(--warning); }
+.chart-conflict-list .conflict-what { flex: 1 1 auto; min-width: 0; }
+.chart-conflict-list .conflict-vals { flex: 0 0 auto; white-space: nowrap; }
+.chart-conflict-list .conflict-vals b { font-variant-numeric: tabular-nums; font-weight: 700; }
+.chart-conflict-actions { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.chart-conflict-actions .conflict-hint { color: var(--text-muted); font-size: var(--text-sm); }
 
 /* Which patient is being edited, kept in view even when the on-screen keyboard covers
    the row or the grid is scrolled to its last columns. Always rendered at a fixed
@@ -646,11 +654,30 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
   color: var(--text);
   overflow: hidden;
 }
+/* The patient/medicine half flexes and ellipses; the status items after it never shrink,
+   so "saved" and the wrong-date pill stay readable however long the names run. */
+.active-patient-bar .bar-focus { display: flex; align-items: center; gap: var(--space-5); flex: 1 1 auto; min-width: 0; overflow: hidden; }
 .active-patient-bar .bar-item { display: flex; align-items: baseline; gap: var(--space-2); min-width: 0; }
 .active-patient-bar .bar-key { color: var(--text-muted); white-space: nowrap; }
 .active-patient-bar strong { color: var(--heading); font-size: var(--text-base); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .active-patient-bar .bar-num { color: var(--text-muted); white-space: nowrap; }
 .active-patient-bar .muted { color: var(--text-muted); }
+.active-patient-bar .save-state { flex: 0 0 auto; margin-inline-start: 0; white-space: nowrap; color: var(--text-muted); }
+.active-patient-bar .save-state-error { color: var(--danger); }
+.active-patient-bar .save-state-pending { color: var(--warning); }
+.active-patient-bar .bar-date-warning {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--warning-tint);
+  border: 1px solid var(--warning);
+  /* --text, not --warning: the amber fill + border + ⚠ carry the semantic, and --text
+     clears contrast on the tint in both themes where 11px bold amber-on-tint would not. */
+  color: var(--text);
+  font-weight: 700;
+  font-size: var(--text-xs);
+}
 
 .table-frame {
   overflow: auto;
@@ -732,6 +759,9 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
   display: flex;
   align-items: flex-start;
   direction: rtl;
+  /* ponytail: fixed estimate of the chrome above. Under-serves the grid by one banner's
+     height when the conflict panel is open; a ResizeObserver on the chrome would be exact,
+     but the grid still scrolls, so it is not worth the wiring. */
   max-height: calc(100svh - 240px);
   overflow-y: auto;
   overflow-x: hidden;
