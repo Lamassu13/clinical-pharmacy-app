@@ -751,19 +751,30 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 .patient-cell input { width: 100%; height: 37px; padding: 5px; border: 0; text-align: start; font-variant-numeric: tabular-nums; }
 .patient-cell input::placeholder { color: transparent; }
 .chart-table td input { width: 100%; height: 37px; padding: 0; border: 0; text-align: center; font-variant-numeric: tabular-nums; }
+/* The cell fields are transparent so the row / column / active-cell wash painted on the
+   <td> shows through instead of being masked by an opaque field. */
+.chart-table td input, .chart-table .patient-cell input { background: transparent; }
 .chart-table tbody tr:hover td { background: var(--green-50); }
 .chart-table tbody tr:hover .patient-cell { background: var(--green-50); }
+/* A faint band down the column being typed into — a dose in the wrong medicine column is
+   this grid's named hazard, and 51 upright Arabic headers are hard to trace by eye. */
+.chart-table td.col-active { background: var(--green-50); }
+.chart-table thead th.col-active { background: var(--green-100); }
 /* The row being typed into. Driven by activeRow rather than :focus-within because the
    name and the doses now live in two separate tables — focus in one has to light up the
-   matching row in the other. Must come after :hover to win on source order. */
-.chart-table tbody tr.active-row td { background: var(--green-50); }
-.chart-table tbody tr.active-row .patient-cell { background: var(--green-100); }
+   matching row in the other. Must come after :hover to win on source order, and sits a
+   step above :hover so a passing hover and the row you're editing don't read alike. */
+.chart-table tbody tr.active-row td { background: var(--green-100); }
+.chart-table tbody tr.active-row .patient-cell { background: var(--green-200); }
 /* The medicine name for the cell being typed into, anchored to that cell rather than to
    anything at the top of the screen. The header row leaves the screen whenever iOS scrolls
    to reveal a focused input; a label attached to the cell goes wherever the cell goes, so
    it cannot be taken away. Above the cell by default — iOS leaves more room there than
    between the input and the keyboard — and below it when the cell is at the top edge. */
 .chart-table td.cell-active { position: relative; z-index: 7; }
+/* The single cell holding the cursor: solid fill plus a 2px inset ring, the brightest
+   mark in the grid. The active-row ancestry in the selector outweighs the row wash above. */
+.chart-table tbody tr.active-row td.cell-active { background: var(--green-200); box-shadow: inset 0 0 0 2px var(--primary); }
 .cell-medicine {
   position: absolute;
   bottom: calc(100% + 3px);
@@ -862,7 +873,10 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 }
 .chart-table thead th .medicine-select::placeholder { color: #9bb0a8; }
 .chart-table thead th .medicine-select:hover { background: var(--green-50); }
+/* box-shadow:none kills the global outset focus ring, which the th's overflow:hidden clips
+   to a broken sliver; the inset outline is the visible keyboard-focus cue in its place. */
 .chart-table thead th .medicine-select:focus { background: var(--green-100); box-shadow: none; }
+.chart-table thead th .medicine-select:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
 
 /* ============================================================
    Responsive
