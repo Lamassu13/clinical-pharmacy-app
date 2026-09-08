@@ -1,37 +1,76 @@
-// Information widgets shown above the floor/ward grid: today's top medicines by quantity and
-// notices posted by the manager/admin, plus — for a manager only — how many wards have
-// started today's chart. Only a manager can post or remove an announcement.
+// The floor-picker's information layer, in two tiers.
+//
+// WardStatusBand is the primary one for a manager: the morning round lives or dies on "which
+// wards haven't started their chart yet", so that answer gets a full-width band directly under
+// the heading — a count, a track, the not-started wards named as chips, and a real all-done
+// state — instead of a third of a card buried among peers.
+//
+// DashboardWidgets is the secondary tier everyone sees below the grid: today's top medicines
+// and the manager's notices. It carries its own loading and error states so a slow or failed
+// GET /api/dashboard never renders as a real "nothing happened today".
 const PERIOD_LABELS = { today: 'اليوم', week: 'أسبوع', month: 'شهر' }
 
+function DashboardError({ onRetry }) {
+  return (
+    <div className="dashboard-widget-notice" role="alert">
+      <span>تعذّر تحميل بيانات اللوحة.</span>
+      <button type="button" className="text-button" onClick={onRetry}>إعادة المحاولة</button>
+    </div>
+  )
+}
+
+function SkeletonRows({ count = 3 }) {
+  return (
+    <div className="dashboard-skeleton" aria-hidden="true">
+      {Array.from({ length: count }, (_, i) => <span key={i} className="skeleton-row" />)}
+    </div>
+  )
+}
+
+export function WardStatusBand({ startedCount, totalCount, notStartedNames = [], loading, error, onRetry }) {
+  if (error) {
+    return <div className="ward-status-band"><DashboardError onRetry={onRetry} /></div>
+  }
+  if (loading) {
+    return <div className="ward-status-band ward-status-band--loading"><SkeletonRows count={2} /></div>
+  }
+
+  const done = totalCount > 0 && startedCount === totalCount
+  const startedPct = totalCount ? Math.round((startedCount / totalCount) * 100) : 0
+
+  return (
+    <div className={done ? 'ward-status-band is-done' : 'ward-status-band'}>
+      <div className="ward-status-band-head">
+        <span className="ward-status-band-label">حالة جارتات اليوم</span>
+        {done ? (
+          <strong className="ward-status-band-done">كل الردهات بدأت جارتها اليوم</strong>
+        ) : (
+          <strong className="ward-status-band-count">
+            <span className="stat-good">{startedCount}</span>
+            <span className="ward-status-band-of"> من {totalCount} بدأت</span>
+          </strong>
+        )}
+      </div>
+      <div className="progress-track"><div className="progress-fill" style={{ width: `${startedPct}%` }} /></div>
+      {!done && notStartedNames.length > 0 && (
+        <div className="ward-status-band-pending">
+          <span className="ward-status-band-pending-label">لم تبدأ بعد</span>
+          <ul>{notStartedNames.map((name) => <li key={name}>{name}</li>)}</ul>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function DashboardWidgets({
-  startedCount, totalCount, topMedicines, medicinesPeriod, setMedicinesPeriod,
+  topMedicines, medicinesPeriod, setMedicinesPeriod, loading, error, onRetry,
   announcements, isManager, announcementDraft, setAnnouncementDraft, announcementError, announcementBusy,
   onPostAnnouncement, onDeleteAnnouncement,
 }) {
-  const notStartedCount = totalCount - startedCount
-  const startedPct = totalCount ? Math.round((startedCount / totalCount) * 100) : 0
   const maxQty = topMedicines.length ? Math.max(...topMedicines.map((item) => item.quantity)) : 1
 
   return (
-    <div className={isManager ? 'dashboard-widgets' : 'dashboard-widgets two-up'}>
-      {isManager && (
-        <div className="dashboard-widget">
-          <div className="dashboard-widget-head">
-            <span className="dashboard-widget-icon" aria-hidden="true">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="8.25" fill="currentColor" fillOpacity="0.14" stroke="none"></circle><circle cx="12" cy="12" r="8.25" strokeOpacity="0.25"></circle><path d="M12 3.75A8.25 8.25 0 1 1 3.75 12"></path><circle cx="12" cy="12" r="2" fill="currentColor" stroke="none"></circle></svg>
-            </span>
-            <strong>حالة الردهات اليوم</strong>
-          </div>
-          <div className="ward-status-row">
-            <strong className="stat-good">{startedCount}</strong>
-            <span>بدأت جارتها</span>
-            <strong className="stat-pending">{notStartedCount}</strong>
-            <span>لم تبدأ بعد</span>
-          </div>
-          <div className="progress-track"><div className="progress-fill" style={{ width: `${startedPct}%` }} /></div>
-        </div>
-      )}
-
+    <div className="dashboard-widgets">
       <div className="dashboard-widget">
         <div className="dashboard-widget-head">
           <span className="dashboard-widget-icon" aria-hidden="true">
@@ -52,11 +91,13 @@ export default function DashboardWidgets({
             ))}
           </div>
         )}
-        {topMedicines.length === 0 ? <p className="dashboard-widget-empty">لا توجد كميات مسجّلة في هذه المدة.</p> : (
+        {loading ? <SkeletonRows /> : error ? <DashboardError onRetry={onRetry} /> : topMedicines.length === 0 ? (
+          <p className="dashboard-widget-empty">لا توجد كميات مسجّلة في هذه المدة.</p>
+        ) : (
           <div className="top-medicines-list">
             {topMedicines.map((item) => (
               <div className="top-medicines-row" key={item.name}>
-                <span className="top-medicines-name">{item.name}</span>
+                <span className="top-medicines-name" title={item.name}>{item.name}</span>
                 <div className="top-medicines-bar-track"><div className="top-medicines-bar-fill" style={{ width: `${Math.round((item.quantity / maxQty) * 100)}%` }} /></div>
                 <strong className="top-medicines-qty">{item.quantity}</strong>
               </div>
@@ -72,32 +113,37 @@ export default function DashboardWidgets({
           </span>
           <strong>إعلانات الإدارة</strong>
         </div>
-        {announcements.length === 0 ? <p className="dashboard-widget-empty">لا توجد إعلانات حاليًا.</p> : (
+        {loading ? <SkeletonRows /> : error ? <DashboardError onRetry={onRetry} /> : announcements.length === 0 ? (
+          <p className="dashboard-widget-empty">لا توجد إعلانات حاليًا.</p>
+        ) : (
           <ul className="announcement-list">
             {announcements.map((item) => (
               <li className="announcement-item" key={item.id}>
                 <p>{item.message}</p>
                 <div className="announcement-meta">
                   <span>مسؤول وحدة الصيدلة السريرية — {new Date(item.created_at).toLocaleString('ar-IQ', { dateStyle: 'short', timeStyle: 'short' })}</span>
-                  {isManager && <button type="button" onClick={() => onDeleteAnnouncement(item.id)}>حذف</button>}
+                  {isManager && <button type="button" className="announcement-del" onClick={() => onDeleteAnnouncement(item.id)}>حذف</button>}
                 </div>
               </li>
             ))}
           </ul>
         )}
         {isManager && (
-          <form className="announcement-compose" onSubmit={(event) => { event.preventDefault(); onPostAnnouncement() }}>
-            <textarea
-              value={announcementDraft}
-              onChange={(event) => setAnnouncementDraft(event.target.value)}
-              placeholder="أضف إعلانًا للفريق…"
-              maxLength={500}
-              aria-label="نص الإعلان الجديد"
-            />
-            <button className="primary-button compact" type="submit" disabled={announcementBusy || !announcementDraft.trim()}>نشر</button>
-          </form>
+          <details className="announcement-disclosure">
+            <summary>إعلان جديد</summary>
+            <form className="announcement-compose" onSubmit={(event) => { event.preventDefault(); onPostAnnouncement() }}>
+              <textarea
+                value={announcementDraft}
+                onChange={(event) => setAnnouncementDraft(event.target.value)}
+                placeholder="أضف إعلانًا للفريق…"
+                maxLength={500}
+                aria-label="نص الإعلان الجديد"
+              />
+              <button className="primary-button compact" type="submit" disabled={announcementBusy || !announcementDraft.trim()}>نشر</button>
+            </form>
+            {announcementError && <p className="form-error" role="alert">{announcementError}</p>}
+          </details>
         )}
-        {announcementError && <p className="form-error" role="alert">{announcementError}</p>}
       </div>
     </div>
   )
