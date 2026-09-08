@@ -568,14 +568,41 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
   border-radius: var(--radius-md);
 }
 .chart-meta > span { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: #ffffff14; border: 1px solid #ffffff26; border-radius: 999px; }
-.chart-medicine-notice { margin: 0 0 var(--space-3); }
+.chart-medicine-notice { margin: 0 0 var(--space-3); display: flex; align-items: flex-start; gap: var(--space-3); }
+.chart-medicine-notice .notice-dismiss {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.chart-medicine-notice .notice-dismiss:hover { background: #0000000f; }
 .chart-meta b { color: #eafaf0; font-weight: 700; }
 .chart-meta > span.date-controls { background: transparent; border: 0; padding: 0; }
 .save-state { margin-inline-start: auto; background: transparent !important; border: 0 !important; padding: 0 !important; color: #bfe8cd; }
 .save-state-error { color: #ffd7d3; font-weight: 700; }
 .save-state-pending { color: #ffe0a8; font-weight: 700; }
 .save-state-saving { color: #d7ece0; }
-.chart-meta > span.date-warning { background: #7a4a00; border-color: #d99a3d; color: #ffe6bd; font-weight: 700; }
+/* Editing a non-today chart is unguarded next to every other hazard on this screen, so the
+   warning breaks the chip row and spans it as a full-width amber bar. It stays a child of
+   .chart-meta (which print hides) so it never reaches the printed sheet. */
+.chart-meta > .chart-date-warning {
+  flex-basis: 100%;
+  order: 9;
+  justify-content: center;
+  background: var(--warning);
+  border-color: var(--warning);
+  color: #fff;
+  font-weight: 700;
+}
 
 /* Cross-device merge notice. Persistent and amber — it outranks the calm green save line
    and the red network-error line: a dose changed by another iPad has to be read and
@@ -730,17 +757,19 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
    Sits at the inline-start (visually left) edge, away from where the RTL name text begins. */
 .row-delete {
   position: absolute;
-  inset-inline-end: 3px;
+  inset-inline-end: 4px;
   top: 50%;
   transform: translateY(-50%);
-  width: 22px;
-  height: 22px;
+  width: 28px;
+  height: 28px;
   display: grid;
   place-items: center;
   padding: 0;
-  border: 0;
+  border: 1px solid var(--danger);
   border-radius: var(--radius-sm);
-  background: var(--danger-tint);
+  /* Opaque, not a tint: it sits over the tail of a long RTL name, and at 28px it clears
+     the WCAG 2.5.8 target-size floor a 22px tint-only button missed. */
+  background: var(--surface);
   color: var(--danger);
   font-size: 12px;
   line-height: 1;
@@ -754,12 +783,18 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 /* The cell fields are transparent so the row / column / active-cell wash painted on the
    <td> shows through instead of being masked by an opaque field. */
 .chart-table td input, .chart-table .patient-cell input { background: transparent; }
+/* A real keyboard-focus ring on the cell itself. index.css clears the global one, and the
+   JS-driven .cell-active wash is not a focus indicator when arrow keys drive focus. */
+.chart-table td input:focus-visible, .chart-table .patient-cell input:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
 .chart-table tbody tr:hover td { background: var(--green-50); }
 .chart-table tbody tr:hover .patient-cell { background: var(--green-50); }
-/* A faint band down the column being typed into — a dose in the wrong medicine column is
-   this grid's named hazard, and 51 upright Arabic headers are hard to trace by eye. */
-.chart-table td.col-active { background: var(--green-50); }
-.chart-table thead th.col-active { background: var(--green-100); }
+/* A band down the column being typed into — a dose in the wrong medicine column is this
+   grid's named hazard, and 51 upright Arabic headers are hard to trace by eye. Wash is a
+   step off :hover (green-50) so a stray hover can't be mistaken for it, and two vertical
+   rules mark the band even where the wash is faint or the theme flattens it. The rules
+   survive the active-row wash winning on specificity, so the band never visually breaks. */
+.chart-table td.col-active { background: var(--green-100); box-shadow: inset 1px 0 0 var(--green-400), inset -1px 0 0 var(--green-400); }
+.chart-table thead th.col-active { background: var(--green-100); box-shadow: inset 1px 0 0 var(--green-400), inset -1px 0 0 var(--green-400); }
 /* The row being typed into. Driven by activeRow rather than :focus-within because the
    name and the doses now live in two separate tables — focus in one has to light up the
    matching row in the other. Must come after :hover to win on source order, and sits a
@@ -871,7 +906,8 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
   color: var(--text);
   transition: background var(--dur-fast) var(--ease);
 }
-.chart-table thead th .medicine-select::placeholder { color: #9bb0a8; }
+/* was #9bb0a8 — only 2.14:1 on the light header, a WCAG 1.4.3 fail; the token clears it in both themes */
+.chart-table thead th .medicine-select::placeholder { color: var(--text-muted); }
 .chart-table thead th .medicine-select:hover { background: var(--green-50); }
 /* box-shadow:none kills the global outset focus ring, which the th's overflow:hidden clips
    to a broken sliver; the inset outline is the visible keyboard-focus cue in its place. */

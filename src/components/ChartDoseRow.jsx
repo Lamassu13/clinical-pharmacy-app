@@ -8,13 +8,21 @@ import { memo } from 'react'
 // activeColumn is now live for every row (for the col-active band), so moving between
 // columns re-renders all 41 rows once. Keystrokes don't touch it, so the hot path is
 // unchanged. ponytail: if column nav ever feels heavy, drop the band and keep the header tint.
-const ChartDoseRow = memo(function ChartDoseRow({ rowIndex, patientName, quantities, columnMedicines, isActiveRow, activeColumn, labelBelow, onUpdateQuantity }) {
+// gridInactive flips only when focus enters/leaves the grid, so it costs one re-render pass.
+const ChartDoseRow = memo(function ChartDoseRow({ rowIndex, patientName, quantities, columnMedicines, isActiveRow, activeColumn, gridInactive, labelBelow, onUpdateQuantity }) {
   const activeMedicineName = isActiveRow && activeColumn >= 0 ? columnMedicines[activeColumn]?.trim() : ''
-  return <tr data-row={rowIndex} className={isActiveRow ? 'active-row' : undefined}>{quantities.map((quantity, columnIndex) => {
+  return <tr data-row={rowIndex} role="row" className={isActiveRow ? 'active-row' : undefined}>{quantities.map((quantity, columnIndex) => {
     const isActiveCell = isActiveRow && activeColumn === columnIndex
+    // Roving tabindex: the 2000+ dose cells are a single Tab stop — arrows / Enter move
+    // between them (keydown handler on .chart-grid). Tabbable target is the focused cell;
+    // failing that, this row's first cell when the row is active but no column is; failing
+    // that, the top-right cell (row 0, col 0 in this RTL grid) before anything is focused.
+    const roving = isActiveRow
+      ? (activeColumn < 0 ? columnIndex === 0 : activeColumn === columnIndex)
+      : (gridInactive && rowIndex === 0 && columnIndex === 0)
     // cell-active = the one focused cell; col-active = the rest of that medicine's column
-    return <td key={columnIndex} data-col={columnIndex} className={isActiveCell ? 'cell-active' : activeColumn === columnIndex ? 'col-active' : undefined}>
-      <input inputMode="numeric" pattern="[0-9]*" value={quantity} onChange={(event) => onUpdateQuantity(rowIndex, columnIndex, event.target.value)} aria-label={`الكمية — ${patientName.trim() || `مريض ${rowIndex + 1}`} — ${columnMedicines[columnIndex].trim() || `دواء ${columnIndex + 1}`}`} />
+    return <td key={columnIndex} data-col={columnIndex} role="gridcell" className={isActiveCell ? 'cell-active' : activeColumn === columnIndex ? 'col-active' : undefined}>
+      <input inputMode="numeric" pattern="[0-9]*" tabIndex={roving ? 0 : -1} value={quantity} onChange={(event) => onUpdateQuantity(rowIndex, columnIndex, event.target.value)} aria-label={`الكمية — ${patientName.trim() || `مريض ${rowIndex + 1}`} — ${columnMedicines[columnIndex].trim() || `دواء ${columnIndex + 1}`}`} />
       {isActiveCell && activeMedicineName && <span className={labelBelow ? 'cell-medicine below' : 'cell-medicine'}>{activeMedicineName}</span>}
     </td>
   })}</tr>
