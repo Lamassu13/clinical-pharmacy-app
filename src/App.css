@@ -609,9 +609,9 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
   .pills-pick-note-active { color: var(--text); }
   .pills-pick-note-active strong { color: var(--heading); }
 
-  /* The ward is already in the h1 — shrink the per-card letterhead to one muted line so a
-     stack of a dozen forms isn't a stack of a dozen headers. Print re-expands it. */
-  .pill-form-brand .pill-form-title span { display: none; }
+  /* The ward is already in the h1 — drop just that line from the per-card letterhead so a
+     stack of a dozen forms isn't a stack of a dozen ward names. Print re-expands it. */
+  .pill-form-brand .pill-form-title span:last-child { display: none; }
   .pill-form-brand .pill-form-title strong { font-size: var(--text-xs); color: var(--text-muted); font-weight: 700; }
   .pill-form-brand .header-logo { width: 28px; height: 28px; }
 
