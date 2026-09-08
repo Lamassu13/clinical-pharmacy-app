@@ -59,7 +59,9 @@ export default function ChartScreen({
         : <span className="muted">اضغط داخل خلية ليظهر المريض والعلاج هنا</span>}</div>
       {!dateIsToday && <span className="bar-date-warning">⚠ جارت {today} — ليس اليوم</span>}
       {copyError && <span className="save-state save-state-error" role="alert">⚠ تعذّر نسخ الجارت</span>}
-      <span aria-live="polite" className={saveClass}>{saveText}</span>
+      {/* No save chip until the chart has loaded — the default is "saved", which would be a
+          lie over a grid that has not arrived yet (the loading cover is showing meanwhile). */}
+      {chartReady && <span aria-live="polite" className={saveClass}>{saveText}</span>}
     </div>
 
     {chartConflict && <ConflictPanel conflict={chartConflict} onResolve={onResolveConflict} />}
@@ -79,11 +81,13 @@ export default function ChartScreen({
 
     <div className="chart-frame" ref={chartFrameRef}>
       {!chartReady && <div className="chart-frame-loading" role="status">{loadError ? 'تعذر تحميل الجارت — إعادة المحاولة…' : 'جارٍ تحميل الجارت…'}</div>}
-      <div className="chart-head" inert={!chartReady || undefined}>
+      <div className="chart-head" inert={(!chartReady || Boolean(chartConflict)) || undefined}>
         <div className="chart-head-corner"><img className="patient-header-logo" src={hospitalLogo} alt="" /><span>مستشفى بغداد التعليمي</span><span>وحدة الصيدلة السريرية</span>{selected.floor && <span>الطابق {selected.floor}</span>}<span>{selected.ward}</span><span>{today}</span><span>{todayWeekday}</span></div>
         <div className="chart-head-scroll" ref={chartHeadRef}><table className="chart-table"><thead><tr>{Array.from({ length: CHART_COLUMNS }, (_, index) => <th key={index} className={activeColumn === index ? 'col-active' : undefined}><input className="medicine-select" list="medicine-options" value={columnMedicines[index]} onChange={(event) => onSetColumnMedicine(index, event.target.value)} onFocus={(event) => { columnFocusValue.current = event.target.value; setActiveColumn(index) }} onBlur={(event) => onCommitColumnMedicine(index, event.target.value, columnFocusValue.current)} placeholder="دواء" title="اكتب أول حروف الدواء واختر من القائمة" aria-label={`اسم الدواء، عمود ${index + 1}`} /></th>)}</tr></thead></table></div>
       </div>
-      <div className="chart-grid" ref={chartGridRef} inert={!chartReady || undefined}
+      {/* inert while a merge is under review too: forces resolve-then-resume, and stops the
+          pharmacist editing a conflicted cell whose pre-merge value the panel still holds. */}
+      <div className="chart-grid" ref={chartGridRef} inert={(!chartReady || Boolean(chartConflict)) || undefined}
         onFocusCapture={(event) => { const row = event.target.closest('tr[data-row]'); if (row) setActiveRow(Number(row.dataset.row)); const cell = event.target.closest('td[data-col]'); setActiveColumn(cell ? Number(cell.dataset.col) : -1); if (cell && chartGridRef.current) setLabelBelow(cell.getBoundingClientRect().top - chartGridRef.current.getBoundingClientRect().top < 34) }}
         onBlurCapture={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) { setActiveRow(-1); setActiveColumn(-1) } }}
         onKeyDown={(event) => {
@@ -123,37 +127,82 @@ export default function ChartScreen({
   </section>
 }
 
-// The cross-device merge review. One row per changed field; ticking a row restores this
-// tab's value, unticked accepts the other device's. "تطبيق" applies the ticked reverts and
-// closes — ticking none is a plain "reviewed, all good". A focus-managed region, not
-// role="alert": a 30-field merge should be read at the pharmacist's pace, not fired at the
-// screen reader in one uninterruptible burst.
+// The cross-device merge review. Fields are grouped by kind (doses first — the higher-stakes
+// field); ticking a row keeps this tab's value, unticked accepts the other device's. A global
+// and per-group "استرجع قيمتي" tick every row in scope. "تطبيق" applies the ticked reverts
+// and restores focus to wherever it was. The head is role="alert" so a screen reader learns a
+// merge landed without the panel stealing focus from a half-typed cell; the 30-row list is
+// left for the reader to page through, not fired off in one burst.
+const CONFLICT_GROUPS = [
+  { kind: 'quantity', label: 'جرعات' },
+  { kind: 'medicine', label: 'أدوية' },
+  { kind: 'name', label: 'أسماء المرضى' },
+]
+
 function ConflictPanel({ conflict, onResolve }) {
   const [keepMine, setKeepMine] = useState(() => new Set())
-  const panelRef = useRef(null)
-  useEffect(() => { panelRef.current?.focus() }, [])
-  const toggle = (index) => setKeepMine((current) => {
+  const restoreRef = useRef(null)
+  // Runs for the first conflict and again if a second 409 replaces it without unmounting —
+  // clears stale ticks (their indices point into the old changes array) and re-captures the
+  // element to hand focus back to.
+  useEffect(() => { restoreRef.current = document.activeElement; setKeepMine(new Set()) }, [conflict])
+
+  const rows = conflict.changes.map((change, index) => ({ ...change, index }))
+  const groups = CONFLICT_GROUPS
+    .map((group) => ({ ...group, rows: rows.filter((row) => row.kind === group.kind) }))
+    .filter((group) => group.rows.length)
+  const setRows = (scope, on) => setKeepMine((current) => {
+    const next = new Set(current)
+    scope.forEach((row) => { if (on) next.add(row.index); else next.delete(row.index) })
+    return next
+  })
+  const toggleOne = (index) => setKeepMine((current) => {
     const next = new Set(current)
     if (next.has(index)) next.delete(index); else next.add(index)
     return next
   })
-  return <section className="chart-conflict" tabIndex={-1} ref={panelRef} aria-labelledby="chart-conflict-head">
-    <div className="chart-conflict-head">
+  const allOn = rows.length > 0 && rows.every((row) => keepMine.has(row.index))
+  const resolve = () => {
+    onResolve([...keepMine].map((index) => conflict.changes[index]))
+    restoreRef.current?.focus?.()
+  }
+
+  return <section className="chart-conflict" aria-labelledby="chart-conflict-head" aria-describedby="chart-conflict-sub">
+    <div className="chart-conflict-head" role="alert">
       <strong id="chart-conflict-head">⟳ دُمجت تعديلات من جهاز آخر</strong>
-      <span>{conflict.changes.length} حقلًا تغيّر — علّم ما تريد استرجاع قيمتك فيه</span>
+      <span id="chart-conflict-sub">{conflict.changes.length} حقلًا تغيّر — علّم ما تريد استرجاع قيمتك فيه، أو اقبل تعديلات الجهاز الآخر كما هي.</span>
     </div>
-    <ul className="chart-conflict-list">
-      {conflict.changes.map((change, index) => <li key={index}>
-        <label>
-          <input type="checkbox" checked={keepMine.has(index)} onChange={() => toggle(index)} aria-label={`استرجع قيمتي في ${change.what}`} />
-          <span className="conflict-what">{change.what}</span>
-          <span className="conflict-vals"><b>{change.mine || '—'}</b> ← <b>{change.theirs || '—'}</b></span>
-        </label>
-      </li>)}
-    </ul>
+    <label className="conflict-all">
+      <input type="checkbox" checked={allOn} onChange={() => setRows(rows, !allOn)} />
+      <span>استرجع قيمتي في كل الحقول</span>
+    </label>
+    <div className="chart-conflict-groups">
+      {groups.map((group) => {
+        const groupOn = group.rows.every((row) => keepMine.has(row.index))
+        return <div className="conflict-group" key={group.kind}>
+          <label className="conflict-group-head">
+            <input type="checkbox" checked={groupOn} onChange={() => setRows(group.rows, !groupOn)} />
+            <span>{group.label}</span>
+            <span className="conflict-group-count">{group.rows.length}</span>
+          </label>
+          <ul className="chart-conflict-list">
+            {group.rows.map((row) => <li key={row.index}>
+              <label>
+                <input type="checkbox" checked={keepMine.has(row.index)} onChange={() => toggleOne(row.index)}
+                  aria-label={`استرجع قيمتي في ${row.what}: ${row.mine || 'فارغ'} بدل ${row.theirs || 'فارغ'}`} />
+                <span className="conflict-what">{row.what}</span>
+                <span className="conflict-vals"><b>{row.mine || '—'}</b> ← <b>{row.theirs || '—'}</b></span>
+              </label>
+            </li>)}
+          </ul>
+        </div>
+      })}
+    </div>
     <div className="chart-conflict-actions">
-      <span className="conflict-hint">{keepMine.size ? `${keepMine.size} حقلًا ستُستعاد إلى قيمتك` : 'ستُقبل كل التغييرات كما هي'}</span>
-      <button type="button" className="primary-button compact" onClick={() => onResolve([...keepMine].map((index) => conflict.changes[index]))}>تطبيق</button>
+      <span className="conflict-hint">{keepMine.size
+        ? `${keepMine.size} حقلًا ستُستعاد إلى قيمتك`
+        : 'ستُقبل كل تعديلات الجهاز الآخر'}</span>
+      <button type="button" className="primary-button compact" onClick={resolve}>تطبيق</button>
     </div>
   </section>
 }
