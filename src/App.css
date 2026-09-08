@@ -585,9 +585,49 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 .pill-select select { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; opacity: 0; cursor: pointer; }
 .pill-select:focus-within .pill-select-value { box-shadow: var(--ring); border-radius: var(--radius-sm); }
 
-.pill-form-foot { display: flex; justify-content: space-between; gap: var(--space-5); margin-top: 100px; font-size: var(--text-sm); color: var(--text); flex-wrap: wrap; }
+/* margin-top: auto in @media print pushes the signature to the foot of the A4 column; on
+   screen a fixed 100px void just padded every card. */
+.pill-form-foot { display: flex; justify-content: space-between; gap: var(--space-5); margin-top: var(--space-6); font-size: var(--text-sm); color: var(--text); flex-wrap: wrap; }
 .pill-form-foot .pill-sign { flex: 1; min-width: 200px; padding-bottom: var(--space-5); border-bottom: 1px solid var(--border-strong); font-weight: 700; }
 .pill-form-foot .pill-edit-time { color: var(--text-muted); white-space: nowrap; }
+
+/* The save chip inherits the pale palette meant for the chart's dark-green bar; the pills
+   toolbar sits on the page background, so it needs legible tokens instead. (Only the color
+   is overridable — .save-state locks background/border/padding with !important.) */
+.pills-toolbar .save-state { color: var(--text-muted); }
+.pills-toolbar .save-state-pending { color: var(--warning); }
+.pills-toolbar .save-state-saving { color: var(--text-muted); }
+.pills-toolbar .save-state-error { color: var(--danger); font-weight: 700; }
+
+/* The row of selected patients / how to select them. Never printed. */
+.pills-pick-note { display: none; }
+
+/* Screen-only trims: the pill form on screen is an editing surface, not the A4 sheet. The
+   @media print block stays the source of truth for paper and is untouched. */
+@media screen {
+  .pills-pick-note { display: block; margin: calc(-1 * var(--space-3)) 0 var(--space-5); color: var(--text-muted); font-size: var(--text-sm); line-height: 1.6; }
+  .pills-pick-note-active { color: var(--text); }
+  .pills-pick-note-active strong { color: var(--heading); }
+
+  /* The ward is already in the h1 — shrink the per-card letterhead to one muted line so a
+     stack of a dozen forms isn't a stack of a dozen headers. Print re-expands it. */
+  .pill-form-brand .pill-form-title span { display: none; }
+  .pill-form-brand .pill-form-title strong { font-size: var(--text-xs); color: var(--text-muted); font-weight: 700; }
+  .pill-form-brand .header-logo { width: 28px; height: 28px; }
+
+  /* The lead column is the print-only hand-write box; it has nothing to show on screen. */
+  .pill-table th:first-child, .pill-table td:first-child { width: 0; min-width: 0; padding: 0; border: 0; }
+
+  /* The three dropdown columns get a real field affordance and a 44px-ish target instead
+     of reading as plain text; the empty state shows a muted prompt (blank on paper). */
+  .pill-table td:nth-child(n+3) { padding: 3px; }
+  .pill-select-value { min-height: 30px; padding: 7px 9px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); }
+  .pill-select[data-empty] .pill-select-value::before { content: 'اختر'; color: var(--text-muted); }
+  .pill-select:focus-within .pill-select-value { border-color: var(--primary); }
+
+  /* Preview which patients a "print selected" run will include. */
+  .pill-form-unpicked { opacity: .5; }
+}
 
 /* ============================================================
    Chart grid  (signature screen — kept close to its tuned values)
