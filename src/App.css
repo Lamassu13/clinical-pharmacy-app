@@ -256,6 +256,27 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 .login-form { display: grid; gap: var(--space-4); margin-top: var(--space-6); }
 .login-form input, .medicine-modal input { width: 100%; padding: 12px 14px; }
 .security-note { margin: var(--space-6) 0 0; color: var(--text-muted); font-size: var(--text-xs); text-align: center; }
+
+/* Session-lapsed recovery. The reassurance is the loudest line after the h1; the card is
+   there immediately (no theatrical entrance delay); and "log out and start over" shrinks
+   to a quiet last resort instead of a full-width twin of «متابعة العمل». */
+.session-reassure {
+  display: flex; align-items: flex-start; gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+  color: var(--text); font-size: var(--text-base); font-weight: 600; line-height: 1.5;
+}
+.session-reassure svg { flex: 0 0 auto; width: 20px; height: 20px; margin-top: 1px; color: var(--success); }
+/* Tucked under the error it belongs to — the form grid's own gap would leave it stranded. */
+.login-hint { margin: calc(-1 * var(--space-3)) 0 0; color: var(--text-muted); font-size: var(--text-xs); }
+.session-expired .login-card { animation-delay: 0s; animation-duration: .28s; }
+.session-expired .login-card > .session-logout {
+  width: auto;
+  margin-top: var(--space-6);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+.session-expired .login-card > .session-logout:hover { color: var(--text); background: transparent; }
+
 @keyframes login-card-in { from { opacity: 0; transform: translateY(10px) scale(.96); } }
 
 /* The screen's own logo/wordmark "splash" — the first thing visible on arrival, settling away
