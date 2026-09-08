@@ -1,5 +1,6 @@
 import { floors, specialWards } from '../constants.js'
 import DashboardWidgets from '../components/DashboardWidgets.jsx'
+import { WardGlyph, ChevronStart } from '../components/WardGlyph.jsx'
 
 // The floor/special-ward grid. Which cards a given user may actually see is applied
 // imperatively by an effect in App (it hides cards outside their assignment), so this
@@ -29,20 +30,20 @@ export default function FloorPickerScreen({
 
     <div className="location-grid">{floors.map((item) => {
       const started = startedFloors.has(item.number)
-      return <button className="location-card" key={item.number} onClick={() => onPickFloor(item)}>
+      return <button className="location-card location-card--link" key={item.number} onClick={() => onPickFloor(item)}>
         {isManager && <span className={started ? 'location-status-dot' : 'location-status-dot not-started'} aria-hidden="true" />}
         {isManager && <span className="sr-only">{started ? 'بدأت جارتها اليوم' : 'لم تبدأ بعد'}</span>}
         <span className="floor-number">{item.number}</span>
         <span><strong>الطابق {item.number}</strong><small>{item.wards.length} أروقة فرعية</small></span>
-        <span className="arrow">←</span>
+        <span className="arrow"><ChevronStart /></span>
       </button>
     })}{specialWards.map((ward) => {
       const started = startedSpecialWards.has(ward)
       return <div className="location-card special" key={ward}>
         {isManager && <span className={started ? 'location-status-dot' : 'location-status-dot not-started'} aria-hidden="true" />}
         {isManager && <span className="sr-only">{started ? 'بدأت جارتها اليوم' : 'لم تبدأ بعد'}</span>}
-        <span className="floor-number">✚</span>
-        <span><strong>{ward}</strong></span>
+        <span className="floor-number"><WardGlyph /></span>
+        <span><strong>{ward}</strong><small>ردهة مستقلة</small></span>
         <span className="ward-card-actions"><button className="secondary-button compact" onClick={() => onOpen({ floor: null, ward, mode: 'chart' })}>الجارت</button><button className="primary-button compact" onClick={() => onOpen({ floor: null, ward, mode: 'pills' })}>الحبوب</button></span>
       </div>
     })}</div>

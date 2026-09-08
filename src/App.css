@@ -349,7 +349,7 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 .section-heading h1 { margin-bottom: 0; }
 .date-chip {
   padding: var(--space-3) var(--space-4);
-  border-inline-start: 3px solid var(--danger);
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--surface);
   box-shadow: var(--shadow-xs);
@@ -373,7 +373,12 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
   box-shadow: var(--shadow-xs);
   transition: transform var(--dur) var(--ease), border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
 }
-.location-card:hover { border-color: var(--green-300); transform: translateY(-3px); box-shadow: var(--shadow-sm); }
+.location-card:hover { border-color: var(--green-300); }
+/* Only the whole-card links (a floor you drill into) lift and cast — the special/ward cards
+   are containers with their own buttons, so a hover-lift there would promise a click that
+   the card body does not answer. */
+.location-card--link { cursor: pointer; }
+.location-card--link:hover, .location-card--link:focus-visible { transform: translateY(-3px); box-shadow: var(--shadow-sm); }
 .location-card strong, .location-card small { display: block; }
 .location-card small { margin-top: var(--space-1); color: var(--text-muted); font-size: var(--text-xs); }
 /* Whether that floor/ward already has a chart for today — from GET /api/dashboard. */
@@ -457,9 +462,22 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
   font-size: var(--text-lg);
   font-weight: 700;
 }
-.special .floor-number { background: var(--danger-tint); color: var(--danger); }
-.arrow { margin-inline-start: auto; color: var(--primary); font-size: 20px; }
+.floor-number svg { width: 22px; height: 22px; }
+/* An independent ward, not a numbered floor — one ramp darker than the floor badges so it
+   reads as its own kind, without borrowing the alarm red it used to. */
+.special .floor-number { background: var(--green-200); color: var(--heading); }
+.arrow { margin-inline-start: auto; display: flex; color: var(--primary); transition: transform var(--dur) var(--ease); }
+.location-card--link:hover .arrow, .location-card--link:focus-visible .arrow { transform: translateX(-3px); }
 .ward-card-actions { margin-inline-start: auto; display: flex; gap: var(--space-2); flex-wrap: wrap; }
+/* The special / ward cards carry their own two buttons. Past the name, drop the action row
+   onto its own full-width line — a hairline above it — instead of crushing the ward name. */
+.location-card:not(.location-card--link) { flex-wrap: wrap; }
+.location-card:not(.location-card--link) .ward-card-actions {
+  flex-basis: 100%;
+  margin-inline-start: 0;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
 
 /* ============================================================
    Admin tables (requests / users / medicines)
