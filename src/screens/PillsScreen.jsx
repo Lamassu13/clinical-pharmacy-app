@@ -1,5 +1,4 @@
 import hospitalLogo from '../assets/hospital-logo.png'
-import AppCredit from '../components/AppCredit.jsx'
 import PillSelect from '../components/PillSelect.jsx'
 import { doseTimes, usageMethods, noteOptions } from '../constants.js'
 
@@ -32,7 +31,6 @@ export default function PillsScreen({
     : []
 
   return <main className="app-shell">
-    <AppCredit />
     {header}
 
     <section className="pills-page">

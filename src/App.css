@@ -61,7 +61,7 @@
   --ease: cubic-bezier(.4, 0, .2, 1);
 
   /* type scale */
-  --text-xs: 11px;
+  --text-xs: 12px;
   --text-sm: 13px;
   --text-base: 15px;
   --text-lg: 18px;
@@ -1057,7 +1057,7 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 @keyframes fade-in { from { opacity: 0; } }
 @keyframes modal-in { from { opacity: 0; transform: translateY(8px) scale(.98); } }
 
-/* injected date picker inside .chart-meta */
+/* date picker + copy-forward, pushed to the end of the dark .chart-meta bar */
 .date-controls { display: inline-flex; align-items: center; gap: 10px; margin-inline-start: auto; }
 .date-controls label { display: inline-flex; align-items: center; gap: 6px; color: #fff; font-size: var(--text-xs); }
 .date-controls input { width: 150px; padding: 6px 8px; border: 0; background: var(--surface); color: var(--text); font-size: var(--text-xs); border-radius: var(--radius-sm); }

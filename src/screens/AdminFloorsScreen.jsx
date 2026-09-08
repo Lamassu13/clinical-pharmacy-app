@@ -1,4 +1,3 @@
-import AppCredit from '../components/AppCredit.jsx'
 import { floors, specialWards } from '../constants.js'
 
 // Floor management. For now it holds one tool: bulk-deleting charts for a date range across
@@ -8,7 +7,7 @@ export default function AdminFloorsScreen({
   adminHeader, purgeFrom, setPurgeFrom, purgeTo, setPurgeTo, purgeAll, setPurgeAll,
   purgeTargets, onToggleTarget, busy, registrationsError, adminSuccess, onPurge, confirmModal,
 }) {
-  return <main className="app-shell"><AppCredit />{adminHeader}<section className="dashboard">
+  return <main className="app-shell">{adminHeader}<section className="dashboard">
     <div className="section-heading"><div>
       <h1>مسح الجارتات</h1>
     </div></div>

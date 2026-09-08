@@ -7,7 +7,7 @@ import { CHART_COLUMNS } from '../constants.js'
 // that maintains it, stays in App so that swapping in the sign-in card when a session
 // lapses does not unmount the half-typed chart.
 export default function ChartScreen({
-  selected, wardLabel, today, todayWeekday, isManager, dateIsToday, onBack, onGoToPills, onExportPdf,
+  selected, wardLabel, today, todayWeekday, isManager, dateIsToday, selectedDate, onChangeDate, onCopyToNextDay, onBack, onGoToPills, onExportPdf,
   chartSaveStatus, loadError, copyError, chartReady, chartConflict, onResolveConflict,
   medicines, patientNames, columnMedicines, quantities, totals, isThursday,
   activeRow, activeColumn, labelBelow, setActiveRow, setActiveColumn, setLabelBelow,
@@ -51,6 +51,10 @@ export default function ChartScreen({
       {selected.floor && <span>الطابق: <b>{selected.floor}</b></span>}
       <span>الفرع: <b>{selected.ward}</b></span>
       <span>التاريخ: <b>{today}</b> — <b>{todayWeekday}</b></span>
+      <span className="date-controls">
+        <label>التاريخ <input type="date" aria-label="تاريخ الجارت" value={selectedDate} onChange={(event) => onChangeDate(event.target.value)} /></label>
+        <button type="button" onClick={onCopyToNextDay}>نسخ إلى اليوم التالي</button>
+      </span>
     </div>
 
     <datalist id="medicine-options">{medicines.map((medicine) => <option key={medicine} value={medicine} />)}</datalist>
@@ -150,7 +154,9 @@ function ConflictPanel({ conflict, onResolve }) {
   const panelRef = useRef(null)
   // Runs for the first conflict and again if a second 409 replaces it without unmounting:
   // reset ticks (their indices point into the old changes array) and re-take focus.
-  useEffect(() => { setKeepMine(new Set()); panelRef.current?.focus() }, [conflict])
+  // Pull the panel into view as well as focusing it — a 409 can land while the pharmacist is
+  // scrolled deep into the grid, and the inert grid alone just looks frozen.
+  useEffect(() => { setKeepMine(new Set()); panelRef.current?.scrollIntoView({ block: 'center' }); panelRef.current?.focus() }, [conflict])
 
   const rows = conflict.changes.map((change, index) => ({ ...change, index }))
   const groups = CONFLICT_GROUPS
