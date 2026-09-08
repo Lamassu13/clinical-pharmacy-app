@@ -32,8 +32,12 @@ export default function ChartScreen({
     : chartSaveStatus === 'pending' ? 'save-state save-state-pending'
     : 'save-state'
 
+  // While the merge modal is open, everything outside it is inert — the grid, and also the
+  // toolbar / meta / status bar, so a click or a screen-reader jump can't leave the review.
+  const asideInert = Boolean(chartConflict) || undefined
+
   return <section className="chart-page">
-    <div className="chart-toolbar">
+    <div className="chart-toolbar" inert={asideInert}>
       <button className="back-button" onClick={onBack}>→ العودة للردهات</button>
       <div><h1>{wardLabel}</h1></div>
       <div className="toolbar-actions">
@@ -43,7 +47,7 @@ export default function ChartScreen({
       </div>
     </div>
 
-    <div className="chart-meta">
+    <div className="chart-meta" inert={asideInert}>
       {selected.floor && <span>الطابق: <b>{selected.floor}</b></span>}
       <span>الفرع: <b>{selected.ward}</b></span>
       <span>التاريخ: <b>{today}</b> — <b>{todayWeekday}</b></span>
@@ -53,7 +57,7 @@ export default function ChartScreen({
 
     {/* The only strip that stays put while the grid scrolls, so the status that matters at a
         hand-off — is it saved, is this today's chart — rides here, not in the scrolling meta row. */}
-    <div className="active-patient-bar">
+    <div className="active-patient-bar" inert={asideInert}>
       <div className="bar-focus" aria-live="polite">{activeRow >= 0
         ? <><span className="bar-item"><span className="bar-key">المريض</span><strong>{patientNames[activeRow]?.trim() || 'بلا اسم'}</strong><span className="bar-num">صف {activeRow + 1}</span></span>{activeColumn >= 0 && <span className="bar-item"><span className="bar-key">العلاج</span><strong>{columnMedicines[activeColumn]?.trim() || 'بلا اسم'}</strong><span className="bar-num">عمود {activeColumn + 1}</span></span>}</>
         : <span className="muted">اضغط داخل خلية ليظهر المريض والعلاج هنا</span>}</div>
@@ -79,7 +83,9 @@ export default function ChartScreen({
       <button type="button" className="notice-dismiss" aria-label="إخفاء التنبيه" onClick={onDismissNotice}>×</button>
     </p>}
 
-    <div className="chart-frame" ref={chartFrameRef}>
+    {/* chart-frame-held draws a desaturating scrim over the grid while a merge is under
+        review — reads as "held" without dimming the dose numbers themselves (opacity did). */}
+    <div className={chartConflict ? 'chart-frame chart-frame-held' : 'chart-frame'} ref={chartFrameRef}>
       {!chartReady && <div className="chart-frame-loading" role="status">{loadError ? 'تعذر تحميل الجارت — إعادة المحاولة…' : 'جارٍ تحميل الجارت…'}</div>}
       <div className="chart-head" inert={(!chartReady || Boolean(chartConflict)) || undefined}>
         <div className="chart-head-corner"><img className="patient-header-logo" src={hospitalLogo} alt="" /><span>مستشفى بغداد التعليمي</span><span>وحدة الصيدلة السريرية</span>{selected.floor && <span>الطابق {selected.floor}</span>}<span>{selected.ward}</span><span>{today}</span><span>{todayWeekday}</span></div>
@@ -166,6 +172,8 @@ function ConflictPanel({ conflict, onResolve }) {
   return <section className="chart-conflict" role="dialog" aria-modal="true" tabIndex={-1} ref={panelRef}
     aria-labelledby="chart-conflict-head" aria-describedby="chart-conflict-sub"
     onKeyDown={(event) => {
+      // Escape = close keeping the merge as-is (same as تطبيق with nothing ticked).
+      if (event.key === 'Escape') { event.preventDefault(); onResolve([]); return }
       if (event.key !== 'Tab') return
       const focusable = event.currentTarget.querySelectorAll('input, button')
       const edge = event.shiftKey ? focusable[0] : focusable[focusable.length - 1]
@@ -175,6 +183,7 @@ function ConflictPanel({ conflict, onResolve }) {
       }
     }}>
     <div className="chart-conflict-head">
+      <button type="button" className="close-button" aria-label="إغلاق مع إبقاء التعديلات المدمجة" onClick={() => onResolve([])}>×</button>
       <strong id="chart-conflict-head">⟳ دُمجت تعديلات من جهاز آخر</strong>
       <span id="chart-conflict-sub">دُمجت {conflict.changes.length} حقول من جهاز آخر — علّم ما تريد إرجاعه إلى قيمتك، والباقي يبقى كما دُمج.</span>
     </div>
