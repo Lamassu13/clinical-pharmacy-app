@@ -52,12 +52,15 @@ function App() {
   // { column, text, suggestion } — suggestion is a one-tap near-miss fix, or ''.
   const [columnMedicineNotice, setColumnMedicineNotice] = useState(null)
   const [showMedicineForm, setShowMedicineForm] = useState(false)
-  // A styled stand-in for window.confirm: not screen-reader-friendly, not RTL-polished, and
-  // not stylable. Call sites keep the exact `if (!(await askConfirm(...))) return` shape a
-  // plain window.confirm() had — only the await is new.
+  // A styled stand-in for window.confirm — an alertdialog with a focus trap, Escape-to-cancel
+  // and focus return (see ConfirmDialog). Call sites keep the exact
+  // `if (!(await askConfirm(...))) return` shape a plain window.confirm() had; irreversible
+  // ones pass `{ danger: true }` for the red confirm button.
   const [confirmDialog, setConfirmDialog] = useState(null)
-  const askConfirm = useCallback((message) => new Promise((resolve) => setConfirmDialog({ message, resolve })), [])
-  const resolveConfirm = useCallback((value) => { setConfirmDialog((current) => { current?.resolve(value); return null }) }, [])
+  // opener: the control that raised the dialog, so focus can return to it on close instead of
+  // falling to <body>. danger: turns the confirm button danger-styled for irreversible actions.
+  const askConfirm = useCallback((message, { danger = false } = {}) => new Promise((resolve) => setConfirmDialog({ message, danger, opener: document.activeElement, resolve })), [])
+  const resolveConfirm = useCallback((value) => { setConfirmDialog((current) => { current?.resolve(value); current?.opener?.focus?.(); return null }) }, [])
   // Set for one beat right after a real login succeeds, so the dashboard can dissolve in
   // instead of cutting to it instantly. Cleared on a timer rather than left mounted, so
   // navigating between the dashboard and the admin/chart/pills screens afterward — which all
@@ -227,16 +230,6 @@ function App() {
       setRegisterForm({ fullName: '', username: '', phone: '', email: '', fingerprintNumber: '', password: '' })
     } catch (error) { setRegisterError(error.message || 'تعذر الاتصال بالخادم') } finally { setBusy(false) }
   }
-  const logout = useCallback(async () => {
-    try { await fetch(`${apiUrl}/auth/logout`, { method: 'POST', credentials: 'include' }) } catch { /* ignore network errors on logout */ }
-    setIsLoggedIn(false)
-    setCurrentUser(null)
-    setAdminView(null)
-    setFloor(null)
-    setSelected(null)
-    setCredentials({ username: '', password: '' })
-    setSessionExpired(false)
-  }, [])
   const loadRegistrations = useCallback(async () => {
     setRegistrationsError('')
     try {
@@ -301,7 +294,7 @@ function App() {
     } catch (error) { setRegistrationsError(error.message || 'تعذر الاتصال بالخادم') } finally { setBusy(false) }
   }, [askConfirm])
   const deleteUser = useCallback(async (id, name) => {
-    if (!(await askConfirm(`حذف المستخدم "${name}" نهائيًا؟`))) return
+    if (!(await askConfirm(`حذف المستخدم "${name}" نهائيًا؟`, { danger: true }))) return
     setRegistrationsError(''); setAdminSuccess(''); setBusy(true)
     try {
       const response = await fetch(`${apiUrl}/users/${id}`, { method: 'DELETE', credentials: 'include' })
@@ -340,7 +333,7 @@ function App() {
     } catch (error) { setRegistrationsError(error.message || 'تعذر الاتصال بالخادم') } finally { setBusy(false) }
   }, [])
   const removeMedicine = useCallback(async (id, name) => {
-    if (!(await askConfirm(`حذف الدواء "${name}" من القائمة؟`))) return
+    if (!(await askConfirm(`حذف الدواء "${name}" من القائمة؟`, { danger: true }))) return
     setRegistrationsError(''); setAdminSuccess(''); setBusy(true)
     try {
       const response = await fetch(`${apiUrl}/medicines/${id}`, { method: 'DELETE', credentials: 'include' })
@@ -361,7 +354,7 @@ function App() {
     const wardNames = [...purgeTargets].filter((key) => typeof key === 'string')
     if (!purgeAll && floorNumbers.length === 0 && wardNames.length === 0) { setRegistrationsError('اختر طابقًا واحدًا على الأقل أو فعّل "كل الطوابق والردهات"'); return }
     const scopeText = purgeAll ? 'كل الطوابق والردهات' : `${floorNumbers.length + wardNames.length} موقعًا مختارًا`
-    if (!(await askConfirm(`مسح جميع الجارتات من ${purgeFrom} إلى ${purgeTo} — ${scopeText}؟ لا يمكن التراجع عن هذا نهائيًا.`))) return
+    if (!(await askConfirm(`مسح جميع الجارتات من ${purgeFrom} إلى ${purgeTo} — ${scopeText}؟ لا يمكن التراجع عن هذا نهائيًا.`, { danger: true }))) return
     setRegistrationsError(''); setAdminSuccess(''); setBusy(true)
     try {
       const body = purgeAll ? { from: purgeFrom, to: purgeTo, all: true } : { from: purgeFrom, to: purgeTo, floors: floorNumbers, wards: wardNames }
@@ -497,7 +490,7 @@ function App() {
   // the patient's whole dose line and renumbers every row below it, and there is no undo.
   const collapseRow = useCallback(async (rowIndex) => {
     const label = patientNames[rowIndex]?.trim() || `مريض ${rowIndex + 1}`
-    if (!(await askConfirm(`حذف صف «${label}»؟ ستُحذف كل جرعاته وستنتقل الصفوف التالية صفًّا واحدًا للأعلى — بلا تراجع.`))) return
+    if (!(await askConfirm(`حذف صف «${label}»؟ ستُحذف كل جرعاته وستنتقل الصفوف التالية صفًّا واحدًا للأعلى — بلا تراجع.`, { danger: true }))) return
     setPatientNames((current) => { const next = current.filter((_, index) => index !== rowIndex); next.push(''); return next })
     setQuantities((current) => { const next = current.filter((_, index) => index !== rowIndex); next.push(Array(CHART_COLUMNS).fill('')); return next })
     // The ✕ that was just clicked has unmounted; without this focus falls to <body> right
@@ -613,6 +606,31 @@ function App() {
     setFloor(null)
     setAdminView(null)
   }, [selected, flushChart, flushPills])
+  // Ending the session is the likeliest accidental tap on a shared iPad, so it keeps the
+  // session-expired screen's promise: flush any debounced edits first, and if something still
+  // is not confirmed saved, say so before tearing down — the work stays mirrored on this
+  // device and re-saves on the next sign-in either way. Also clears the auth-screen state so
+  // nothing stale flashes on the login/register card that comes next.
+  const logout = useCallback(async () => {
+    if (selected?.mode === 'pills') flushPills(); else flushChart()
+    const unsaved = Boolean(selected) && (selected.mode === 'pills' ? pillsSaveStatus : chartSaveStatus) !== 'saved'
+    if (unsaved && !(await askConfirm('لا يزال هناك ما لم يُحفَظ على الخادم. إن سجّلت الخروج الآن يبقى على هذا الجهاز ويُعاد حفظه فور دخولك من جديد. متابعة تسجيل الخروج؟'))) return
+    try { await fetch(`${apiUrl}/auth/logout`, { method: 'POST', credentials: 'include' }) } catch { /* ignore network errors on logout */ }
+    setIsLoggedIn(false)
+    setCurrentUser(null)
+    setAdminView(null)
+    setFloor(null)
+    setSelected(null)
+    setSessionExpired(false)
+    setAuthView('login')
+    setCredentials({ username: '', password: '' })
+    setLoginError('')
+    setRegisterError('')
+    setRegisterSuccess('')
+    setRegisterForm({ fullName: '', username: '', phone: '', email: '', fingerprintNumber: '', password: '' })
+    setAdminSuccess('')
+    setRegistrationsError('')
+  }, [selected, flushChart, flushPills, chartSaveStatus, pillsSaveStatus, askConfirm])
   // There is no router, so the tab title is the only cue for which screen is open.
   useEffect(() => {
     const base = 'وحدة الصيدلة السريرية'
@@ -712,7 +730,7 @@ function App() {
     } catch (error) { setAnnouncementError(error.message || 'تعذر الاتصال بالخادم') } finally { setAnnouncementBusy(false) }
   }, [announcementDraft, isExpired])
   const deleteAnnouncement = useCallback(async (id) => {
-    if (!(await askConfirm('حذف هذا الإعلان؟'))) return
+    if (!(await askConfirm('حذف هذا الإعلان؟', { danger: true }))) return
     try {
       const response = await fetch(`${apiUrl}/announcements/${id}`, { method: 'DELETE', credentials: 'include' })
       if (isExpired(response) || !response.ok) return
@@ -1038,7 +1056,7 @@ function App() {
 
   if (!isLoggedIn) return <LoginScreen credentials={credentials} setCredentials={setCredentials} loginError={loginError} busy={busy} onSubmit={submitLogin} onGoToRegister={() => { setAuthView('register'); setLoginError('') }} confirmModal={confirmModal} />
 
-  if (sessionExpired) return <SessionExpiredScreen credentials={credentials} setCredentials={setCredentials} loginError={loginError} busy={busy} onSubmit={submitLogin} onLogout={async () => { if (await askConfirm('تسجيل الخروج سيُنهي هذه الجلسة؛ ما لم يُحفظ على الخادم يبقى على هذا الجهاز فقط. متابعة؟')) logout() }} confirmModal={confirmModal} />
+  if (sessionExpired) return <SessionExpiredScreen credentials={credentials} setCredentials={setCredentials} loginError={loginError} busy={busy} onSubmit={submitLogin} onLogout={logout} confirmModal={confirmModal} />
 
   const appHeader = <AppHeader theme={theme} onToggleTheme={toggleTheme} currentUser={currentUser} onLogout={logout} onHome={goHome} isAdmin={isAdmin} isManager={isManager} adminView={adminView} onNavigate={setAdminView} />
 
