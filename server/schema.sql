@@ -181,6 +181,22 @@ CREATE TABLE IF NOT EXISTS announcements (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Per-session edit lock for a ward/day/slot chart. One holder at a time; a lock whose
+-- heartbeat_at has gone stale (see LOCK_TTL_SECONDS in routes/chart.js) is treated as free
+-- and can be overwritten. Keyed by the same tuple as daily_charts but its own table because
+-- a chart that has never been saved has no daily_charts row to hang a lock on. holder_name
+-- is snapshotted so the read-only view needs no join.
+CREATE TABLE IF NOT EXISTS chart_locks (
+  ward_id BIGINT NOT NULL REFERENCES wards(id) ON DELETE CASCADE,
+  chart_date DATE NOT NULL,
+  slot TEXT NOT NULL DEFAULT 'main',
+  holder_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  holder_name TEXT NOT NULL,
+  acquired_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  heartbeat_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (ward_id, chart_date, slot)
+);
+
 CREATE INDEX IF NOT EXISTS daily_charts_date_idx ON daily_charts (chart_date);
 CREATE INDEX IF NOT EXISTS chart_quantities_chart_idx ON chart_quantities (chart_id);
 CREATE INDEX IF NOT EXISTS users_account_status_idx ON users (account_status);

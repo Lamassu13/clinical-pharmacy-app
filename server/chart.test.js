@@ -158,3 +158,36 @@ test('canAccessLocation via the API: a supervisor reaches a floor with no explic
   const response = await client.get(`/api/chart?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=${DATE}`)
   assert.equal(response.status, 200)
 })
+
+test('chart lock: one holder at a time, released and re-taken, and a stale lock is overwritable', async () => {
+  const a = await loginAs({ role: 'user', floor: FLOOR })
+  const b = await loginAs({ role: 'user', floor: FLOOR })
+  const body = { floor: FLOOR, ward: WARD, date: DATE, slot: 'main' }
+  const q = `floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=${DATE}&slot=main`
+
+  // A claims it (creating the ward row on the fly); B is refused and sees who holds it.
+  assert.deepEqual((await a.post('/api/chart/lock', body)).body, { ok: true })
+  const refused = await b.post('/api/chart/lock', body)
+  assert.equal(refused.body.ok, false)
+  assert.equal(refused.body.held, true)
+  assert.equal(refused.body.mine, false)
+  assert.match(refused.body.holder.name, /Test User/)
+
+  // Heartbeat keeps A's lock; B's heartbeat is a no-op.
+  assert.equal((await a.patch('/api/chart/lock', body)).body.ok, true)
+  assert.equal((await b.patch('/api/chart/lock', body)).body.ok, false)
+
+  // GET /api/chart carries the lock, flagged mine only for the holder.
+  assert.equal((await a.get(`/api/chart?${q}`)).body.lock.mine, true)
+  assert.equal((await b.get(`/api/chart?${q}`)).body.lock.mine, false)
+
+  // A releases; B sees it free and takes it.
+  await a.delete(`/api/chart/lock?${q}`)
+  assert.equal((await b.get(`/api/chart/lock?${q}`)).body.held, false)
+  assert.equal((await b.post('/api/chart/lock', body)).body.ok, true)
+
+  // A lock whose heartbeat has gone stale can be overwritten by anyone.
+  await pool.query("UPDATE chart_locks SET heartbeat_at = NOW() - interval '5 minutes'")
+  assert.equal((await a.post('/api/chart/lock', body)).body.ok, true)
+  assert.equal((await b.get(`/api/chart/lock?${q}`)).body.mine, false)
+})

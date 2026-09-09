@@ -13,6 +13,51 @@ const router = express.Router()
 export const CHART_SLOTS = ['main', 'extra']
 export const readSlot = (value) => (CHART_SLOTS.includes(value) ? value : 'main')
 
+// Per-session edit lock (chart_locks). A lock whose heartbeat has been silent this long is
+// treated as free — the ~30s client heartbeat means 4 missed beats releases it.
+const LOCK_TTL_SECONDS = 120
+
+// Same access rules as GET/PUT /chart, plus the ward_id the lock is keyed by. `source` is the
+// query or the body. Returns { status, message } on rejection, { wardId, chartDate, slot } otherwise;
+// wardId is null when this ward has never been touched (no wards row yet).
+const resolveLockTarget = async (source, user) => {
+  const floor = source.floor ? clampInt(source.floor, 2, 10) : null
+  const wardName = cleanText(source.ward, 120).trim()
+  const chartDate = source.date
+  if (source.floor && (floor === null || !ALLOWED_FLOORS.includes(floor))) return { status: 400, message: 'الطابق غير مسموح' }
+  if (!wardName || !isIsoDate(chartDate)) return { status: 400, message: 'بيانات الردهة والتاريخ مطلوبة' }
+  if (!isKnownWard(floor, wardName)) return { status: 400, message: 'الردهة غير معروفة' }
+  if (!canAccessLocation(user, floor, wardName)) return { status: 403, message: 'لا تملك صلاحية لهذه الردهة' }
+  const wardResult = await query('SELECT id FROM wards WHERE floor_number IS NOT DISTINCT FROM $1 AND name = $2 ORDER BY id LIMIT 1', [floor, wardName])
+  return { wardId: wardResult.rows[0]?.id ?? null, floor, wardName, chartDate, slot: readSlot(source.slot) }
+}
+
+// ponytail: a brand-new special ward (floor_number IS NULL, no unique across NULLs) touched by
+// two devices at the exact same first moment could create two wards rows and two locks. Rare,
+// and self-healing — the next chart save resolves to one ward_id and the other lock TTLs out.
+const ensureWardId = async (floor, wardName) => {
+  const existing = await query('SELECT id FROM wards WHERE floor_number IS NOT DISTINCT FROM $1 AND name = $2 ORDER BY id LIMIT 1', [floor, wardName])
+  if (existing.rows[0]) return existing.rows[0].id
+  const created = await query('INSERT INTO wards (floor_number, name, is_special) VALUES ($1, $2, $3) RETURNING id', [floor, wardName, floor === null])
+  return created.rows[0].id
+}
+
+const readLock = async (wardId, chartDate, slot) => {
+  if (!wardId) return null
+  // LOCK_TTL_SECONDS is a hardcoded integer constant, safe to inline.
+  const result = await query(
+    `SELECT holder_id, holder_name, acquired_at,
+            (heartbeat_at > NOW() - make_interval(secs => ${LOCK_TTL_SECONDS})) AS fresh
+     FROM chart_locks WHERE ward_id = $1 AND chart_date = $2 AND slot = $3`,
+    [wardId, chartDate, slot],
+  )
+  return result.rows[0] || null
+}
+
+const lockView = (row, userId) => (row && row.fresh
+  ? { held: true, mine: row.holder_id === userId, holder: { name: row.holder_name, since: row.acquired_at } }
+  : { held: false, mine: false, holder: null })
+
 // Look up the daily_charts row id for a (floor, ward, date, slot), or null if none exists.
 // Exported because the pills routes in index.js still call it.
 const resolveChartId = async (floor, wardName, chartDate, slot = 'main') => {
@@ -56,9 +101,12 @@ router.get('/chart', requireAuth, async (request, response) => {
   if (!canAccessLocation(request.session.user, floor, wardName)) return response.status(403).json({ message: 'لا تملك صلاحية لهذه الردهة' })
   const slot = readSlot(request.query.slot)
   const wardResult = await query('SELECT id, floor_number, name FROM wards WHERE floor_number IS NOT DISTINCT FROM $1 AND name = $2 ORDER BY id LIMIT 1', [floor, wardName])
-  if (!wardResult.rows[0]) return response.json({ chart: null })
-  const chartResult = await query('SELECT id FROM daily_charts WHERE ward_id = $1 AND chart_date = $2 AND slot = $3', [wardResult.rows[0].id, chartDate, slot])
-  if (!chartResult.rows[0]) return response.json({ chart: null })
+  const wardId = wardResult.rows[0]?.id ?? null
+  // The read-only device polls this too, so the lock rides along on every GET.
+  const lock = lockView(await readLock(wardId, chartDate, slot), request.session.user.id)
+  if (!wardId) return response.json({ chart: null, lock })
+  const chartResult = await query('SELECT id FROM daily_charts WHERE ward_id = $1 AND chart_date = $2 AND slot = $3', [wardId, chartDate, slot])
+  if (!chartResult.rows[0]) return response.json({ chart: null, lock })
   const chartId = chartResult.rows[0].id
   const [patients, columns, quantities, chartRow] = await Promise.all([
     query('SELECT row_number, patient_name FROM chart_patients WHERE chart_id = $1 ORDER BY row_number', [chartId]),
@@ -66,7 +114,60 @@ router.get('/chart', requireAuth, async (request, response) => {
     query('SELECT row_number, column_number, quantity FROM chart_quantities WHERE chart_id = $1', [chartId]),
     query('SELECT version FROM daily_charts WHERE id = $1', [chartId]),
   ])
-  response.json({ chart: { patients: patients.rows, columns: columns.rows, quantities: quantities.rows, version: chartRow.rows[0].version } })
+  response.json({ chart: { patients: patients.rows, columns: columns.rows, quantities: quantities.rows, version: chartRow.rows[0].version }, lock })
+})
+
+// Acquire (or re-affirm) the edit lock. Granted when the chart is free, when the current
+// lock has gone stale, or when it is already this user's. Otherwise 200 with { ok: false }
+// and who holds it, so the client can drop into read-only.
+router.post('/chart/lock', requireAuth, async (request, response) => {
+  const target = await resolveLockTarget(request.body, request.session.user)
+  if (target.status) return response.status(target.status).json({ message: target.message })
+  const wardId = target.wardId ?? await ensureWardId(target.floor, target.wardName)
+  const user = request.session.user
+  const granted = await query(
+    `INSERT INTO chart_locks (ward_id, chart_date, slot, holder_id, holder_name)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (ward_id, chart_date, slot) DO UPDATE
+       SET holder_id = EXCLUDED.holder_id, holder_name = EXCLUDED.holder_name,
+           acquired_at = NOW(), heartbeat_at = NOW()
+       WHERE chart_locks.holder_id = EXCLUDED.holder_id
+          OR chart_locks.heartbeat_at < NOW() - make_interval(secs => ${LOCK_TTL_SECONDS})
+     RETURNING holder_id`,
+    [wardId, target.chartDate, target.slot, user.id, user.fullName],
+  )
+  if (granted.rows[0]) return response.json({ ok: true })
+  response.json({ ok: false, ...lockView(await readLock(wardId, target.chartDate, target.slot), user.id) })
+})
+
+// Heartbeat — keeps this user's lock alive. { ok: false } means the lock was lost (taken
+// after it went stale); the client keeps editing locally and a save will 409 into the merge fallback.
+router.patch('/chart/lock', requireAuth, async (request, response) => {
+  const target = await resolveLockTarget(request.body, request.session.user)
+  if (target.status) return response.status(target.status).json({ message: target.message })
+  if (!target.wardId) return response.json({ ok: false })
+  const kept = await query(
+    'UPDATE chart_locks SET heartbeat_at = NOW() WHERE ward_id = $1 AND chart_date = $2 AND slot = $3 AND holder_id = $4 RETURNING holder_id',
+    [target.wardId, target.chartDate, target.slot, request.session.user.id],
+  )
+  response.json({ ok: kept.rows.length > 0 })
+})
+
+// Release — on back-out / tab-close. Idempotent.
+router.delete('/chart/lock', requireAuth, async (request, response) => {
+  const target = await resolveLockTarget(request.query, request.session.user)
+  if (target.status) return response.status(target.status).json({ message: target.message })
+  if (target.wardId) {
+    await query('DELETE FROM chart_locks WHERE ward_id = $1 AND chart_date = $2 AND slot = $3 AND holder_id = $4', [target.wardId, target.chartDate, target.slot, request.session.user.id])
+  }
+  response.json({ ok: true })
+})
+
+// Status only — the read-only device's poll when it is not holding the lock.
+router.get('/chart/lock', requireAuth, async (request, response) => {
+  const target = await resolveLockTarget(request.query, request.session.user)
+  if (target.status) return response.status(target.status).json({ message: target.message })
+  response.json(lockView(await readLock(target.wardId, target.chartDate, target.slot), request.session.user.id))
 })
 router.put('/chart', requireAuth, async (request, response) => {
   const floor = request.body.floor ? clampInt(request.body.floor, 2, 10) : null

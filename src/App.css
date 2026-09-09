@@ -895,69 +895,22 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 .save-state-pending { color: #ffe0a8; font-weight: 700; }
 .save-state-saving { color: #d7ece0; }
 
-/* Cross-device merge review — a modal while the grid is inert behind it. An amber frame plus
-   a tinted header band say "a merge landed"; the interior stays calm (grouped by kind,
-   --border hairlines, --primary ticks). The pharmacist ticks what to return to their value. */
-.chart-conflict {
-  position: relative;
+/* Per-session edit-lock banner — a flat one-line strip above the toolbar. Word first, colour
+   reinforces (Worded-Status Rule): amber = another device has it / heartbeat lost, green =
+   just freed and yours to take. */
+.chart-lock-banner {
   margin: 0 0 var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  background: var(--surface);
-  border: 2px solid var(--warning);
+  padding: var(--space-2) var(--space-4);
   border-radius: var(--radius-md);
-  color: var(--text);
+  font-size: var(--text-sm);
+  font-weight: 700;
 }
-.chart-conflict > .close-button { inset-inline-end: var(--space-3); top: var(--space-2); }
-/* Full-bleed tinted band: negative margins cancel the panel's own padding. */
-.chart-conflict-head {
-  display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2) var(--space-3);
-  margin: calc(-1 * var(--space-3)) calc(-1 * var(--space-4)) var(--space-3);
-  padding: var(--space-3) calc(var(--space-4) + 28px) var(--space-3) var(--space-4);
-  background: var(--warning-tint);
-  border-bottom: 1px solid var(--warning);
-  border-radius: calc(var(--radius-md) - 2px) calc(var(--radius-md) - 2px) 0 0;
-}
-.chart-conflict-head strong { color: var(--text); font-size: var(--text-base); }
-.chart-conflict-head span { color: var(--text-muted); font-size: var(--text-sm); }
-/* Global toggle sits above the groups and outweighs them: heavier, and set off by a rule. */
-.conflict-all { display: flex; align-items: center; gap: var(--space-2); margin: 0 0 var(--space-3); padding-bottom: var(--space-3); border-bottom: 1px solid var(--border); font-weight: 700; cursor: pointer; }
-/* A plain scroll region with hairline edges — the clipboard idiom, not a shadow-stacked
-   sync dialog. */
-.chart-conflict-groups { max-height: 260px; overflow-y: auto; border-block: 1px solid var(--border); }
-.conflict-group + .conflict-group { margin-top: var(--space-3); }
-/* Tinted strip with a border so a group header reads as a section, not one more selectable row. */
-.conflict-group-head { display: flex; align-items: center; gap: var(--space-2); padding: 5px var(--space-2); background: var(--surface-alt); border: 1px solid var(--border); border-radius: var(--radius-sm); font-weight: 700; cursor: pointer; }
-.conflict-group-count { margin-inline-start: var(--space-1); padding: 0 6px; border-radius: 999px; background: var(--surface); border: 1px solid var(--border); color: var(--text-muted); font-size: var(--text-xs); font-weight: 700; }
-.chart-conflict-list { margin: 0; padding: 0; list-style: none; font-size: var(--text-sm); }
-.chart-conflict-list li { border-top: 1px solid var(--border); }
-/* min-height 44 so a gloved thumb has a real target on the shared iPad. */
-.chart-conflict-list label { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); min-height: 44px; padding: 7px 2px; cursor: pointer; }
-.chart-conflict input[type="checkbox"], .chart-conflict input[type="radio"] { flex: 0 0 auto; width: 20px; height: 20px; margin: 12px 0; accent-color: var(--primary); }
-.chart-conflict input:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
-.chart-conflict-list .conflict-what { flex: 1 1 auto; min-width: 12ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.chart-conflict-list .conflict-coord { flex: 0 0 auto; color: var(--text-muted); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
-.chart-conflict-list .conflict-vals { flex: 0 0 auto; white-space: nowrap; color: var(--text-muted); }
-.chart-conflict-list .conflict-vals b { color: var(--text); font-variant-numeric: tabular-nums; font-weight: 700; }
+.chart-lock-banner--held, .chart-lock-banner--stale { background: var(--warning-tint); color: var(--warning); }
+.chart-lock-banner--free { background: var(--success-tint); color: var(--success); }
+/* A quiet "you have the pen" mark in the dark meta bar — a shade greener than its other pills. */
+.chart-meta > span.chart-lock-mark { background: var(--green-600); }
 
-/* Clash block — both devices changed the same cell. Sits first, amber-framed, and must be
-   resolved (per-row radio, no default) before تطبيق / Escape / × unlock. */
-.conflict-clash { margin: 0 0 var(--space-3); padding: var(--space-2) var(--space-3); border: 1px solid var(--warning); border-radius: var(--radius-sm); background: var(--warning-tint); }
-.conflict-clash-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; margin-bottom: var(--space-1); }
-.conflict-clash-label { color: var(--warning); font-size: var(--text-xs); font-weight: 700; }
-.conflict-clash-bulk { display: flex; gap: var(--space-3); }
-.conflict-clash-bulk .text-button { font-size: var(--text-xs); font-weight: 700; padding-inline: 2px; }
-.conflict-clash-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); min-height: 44px; padding: 6px 0; }
-.conflict-choice { display: flex; flex-wrap: wrap; gap: var(--space-2); flex: 0 0 auto; }
-.conflict-choice label { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 4px 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); font-weight: 700; cursor: pointer; }
-.conflict-choice label.is-on { border-color: var(--primary); background: var(--green-50); color: var(--primary-hover); }
-.conflict-choice b { font-variant-numeric: tabular-nums; }
-
-/* Default view when there is no clash to resolve — three plain choices, not a checkbox tree. */
-.conflict-quick { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin-top: var(--space-2); }
-
-.chart-conflict-actions { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-top: var(--space-3); }
-.chart-conflict-actions .conflict-hint { color: var(--text-muted); font-size: var(--text-sm); }
-/* While a merge is under review the grid is inert; this scrim says so without touching the
+/* While another device is editing the grid is inert; this scrim says so without touching the
    dose numbers' contrast (an earlier opacity:.55 dropped them below AA). grayscale pulls the
    green tints out so it reads "not live"; the faint wash is the fallback where backdrop-filter
    is unsupported. Covers all three strips (head / grid / foot) via .chart-frame's inset:0. */
@@ -1391,7 +1344,7 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 	@page { size: A4 landscape; margin: 5mm; }
 	.app-shell { min-height: 0; }
 	/* Only the chart itself prints — everything that frames it on screen comes off. */
-	.topbar, .chart-toolbar, .chart-meta, .chart-conflict, .modal-backdrop, .active-patient-bar, .cell-medicine, .chart-frame-loading, .row-delete { display: none !important; }
+	.topbar, .chart-toolbar, .chart-meta, .chart-lock-banner, .chart-recover-line, .chart-clash-note, .modal-backdrop, .active-patient-bar, .cell-medicine, .chart-frame-loading, .row-delete { display: none !important; }
 	/* A guaranteed white border: @page margin is honoured unevenly across devices (iPad
 	   Safari / AirPrint drops it), so the page carries its own physical padding too. */
 	.chart-page { width: 100%; padding: 4mm; box-sizing: border-box; }
