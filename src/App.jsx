@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import hospitalLogo from './assets/hospital-logo.png'
 import { roleLabels, PATIENT_ROWS, CHART_COLUMNS, apiUrl } from './constants.js'
-import { mergeChartSnapshots, parseChartRows, toEnglishDigits, medicineKey, nearestMedicine, UNIT_ONE, isSyringe, VIAL_AMP, isoDate, locationBody, pillEntryList } from './helpers.js'
+import { mergeChartSnapshots, parseChartRows, toEnglishDigits, medicineKey, nearestMedicine, UNIT_ONE, isSyringe, VIAL_AMP, SYRINGE_EXCLUDE, isoDate, locationBody, pillEntryList } from './helpers.js'
 import ConfirmDialog from './components/ConfirmDialog.jsx'
 import AppHeader from './components/AppHeader.jsx'
 import LoginScreen from './screens/LoginScreen.jsx'
@@ -195,7 +195,8 @@ function App() {
       if (isSyringe(name)) syringe.push(index)
       else if (UNIT_ONE.test(key)) unit.push(index)
       // A syringe column is never also a source column, so it can never feed its own total.
-      else if (VIAL_AMP.test(key)) vialAmp.push(index)
+      // Flagyl / Paracetamol are hung ready-mixed, so they are left out even though they are vials.
+      else if (VIAL_AMP.test(key) && !SYRINGE_EXCLUDE.test(key)) vialAmp.push(index)
     })
     return { unit, syringe, vialAmp }
   }, [columnMedicines])
@@ -442,7 +443,8 @@ function App() {
     if (!becameSyringe && !becameUnit) return
     const vialAmp = []
     nextMedicines.forEach((medicine, index) => {
-      if (medicine.trim() && !isSyringe(medicine) && VIAL_AMP.test(medicineKey(medicine))) vialAmp.push(index)
+      const key = medicineKey(medicine)
+      if (medicine.trim() && !isSyringe(medicine) && VIAL_AMP.test(key) && !SYRINGE_EXCLUDE.test(key)) vialAmp.push(index)
     })
     setQuantities((current) => current.map((row, rowIndex) => {
       if (!patientNames[rowIndex]?.trim()) return row

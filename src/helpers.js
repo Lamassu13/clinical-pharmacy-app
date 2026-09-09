@@ -66,9 +66,11 @@ const SYRINGE_NAME = /سرنج|syringe/
 const SYRINGE_SIZE = /(^|\D)5(\D|$)/
 export const isSyringe = (name) => { const key = medicineKey(name); return SYRINGE_NAME.test(key) && SYRINGE_SIZE.test(key) }
 // What a syringe is drawn from. Word boundaries, like PILL_FORM on the server, so that
-// "Ampicillin" is not read as an ampoule. "bottle" covers the IV-infusion bottles
-// (Paracetamol 1g bottle, Flagyl…) that are drawn up with a syringe just like a vial.
-export const VIAL_AMP = /\b(vial|vials|amp|amps|ampoule|ampoules|bottle|bottles)\b/
+// "Ampicillin" is not read as an ampoule.
+export const VIAL_AMP = /\b(vial|vials|amp|amps|ampoule|ampoules)\b/
+// Vial/amp medicines that are hung ready-mixed, not drawn up — so they never feed a
+// Syringe 5cc column's auto-total even though they match VIAL_AMP.
+export const SYRINGE_EXCLUDE = /flagyl|paracetamol|فلاجيل|باراسيتامول/
 
 export const isoDate = (value) => {
   const date = new Date(value)

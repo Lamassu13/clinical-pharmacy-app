@@ -76,3 +76,25 @@ test('PUT /api/pills: pill_qty is digits-only and capped', async () => {
   const entry = pills.body.pills.entries.find((e) => e.medicineKey === KEY)
   assert.equal(entry?.pillQty, '34')
 })
+
+test('GET /api/pills: an unlinked column resolves its Arabic name past a spacing mismatch', async () => {
+  await pool.query("INSERT INTO medicines (name, arabic_name) VALUES ('Metronidazole 500mg tab', 'ميترونيدازول')")
+  const ccu = 'ردهة CCU'
+  const wardId = (await pool.query("INSERT INTO wards (floor_number, name, is_special) VALUES (3, $1, false) RETURNING id", [ccu])).rows[0].id
+  const seeder = await createUser({ role: 'admin' })
+  const chartId = (await pool.query(
+    "INSERT INTO daily_charts (ward_id, chart_date, slot, created_by, updated_by, version) VALUES ($1, $2, 'main', $3, $3, 1) RETURNING id",
+    [wardId, DATE, seeder.id],
+  )).rows[0].id
+  await pool.query("INSERT INTO chart_patients (chart_id, row_number, patient_name) VALUES ($1, 1, 'مريض')", [chartId])
+  // Free-text column (medicine_id NULL) whose text differs from the catalogue only by the
+  // space in "500 mg" — the old exact-key lookup missed this and showed English.
+  await pool.query("INSERT INTO chart_columns (chart_id, column_number, medicine_id, custom_name) VALUES ($1, 1, NULL, 'Metronidazole 500 mg tab')", [chartId])
+  await pool.query('INSERT INTO chart_quantities (chart_id, row_number, column_number, quantity) VALUES ($1, 1, 1, 2)', [chartId])
+
+  const client = await loginAs({ role: 'admin' })
+  const pills = await client.get(`/api/pills?floor=3&ward=${encodeURIComponent(ccu)}&date=${DATE}`)
+  assert.equal(pills.status, 200)
+  const med = pills.body.pills.medicines.find((m) => m.name.toLowerCase().includes('metronidazole'))
+  assert.equal(med?.arabicName, 'ميترونيدازول')
+})
