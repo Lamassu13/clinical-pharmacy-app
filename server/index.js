@@ -471,7 +471,7 @@ app.get('/api/pills', requireAuth, async (request, response) => {
     query('SELECT cc.column_number, cc.custom_name, m.name, m.arabic_name FROM chart_columns cc LEFT JOIN medicines m ON m.id = cc.medicine_id WHERE cc.chart_id = $1', [chartId]),
     query("SELECT row_number, patient_name FROM chart_patients WHERE chart_id = $1 AND patient_name <> '' ORDER BY row_number", [chartId]),
     query('SELECT row_number, column_number, quantity FROM chart_quantities WHERE chart_id = $1 AND quantity > 0', [chartId]),
-    query('SELECT patient_row_number, medicine_key, dose_time, usage_method, note, pill_qty FROM pill_entries WHERE chart_id = $1', [chartId]),
+    query('SELECT patient_row_number, medicine_key, dose_time, usage_method, note, pill_qty, pill_name FROM pill_entries WHERE chart_id = $1', [chartId]),
     query('SELECT patient_row_number, room_number FROM pill_patient_meta WHERE chart_id = $1', [chartId]),
   ])
   // Whatever the column is called on the chart is what names the medicine here.
@@ -523,7 +523,7 @@ app.get('/api/pills', requireAuth, async (request, response) => {
     medicines: [...usedKeys].map((key) => medicineInfo.get(key)).filter(Boolean).sort((a, b) => (a.arabicName || a.name).localeCompare(b.arabicName || b.name, 'ar')),
     matrix,
     quantityByCell,
-    entries: entries.rows.map((row) => ({ patientRowNumber: row.patient_row_number, medicineKey: row.medicine_key, doseTime: row.dose_time, usageMethod: row.usage_method, note: row.note, pillQty: row.pill_qty })),
+    entries: entries.rows.map((row) => ({ patientRowNumber: row.patient_row_number, medicineKey: row.medicine_key, doseTime: row.dose_time, usageMethod: row.usage_method, note: row.note, pillQty: row.pill_qty, pillName: row.pill_name })),
     rooms: Object.fromEntries(rooms.rows.map((row) => [row.patient_row_number, row.room_number])),
   }
   response.json({ pills: result })
@@ -547,8 +547,9 @@ app.put('/api/pills', requireAuth, async (request, response) => {
     const usageMethod = USAGE_METHODS.includes(entry?.usageMethod) ? entry.usageMethod : ''
     const note = NOTE_OPTIONS.includes(entry?.note) ? entry.note : ''
     const pillQty = String(entry?.pillQty ?? '').replace(/\D/g, '').slice(0, 9)
-    if (!doseTime && !usageMethod && !note && !pillQty) return
-    byKey.set(`${patientRowNumber}:${medicineKey}`, { patientRowNumber, medicineKey, doseTime, usageMethod, note, pillQty })
+    const pillName = cleanText(entry?.pillName, 200).trim()
+    if (!doseTime && !usageMethod && !note && !pillQty && !pillName) return
+    byKey.set(`${patientRowNumber}:${medicineKey}`, { patientRowNumber, medicineKey, doseTime, usageMethod, note, pillQty, pillName })
   })
   const rows = [...byKey.values()]
   const roomRows = Object.entries(request.body.rooms && typeof request.body.rooms === 'object' ? request.body.rooms : {})
@@ -561,8 +562,8 @@ app.put('/api/pills', requireAuth, async (request, response) => {
     await client.query('DELETE FROM pill_patient_meta WHERE chart_id = $1', [chartId])
     if (rows.length) {
       await client.query(
-        'INSERT INTO pill_entries (chart_id, patient_row_number, medicine_key, dose_time, usage_method, note, pill_qty) SELECT $1, prn, mk, dt, um, nt, pq FROM UNNEST($2::int[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[]) AS u(prn, mk, dt, um, nt, pq)',
-        [chartId, rows.map((row) => row.patientRowNumber), rows.map((row) => row.medicineKey), rows.map((row) => row.doseTime), rows.map((row) => row.usageMethod), rows.map((row) => row.note), rows.map((row) => row.pillQty)],
+        'INSERT INTO pill_entries (chart_id, patient_row_number, medicine_key, dose_time, usage_method, note, pill_qty, pill_name) SELECT $1, prn, mk, dt, um, nt, pq, pn FROM UNNEST($2::int[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::text[]) AS u(prn, mk, dt, um, nt, pq, pn)',
+        [chartId, rows.map((row) => row.patientRowNumber), rows.map((row) => row.medicineKey), rows.map((row) => row.doseTime), rows.map((row) => row.usageMethod), rows.map((row) => row.note), rows.map((row) => row.pillQty), rows.map((row) => row.pillName)],
       )
     }
     if (roomRows.length) {

@@ -64,6 +64,25 @@ test('PUT /api/pills: a pill_qty override persists on its own and never touches 
   assert.equal(chart.body.chart.quantities[0].quantity, 8, 'the chart quantity is untouched by the pill override')
 })
 
+test('PUT /api/pills: a pill_name override round-trips on its own and never renames the chart column', async () => {
+  const client = await loginAs({ role: 'user', floor: FLOOR })
+  await client.put('/api/chart', chartBody())
+
+  const saved = await client.put('/api/pills', {
+    floor: FLOOR, ward: WARD, date: DATE,
+    entries: [{ patientRowNumber: 1, medicineKey: KEY, pillName: 'أسبرين نصف حبة' }],
+    rooms: {},
+  })
+  assert.equal(saved.status, 200)
+
+  const pills = await client.get(`/api/pills?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=${DATE}`)
+  const entry = pills.body.pills.entries.find((e) => e.medicineKey === KEY)
+  assert.equal(entry?.pillName, 'أسبرين نصف حبة')
+
+  const chart = await client.get(`/api/chart?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=${DATE}`)
+  assert.equal(chart.body.chart.columns[0].medicine_name, MED, 'the chart column name is untouched')
+})
+
 test('PUT /api/pills: pill_qty is digits-only and capped', async () => {
   const client = await loginAs({ role: 'user', floor: FLOOR })
   await client.put('/api/chart', chartBody())

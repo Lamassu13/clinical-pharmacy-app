@@ -74,14 +74,15 @@ export default function PillsScreen({
                 <thead><tr><th scope="col"></th><th scope="col">العلاج</th><th className="pill-qty-cell" scope="col">كمية الحبوب</th><th scope="col">وقت الجرعة</th><th scope="col">طريقة الاستخدام</th><th scope="col">الملاحظات</th></tr></thead>
                 <tbody>{pillsData.medicines.filter((med) => (pillsData.matrix[patient.rowNumber] || []).includes(med.key)).map((med) => {
                   const key = `${patient.rowNumber}:${med.key}`
-                  const entry = pillEntries[key] || { doseTime: '', usageMethod: '', note: '', pillQty: '' }
-                  const medName = med.arabicName || med.name
+                  const entry = pillEntries[key] || { doseTime: '', usageMethod: '', note: '', pillQty: '', pillName: '' }
+                  const chartName = med.arabicName || med.name
+                  const medName = entry.pillName ? entry.pillName : chartName
                   const chartQty = (pillsData.quantityByCell || {})[key]
                   const qtyValue = entry.pillQty !== undefined && entry.pillQty !== '' ? entry.pillQty : (chartQty != null ? String(chartQty) : '')
                   return <tr key={med.key}>
                     <td className="pill-lead-cell"></td>
-                    <td>{medName}</td>
-                    <td className="pill-qty-cell"><input inputMode="numeric" aria-label={`كمية الحبوب — ${medName}`} value={qtyValue} onChange={(event) => { const next = event.target.value.replace(/\D/g, ''); setPillEntries((current) => ({ ...current, [key]: { ...entry, pillQty: next } })) }} /></td>
+                    <td className="pill-name-cell"><input aria-label={`العلاج — ${chartName}`} value={medName} onChange={(event) => setPillEntries((current) => ({ ...current, [key]: { ...entry, pillName: event.target.value } }))} /></td>
+                    <td className="pill-qty-cell"><input inputMode="numeric" aria-label={`كمية الحبوب — ${chartName}`} value={qtyValue} onChange={(event) => { const next = event.target.value.replace(/\D/g, ''); setPillEntries((current) => ({ ...current, [key]: { ...entry, pillQty: next } })) }} /></td>
                     <td><PillSelect value={entry.doseTime} groups={doseTimeGroups} label={`وقت الجرعة — ${medName}`} onChange={(nextValue) => setPillEntries((current) => ({ ...current, [key]: { ...entry, doseTime: nextValue } }))} /></td>
                     <td><PillSelect value={entry.usageMethod} options={usageMethods} label={`طريقة الاستخدام — ${medName}`} onChange={(nextValue) => setPillEntries((current) => ({ ...current, [key]: { ...entry, usageMethod: nextValue } }))} /></td>
                     <td><PillSelect value={entry.note} options={noteOptions} label={`الملاحظات — ${medName}`} onChange={(nextValue) => setPillEntries((current) => ({ ...current, [key]: { ...entry, note: nextValue } }))} /></td>

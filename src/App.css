@@ -717,8 +717,11 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 .pill-table th, .pill-table td { border: 1px solid var(--border-strong); padding: 6px 8px; text-align: start; font-size: var(--text-sm); vertical-align: middle; }
 .pill-table thead th { background: var(--green-100); color: var(--heading); font-weight: 700; }
 .pill-table th:first-child, .pill-table td:first-child { width: 120px; min-width: 120px; padding: 4px; }
-.pill-table td:nth-child(2) { font-weight: 700; overflow-wrap: anywhere; }
+.pill-table td:nth-child(2) { overflow-wrap: anywhere; }
 
+/* «العلاج»: seeded from the chart column, editable on the form (the edit is the pharmacist's
+   own — it never renames the chart column). */
+.pill-name-cell input { width: 100%; padding: 4px 6px; font: inherit; font-weight: 700; text-align: start; }
 /* «كمية الحبوب»: a working reference on screen (seeded from the chart, editable, kept out of
    the chart), removed from the printed sheet. */
 .pill-qty-cell { width: 88px; }
@@ -1284,6 +1287,8 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
   .pill-blank-row { display: table-row; }
   .pill-form-head { border-color: #000; }
   .pill-room input { border: 0; border-bottom: 1px solid #000; color: #000; padding: 0 2px; }
+  /* The editable medicine name prints as plain text, no field box. */
+  .pill-name-cell input { border: 0; padding: 0; color: #000; background: transparent; }
   .pill-table th, .pill-table td { border-color: #000; color: #000; font-size: 12px; }
   .pill-table thead th { background: white; }
   .pill-select select { display: none; }

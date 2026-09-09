@@ -92,6 +92,6 @@ export const pillEntryList = (entries) => Object.entries(entries).map(([key, val
     patientRowNumber: Number(key.slice(0, separator)),
     medicineKey: key.slice(separator + 1),
     doseTime: value.doseTime || '', usageMethod: value.usageMethod || '', note: value.note || '',
-    pillQty: value.pillQty || '',
+    pillQty: value.pillQty || '', pillName: value.pillName || '',
   }
 })
