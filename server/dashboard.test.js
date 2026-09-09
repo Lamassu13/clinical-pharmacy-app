@@ -167,8 +167,17 @@ test('GET/POST/DELETE /api/announcements: a plain user can only read; a manager 
   assert.equal(listed.body.announcements.length, 1)
   assert.equal(listed.body.announcements[0].id, created.body.announcement.id)
 
-  assert.equal((await plainUser.delete(`/api/announcements/${created.body.announcement.id}`)).status, 403)
-  assert.equal((await manager.delete(`/api/announcements/${created.body.announcement.id}`)).status, 200)
+  const id = created.body.announcement.id
+  assert.equal((await plainUser.patch(`/api/announcements/${id}`, { message: 'تعديل من مستخدم عادي' })).status, 403)
+  assert.equal((await manager.patch(`/api/announcements/${id}`, { message: '   ' })).status, 400)
+  const edited = await manager.patch(`/api/announcements/${id}`, { message: 'الرجاء التأكد من الجرعات أيضًا' })
+  assert.equal(edited.status, 200)
+  assert.equal(edited.body.announcement.message, 'الرجاء التأكد من الجرعات أيضًا')
+  assert.equal((await plainUser.get('/api/announcements')).body.announcements[0].message, 'الرجاء التأكد من الجرعات أيضًا')
+  assert.equal((await manager.patch('/api/announcements/999999', { message: 'لا شيء' })).status, 404)
+
+  assert.equal((await plainUser.delete(`/api/announcements/${id}`)).status, 403)
+  assert.equal((await manager.delete(`/api/announcements/${id}`)).status, 200)
   assert.deepEqual((await plainUser.get('/api/announcements')).body.announcements, [])
   assert.equal((await manager.delete('/api/announcements/999999')).status, 404)
 })

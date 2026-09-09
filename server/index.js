@@ -444,6 +444,18 @@ app.post('/api/announcements', requireManager, async (request, response) => {
   )
   response.status(201).json({ announcement: result.rows[0] })
 })
+app.patch('/api/announcements/:id', requireManager, async (request, response) => {
+  const id = Number(request.params.id)
+  if (!Number.isInteger(id) || id < 1) return response.status(400).json({ message: 'معرّف غير صحيح' })
+  const message = cleanText(request.body.message, ANNOUNCEMENT_MAX_LENGTH).trim()
+  if (!message) return response.status(400).json({ message: 'نص الإعلان مطلوب' })
+  const result = await query(
+    'UPDATE announcements SET message = $1 WHERE id = $2 RETURNING id, message, created_at',
+    [message, id],
+  )
+  if (!result.rows[0]) return response.status(404).json({ message: 'الإعلان غير موجود' })
+  response.json({ announcement: result.rows[0] })
+})
 app.delete('/api/announcements/:id', requireManager, async (request, response) => {
   const id = Number(request.params.id)
   if (!Number.isInteger(id) || id < 1) return response.status(400).json({ message: 'معرّف غير صحيح' })

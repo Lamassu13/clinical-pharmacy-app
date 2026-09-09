@@ -1,3 +1,5 @@
+import { useState } from 'react'
+
 // The floor-picker's information layer, in two tiers.
 //
 // WardStatusBand is the primary one for a manager: the morning round lives or dies on "which
@@ -65,9 +67,11 @@ export function WardStatusBand({ startedCount, totalCount, notStartedNames = [],
 export default function DashboardWidgets({
   topMedicines, medicinesPeriod, setMedicinesPeriod, loading, error, onRetry,
   announcements, isManager, announcementDraft, setAnnouncementDraft, announcementError, announcementBusy,
-  onPostAnnouncement, onDeleteAnnouncement,
+  onPostAnnouncement, onEditAnnouncement, onDeleteAnnouncement,
 }) {
   const maxQty = topMedicines.length ? Math.max(...topMedicines.map((item) => item.quantity)) : 1
+  // Which announcement is open for inline editing, and its working text.
+  const [editing, setEditing] = useState(null)
 
   return (
     <div className="dashboard-widgets">
@@ -119,11 +123,34 @@ export default function DashboardWidgets({
           <ul className="announcement-list">
             {announcements.map((item) => (
               <li className="announcement-item" key={item.id}>
-                <p>{item.message}</p>
-                <div className="announcement-meta">
-                  <span>مسؤول وحدة الصيدلة السريرية — {new Date(item.created_at).toLocaleString('ar-IQ', { dateStyle: 'short', timeStyle: 'short' })}</span>
-                  {isManager && <button type="button" className="announcement-del" onClick={() => onDeleteAnnouncement(item.id)}>حذف</button>}
-                </div>
+                {isManager && editing && editing.id === item.id ? (
+                  <form className="announcement-compose" onSubmit={async (event) => {
+                    event.preventDefault()
+                    if (await onEditAnnouncement(item.id, editing.text)) setEditing(null)
+                  }}>
+                    <textarea
+                      value={editing.text}
+                      onChange={(event) => setEditing({ id: item.id, text: event.target.value })}
+                      maxLength={500}
+                      aria-label="تعديل نص الإعلان"
+                    />
+                    <button className="primary-button compact" type="submit" disabled={!editing.text.trim()}>حفظ</button>
+                    <button className="text-button" type="button" onClick={() => setEditing(null)}>إلغاء</button>
+                  </form>
+                ) : (
+                  <>
+                    <p>{item.message}</p>
+                    <div className="announcement-meta">
+                      <span>مسؤول وحدة الصيدلة السريرية — {new Date(item.created_at).toLocaleString('ar-IQ', { dateStyle: 'short', timeStyle: 'short' })}</span>
+                      {isManager && (
+                        <span className="announcement-actions">
+                          <button type="button" className="announcement-edit" onClick={() => setEditing({ id: item.id, text: item.message })}>تعديل</button>
+                          <button type="button" className="announcement-del" onClick={() => onDeleteAnnouncement(item.id)}>حذف</button>
+                        </span>
+                      )}
+                    </div>
+                  </>
+                )}
               </li>
             ))}
           </ul>

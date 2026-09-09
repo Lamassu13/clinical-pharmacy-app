@@ -10,7 +10,7 @@ export default function FloorPickerScreen({
   announcements, isManager,
   medicinesPeriod, setMedicinesPeriod,
   announcementDraft, setAnnouncementDraft, announcementError, announcementBusy,
-  onPostAnnouncement, onDeleteAnnouncement,
+  onPostAnnouncement, onEditAnnouncement, onDeleteAnnouncement,
 }) {
   // Count at ward granularity, not floor: a floor with one of three wards started is one
   // third done, and the two that haven't are exactly what the morning round is there to
@@ -71,7 +71,7 @@ export default function FloorPickerScreen({
         announcements={announcements} isManager={isManager}
         announcementDraft={announcementDraft} setAnnouncementDraft={setAnnouncementDraft}
         announcementError={announcementError} announcementBusy={announcementBusy}
-        onPostAnnouncement={onPostAnnouncement} onDeleteAnnouncement={onDeleteAnnouncement}
+        onPostAnnouncement={onPostAnnouncement} onEditAnnouncement={onEditAnnouncement} onDeleteAnnouncement={onDeleteAnnouncement}
       />
     </div>
   </section>

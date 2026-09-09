@@ -54,12 +54,20 @@ export default function PillsScreen({
       {pillsLoading ? <div className="empty-state"><span className="spinner" /><span>جارٍ تحميل الاستمارة…</span></div>
         : !pillsData ? <div className="empty-state"><strong>لا يوجد جارت لهذا اليوم</strong><span>سجّل جارت هذه الردهة أولًا، ثم ستُبنى استمارة الحبوب تلقائيًا.</span></div>
         : pillsData.patients.length === 0 ? <div className="empty-state"><strong>لا حبوب لعرضها</strong><span>لا يوجد مريض لديه علاج أقراص أو كبسولات (Tab / Cap) في جارت هذا اليوم.</span></div>
-        : pillsData.patients.map((patient) => {
+        : pillsData.patients.flatMap((patient) => {
           const unpicked = pillSelection.size > 0 && !pillSelection.has(patient.rowNumber)
           const willPrint = printScope === 'all' || pillSelection.has(patient.rowNumber)
+          const patientMeds = pillsData.medicines.filter((med) => (pillsData.matrix[patient.rowNumber] || []).includes(med.key))
+          // One printed sheet holds 7 medicine rows; anything past that starts a fresh page
+          // carrying the same header. The two hand-write rows ride only on the last page.
+          const pages = []
+          for (let i = 0; i < patientMeds.length; i += 7) pages.push(patientMeds.slice(i, i + 7))
+          if (pages.length === 0) pages.push([])
+          return pages.map((pageMeds, pageIndex) => {
+          const lastPage = pageIndex === pages.length - 1
           return <article
-            className={`pill-form${willPrint ? '' : ' not-printing'}${unpicked ? ' pill-form-unpicked' : ''}${patient.rowNumber === lastPrintingRow ? ' print-last' : ''}`}
-            key={patient.rowNumber}>
+            className={`pill-form${willPrint ? '' : ' not-printing'}${unpicked ? ' pill-form-unpicked' : ''}${patient.rowNumber === lastPrintingRow && lastPage ? ' print-last' : ''}`}
+            key={`${patient.rowNumber}-${pageIndex}`}>
             <div className="pill-form-head">
               <label className="pill-pick"><input type="checkbox" checked={pillSelection.has(patient.rowNumber)} onChange={() => onTogglePatient(patient.rowNumber)} /><span>تحديد للطباعة</span></label>
               <div className="pill-form-patient"><strong>{patient.name}</strong><span>{today}</span></div>
@@ -72,7 +80,7 @@ export default function PillsScreen({
             <div className="pill-table-scroll">
               <table className="pill-table">
                 <thead><tr><th scope="col"></th><th scope="col">العلاج</th><th className="pill-qty-cell" scope="col">كمية الحبوب</th><th scope="col">وقت الجرعة</th><th scope="col">طريقة الاستخدام</th><th scope="col">الملاحظات</th></tr></thead>
-                <tbody>{pillsData.medicines.filter((med) => (pillsData.matrix[patient.rowNumber] || []).includes(med.key)).map((med) => {
+                <tbody>{pageMeds.map((med) => {
                   const key = `${patient.rowNumber}:${med.key}`
                   const entry = pillEntries[key] || { doseTime: '', usageMethod: '', note: '', pillQty: '', pillName: '' }
                   const chartName = med.arabicName || med.name
@@ -87,11 +95,12 @@ export default function PillsScreen({
                     <td><PillSelect value={entry.usageMethod} options={usageMethods} label={`طريقة الاستخدام — ${medName}`} onChange={(nextValue) => setPillEntries((current) => ({ ...current, [key]: { ...entry, usageMethod: nextValue } }))} /></td>
                     <td><PillSelect value={entry.note} options={noteOptions} label={`الملاحظات — ${medName}`} onChange={(nextValue) => setPillEntries((current) => ({ ...current, [key]: { ...entry, note: nextValue } }))} /></td>
                   </tr>
-                })}{[0, 1].map((n) => <tr className="pill-blank-row" key={`blank-${n}`}><td className="pill-lead-cell"></td><td></td><td className="pill-qty-cell"></td><td></td><td></td><td></td></tr>)}</tbody>
+                })}{lastPage && [0, 1].map((n) => <tr className="pill-blank-row" key={`blank-${n}`}><td className="pill-lead-cell"></td><td></td><td className="pill-qty-cell"></td><td></td><td></td><td></td></tr>)}</tbody>
               </table>
             </div>
             <div className="pill-form-foot"><span className="pill-sign">توقيع الصيدلاني السريري</span><span className="pill-edit-time">وقت التحرير: {editTime}</span></div>
           </article>
+        })
         })}
     </section>{confirmModal}
   </main>
