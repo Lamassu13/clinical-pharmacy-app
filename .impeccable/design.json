@@ -1,0 +1,162 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-09T16:20:00Z",
+  "title": "Design System: Clinical Pharmacy Unit",
+  "extensions": {
+    "colorMeta": {
+      "green-500": {
+        "role": "primary",
+        "displayName": "Pharmacy Green",
+        "canonical": "#087c54",
+        "tonalRamp": ["#053a2f", "#064d3e", "#08543b", "#0a6b4a", "#087c54", "#3f9c78", "#7fbfa4", "#b2d8c6", "#d9ece1", "#eef6f1"]
+      },
+      "text": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#132a27",
+        "tonalRamp": ["#0b1a17", "#132a27", "#2c443f", "#4f6b63", "#7a938b", "#a7bab3", "#cad9d2", "#e3ece8", "#f0f5f2", "#f5f8f6"]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Surface",
+        "canonical": "#ffffff",
+        "tonalRamp": ["#dbe6df", "#e3ece8", "#eef6f1", "#f0f5f2", "#f5f8f6", "#ffffff"]
+      },
+      "danger": {
+        "role": "tertiary",
+        "displayName": "Alarm Red",
+        "canonical": "#c92a33",
+        "purpose": "Genuine errors and destructive actions only — form errors, delete."
+      },
+      "success": {
+        "role": "tertiary",
+        "displayName": "Confirm Green",
+        "canonical": "#0a7d51",
+        "purpose": "A completed state — اكتملت, all-done band, saved confirmation. Distinct from primary: says 'finished', not 'act here'."
+      },
+      "warning": {
+        "role": "tertiary",
+        "displayName": "Attention Amber",
+        "canonical": "#a86400",
+        "purpose": "'Not started yet' and unresolved states — pending pills, pending chips, merge frame. A to-do, never an error."
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "The single <h1> per screen. Colour --heading (green-800)." },
+      "title": { "displayName": "Title", "purpose": "<h2>, card names, the ward-status count." },
+      "body": { "displayName": "Body", "purpose": "Running text, dialog messages, announcement bodies. The only weight-400 role." },
+      "label": { "displayName": "Label", "purpose": "Form labels, button text, table headers, date-chip value. Weight 700 even at 13px." },
+      "caption": { "displayName": "Caption", "purpose": "Status pills, chips, timestamps, <small>, period toggles. Weight 700 at 12px." }
+    },
+    "shadows": [
+      { "name": "shadow-xs", "value": "0 1px 2px #0f2f2410, 0 1px 1px #0f2f240a", "purpose": "Resting shadow on cards, top bar, date chip, widgets. Barely-there separation from the ground." },
+      { "name": "shadow-sm", "value": "0 2px 8px #12332612, 0 1px 3px #1233260f", "purpose": "Hover / focus on an interactive card only — never a resting state." },
+      { "name": "shadow-md", "value": "0 12px 32px #12332618, 0 4px 12px #12332612", "purpose": "Modals and the confirm dialog, at rest — the one deliberate resting-shadow exception." },
+      { "name": "ring", "value": "0 0 0 3px #087c541f", "purpose": "Input focus ring (--primary-tint). Replaces the outline on fields." }
+    ],
+    "motion": [
+      { "name": "dur", "value": "0.22s", "purpose": "Default transition duration (card lift, modal in)." },
+      { "name": "dur-fast", "value": "0.14s", "purpose": "Button and input state changes." },
+      { "name": "ease", "value": "cubic-bezier(0.4, 0, 0.2, 1)", "purpose": "The only easing curve. prefers-reduced-motion collapses all durations to ~0." }
+    ],
+    "breakpoints": [
+      { "name": "md", "value": "900px", "purpose": "Dashboard widgets go from a 2-column grid to 1 column at or below this width." }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The single 'do this next' control in a card or action group. Solid Pharmacy Green.",
+      "html": "<button class=\"ds-btn-primary\">فتح الجارت</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid transparent; border-radius: var(--radius-md, 10px); padding: 10px 18px; font-family: inherit; font-weight: 700; font-size: 13px; line-height: 1; background: var(--primary, #087c54); color: #fff; box-shadow: var(--shadow-xs, 0 1px 2px #0f2f2410); cursor: pointer; transition: background .14s cubic-bezier(.4,0,.2,1), transform .14s cubic-bezier(.4,0,.2,1); } .ds-btn-primary:hover { background: var(--primary-hover, #08543b); } .ds-btn-primary:focus-visible { outline: 2px solid var(--primary, #087c54); outline-offset: 2px; } .ds-btn-primary:active { transform: translateY(1px); }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Default weight for 'another thing you can do here'. Green-50 ground, green-200 border.",
+      "html": "<button class=\"ds-btn-secondary\">الحبوب</button>",
+      "css": ".ds-btn-secondary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid var(--green-200, #b2d8c6); border-radius: var(--radius-md, 10px); padding: 10px 18px; font-family: inherit; font-weight: 700; font-size: 13px; line-height: 1; background: var(--green-50, #eef6f1); color: var(--primary-hover, #08543b); cursor: pointer; transition: background .14s cubic-bezier(.4,0,.2,1), transform .14s cubic-bezier(.4,0,.2,1); } .ds-btn-secondary:hover { background: var(--green-100, #d9ece1); } .ds-btn-secondary:focus-visible { outline: 2px solid var(--primary, #087c54); outline-offset: 2px; } .ds-btn-secondary:active { transform: translateY(1px); }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "The quietest tier — an optional/secondary path that must not compete before it is relevant (e.g. الجارت الإضافي before the ward has started).",
+      "html": "<button class=\"ds-btn-ghost\">الجارت الإضافي</button>",
+      "css": ".ds-btn-ghost { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid var(--border-strong, #b9cdc2); border-radius: var(--radius-md, 10px); padding: 10px 18px; font-family: inherit; font-weight: 700; font-size: 13px; line-height: 1; background: transparent; color: var(--text-muted, #4f6b63); cursor: pointer; transition: background .14s cubic-bezier(.4,0,.2,1), color .14s cubic-bezier(.4,0,.2,1), border-color .14s cubic-bezier(.4,0,.2,1); } .ds-btn-ghost:hover { background: var(--surface-alt, #f0f5f2); border-color: var(--green-300, #7fbfa4); color: var(--primary-hover, #08543b); } .ds-btn-ghost:focus-visible { outline: 2px solid var(--primary, #087c54); outline-offset: 2px; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Standard field. 1px strong-hairline border, custom focus ring instead of an outline.",
+      "html": "<input class=\"ds-input\" type=\"text\" placeholder=\"اسم المريض\" dir=\"rtl\" />",
+      "css": ".ds-input { border: 1px solid var(--border-strong, #b9cdc2); background: var(--surface, #fff); color: var(--text, #132a27); border-radius: var(--radius-sm, 6px); padding: 9px 12px; font-family: inherit; font-size: 13px; outline: none; transition: border-color .14s cubic-bezier(.4,0,.2,1), box-shadow .14s cubic-bezier(.4,0,.2,1); } .ds-input::placeholder { color: var(--text-muted, #4f6b63); } .ds-input:focus { border-color: var(--primary, #087c54); box-shadow: 0 0 0 3px var(--primary-tint, #087c541f); }"
+    },
+    {
+      "name": "Interactive Location Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Signature picker card. The whole card is the click target; it lifts and its trailing chevron slides on hover/focus. A card whose buttons do the work stays flat instead.",
+      "html": "<button class=\"ds-card-link\" dir=\"rtl\"><span class=\"ds-card-badge\">3</span><span class=\"ds-card-body\"><strong>الطابق 3</strong><small>3 أروقة فرعية</small></span><span class=\"ds-card-chev\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M15 6l-6 6 6 6\"/></svg></span></button>",
+      "css": ".ds-card-link { display: flex; align-items: center; gap: 16px; width: 100%; padding: 16px 24px; border: 1px solid var(--border, #dbe6df); border-radius: var(--radius-md, 10px); background: var(--surface, #fff); color: var(--text, #132a27); text-align: start; box-shadow: var(--shadow-xs, 0 1px 2px #0f2f2410); cursor: pointer; transition: transform .22s cubic-bezier(.4,0,.2,1), border-color .22s cubic-bezier(.4,0,.2,1), box-shadow .22s cubic-bezier(.4,0,.2,1); } .ds-card-link:hover, .ds-card-link:focus-visible { transform: translateY(-3px); border-color: var(--green-300, #7fbfa4); box-shadow: var(--shadow-sm, 0 2px 8px #12332612); outline: none; } .ds-card-badge { display: grid; place-items: center; width: 44px; height: 44px; flex-shrink: 0; border-radius: var(--radius-md, 10px); background: var(--green-100, #d9ece1); color: var(--primary, #087c54); font-weight: 700; font-size: 18px; } .ds-card-body { flex: 1 1 auto; min-width: 0; } .ds-card-body strong { display: block; color: var(--heading, #064d3e); } .ds-card-body small { display: block; margin-top: 4px; color: var(--text-muted, #4f6b63); font-size: 12px; } .ds-card-chev { margin-inline-start: auto; display: flex; color: var(--primary, #087c54); transition: transform .22s cubic-bezier(.4,0,.2,1); } .ds-card-link:hover .ds-card-chev, .ds-card-link:focus-visible .ds-card-chev { transform: translateX(-3px); }"
+    },
+    {
+      "name": "Status Pill",
+      "kind": "chip",
+      "refersTo": "status-pill",
+      "description": "Worded ward/floor status. Colour reinforces the word, never replaces it. Variants: pending (amber, 'not started'), partial (green tint, '2/3'), done (green + check, 'اكتملت'), muted ('data unavailable').",
+      "html": "<span class=\"ds-status ds-status--done\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M20 6L9 17l-5-5\"/></svg> اكتملت</span> <span class=\"ds-status ds-status--pending\">لم تبدأ</span> <span class=\"ds-status ds-status--partial\">2/3</span>",
+      "css": ".ds-status { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 999px; font-family: inherit; font-size: 12px; font-weight: 700; white-space: nowrap; } .ds-status svg { flex: 0 0 auto; } .ds-status--pending { background: var(--warning-tint, #a8640016); color: var(--warning, #a86400); } .ds-status--partial { background: var(--green-100, #d9ece1); color: var(--primary-hover, #08543b); } .ds-status--done { background: var(--success-tint, #0a7d5116); color: var(--success, #0a7d51); } .ds-status--muted { background: var(--surface-alt, #f0f5f2); color: var(--text-muted, #4f6b63); }"
+    },
+    {
+      "name": "Modal / Alert Dialog",
+      "kind": "custom",
+      "refersTo": "modal",
+      "description": "Medicine registration and the window.confirm replacement. Deep-green backdrop wash; card carries --shadow-md at rest (the one resting-shadow exception).",
+      "html": "<div class=\"ds-modal-backdrop\"><div class=\"ds-modal\" role=\"alertdialog\" aria-modal=\"true\"><p class=\"ds-modal-kicker\">تأكيد</p><p class=\"ds-modal-msg\">حذف هذا الإعلان؟</p><div class=\"ds-modal-actions\"><button class=\"ds-btn-secondary\">إلغاء</button><button class=\"ds-btn-danger\">حذف</button></div></div></div>",
+      "css": ".ds-modal-backdrop { position: fixed; inset: 0; display: grid; place-items: center; padding: 24px; background: #062b21a8; } .ds-modal { position: relative; width: min(100%, 420px); padding: 40px; background: var(--surface, #fff); border-radius: var(--radius-lg, 14px); box-shadow: var(--shadow-md, 0 12px 32px #12332618); } .ds-modal-kicker { margin: 0 0 4px; color: var(--text-muted, #4f6b63); font-size: 12px; font-weight: 700; } .ds-modal-msg { margin: 0 0 32px; color: var(--text, #132a27); font-size: 15px; line-height: 1.6; } .ds-modal-actions { display: flex; justify-content: flex-end; gap: 12px; } .ds-btn-danger { border: 1px solid #e6b8bb; border-radius: 10px; padding: 10px 18px; font: inherit; font-weight: 700; font-size: 13px; background: var(--danger-tint, #c92a3316); color: var(--danger, #c92a33); cursor: pointer; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Ward Clipboard",
+    "overview": "This is the paper medication chart, digitized — and it earns its place by being faster than paper, never by being prettier than it. The whole system is calm and clinical: a soft green-tinted ground, one 10-step green ramp doing almost all the work, hairline borders, and text that stays legible for a tired pharmacist reading a shared tablet at 6am under ward lighting, sometimes through a glove. Nothing is decorative. Every surface is either a control, a value, or the structure that holds them.\n\nDensity is moderate, not cramped: generous line-height on running text (1.65), real gaps between groups, touch targets sized for a gloved thumb (44px on anything you press). The palette is quiet by design — the strong greens (500–800) are reserved for headings, primary actions, and the one 'do this next' button per card; everything else lives in the 50–200 tints and the neutral surfaces. Colour never carries meaning alone: a status is always a word or an icon first (بدأت / لم تبدأ / اكتملت), with hue as a second channel.\n\nThe interface is bilingual-script but Arabic-first and fully RTL. It uses logical properties throughout (margin-inline-start, padding-inline) so the one place a physical direction appears — the progress-bar fill origin — is a deliberate, commented exception. There is a full dark theme, toggled on <html data-theme=\"dark\">, that overrides only the semantic tokens (surfaces, text, intents, the top three green steps, shadows) and leaves structure untouched.",
+    "keyCharacteristics": [
+      "One brand hue (Pharmacy Green #087c54) with a 10-step ramp; no secondary or tertiary accent.",
+      "Flat by default; a raised shadow is a response to interaction, not a resting state.",
+      "Worded status over colour-coded status, always — a shared-device / glare / gloves constraint.",
+      "Restrained components: 6–14px radii, 1px borders, quiet state changes (colour, border, a 1px press).",
+      "Arabic RTL, IBM Plex Sans Arabic, logical properties, full dark theme.",
+      "The printed A4 chart is a first-class output; its @media print CSS is frozen."
+    ],
+    "rules": [
+      { "name": "The One Hue Rule", "body": "There is exactly one brand colour. If a screen seems to need a second accent, it needs better hierarchy in the green ramp instead — not a new hue.", "section": "colors" },
+      { "name": "The Worded-Status Rule", "body": "Every status is a word or an icon first (بدأت, لم تبدأ, اكتملت, تعذّر…), with colour as reinforcement. A pill that would carry meaning by hue alone is incomplete.", "section": "colors" },
+      { "name": "The Red-Means-Error Rule", "body": "danger / red is reserved for real errors and destructive actions. Not counts, not emphasis, not 'overdue'.", "section": "colors" },
+      { "name": "The Bold-Label Rule", "body": "Labels, buttons, chips and table headers are weight 700 even at 12–13px — small text in this tool is functional and must not recede. Body copy is the only thing set at 400.", "section": "typography" },
+      { "name": "The Flat-By-Default Rule", "body": "If an element has a shadow bigger than --shadow-xs and it is not a modal, it must be because the user is interacting with it right now. Remove the hover and the shadow goes back to hairline.", "section": "elevation" },
+      { "name": "The Radius-By-Size Rule", "body": "Radius tracks the element's size, not its importance: small controls get 6px, mid 10px, large panels 14px, and only truly pill-shaped elements get 999px.", "section": "shapes" }
+    ],
+    "dos": [
+      "Do build every new colour need out of the existing green ramp (green-50…green-900) plus the three intents. One hue.",
+      "Do give every status a word or icon; use colour only to reinforce it (.card-status pattern).",
+      "Do keep surfaces flat (1px border + --shadow-xs); add --shadow-sm only as a hover/focus response on something interactive.",
+      "Do use exactly one solid --primary button per card or action group — the 'do this next' control.",
+      "Do use logical properties (margin-inline-*, padding-inline, text-align: start) so RTL is automatic; if you must use a physical direction, comment why.",
+      "Do size anything pressable for a gloved thumb — min-height: 44px on buttons and chips in the working screens.",
+      "Do carry the hospital identity (name + logo) on screens and every printed chart.",
+      "Do provide a dark-theme value for any new semantic token (surface/text/intent), not for structural ones."
+    ],
+    "donts": [
+      "Don't touch the @media print blocks for the chart or the pill form. That layout is frozen; change it only on explicit request and verify with headless Chrome.",
+      "Don't use danger / red for anything that isn't a genuine error or a destructive action — not counts, not emphasis, not 'overdue'.",
+      "Don't introduce a second accent hue, a gradient, or a display/serif typeface — there is no hero moment in this tool.",
+      "Don't give a card a hover-lift unless the whole card is the click target.",
+      "Don't translate, abbreviate, or 'correct' the Arabic clinical vocabulary (جارت، الجارت الإضافي، ردهة، الحبوب، بدأت/لم تبدأ/اكتملت).",
+      "Don't rely on shadows for depth where a border or a tonal step (surface vs surface-alt) will do."
+    ]
+  }
+}
