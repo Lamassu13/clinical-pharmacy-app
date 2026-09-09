@@ -71,19 +71,22 @@ export default function PillsScreen({
             </div>
             <div className="pill-table-scroll">
               <table className="pill-table">
-                <thead><tr><th scope="col"></th><th scope="col">العلاج</th><th scope="col">وقت الجرعة</th><th scope="col">طريقة الاستخدام</th><th scope="col">الملاحظات</th></tr></thead>
+                <thead><tr><th scope="col"></th><th scope="col">العلاج</th><th className="pill-qty-cell" scope="col">كمية الحبوب</th><th scope="col">وقت الجرعة</th><th scope="col">طريقة الاستخدام</th><th scope="col">الملاحظات</th></tr></thead>
                 <tbody>{pillsData.medicines.filter((med) => (pillsData.matrix[patient.rowNumber] || []).includes(med.key)).map((med) => {
                   const key = `${patient.rowNumber}:${med.key}`
-                  const entry = pillEntries[key] || { doseTime: '', usageMethod: '', note: '' }
+                  const entry = pillEntries[key] || { doseTime: '', usageMethod: '', note: '', pillQty: '' }
                   const medName = med.arabicName || med.name
+                  const chartQty = (pillsData.quantityByCell || {})[key]
+                  const qtyValue = entry.pillQty !== undefined && entry.pillQty !== '' ? entry.pillQty : (chartQty != null ? String(chartQty) : '')
                   return <tr key={med.key}>
                     <td className="pill-lead-cell"></td>
                     <td>{medName}</td>
+                    <td className="pill-qty-cell"><input inputMode="numeric" aria-label={`كمية الحبوب — ${medName}`} value={qtyValue} onChange={(event) => { const next = event.target.value.replace(/\D/g, ''); setPillEntries((current) => ({ ...current, [key]: { ...entry, pillQty: next } })) }} /></td>
                     <td><PillSelect value={entry.doseTime} groups={doseTimeGroups} label={`وقت الجرعة — ${medName}`} onChange={(nextValue) => setPillEntries((current) => ({ ...current, [key]: { ...entry, doseTime: nextValue } }))} /></td>
                     <td><PillSelect value={entry.usageMethod} options={usageMethods} label={`طريقة الاستخدام — ${medName}`} onChange={(nextValue) => setPillEntries((current) => ({ ...current, [key]: { ...entry, usageMethod: nextValue } }))} /></td>
                     <td><PillSelect value={entry.note} options={noteOptions} label={`الملاحظات — ${medName}`} onChange={(nextValue) => setPillEntries((current) => ({ ...current, [key]: { ...entry, note: nextValue } }))} /></td>
                   </tr>
-                })}</tbody>
+                })}{[0, 1].map((n) => <tr className="pill-blank-row" key={`blank-${n}`}><td className="pill-lead-cell"></td><td></td><td className="pill-qty-cell"></td><td></td><td></td><td></td></tr>)}</tbody>
               </table>
             </div>
             <div className="pill-form-foot"><span className="pill-sign">توقيع الصيدلاني السريري</span><span className="pill-edit-time">وقت التحرير: {editTime}</span></div>

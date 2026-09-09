@@ -888,7 +888,7 @@ function App() {
         if (cancelled) return
         setPillsData(result.pills || null)
         const seed = {}
-        ;(result.pills?.entries || []).forEach((entry) => { seed[`${entry.patientRowNumber}:${entry.medicineKey}`] = { doseTime: entry.doseTime || '', usageMethod: entry.usageMethod || '', note: entry.note || '' } })
+        ;(result.pills?.entries || []).forEach((entry) => { seed[`${entry.patientRowNumber}:${entry.medicineKey}`] = { doseTime: entry.doseTime || '', usageMethod: entry.usageMethod || '', note: entry.note || '', pillQty: entry.pillQty || '' } })
         setPillEntries(seed)
         setPillRooms(result.pills?.rooms || {})
         setPillsLoadError(false)

@@ -117,6 +117,10 @@ CREATE TABLE IF NOT EXISTS pill_entries (
   PRIMARY KEY (chart_id, patient_row_number, medicine_key)
 );
 ALTER TABLE pill_entries ADD COLUMN IF NOT EXISTS note TEXT NOT NULL DEFAULT '';
+-- The pill count shown on the form. Seeded on screen from the chart quantity; a non-empty
+-- value here is the pharmacist's own override, kept separate so it never writes back to the
+-- chart. Not printed.
+ALTER TABLE pill_entries ADD COLUMN IF NOT EXISTS pill_qty TEXT NOT NULL DEFAULT '';
 -- Move a database created before the re-key above off medicine_id. Guarded on the old column
 -- still existing, because this file runs unattended on every deploy and the statements inside
 -- are not individually idempotent. Fresh databases skip the whole block.

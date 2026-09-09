@@ -66,8 +66,9 @@ const SYRINGE_NAME = /سرنج|syringe/
 const SYRINGE_SIZE = /(^|\D)5(\D|$)/
 export const isSyringe = (name) => { const key = medicineKey(name); return SYRINGE_NAME.test(key) && SYRINGE_SIZE.test(key) }
 // What a syringe is drawn from. Word boundaries, like PILL_FORM on the server, so that
-// "Ampicillin" is not read as an ampoule.
-export const VIAL_AMP = /\b(vial|vials|amp|amps|ampoule|ampoules)\b/
+// "Ampicillin" is not read as an ampoule. "bottle" covers the IV-infusion bottles
+// (Paracetamol 1g bottle, Flagyl…) that are drawn up with a syringe just like a vial.
+export const VIAL_AMP = /\b(vial|vials|amp|amps|ampoule|ampoules|bottle|bottles)\b/
 
 export const isoDate = (value) => {
   const date = new Date(value)
@@ -89,5 +90,6 @@ export const pillEntryList = (entries) => Object.entries(entries).map(([key, val
     patientRowNumber: Number(key.slice(0, separator)),
     medicineKey: key.slice(separator + 1),
     doseTime: value.doseTime || '', usageMethod: value.usageMethod || '', note: value.note || '',
+    pillQty: value.pillQty || '',
   }
 })
