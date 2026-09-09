@@ -65,23 +65,29 @@ export default function ChartScreen({
     <datalist id="medicine-options">{medicines.map((medicine) => <option key={medicine} value={medicine} />)}</datalist>
 
     {/* The only strip that stays put while the grid scrolls, so the status that matters at a
-        hand-off — is it saved, is this today's chart — rides here, not in the scrolling meta row. */}
+        hand-off — is it saved, is this today's chart — rides here, not in the scrolling meta row.
+        Fixed height: the recovery affordances drop into .chart-recover-line below so this bar
+        never reflows and shifts the grid under a finger mid-type. No aria-live on .bar-focus —
+        each dose cell's own aria-label announces patient + medicine on focus. */}
     <div className="active-patient-bar" inert={asideInert}>
-      {/* No aria-live here: each dose cell's own aria-label already announces patient + medicine
-          on focus, so a live region on this bar just repeats it on every arrow-key move. */}
       <div className="bar-focus">{activeRow >= 0
         ? <><span className="bar-item"><span className="bar-key">المريض</span><strong>{patientNames[activeRow]?.trim() || 'بلا اسم'}</strong><span className="bar-num">صف {activeRow + 1}</span></span>{activeColumn >= 0 && <span className="bar-item"><span className="bar-key">العلاج</span><strong>{columnMedicines[activeColumn]?.trim() || 'بلا اسم'}</strong><span className="bar-num">عمود {activeColumn + 1}</span></span>}</>
         : <span className="muted">اضغط داخل خلية ليظهر المريض والعلاج هنا</span>}</div>
       {!dateIsToday && <span className="bar-date-warning">⚠ جارت {today} — ليس اليوم</span>}
-      {copyError && <span className="save-state save-state-error" role="alert">⚠ تعذّر نسخ الجارت — أعِد الضغط على «نسخ إلى اليوم التالي»</span>}
       {/* No save chip until the chart has loaded — the default is "saved", which would be a
-          lie over a grid that has not arrived yet (the loading cover is showing meanwhile). */}
-      {chartReady && <span aria-live="polite" className={saveClass}>{saveText}</span>}
-      {chartReady && chartSaveStatus === 'error' && <>
-        <button type="button" className="text-button bar-retry" onClick={onRetrySave}>إعادة المحاولة الآن</button>
-        <span className="bar-draft-note">تعديلاتك محفوظة على هذا الجهاز</span>
-      </>}
+          lie over a grid that has not arrived yet (the loading cover is showing meanwhile).
+          aria-live only for failures, so the pending→saving→saved cycle isn't announced every
+          debounce while the pharmacist types. */}
+      {chartReady && <span className={saveClass} aria-live={(loadError || chartSaveStatus === 'error') ? 'assertive' : undefined}>{saveText}</span>}
     </div>
+
+    {chartReady && (chartSaveStatus === 'error' || copyError) && <div className="chart-recover-line" role="alert" inert={asideInert}>
+      {chartSaveStatus === 'error' && <>
+        <span>لم يُحفظ — تُعاد المحاولة تلقائيًا. تعديلاتك محفوظة على هذا الجهاز.</span>
+        <button type="button" className="secondary-button compact" onClick={onRetrySave}>إعادة المحاولة الآن</button>
+      </>}
+      {copyError && <span>تعذّر نسخ الجارت — أعِد الضغط على «نسخ إلى اليوم التالي».</span>}
+    </div>}
 
     {chartConflict && <ConflictPanel conflict={chartConflict} onResolve={onResolveConflict} />}
 
@@ -172,19 +178,22 @@ const CONFLICT_GROUPS = [
 function ConflictPanel({ conflict, onResolve }) {
   const changes = conflict.changes || []
   const clashes = conflict.clashes || []
-  const [mode, setMode] = useState(clashes.length ? 'manual' : 'choose')
+  // Skip the 3-button shortcut when there is a clash to resolve, or when a bulk "أبقِ قيمتي"
+  // would blunt-revert more than a handful of a colleague's non-conflicting edits.
+  const startManual = clashes.length > 0 || (conflict.changes || []).length > 6
+  const [mode, setMode] = useState(startManual ? 'manual' : 'choose')
   const [clashPick, setClashPick] = useState(() => ({})) // clash index -> 'mine' | 'theirs'
   const [keepMine, setKeepMine] = useState(() => new Set()) // indices into `changes`
   const panelRef = useRef(null)
   // Reset for a fresh conflict object (a second 409 can replace it without unmounting) and
   // re-take focus / scroll into view — a 409 can land while scrolled deep in the grid.
   useEffect(() => {
-    setMode(clashes.length ? 'manual' : 'choose')
+    setMode(startManual ? 'manual' : 'choose')
     setClashPick({})
     setKeepMine(new Set())
     panelRef.current?.scrollIntoView({ block: 'center' })
     panelRef.current?.focus()
-  }, [conflict, clashes.length])
+  }, [conflict, startManual])
 
   const locked = clashes.length > 0 && !clashes.every((_, i) => clashPick[i])
 
@@ -206,20 +215,23 @@ function ConflictPanel({ conflict, onResolve }) {
   const allChangesOn = rows.length > 0 && rows.every((row) => keepMine.has(row.index))
 
   // adopted: 'mine' revert all, 'ticked' revert the ticked ones, 'merged' keep as merged.
-  const apply = (adopted) => {
-    if (locked) return
+  // `force` is the escape hatch (Escape / ×): apply now, and any clash left unpicked keeps
+  // this tab's value — your ward, your numbers is the conservative default when out of time.
+  const apply = (adopted, force = false) => {
+    if (locked && !force) return
     onResolve([
       ...clashes.map((c, i) => ({ ...c, value: clashPick[i] === 'theirs' ? c.theirs : c.mine })),
       ...(adopted === 'mine' ? changes.map((c) => ({ ...c, value: c.mine })) : []),
       ...(adopted === 'ticked' ? [...keepMine].map((i) => ({ ...changes[i], value: changes[i].mine })) : []),
     ])
   }
+  const bulkClash = (which) => setClashPick(Object.fromEntries(clashes.map((_, i) => [i, which])))
 
   return <section className="chart-conflict" role="dialog" aria-modal="true" tabIndex={-1} ref={panelRef}
     aria-labelledby="chart-conflict-head" aria-describedby="chart-conflict-sub"
     onKeyDown={(event) => {
-      // Escape keeps the merge as-is — but only once every clash has been resolved.
-      if (event.key === 'Escape') { event.preventDefault(); if (!locked) apply('merged'); return }
+      // Escape applies now: adopted fields stay merged, any unpicked clash keeps this tab's value.
+      if (event.key === 'Escape') { event.preventDefault(); apply('merged', true); return }
       if (event.key !== 'Tab') return
       const f = event.currentTarget.querySelectorAll('input, button')
       const edge = event.shiftKey ? f[0] : f[f.length - 1]
@@ -229,7 +241,7 @@ function ConflictPanel({ conflict, onResolve }) {
       }
     }}>
     <div className="chart-conflict-head">
-      <button type="button" className="close-button" aria-label="إغلاق مع إبقاء التعديلات المدمجة" disabled={locked} onClick={() => apply('merged')}>×</button>
+      <button type="button" className="close-button" aria-label={clashes.length ? 'إغلاق — تبقى قيمتك في الخانات غير المحسومة' : 'إغلاق مع إبقاء التعديلات المدمجة'} onClick={() => apply('merged', true)}>×</button>
       <strong id="chart-conflict-head">⟳ دُمجت تعديلات من جهاز آخر</strong>
       <span id="chart-conflict-sub">{clashes.length
         ? `غيّرتَ أنت وجهازٌ آخر ${clashes.length} خانة إلى قيم مختلفة — اختر أيّ قيمة تبقى${changes.length ? ` (و${changes.length} حقلًا آخر أُخذ من الجهاز الآخر)` : ''}.`
@@ -237,7 +249,13 @@ function ConflictPanel({ conflict, onResolve }) {
     </div>
 
     {clashes.length > 0 && <div className="conflict-clash">
-      <span className="conflict-clash-label">غيّرها كلاكما — اختر القيمة التي تبقى</span>
+      <div className="conflict-clash-head">
+        <span className="conflict-clash-label">غيّرها كلاكما — اختر القيمة التي تبقى</span>
+        {clashes.length > 3 && <span className="conflict-clash-bulk">
+          <button type="button" className="text-button" onClick={() => bulkClash('mine')}>قيمتي للكل</button>
+          <button type="button" className="text-button" onClick={() => bulkClash('theirs')}>الجهاز الآخر للكل</button>
+        </span>}
+      </div>
       <ul className="chart-conflict-list">
         {clashes.map((c, i) => <li key={i} className="conflict-clash-row">
           <span className="conflict-what">{c.what}</span>
@@ -249,7 +267,7 @@ function ConflictPanel({ conflict, onResolve }) {
             </label>
             <label className={clashPick[i] === 'theirs' ? 'is-on' : undefined}>
               <input type="radio" name={`clash-${i}`} checked={clashPick[i] === 'theirs'} onChange={() => setClashPick((p) => ({ ...p, [i]: 'theirs' }))} />
-              الأخرى <b>{c.theirs || '—'}</b>
+              الجهاز الآخر <b>{c.theirs || '—'}</b>
             </label>
           </span>
         </li>)}
@@ -258,7 +276,7 @@ function ConflictPanel({ conflict, onResolve }) {
 
     {mode === 'choose' && <div className="conflict-quick">
       <button type="button" className="secondary-button compact" onClick={() => apply('merged')}>أبقِ ما دُمج</button>
-      <button type="button" className="secondary-button compact" onClick={() => apply('mine')}>أبقِ قيمتي</button>
+      <button type="button" className="secondary-button compact" onClick={() => apply('mine')}>أرجِع الحقول المأخوذة ({changes.length})</button>
       <button type="button" className="text-button" onClick={() => setMode('manual')}>أختار يدويًا…</button>
     </div>}
 
@@ -293,10 +311,10 @@ function ConflictPanel({ conflict, onResolve }) {
     </>}
 
     {(mode === 'manual' || clashes.length > 0) && <div className="chart-conflict-actions">
-      <span className="conflict-hint">{locked
-        ? 'اختر قيمة لكل خانة غيّرها كلاكما'
+      <span className="conflict-hint" id="chart-conflict-hint">{locked
+        ? 'اختر قيمة لكل خانة غيّرها كلاكما، أو استخدم «قيمتي للكل» — أو أغلق بـ Esc لإبقاء قيمتك.'
         : keepMine.size ? `${keepMine.size} حقلًا سيعود إلى قيمتك` : 'الباقي يبقى كما دُمج'}</span>
-      <button type="button" className="primary-button compact" disabled={locked} onClick={() => apply('ticked')}>تطبيق</button>
+      <button type="button" className="primary-button compact" disabled={locked} aria-disabled={locked} aria-describedby="chart-conflict-hint" onClick={() => apply('ticked')}>تطبيق</button>
     </div>}
   </section>
 }

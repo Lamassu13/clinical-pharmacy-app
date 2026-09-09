@@ -436,10 +436,11 @@ function App() {
   // quantities, so this stays referentially stable while someone is just typing numbers.
   const updateQuantity = useCallback((rowIndex, columnIndex, value) => setQuantities((current) => current.map((row, currentRow) => {
     if (currentRow !== rowIndex) return row
-    // Digits only, and capped: a dose count never needs 5 digits, and an Excel paste that
+    // Digits only, capped at 4: a dose count never needs 5 digits, and an Excel paste that
     // concatenates a whole selection into one cell would otherwise save a nonsense number
-    // that prints at 5px on the sheet the ward dispenses from.
-    const edited = row.map((quantity, currentColumn) => currentColumn === columnIndex ? toEnglishDigits(value).replace(/\D/g, '').slice(0, 4) : quantity)
+    // that prints at 5px on the sheet the ward dispenses from. Truncate at the first
+    // separator so a pasted "12.5" reads as "12", not "125".
+    const edited = row.map((quantity, currentColumn) => currentColumn === columnIndex ? toEnglishDigits(value).split(/[.,]/)[0].replace(/\D/g, '').slice(0, 4) : quantity)
     return specialColumns.vialAmp.includes(columnIndex) ? applySyringeTotal(edited) : edited
   })), [applySyringeTotal, specialColumns])
   // Choosing a medicine for a column seeds that column: a giving set or cannula gets 1 for
@@ -870,6 +871,10 @@ function App() {
     // Holding off while the session is expired is what stops the 4-second retry loop. The
     // effect re-runs when it clears, which saves everything typed in the meantime.
     if (!selected || selected.mode === 'pills' || !isLoggedIn || sessionExpired || chartLoading || loadedChartKey !== chartKey) return undefined
+    // Don't PUT while the merge panel is open: the grid is inert (nothing to lose by waiting)
+    // and a save here would 409 again, rebuild chartConflict, and reset the pharmacist's
+    // in-progress clash picks. resolveChartConflict clears chartConflict, which re-runs this.
+    if (chartConflict) return undefined
     // Only claim "unsaved" when the grid actually differs from what the server last confirmed;
     // the effect also re-runs on navigation-shaped dep changes that carry no real edit.
     const synced = lastSyncedChartRef.current
@@ -914,7 +919,7 @@ function App() {
     // 4s error backoff still pending and reschedules the save on the normal debounce.
     const timer = setTimeout(save, 1200)
     return () => { clearTimeout(timer); clearTimeout(retryTimer) }
-  }, [buildChartBody, chartLoading, chartSaveNonce, columnMedicines, isExpired, isLoggedIn, loadedChartKey, patientNames, quantities, reconcileChartConflict, selected, selectedDate, sessionExpired])
+  }, [buildChartBody, chartConflict, chartLoading, chartSaveNonce, columnMedicines, isExpired, isLoggedIn, loadedChartKey, patientNames, quantities, reconcileChartConflict, selected, selectedDate, sessionExpired])
 
   useEffect(() => {
     if (!selected || selected.mode !== 'pills') return undefined
