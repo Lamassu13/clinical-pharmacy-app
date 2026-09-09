@@ -478,25 +478,22 @@ app.get('/api/pills', requireAuth, async (request, response) => {
   const pillColumns = columns.rows
     .map((column) => ({ columnNumber: column.column_number, name: column.name || column.custom_name || '', arabicName: column.arabic_name || '' }))
     .filter((column) => PILL_FORM.test(column.name))
-  // A column may carry a name that differs from the catalogue by normalisation ("500 mg" vs
-  // "500mg"), or link to a duplicate catalogue row that has no Arabic while another row for the
-  // same drug does. Fill any still-missing Arabic label from every catalogue row that has one,
-  // matched loosely: exact normalised key first, then with all spaces removed. Label only — the
-  // column's link, key, matrix membership and dispensing are untouched, so a loose match is safe.
-  const needsArabic = pillColumns.filter((column) => !column.arabicName)
-  if (needsArabic.length) {
-    const withArabic = await query("SELECT name, arabic_name FROM medicines WHERE arabic_name <> '' ORDER BY id")
-    const byKey = new Map()
-    const byTightKey = new Map()
-    for (const row of withArabic.rows) {
-      const key = normalizeMedicineKey(row.name)
-      if (!byKey.has(key)) byKey.set(key, row.arabic_name)
-      const tight = key.replace(/ /g, '')
-      if (!byTightKey.has(tight)) byTightKey.set(tight, row.arabic_name)
-    }
-    for (const column of needsArabic) {
-      const key = normalizeMedicineKey(column.name)
-      column.arabicName = byKey.get(key) || byTightKey.get(key.replace(/ /g, '')) || ''
+  // CCU runs in English: its pill form always shows the catalogue name and never a
+  // translation, even for medicines that have one.
+  const englishOnly = /\bccu\b/i.test(wardName)
+  if (englishOnly) {
+    pillColumns.forEach((column) => { column.arabicName = '' })
+  } else {
+    // An unlinked column may still name a catalogue medicine (an old chart saved before the
+    // matching was case-insensitive). Look those up by key so they keep their Arabic name.
+    const unresolved = [...new Set(pillColumns.filter((column) => !column.arabicName).map((column) => normalizeMedicineKey(column.name)))]
+    if (unresolved.length) {
+      const found = await query(`SELECT name, arabic_name FROM medicines WHERE ${medicineKeySql('name')} = ANY($1::text[])`, [unresolved])
+      const arabicByKey = new Map(found.rows.map((row) => [normalizeMedicineKey(row.name), row.arabic_name || '']))
+      // Only fill the blanks — a column already linked to the catalogue has the right name.
+      pillColumns.forEach((column) => {
+        if (!column.arabicName) column.arabicName = arabicByKey.get(normalizeMedicineKey(column.name)) || ''
+      })
     }
   }
   const keyByColumn = new Map(pillColumns.map((column) => [column.columnNumber, normalizeMedicineKey(column.name)]))

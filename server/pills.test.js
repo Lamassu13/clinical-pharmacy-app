@@ -77,24 +77,37 @@ test('PUT /api/pills: pill_qty is digits-only and capped', async () => {
   assert.equal(entry?.pillQty, '34')
 })
 
-test('GET /api/pills: an unlinked column resolves its Arabic name past a spacing mismatch', async () => {
-  await pool.query("INSERT INTO medicines (name, arabic_name) VALUES ('Metronidazole 500mg tab', 'ميترونيدازول')")
-  const ccu = 'ردهة CCU'
-  const wardId = (await pool.query("INSERT INTO wards (floor_number, name, is_special) VALUES (3, $1, false) RETURNING id", [ccu])).rows[0].id
+// Seeds a chart directly with one column (linked or free-text) + one patient + one quantity.
+const seedChart = async ({ floor, ward, medicineId = null, customName = null }) => {
+  const wardId = (await pool.query('INSERT INTO wards (floor_number, name, is_special) VALUES ($1, $2, false) RETURNING id', [floor, ward])).rows[0].id
   const seeder = await createUser({ role: 'admin' })
   const chartId = (await pool.query(
     "INSERT INTO daily_charts (ward_id, chart_date, slot, created_by, updated_by, version) VALUES ($1, $2, 'main', $3, $3, 1) RETURNING id",
     [wardId, DATE, seeder.id],
   )).rows[0].id
   await pool.query("INSERT INTO chart_patients (chart_id, row_number, patient_name) VALUES ($1, 1, 'مريض')", [chartId])
-  // Free-text column (medicine_id NULL) whose text differs from the catalogue only by the
-  // space in "500 mg" — the old exact-key lookup missed this and showed English.
-  await pool.query("INSERT INTO chart_columns (chart_id, column_number, medicine_id, custom_name) VALUES ($1, 1, NULL, 'Metronidazole 500 mg tab')", [chartId])
+  await pool.query('INSERT INTO chart_columns (chart_id, column_number, medicine_id, custom_name) VALUES ($1, 1, $2, $3)', [chartId, medicineId, customName])
   await pool.query('INSERT INTO chart_quantities (chart_id, row_number, column_number, quantity) VALUES ($1, 1, 1, 2)', [chartId])
+  return chartId
+}
+
+test('GET /api/pills: a free-text column keeps its Arabic name off the catalogue', async () => {
+  await pool.query("INSERT INTO medicines (name, arabic_name) VALUES ('Metronidazole 500mg tab', 'ميترونيدازول')")
+  await seedChart({ floor: 5, ward: 'ردهة رجال', customName: 'Metronidazole 500mg tab' })
 
   const client = await loginAs({ role: 'admin' })
-  const pills = await client.get(`/api/pills?floor=3&ward=${encodeURIComponent(ccu)}&date=${DATE}`)
-  assert.equal(pills.status, 200)
+  const pills = await client.get(`/api/pills?floor=5&ward=${encodeURIComponent('ردهة رجال')}&date=${DATE}`)
   const med = pills.body.pills.medicines.find((m) => m.name.toLowerCase().includes('metronidazole'))
   assert.equal(med?.arabicName, 'ميترونيدازول')
+})
+
+test('GET /api/pills: the CCU ward always shows English, even when the medicine has an Arabic name', async () => {
+  const medId = (await pool.query("INSERT INTO medicines (name, arabic_name) VALUES ('Metronidazole 500mg tab', 'ميترونيدازول') RETURNING id")).rows[0].id
+  await seedChart({ floor: 3, ward: 'ردهة CCU', medicineId: medId })
+
+  const client = await loginAs({ role: 'admin' })
+  const pills = await client.get(`/api/pills?floor=3&ward=${encodeURIComponent('ردهة CCU')}&date=${DATE}`)
+  const med = pills.body.pills.medicines.find((m) => m.name.toLowerCase().includes('metronidazole'))
+  assert.equal(med?.name, 'Metronidazole 500mg tab')
+  assert.equal(med?.arabicName, '', 'CCU never carries the Arabic label')
 })
