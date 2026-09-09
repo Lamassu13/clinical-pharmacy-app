@@ -37,7 +37,8 @@ export function StatusCheck() {
 // "did I already do this ward?" as much as a manager does). A worded/amber-vs-green pill, not
 // a colour dot. Pass `done`/`total` for a floor — a fraction across its sub-wards, "اكتملت"
 // only when every one has started; pass `started` for a single ward.
-export function CardStatus({ started, done, total }) {
+export function CardStatus({ started, done, total, unavailable }) {
+  if (unavailable) return <span className="card-status card-status--muted">الحالة غير متاحة</span>
   if (total != null) {
     if (done === total) return <span className="card-status card-status--done"><StatusCheck /> اكتملت</span>
     // A floor with some wards started reads differently from one nobody has touched.

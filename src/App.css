@@ -179,15 +179,12 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 .danger-button:hover:not(:disabled) { background: #f4d9db; }
 .back-button, .text-button { background: transparent; color: var(--primary); padding-inline: 6px; }
 .back-button:hover, .text-button:hover { color: var(--primary-hover); background: var(--green-50); }
-/* الجارت الإضافي: the second chart, opened daily after the main one. Always quieter than
-   الجارت so the two never read as the same button; `.is-next` lights it up once the ward's
-   main chart has started, so it reads as the next step rather than a twin. */
+/* الجارت الإضافي before the ward starts: a ghost button, quieter than the one primary action
+   (الجارت). Once the ward is under way it switches to a plain secondary-button in the JSX —
+   a started card carries no loud button at all, so a solid --primary fill only ever means
+   "this ward hasn't started". */
 .chart-extra-button { background: transparent; color: var(--text-muted); border-color: var(--border-strong); }
 .chart-extra-button:hover:not(:disabled) { background: var(--surface-alt); border-color: var(--green-300); color: var(--primary-hover); }
-/* Once the main chart is under way the extra chart is the next step — it becomes the single
-   filled button on the card, the same weight الجارت carried before the ward started. */
-.chart-extra-button.is-next { background: var(--primary); border-color: var(--primary); color: #fff; }
-.chart-extra-button.is-next:hover:not(:disabled) { background: var(--primary-hover); border-color: var(--primary-hover); color: #fff; }
 .compact { white-space: nowrap; }
 .theme-toggle { display: inline-grid; place-items: center; width: 34px; height: 34px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-alt); color: var(--heading); font-size: 15px; line-height: 1; transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease); }
 .theme-toggle:hover { background: var(--green-50); border-color: var(--green-300); }
@@ -433,6 +430,26 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 .date-chip strong { display: block; color: var(--heading); font-size: var(--text-lg); }
 
 .location-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 245px), 1fr)); gap: var(--space-3); }
+/* Manager view: finished floors are folded out of the way so the grid leads with what still
+   needs pushing. Spans the whole grid; expands to the same card grid inside. */
+.location-grid-done { grid-column: 1 / -1; }
+.location-grid-done > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  padding: 8px 14px;
+  border-radius: var(--radius-md);
+  background: var(--success-tint);
+  color: var(--success);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  cursor: pointer;
+  list-style: none;
+}
+.location-grid-done > summary::-webkit-details-marker { display: none; }
+.location-grid-done > summary svg { flex: 0 0 auto; }
+.location-grid-done[open] > summary { margin-bottom: var(--space-3); }
 .location-card {
   position: relative;
   display: flex;
@@ -485,6 +502,8 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 .card-status--pending { background: var(--warning-tint); color: var(--warning); }
 /* Some wards started, not all — leaning toward done, distinct from an untouched floor. */
 .card-status--partial { background: var(--green-100); color: var(--primary-hover); }
+/* Dashboard data failed to load — say so rather than showing a card that looks fresh. */
+.card-status--muted { background: var(--surface-alt); color: var(--text-muted); }
 .card-status--done { background: var(--success-tint); color: var(--success); }
 .card-status svg { flex: 0 0 auto; }
 
@@ -535,6 +554,7 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 .ward-status-band-of { color: var(--text-muted); font-size: var(--text-sm); font-weight: 400; }
 .ward-status-band-done { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--success); font-size: var(--text-lg); }
 .progress-track { height: 8px; border-radius: 999px; background: var(--warning-tint); overflow: hidden; }
+/* RTL app: the fill grows from the start (right) edge; width:100% is the base scaleX shrinks from. */
 .progress-fill { width: 100%; height: 100%; border-radius: 999px; background: var(--success); transform-origin: right; transition: transform var(--dur) var(--ease); }
 /* Shift start: nothing has begun yet — that is a fresh day, not a backlog. Drop the amber. */
 .ward-status-band--fresh .progress-track { background: var(--surface-alt); }
@@ -544,7 +564,7 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 .ward-status-chip {
   display: inline-flex;
   align-items: center;
-  min-height: 40px;
+  min-height: 44px;
   padding: 6px 12px;
   border: 1px solid transparent;
   border-radius: 999px;
@@ -561,7 +581,7 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 .ward-status-band-more > summary {
   display: inline-flex;
   align-items: center;
-  min-height: 40px;
+  min-height: 44px;
   padding: 6px 12px;
   border-radius: 999px;
   background: var(--surface-alt);

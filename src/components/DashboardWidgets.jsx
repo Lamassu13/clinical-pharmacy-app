@@ -29,10 +29,11 @@ function SkeletonRows({ count = 3 }) {
   )
 }
 
-// How many pending wards to show inline before folding the rest. At shift start every ward is
-// "not started" — that is a fresh day, not a backlog — so the band shows a handful and folds
-// the rest behind a disclosure instead of a wall of amber.
-const PENDING_INLINE = 8
+// Show the whole pending list unless it's a genuine backlog; past this many, show a chunk and
+// fold the rest so shift start (every ward not started) isn't a wall of amber. Mid-round there
+// are rarely more than a handful pending, so the fold never triggers then.
+const FOLD_THRESHOLD = 12
+const FOLD_KEEP = 8
 
 export function WardStatusBand({ startedCount, totalCount, notStarted = [], onPickFloor, onOpen, loading, error, onRetry }) {
   if (error) {
@@ -45,8 +46,9 @@ export function WardStatusBand({ startedCount, totalCount, notStarted = [], onPi
   const done = totalCount > 0 && startedCount === totalCount
   const fresh = startedCount === 0
   const startedPct = totalCount ? Math.round((startedCount / totalCount) * 100) : 0
-  const inline = notStarted.slice(0, PENDING_INLINE)
-  const folded = notStarted.slice(PENDING_INLINE)
+  const willFold = notStarted.length > FOLD_THRESHOLD
+  const inline = willFold ? notStarted.slice(0, FOLD_KEEP) : notStarted
+  const folded = willFold ? notStarted.slice(FOLD_KEEP) : []
 
   const chip = (entry) => (
     <li key={entry.label}>
@@ -97,6 +99,8 @@ export default function DashboardWidgets({
   const maxQty = topMedicines.length ? Math.max(...topMedicines.map((item) => item.quantity)) : 1
   // Which announcement is open for inline editing, plus its working text, in-flight flag, and error.
   const [editing, setEditing] = useState(null)
+  // Briefly confirms a saved edit — the list item looks unchanged otherwise.
+  const [savedId, setSavedId] = useState(null)
 
   return (
     <div className="dashboard-widgets">
@@ -154,7 +158,7 @@ export default function DashboardWidgets({
                     if (!editing.text.trim() || editing.busy) return
                     setEditing((cur) => cur && { ...cur, busy: true, error: '' })
                     const ok = await onEditAnnouncement(item.id, editing.text)
-                    if (ok) setEditing(null)
+                    if (ok) { setEditing(null); setSavedId(item.id); setTimeout(() => setSavedId(null), 2500) }
                     else setEditing((cur) => cur && { ...cur, busy: false, error: 'تعذّر حفظ التعديل. حاول مرة أخرى.' })
                   }}>
                     <textarea
@@ -170,6 +174,7 @@ export default function DashboardWidgets({
                 ) : (
                   <>
                     <p>{item.message}</p>
+                    {savedId === item.id && <p className="form-success" role="status">تم الحفظ</p>}
                     <div className="announcement-meta">
                       <span>مسؤول وحدة الصيدلة السريرية — {new Date(item.created_at).toLocaleString('ar-IQ', { dateStyle: 'short', timeStyle: 'short' })}</span>
                       {isManager && (
