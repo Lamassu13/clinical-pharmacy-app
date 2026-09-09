@@ -44,3 +44,8 @@ cpa.dump
 
 # graphify knowledge-graph build output
 graphify-out/
+
+# impeccable: keep the design sidecar, ignore session archives (critique snapshots, scratch)
+.impeccable/*
+!.impeccable/design.json
+scratchpad/
