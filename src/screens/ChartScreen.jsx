@@ -9,6 +9,7 @@ import { CHART_COLUMNS } from '../constants.js'
 export default function ChartScreen({
   selected, wardLabel, today, todayWeekday, isManager, dateIsToday, selectedDate, onChangeDate, onCopyToNextDay, onBack, onGoToPills, onExportPdf,
   chartSaveStatus, loadError, copyError, chartReady, lastChartSaveAt, onRetryLoad, onRetrySave, chartConflict, onResolveConflict,
+  chartClashNote, onDismissClashNote,
   medicines, patientNames, columnMedicines, quantities, totals, isThursday,
   activeRow, activeColumn, labelBelow, setActiveRow, setActiveColumn, setLabelBelow,
   onSetColumnMedicine, onCommitColumnMedicine, columnMedicineNotice, onDismissNotice, onApplySuggestion,
@@ -66,28 +67,16 @@ export default function ChartScreen({
 
     {/* The only strip that stays put while the grid scrolls, so the status that matters at a
         hand-off — is it saved, is this today's chart — rides here, not in the scrolling meta row.
-        Fixed height: the recovery affordances drop into .chart-recover-line below so this bar
-        never reflows and shifts the grid under a finger mid-type. No aria-live on .bar-focus —
-        each dose cell's own aria-label announces patient + medicine on focus. */}
+        Fixed height, and no other content flows into it: the recovery / clash lines render
+        below the grid (.chart-recover-line, .chart-clash-note) so the grid never shifts under
+        a finger. The save chip carries no aria-live — .chart-recover-line announces failures. */}
     <div className="active-patient-bar" inert={asideInert}>
       <div className="bar-focus">{activeRow >= 0
         ? <><span className="bar-item"><span className="bar-key">المريض</span><strong>{patientNames[activeRow]?.trim() || 'بلا اسم'}</strong><span className="bar-num">صف {activeRow + 1}</span></span>{activeColumn >= 0 && <span className="bar-item"><span className="bar-key">العلاج</span><strong>{columnMedicines[activeColumn]?.trim() || 'بلا اسم'}</strong><span className="bar-num">عمود {activeColumn + 1}</span></span>}</>
         : <span className="muted">اضغط داخل خلية ليظهر المريض والعلاج هنا</span>}</div>
       {!dateIsToday && <span className="bar-date-warning">⚠ جارت {today} — ليس اليوم</span>}
-      {/* No save chip until the chart has loaded — the default is "saved", which would be a
-          lie over a grid that has not arrived yet (the loading cover is showing meanwhile).
-          aria-live only for failures, so the pending→saving→saved cycle isn't announced every
-          debounce while the pharmacist types. */}
-      {chartReady && <span className={saveClass} aria-live={(loadError || chartSaveStatus === 'error') ? 'assertive' : undefined}>{saveText}</span>}
+      {chartReady && <span className={saveClass}>{saveText}</span>}
     </div>
-
-    {chartReady && (chartSaveStatus === 'error' || copyError) && <div className="chart-recover-line" role="alert" inert={asideInert}>
-      {chartSaveStatus === 'error' && <>
-        <span>لم يُحفظ — تُعاد المحاولة تلقائيًا. تعديلاتك محفوظة على هذا الجهاز.</span>
-        <button type="button" className="secondary-button compact" onClick={onRetrySave}>إعادة المحاولة الآن</button>
-      </>}
-      {copyError && <span>تعذّر نسخ الجارت — أعِد الضغط على «نسخ إلى اليوم التالي».</span>}
-    </div>}
 
     {chartConflict && <ConflictPanel conflict={chartConflict} onResolve={onResolveConflict} />}
 
@@ -149,6 +138,21 @@ export default function ChartScreen({
       </div>
     </div>
 
+    {/* Below the grid, so a save failure or a merge outcome never pushes the cells the
+        pharmacist is typing into. */}
+    {chartReady && (chartSaveStatus === 'error' || copyError) && <div className="chart-recover-line" role="alert" inert={asideInert}>
+      {chartSaveStatus === 'error' && <>
+        <span>لم يُحفظ — تُعاد المحاولة تلقائيًا. تعديلاتك محفوظة على هذا الجهاز.</span>
+        <button type="button" className="secondary-button compact" onClick={onRetrySave}>إعادة المحاولة الآن</button>
+      </>}
+      {copyError && <span>تعذّر نسخ الجارت — أعِد الضغط على «نسخ إلى اليوم التالي».</span>}
+    </div>}
+
+    {chartClashNote && <div className="chart-clash-note" role="status" inert={asideInert}>
+      <span>{chartClashNote}</span>
+      <button type="button" className="text-button compact" aria-label="إخفاء" onClick={onDismissClashNote}>حسنًا</button>
+    </div>}
+
     {showMedicineForm && <div className="modal-backdrop" onClick={onCloseMedicineForm}><form className="medicine-modal" role="dialog" aria-modal="true" aria-labelledby="add-medicine-title" onSubmit={onAddMedicine} onClick={(event) => event.stopPropagation()} onKeyDown={(event) => {
       if (event.key !== 'Tab') return
       const f = event.currentTarget.querySelectorAll('button, input')
@@ -178,12 +182,13 @@ const CONFLICT_GROUPS = [
 function ConflictPanel({ conflict, onResolve }) {
   const changes = conflict.changes || []
   const clashes = conflict.clashes || []
-  // Skip the 3-button shortcut when there is a clash to resolve, or when a bulk "أبقِ قيمتي"
-  // would blunt-revert more than a handful of a colleague's non-conflicting edits.
-  const startManual = clashes.length > 0 || (conflict.changes || []).length > 6
+  // The 3-button shortcut is for the common no-clash merge, whatever the count. A clash needs
+  // the per-row picker, so it opens straight into manual.
+  const startManual = clashes.length > 0
   const [mode, setMode] = useState(startManual ? 'manual' : 'choose')
   const [clashPick, setClashPick] = useState(() => ({})) // clash index -> 'mine' | 'theirs'
   const [keepMine, setKeepMine] = useState(() => new Set()) // indices into `changes`
+  const [confirmRevert, setConfirmRevert] = useState(false)
   const panelRef = useRef(null)
   // Reset for a fresh conflict object (a second 409 can replace it without unmounting) and
   // re-take focus / scroll into view — a 409 can land while scrolled deep in the grid.
@@ -191,11 +196,13 @@ function ConflictPanel({ conflict, onResolve }) {
     setMode(startManual ? 'manual' : 'choose')
     setClashPick({})
     setKeepMine(new Set())
+    setConfirmRevert(false)
     panelRef.current?.scrollIntoView({ block: 'center' })
     panelRef.current?.focus()
   }, [conflict, startManual])
 
-  const locked = clashes.length > 0 && !clashes.every((_, i) => clashPick[i])
+  const allClashesPicked = clashes.every((_, i) => clashPick[i])
+  const someClashUnpicked = clashes.length > 0 && !allClashesPicked
 
   const rows = changes.map((change, index) => ({ ...change, index }))
   const groups = CONFLICT_GROUPS
@@ -215,25 +222,29 @@ function ConflictPanel({ conflict, onResolve }) {
   const allChangesOn = rows.length > 0 && rows.every((row) => keepMine.has(row.index))
 
   // adopted: 'mine' revert all, 'ticked' revert the ticked ones, 'merged' keep as merged.
-  // `force` is the escape hatch (Escape / ×): apply now, and any clash left unpicked keeps
-  // this tab's value — your ward, your numbers is the conservative default when out of time.
-  const apply = (adopted, force = false) => {
-    if (locked && !force) return
+  // Always applies — an unpicked clash keeps this tab's value (your ward, your numbers), but
+  // that never happens silently: a note names those cells so the round can't end looking
+  // clean over a dose the other device deliberately changed.
+  const apply = (adopted) => {
+    const forced = clashes.filter((_, i) => !clashPick[i])
+    const note = forced.length
+      ? `${forced.length} خانة غيّرها جهازان: أُبقيت قيمتك وأُهملت القيمة الأخرى — ${forced.map((c) => c.coord).join('، ')}. راجِعها.`
+      : null
     onResolve([
       ...clashes.map((c, i) => ({ ...c, value: clashPick[i] === 'theirs' ? c.theirs : c.mine })),
       ...(adopted === 'mine' ? changes.map((c) => ({ ...c, value: c.mine })) : []),
       ...(adopted === 'ticked' ? [...keepMine].map((i) => ({ ...changes[i], value: changes[i].mine })) : []),
-    ])
+    ], note)
   }
   const bulkClash = (which) => setClashPick(Object.fromEntries(clashes.map((_, i) => [i, which])))
 
   return <section className="chart-conflict" role="dialog" aria-modal="true" tabIndex={-1} ref={panelRef}
     aria-labelledby="chart-conflict-head" aria-describedby="chart-conflict-sub"
     onKeyDown={(event) => {
-      // Escape applies now: adopted fields stay merged, any unpicked clash keeps this tab's value.
-      if (event.key === 'Escape') { event.preventDefault(); apply('merged', true); return }
+      // Escape applies now: adopted fields stay merged, any unpicked clash keeps this tab's value (with a note).
+      if (event.key === 'Escape') { event.preventDefault(); apply('merged'); return }
       if (event.key !== 'Tab') return
-      const f = event.currentTarget.querySelectorAll('input, button')
+      const f = event.currentTarget.querySelectorAll('input:not([disabled]), button:not([disabled])')
       const edge = event.shiftKey ? f[0] : f[f.length - 1]
       if (document.activeElement === edge || document.activeElement === event.currentTarget) {
         event.preventDefault();
@@ -241,7 +252,7 @@ function ConflictPanel({ conflict, onResolve }) {
       }
     }}>
     <div className="chart-conflict-head">
-      <button type="button" className="close-button" aria-label={clashes.length ? 'إغلاق — تبقى قيمتك في الخانات غير المحسومة' : 'إغلاق مع إبقاء التعديلات المدمجة'} onClick={() => apply('merged', true)}>×</button>
+      <button type="button" className="close-button" aria-label={clashes.length ? 'إغلاق — تبقى قيمتك في الخانات غير المحسومة' : 'إغلاق مع إبقاء التعديلات المدمجة'} onClick={() => apply('merged')}>×</button>
       <strong id="chart-conflict-head">⟳ دُمجت تعديلات من جهاز آخر</strong>
       <span id="chart-conflict-sub">{clashes.length
         ? `غيّرتَ أنت وجهازٌ آخر ${clashes.length} خانة إلى قيم مختلفة — اختر أيّ قيمة تبقى${changes.length ? ` (و${changes.length} حقلًا آخر أُخذ من الجهاز الآخر)` : ''}.`
@@ -275,8 +286,11 @@ function ConflictPanel({ conflict, onResolve }) {
     </div>}
 
     {mode === 'choose' && <div className="conflict-quick">
-      <button type="button" className="secondary-button compact" onClick={() => apply('merged')}>أبقِ ما دُمج</button>
-      <button type="button" className="secondary-button compact" onClick={() => apply('mine')}>أرجِع الحقول المأخوذة ({changes.length})</button>
+      <button type="button" className="primary-button compact" onClick={() => apply('merged')}>أبقِ ما دُمج</button>
+      <button type="button" className="secondary-button compact" onClick={() => {
+        if (changes.length > 6 && !confirmRevert) { setConfirmRevert(true); return }
+        apply('mine')
+      }}>{confirmRevert ? `متأكد؟ أرجِع ${changes.length} حقلًا` : `أرجِع الحقول المأخوذة (${changes.length})`}</button>
       <button type="button" className="text-button" onClick={() => setMode('manual')}>أختار يدويًا…</button>
     </div>}
 
@@ -311,10 +325,10 @@ function ConflictPanel({ conflict, onResolve }) {
     </>}
 
     {(mode === 'manual' || clashes.length > 0) && <div className="chart-conflict-actions">
-      <span className="conflict-hint" id="chart-conflict-hint">{locked
-        ? 'اختر قيمة لكل خانة غيّرها كلاكما، أو استخدم «قيمتي للكل» — أو أغلق بـ Esc لإبقاء قيمتك.'
+      <span className="conflict-hint" id="chart-conflict-hint">{someClashUnpicked
+        ? 'الخانات غير المحسومة ستبقى بقيمتك (يظهر سطر يذكرها). أو استخدم «قيمتي للكل» / «الجهاز الآخر للكل».'
         : keepMine.size ? `${keepMine.size} حقلًا سيعود إلى قيمتك` : 'الباقي يبقى كما دُمج'}</span>
-      <button type="button" className="primary-button compact" disabled={locked} aria-disabled={locked} aria-describedby="chart-conflict-hint" onClick={() => apply('ticked')}>تطبيق</button>
+      <button type="button" className="primary-button compact" aria-describedby="chart-conflict-hint" onClick={() => apply('ticked')}>{someClashUnpicked ? 'طبّق — تبقى قيمتك للباقي' : 'تطبيق'}</button>
     </div>}
   </section>
 }

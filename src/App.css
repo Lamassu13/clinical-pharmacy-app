@@ -1007,20 +1007,23 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 .active-patient-bar .save-state-error { color: var(--danger); }
 .active-patient-bar .save-state-pending { color: var(--warning); }
 .active-patient-bar .save-state-saving { color: var(--text-muted); font-weight: 400; }
-/* Save / copy failure recovery — its own line under the bar so the sticky strip never grows.
-   Matches .form-error: danger-tint ground, no border, text stays --text for contrast. */
-.chart-recover-line {
+/* Save / copy failure recovery, and the "a clash kept your value" note — both render below
+   the grid so a save error or merge outcome never pushes the cells being typed into.
+   Match .form-error: tinted ground, no border, text stays --text for contrast. */
+.chart-recover-line, .chart-clash-note {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2) var(--space-3);
-  margin-bottom: var(--space-2);
+  margin-top: var(--space-3);
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
-  background: var(--danger-tint);
   color: var(--text);
   font-size: var(--text-sm);
 }
+.chart-recover-line { background: var(--danger-tint); }
+.chart-clash-note { background: var(--warning-tint); }
+.chart-clash-note > span { flex: 1 1 auto; }
 .active-patient-bar .bar-date-warning {
   flex: 0 0 auto;
   white-space: nowrap;
