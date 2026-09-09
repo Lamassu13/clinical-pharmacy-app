@@ -21,11 +21,15 @@ export default function FloorPickerScreen({
   const startedSpecialWards = new Set(specialWards.filter((ward) => startedKeys.has(`x|${ward}`)))
   const totalCount = floors.reduce((sum, floor) => sum + floor.wards.length, 0) + specialWards.length
   const startedCount = floors.reduce((sum, floor) => sum + floorStarted(floor), 0) + startedSpecialWards.size
-  const notStartedNames = [
+  // Each pending entry carries what it takes to route there: a floor object drills into its
+  // ward list; a special ward (floor: null) opens its chart directly.
+  const notStarted = [
     ...floors.flatMap((floor) => floor.wards
       .filter((ward) => !startedKeys.has(`${floor.number}|${ward}`))
-      .map((ward) => `الطابق ${floor.number} — ${ward}`)),
-    ...specialWards.filter((ward) => !startedSpecialWards.has(ward)),
+      .map((ward) => ({ label: `الطابق ${floor.number} — ${ward}`, floor, ward }))),
+    ...specialWards
+      .filter((ward) => !startedSpecialWards.has(ward))
+      .map((ward) => ({ label: ward, floor: null, ward })),
   ]
 
   return <section className="dashboard">
@@ -36,7 +40,8 @@ export default function FloorPickerScreen({
 
     {isManager && (
       <WardStatusBand
-        startedCount={startedCount} totalCount={totalCount} notStartedNames={notStartedNames}
+        startedCount={startedCount} totalCount={totalCount} notStarted={notStarted}
+        onPickFloor={onPickFloor} onOpen={onOpen}
         loading={dashboardLoading} error={dashboardError} onRetry={onRetryDashboard}
       />
     )}
@@ -58,7 +63,7 @@ export default function FloorPickerScreen({
         <span className="ward-card-actions">
           <button className={started ? 'secondary-button compact' : 'primary-button compact'} onClick={() => onOpen({ floor: null, ward, mode: 'chart', slot: 'main' })}>الجارت</button>
           <button className={started ? 'chart-extra-button compact is-next' : 'chart-extra-button compact'} onClick={() => onOpen({ floor: null, ward, mode: 'chart', slot: 'extra' })}>الجارت الإضافي</button>
-          <button className="primary-button compact" onClick={() => onOpen({ floor: null, ward, mode: 'pills' })}>الحبوب</button>
+          <button className="secondary-button compact" onClick={() => onOpen({ floor: null, ward, mode: 'pills' })}>الحبوب</button>
         </span>
       </div>
     })}</div>

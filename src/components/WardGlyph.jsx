@@ -39,9 +39,10 @@ export function StatusCheck() {
 // only when every one has started; pass `started` for a single ward.
 export function CardStatus({ started, done, total }) {
   if (total != null) {
-    return done === total
-      ? <span className="card-status card-status--done"><StatusCheck /> اكتملت</span>
-      : <span className="card-status card-status--pending" aria-label={`بدأت ${done} من ${total} من أروقة الطابق`}>{done}/{total}</span>
+    if (done === total) return <span className="card-status card-status--done"><StatusCheck /> اكتملت</span>
+    // A floor with some wards started reads differently from one nobody has touched.
+    const cls = done > 0 ? 'card-status card-status--partial' : 'card-status card-status--pending'
+    return <span className={cls} aria-label={`بدأت ${done} من ${total} من أروقة الطابق`}>{done}/{total}</span>
   }
   return started
     ? <span className="card-status card-status--done"><StatusCheck /> بدأت</span>

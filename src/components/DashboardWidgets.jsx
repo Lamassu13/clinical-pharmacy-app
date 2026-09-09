@@ -29,7 +29,12 @@ function SkeletonRows({ count = 3 }) {
   )
 }
 
-export function WardStatusBand({ startedCount, totalCount, notStartedNames = [], loading, error, onRetry }) {
+// How many pending wards to show inline before folding the rest. At shift start every ward is
+// "not started" — that is a fresh day, not a backlog — so the band shows a handful and folds
+// the rest behind a disclosure instead of a wall of amber.
+const PENDING_INLINE = 8
+
+export function WardStatusBand({ startedCount, totalCount, notStarted = [], onPickFloor, onOpen, loading, error, onRetry }) {
   if (error) {
     return <div className="ward-status-band"><DashboardError onRetry={onRetry} /></div>
   }
@@ -38,10 +43,24 @@ export function WardStatusBand({ startedCount, totalCount, notStartedNames = [],
   }
 
   const done = totalCount > 0 && startedCount === totalCount
+  const fresh = startedCount === 0
   const startedPct = totalCount ? Math.round((startedCount / totalCount) * 100) : 0
+  const inline = notStarted.slice(0, PENDING_INLINE)
+  const folded = notStarted.slice(PENDING_INLINE)
 
+  const chip = (entry) => (
+    <li key={entry.label}>
+      <button
+        type="button"
+        className="ward-status-chip"
+        onClick={() => (entry.floor ? onPickFloor(entry.floor) : onOpen({ floor: null, ward: entry.ward, mode: 'chart', slot: 'main' }))}
+      >{entry.label}</button>
+    </li>
+  )
+
+  const cls = done ? 'ward-status-band is-done' : `ward-status-band${fresh ? ' ward-status-band--fresh' : ''}`
   return (
-    <div className={done ? 'ward-status-band is-done' : 'ward-status-band'}>
+    <div className={cls}>
       <div className="ward-status-band-head">
         <span className="ward-status-band-label">حالة جارتات اليوم</span>
         {done ? (
@@ -53,11 +72,17 @@ export function WardStatusBand({ startedCount, totalCount, notStartedNames = [],
           </strong>
         )}
       </div>
-      <div className="progress-track"><div className="progress-fill" style={{ width: `${startedPct}%` }} /></div>
-      {!done && notStartedNames.length > 0 && (
+      <div className="progress-track"><div className="progress-fill" style={{ transform: `scaleX(${startedPct / 100})` }} /></div>
+      {!done && notStarted.length > 0 && (
         <div className="ward-status-band-pending">
           <span className="ward-status-band-pending-label">لم تبدأ بعد</span>
-          <ul>{notStartedNames.map((name) => <li key={name}>{name}</li>)}</ul>
+          <ul>{inline.map(chip)}</ul>
+          {folded.length > 0 && (
+            <details className="ward-status-band-more">
+              <summary>و {folded.length} غير ذلك</summary>
+              <ul>{folded.map(chip)}</ul>
+            </details>
+          )}
         </div>
       )}
     </div>
@@ -70,18 +95,18 @@ export default function DashboardWidgets({
   onPostAnnouncement, onEditAnnouncement, onDeleteAnnouncement,
 }) {
   const maxQty = topMedicines.length ? Math.max(...topMedicines.map((item) => item.quantity)) : 1
-  // Which announcement is open for inline editing, and its working text.
+  // Which announcement is open for inline editing, plus its working text, in-flight flag, and error.
   const [editing, setEditing] = useState(null)
 
   return (
     <div className="dashboard-widgets">
-      <div className="dashboard-widget">
-        <div className="dashboard-widget-head">
+      <details className="dashboard-widget dashboard-widget--collapsible">
+        <summary className="dashboard-widget-head">
           <span className="dashboard-widget-icon" aria-hidden="true">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="8.5" width="18" height="7" rx="3.5" transform="rotate(-45 12 12)" fill="currentColor" fillOpacity="0.14" stroke="none"></rect><rect x="3" y="8.5" width="18" height="7" rx="3.5" transform="rotate(-45 12 12)"></rect><line x1="12" y1="8.5" x2="12" y2="15.5" transform="rotate(-45 12 12)"></line></svg>
           </span>
           <strong>الأدوية الأكثر صرفًا</strong>
-        </div>
+        </summary>
         {isManager && (
           <div className="top-medicines-periods" role="group" aria-label="مدة احتساب الأدوية">
             {['today', 'week', 'month'].map((period) => (
@@ -108,7 +133,7 @@ export default function DashboardWidgets({
             ))}
           </div>
         )}
-      </div>
+      </details>
 
       <div className="dashboard-widget">
         <div className="dashboard-widget-head">
@@ -126,16 +151,21 @@ export default function DashboardWidgets({
                 {isManager && editing && editing.id === item.id ? (
                   <form className="announcement-compose" onSubmit={async (event) => {
                     event.preventDefault()
-                    if (await onEditAnnouncement(item.id, editing.text)) setEditing(null)
+                    if (!editing.text.trim() || editing.busy) return
+                    setEditing((cur) => cur && { ...cur, busy: true, error: '' })
+                    const ok = await onEditAnnouncement(item.id, editing.text)
+                    if (ok) setEditing(null)
+                    else setEditing((cur) => cur && { ...cur, busy: false, error: 'تعذّر حفظ التعديل. حاول مرة أخرى.' })
                   }}>
                     <textarea
                       value={editing.text}
-                      onChange={(event) => setEditing({ id: item.id, text: event.target.value })}
+                      onChange={(event) => setEditing((cur) => cur && { ...cur, text: event.target.value })}
                       maxLength={500}
                       aria-label="تعديل نص الإعلان"
                     />
-                    <button className="primary-button compact" type="submit" disabled={!editing.text.trim()}>حفظ</button>
+                    <button className="primary-button compact" type="submit" disabled={editing.busy || !editing.text.trim()}>حفظ</button>
                     <button className="text-button" type="button" onClick={() => setEditing(null)}>إلغاء</button>
+                    {editing.error && <p className="form-error" role="alert">{editing.error}</p>}
                   </form>
                 ) : (
                   <>
@@ -144,7 +174,7 @@ export default function DashboardWidgets({
                       <span>مسؤول وحدة الصيدلة السريرية — {new Date(item.created_at).toLocaleString('ar-IQ', { dateStyle: 'short', timeStyle: 'short' })}</span>
                       {isManager && (
                         <span className="announcement-actions">
-                          <button type="button" className="announcement-edit" onClick={() => setEditing({ id: item.id, text: item.message })}>تعديل</button>
+                          <button type="button" className="announcement-edit" onClick={() => setEditing({ id: item.id, text: item.message, busy: false, error: '' })}>تعديل</button>
                           <button type="button" className="announcement-del" onClick={() => onDeleteAnnouncement(item.id)}>حذف</button>
                         </span>
                       )}
