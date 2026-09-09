@@ -32,3 +32,18 @@ export function StatusCheck() {
     </svg>
   )
 }
+
+// The started marker on a picker card, shown to everyone now (a pharmacist mid-round needs
+// "did I already do this ward?" as much as a manager does). A worded/amber-vs-green pill, not
+// a colour dot. Pass `done`/`total` for a floor — a fraction across its sub-wards, "اكتملت"
+// only when every one has started; pass `started` for a single ward.
+export function CardStatus({ started, done, total }) {
+  if (total != null) {
+    return done === total
+      ? <span className="card-status card-status--done"><StatusCheck /> اكتملت</span>
+      : <span className="card-status card-status--pending" aria-label={`بدأت ${done} من ${total} من أروقة الطابق`}>{done}/{total}</span>
+  }
+  return started
+    ? <span className="card-status card-status--done"><StatusCheck /> بدأت</span>
+    : <span className="card-status card-status--pending">لم تبدأ</span>
+}

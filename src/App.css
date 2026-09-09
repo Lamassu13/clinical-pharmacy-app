@@ -151,7 +151,7 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 /* ============================================================
    Buttons
    ============================================================ */
-.primary-button, .secondary-button, .back-button, .text-button, .danger-button {
+.primary-button, .secondary-button, .back-button, .text-button, .danger-button, .chart-extra-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -167,8 +167,8 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
     transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
 }
 .primary-button:active, .secondary-button:active, .danger-button:active,
-.back-button:active, .text-button:active { transform: translateY(1px); }
-.primary-button:disabled, .secondary-button:disabled, .danger-button:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+.back-button:active, .text-button:active, .chart-extra-button:active { transform: translateY(1px); }
+.primary-button:disabled, .secondary-button:disabled, .danger-button:disabled, .chart-extra-button:disabled { opacity: .5; cursor: not-allowed; transform: none; }
 .primary-button span, .secondary-button span { margin: 0; }
 
 .primary-button { background: var(--primary); color: #fff; box-shadow: var(--shadow-xs); }
@@ -179,6 +179,12 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 .danger-button:hover:not(:disabled) { background: #f4d9db; }
 .back-button, .text-button { background: transparent; color: var(--primary); padding-inline: 6px; }
 .back-button:hover, .text-button:hover { color: var(--primary-hover); background: var(--green-50); }
+/* الجارت الإضافي: the second chart, opened daily after the main one. Always quieter than
+   الجارت so the two never read as the same button; `.is-next` lights it up once the ward's
+   main chart has started, so it reads as the next step rather than a twin. */
+.chart-extra-button { background: transparent; color: var(--text-muted); border-color: var(--border-strong); }
+.chart-extra-button:hover:not(:disabled) { background: var(--surface-alt); border-color: var(--green-300); color: var(--primary-hover); }
+.chart-extra-button.is-next { background: var(--green-50); border-color: var(--green-200); color: var(--primary-hover); }
 .compact { white-space: nowrap; }
 .theme-toggle { display: inline-grid; place-items: center; width: 34px; height: 34px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-alt); color: var(--heading); font-size: 15px; line-height: 1; transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease); }
 .theme-toggle:hover { background: var(--green-50); border-color: var(--green-300); }
@@ -779,6 +785,9 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
   border-radius: var(--radius-md);
 }
 .chart-meta > span { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: #ffffff14; border: 1px solid #ffffff26; border-radius: 999px; }
+/* A standing "you are in the second chart" cue — a wrong-slot round is otherwise only
+   caught by the " — إضافي" suffix on the heading. */
+.chart-meta > span.chart-slot-flag { background: var(--warning); border-color: var(--warning); color: #1a1205; font-weight: 700; }
 .chart-medicine-notice { margin: 0 0 var(--space-3); display: flex; align-items: flex-start; gap: var(--space-3); }
 .chart-medicine-notice .notice-dismiss {
   flex: 0 0 auto;

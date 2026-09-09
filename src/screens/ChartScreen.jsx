@@ -48,6 +48,7 @@ export default function ChartScreen({
     </div>
 
     <div className="chart-meta" inert={asideInert}>
+      {selected.slot === 'extra' && <span className="chart-slot-flag">جارت إضافي</span>}
       {selected.floor && <span>الطابق: <b>{selected.floor}</b></span>}
       <span>الفرع: <b>{selected.ward}</b></span>
       <span>التاريخ: <b>{today}</b> — <b>{todayWeekday}</b></span>

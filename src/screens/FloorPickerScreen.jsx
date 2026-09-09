@@ -1,15 +1,6 @@
 import { floors, specialWards } from '../constants.js'
 import DashboardWidgets, { WardStatusBand } from '../components/DashboardWidgets.jsx'
-import { WardGlyph, ChevronStart, StatusCheck } from '../components/WardGlyph.jsx'
-
-// A manager-only marker for whether this floor/ward already has a chart today. Text, not a
-// bare colour dot: "لم تبدأ" carries the meaning on its own for a screen reader and for anyone
-// who can't tell the greens apart, and the amber vs muted-green treatment is a second channel.
-function CardStatus({ started }) {
-  return started
-    ? <span className="card-status card-status--done"><StatusCheck /> بدأت</span>
-    : <span className="card-status card-status--pending">لم تبدأ</span>
-}
+import { WardGlyph, ChevronStart, CardStatus } from '../components/WardGlyph.jsx'
 
 // The floor/special-ward grid. Which cards a given user may actually see is applied
 // imperatively by an effect in App (it hides cards outside their assignment), so this
@@ -21,13 +12,19 @@ export default function FloorPickerScreen({
   announcementDraft, setAnnouncementDraft, announcementError, announcementBusy,
   onPostAnnouncement, onDeleteAnnouncement,
 }) {
-  const startedWards = dashboard?.startedWards ?? []
-  const startedFloors = new Set(startedWards.filter((item) => item.floor !== null).map((item) => item.floor))
-  const startedSpecialWards = new Set(startedWards.filter((item) => item.floor === null).map((item) => item.ward))
-  const totalCount = floors.length + specialWards.length
-  const startedCount = startedFloors.size + startedSpecialWards.size
+  // Count at ward granularity, not floor: a floor with one of three wards started is one
+  // third done, and the two that haven't are exactly what the morning round is there to
+  // catch. One key per started ward — a ward with both a main and an extra chart comes back
+  // from the dashboard twice.
+  const startedKeys = new Set((dashboard?.startedWards ?? []).map((item) => `${item.floor ?? 'x'}|${item.ward}`))
+  const floorStarted = (floor) => floor.wards.filter((ward) => startedKeys.has(`${floor.number}|${ward}`)).length
+  const startedSpecialWards = new Set(specialWards.filter((ward) => startedKeys.has(`x|${ward}`)))
+  const totalCount = floors.reduce((sum, floor) => sum + floor.wards.length, 0) + specialWards.length
+  const startedCount = floors.reduce((sum, floor) => sum + floorStarted(floor), 0) + startedSpecialWards.size
   const notStartedNames = [
-    ...floors.filter((item) => !startedFloors.has(item.number)).map((item) => `الطابق ${item.number}`),
+    ...floors.flatMap((floor) => floor.wards
+      .filter((ward) => !startedKeys.has(`${floor.number}|${ward}`))
+      .map((ward) => `الطابق ${floor.number} — ${ward}`)),
     ...specialWards.filter((ward) => !startedSpecialWards.has(ward)),
   ]
 
@@ -44,12 +41,12 @@ export default function FloorPickerScreen({
       />
     )}
 
-    <div className="location-grid">{floors.map((item) => {
-      const started = startedFloors.has(item.number)
-      return <button className="location-card location-card--link" key={item.number} onClick={() => onPickFloor(item)}>
-        <span className="floor-number">{item.number}</span>
-        <span className="location-card-body"><strong>الطابق {item.number}</strong><small>{item.wards.length} أروقة فرعية</small></span>
-        {isManager && <CardStatus started={started} />}
+    <div className="location-grid">{floors.map((floor) => {
+      const started = floorStarted(floor)
+      return <button className="location-card location-card--link" key={floor.number} onClick={() => onPickFloor(floor)}>
+        <span className="floor-number">{floor.number}</span>
+        <span className="location-card-body"><strong>الطابق {floor.number}</strong><small>{floor.wards.length} أروقة فرعية</small></span>
+        {dashboard && <CardStatus done={started} total={floor.wards.length} />}
         <span className="arrow"><ChevronStart /></span>
       </button>
     })}{specialWards.map((ward) => {
@@ -57,8 +54,12 @@ export default function FloorPickerScreen({
       return <div className="location-card special" key={ward}>
         <span className="floor-number"><WardGlyph /></span>
         <span className="location-card-body"><strong>{ward}</strong><span className="card-kind">ردهة مستقلة</span></span>
-        {isManager && <CardStatus started={started} />}
-        <span className="ward-card-actions"><button className="secondary-button compact" onClick={() => onOpen({ floor: null, ward, mode: 'chart', slot: 'main' })}>الجارت</button><button className="secondary-button compact" onClick={() => onOpen({ floor: null, ward, mode: 'chart', slot: 'extra' })}>الجارت الإضافي</button><button className="primary-button compact" onClick={() => onOpen({ floor: null, ward, mode: 'pills' })}>الحبوب</button></span>
+        {dashboard && <CardStatus started={started} />}
+        <span className="ward-card-actions">
+          <button className={started ? 'secondary-button compact' : 'primary-button compact'} onClick={() => onOpen({ floor: null, ward, mode: 'chart', slot: 'main' })}>الجارت</button>
+          <button className={started ? 'chart-extra-button compact is-next' : 'chart-extra-button compact'} onClick={() => onOpen({ floor: null, ward, mode: 'chart', slot: 'extra' })}>الجارت الإضافي</button>
+          <button className="primary-button compact" onClick={() => onOpen({ floor: null, ward, mode: 'pills' })}>الحبوب</button>
+        </span>
       </div>
     })}</div>
 
