@@ -86,13 +86,14 @@ export default function ChartScreen({
         hand-off — is it saved, is this today's chart — rides here, not in the scrolling meta row.
         Fixed height, and no other content flows into it: the recovery / clash lines render
         below the grid (.chart-recover-line, .chart-clash-note) so the grid never shifts under
-        a finger. The save chip carries no aria-live — .chart-recover-line announces failures. */}
+        a finger. The save chip is aria-live polite (announces "saved" at a pause on hand-off);
+        .chart-recover-line (role=alert) is what interrupts for a failure. */}
     <div className="active-patient-bar">
       <div className="bar-focus">{activeRow >= 0
         ? <><span className="bar-item"><span className="bar-key">المريض</span><strong>{patientNames[activeRow]?.trim() || 'بلا اسم'}</strong><span className="bar-num">صف {activeRow + 1}</span></span>{activeColumn >= 0 && <span className="bar-item"><span className="bar-key">العلاج</span><strong>{columnMedicines[activeColumn]?.trim() || 'بلا اسم'}</strong><span className="bar-num">عمود {activeColumn + 1}</span></span>}</>
         : <span className="muted">اضغط داخل خلية ليظهر المريض والعلاج هنا</span>}</div>
       {!dateIsToday && <span className="bar-date-warning">⚠ جارت {today} — ليس اليوم</span>}
-      {chartReady && <span className={saveClass}>{saveText}</span>}
+      {chartReady && <span className={saveClass} aria-live="polite">{saveText}</span>}
     </div>
 
     {/* A blank 41×51 grid on a new chart otherwise looks the same as a load that failed and
@@ -123,7 +124,7 @@ export default function ChartScreen({
       </div>}
       <div className="chart-head" inert={(!chartReady || readOnly) || undefined}>
         <div className="chart-head-corner"><img className="patient-header-logo" src={hospitalLogo} alt="" /><span>مستشفى بغداد التعليمي</span><span>وحدة الصيدلة السريرية</span>{selected.floor && <span>الطابق {selected.floor}</span>}<span>{selected.ward}</span><span>{today}</span><span>{todayWeekday}</span></div>
-        <div className="chart-head-scroll" ref={chartHeadRef}><table className="chart-table"><thead><tr>{Array.from({ length: CHART_COLUMNS }, (_, index) => <th key={index} className={activeColumn === index ? 'col-active' : undefined}><input className="medicine-select" list="medicine-options" value={columnMedicines[index]} onChange={(event) => onSetColumnMedicine(index, event.target.value)} onFocus={(event) => { columnFocusValue.current = event.target.value; setActiveColumn(index) }} onBlur={(event) => onCommitColumnMedicine(index, event.target.value, columnFocusValue.current)} placeholder="دواء" title="اكتب أول حروف الدواء واختر من القائمة" aria-label={`اسم الدواء، عمود ${index + 1}`} /></th>)}</tr></thead></table></div>
+        <div className="chart-head-scroll" ref={chartHeadRef}><table className="chart-table" role="presentation"><thead><tr>{Array.from({ length: CHART_COLUMNS }, (_, index) => <th key={index} className={activeColumn === index ? 'col-active' : undefined}><input className="medicine-select" list="medicine-options" value={columnMedicines[index]} onChange={(event) => onSetColumnMedicine(index, event.target.value)} onFocus={(event) => { columnFocusValue.current = event.target.value; setActiveColumn(index) }} onBlur={(event) => onCommitColumnMedicine(index, event.target.value, columnFocusValue.current)} placeholder="دواء" title="اكتب أول حروف الدواء واختر من القائمة" aria-label={`اسم الدواء، عمود ${index + 1}`} /></th>)}</tr></thead></table></div>
       </div>
       {/* inert while another device holds the lock — the poll keeps this view current. */}
       <div className="chart-grid" ref={chartGridRef} inert={(!chartReady || readOnly) || undefined}
@@ -143,17 +144,17 @@ export default function ChartScreen({
           const next = chartDosesRef.current?.querySelector(`tr[data-row="${row}"] td[data-col="${col}"] input`)
           if (next) { event.preventDefault(); next.focus(); next.select() }
         }}>
-        <div className="chart-names"><table className="chart-table"><tbody>{patientNames.map((name, rowIndex) => <tr key={rowIndex} data-row={rowIndex} className={activeRow === rowIndex ? 'active-row' : undefined}>
+        <div className="chart-names"><table className="chart-table" role="presentation"><tbody>{patientNames.map((name, rowIndex) => <tr key={rowIndex} data-row={rowIndex} className={activeRow === rowIndex ? 'active-row' : undefined}>
           <th className="patient-cell">
             <input value={name} onChange={(event) => onSetPatientName(rowIndex, event.target.value)} placeholder={`مريض ${rowIndex + 1}`} aria-label={`اسم المريض، صف ${rowIndex + 1}`} />
             {activeRow === rowIndex && name.trim() && <button type="button" className="row-delete" aria-label={`حذف صف ${rowIndex + 1}`} title="حذف الصف" onPointerDown={(event) => event.preventDefault()} onMouseDown={(event) => event.preventDefault()} onClick={() => onCollapseRow(rowIndex)}>✕</button>}
           </th>
         </tr>)}</tbody></table></div>
-        <div className="chart-doses" ref={chartDosesRef}><table className="chart-table" role="grid" aria-label="جدول الجرعات — الأسهم للتنقّل بين الخلايا">{/* one grid; each cell's aria-label already carries its patient + medicine */}<tbody>{patientNames.map((name, rowIndex) => <ChartDoseRow key={rowIndex} rowIndex={rowIndex} patientName={name} quantities={quantities[rowIndex]} columnMedicines={columnMedicines} isActiveRow={activeRow === rowIndex} activeColumn={activeColumn} gridInactive={activeRow < 0} labelBelow={labelBelow} droppedCells={droppedCells} onUpdateQuantity={onUpdateQuantity} />)}</tbody></table></div>
+        <div className="chart-doses" ref={chartDosesRef}><table className="chart-table" role="grid" aria-label="جدول الجرعات — الأسهم للتنقّل بين الخلايا" aria-rowcount={patientNames.length} aria-colcount={CHART_COLUMNS}>{/* one grid; each cell's aria-label already carries its patient + medicine */}<tbody>{patientNames.map((name, rowIndex) => <ChartDoseRow key={rowIndex} rowIndex={rowIndex} patientName={name} quantities={quantities[rowIndex]} columnMedicines={columnMedicines} isActiveRow={activeRow === rowIndex} activeColumn={activeColumn} gridInactive={activeRow < 0} labelBelow={labelBelow} droppedCells={droppedCells} onUpdateQuantity={onUpdateQuantity} />)}</tbody></table></div>
       </div>
       <div className="chart-foot">
         <div className="chart-foot-corner"><span>المجموع</span>{isThursday && <span>المجموع المضاعف</span>}</div>
-        <div className="chart-foot-scroll" ref={chartFootRef}><table className="chart-table"><tfoot><tr>{totals.map((total, index) => <td key={index}>{total || ''}</td>)}</tr>{isThursday && <tr className="doubled-row">{totals.map((total, index) => <td key={index}>{total ? total * 2 : ''}</td>)}</tr>}</tfoot></table></div>
+        <div className="chart-foot-scroll" ref={chartFootRef}><table className="chart-table" role="presentation"><tfoot><tr>{totals.map((total, index) => <td key={index}>{total || ''}</td>)}</tr>{isThursday && <tr className="doubled-row">{totals.map((total, index) => <td key={index}>{total ? total * 2 : ''}</td>)}</tr>}</tfoot></table></div>
       </div>
     </div>
 

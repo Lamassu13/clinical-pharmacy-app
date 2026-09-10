@@ -14,8 +14,16 @@ button, input, select { font: inherit; }
 button { cursor: pointer; }
 
 :focus-visible { outline: 2px solid var(--primary, #087c54); outline-offset: 2px; }
-input:focus-visible, select:focus-visible { outline: none; }
+/* Text/select fields get a ring via box-shadow instead (App.css). Checkboxes and radios keep
+   the outline above — a box-shadow ring on a 16px native checkbox is barely visible. */
+input:not([type="checkbox"]):not([type="radio"]):focus-visible, select:focus-visible { outline: none; }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+  /* Stop decorative and looping animation (splash, skeleton shimmer, spinner). The short
+     color/border/transform transitions are state feedback, not motion for its own sake —
+     leave them so a hover, a focus ring and a disclosure still register. */
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }

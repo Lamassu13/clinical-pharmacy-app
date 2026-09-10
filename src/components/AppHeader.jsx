@@ -59,7 +59,7 @@ function AdminMenu({ isAdmin, adminView, onNavigate }) {
 export default function AppHeader({ theme, onToggleTheme, currentUser, onLogout, onHome, onMyWard, isAdmin, isManager, adminView, onNavigate }) {
   return <header className="topbar">
     <TopBarBrand onClick={onHome} />
-    <nav className="user-menu">
+    <nav className="user-menu" aria-label="أدوات الحساب">
       {onMyWard && <button type="button" className="secondary-button compact my-ward-button" onClick={onMyWard}>ردهتي اليوم</button>}
       {isManager && <AdminMenu isAdmin={isAdmin} adminView={adminView} onNavigate={onNavigate} />}
       {isManager && <span className="topbar-divider" aria-hidden="true" />}
