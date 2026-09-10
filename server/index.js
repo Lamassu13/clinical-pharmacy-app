@@ -376,6 +376,9 @@ app.put('/api/access/:userId', requireManager, async (request, response) => {
 //  - startedWards: which known floors/wards have a chart for `date` that a pharmacist has
 //    actually begun — at least one named patient AND at least one entered quantity, so a
 //    chart that was only opened (the first autosave writes an empty row) does not count.
+//    Each carries `updatedAt` and `minutesQuiet` (whole minutes since the last save, at
+//    query time) so the manager's status band can flag a ward that started and then went
+//    silent mid-round — the "check on this one" signal the started/not-started split misses.
 //  - topMedicines: the highest-quantity medicines. A manager sees every ward over a chosen
 //    window (today / week / month); anyone else sees only their own floor or wards, for the
 //    day. No patient names in either — the floor/ward grid is already visible to everyone.
@@ -406,7 +409,8 @@ app.get('/api/dashboard', requireAuth, async (request, response) => {
 
   const pending = [
     query(
-      `SELECT w.floor_number, w.name
+      `SELECT w.floor_number, w.name, dc.slot, dc.updated_at,
+              GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (NOW() - dc.updated_at)) / 60))::int AS minutes_quiet
        FROM wards w
        JOIN daily_charts dc ON dc.ward_id = w.id
        WHERE dc.chart_date = $1
@@ -445,7 +449,10 @@ app.get('/api/dashboard', requireAuth, async (request, response) => {
   ]
   const [started, topMedicines, patientsByFloor] = await Promise.all(pending)
   response.json({
-    startedWards: started.rows.map((row) => ({ floor: row.floor_number, ward: row.name })),
+    startedWards: started.rows.map((row) => ({
+      floor: row.floor_number, ward: row.name, slot: row.slot,
+      updatedAt: row.updated_at, minutesQuiet: row.minutes_quiet,
+    })),
     topMedicines: topMedicines.rows.filter((row) => row.name).map((row) => ({ name: row.name, quantity: row.quantity })),
     medicinesPeriod: isManager ? (PERIOD_DAYS[request.query.period] ? request.query.period : 'month') : 'today',
     medicinesScope: isManager ? 'all' : 'own',

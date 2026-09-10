@@ -36,7 +36,7 @@ function SkeletonRows({ count = 3 }) {
 const FOLD_THRESHOLD = 12
 const FOLD_KEEP = 8
 
-export function WardStatusBand({ startedCount, totalCount, notStarted = [], onPickFloor, onOpen, loading, error, onRetry }) {
+export function WardStatusBand({ startedCount, totalCount, notStarted = [], quietWards = [], onPickFloor, onOpen, loading, error, onRetry }) {
   if (error) {
     return <div className="ward-status-band"><DashboardError onRetry={onRetry} /></div>
   }
@@ -58,6 +58,21 @@ export function WardStatusBand({ startedCount, totalCount, notStarted = [], onPi
         className="ward-status-chip"
         onClick={() => (entry.floor ? onPickFloor(entry.floor) : onOpen({ floor: null, ward: entry.ward, mode: 'chart', slot: 'main' }))}
       >{entry.label}</button>
+    </li>
+  )
+
+  // A started chart that has gone quiet — open it directly (not the floor list): the manager
+  // is checking whether it stalled or just finished.
+  const quietChip = (entry) => (
+    <li key={entry.key}>
+      <button
+        type="button"
+        className="ward-status-chip ward-status-chip--quiet"
+        onClick={() => onOpen({ floor: entry.floor, ward: entry.ward, mode: 'chart', slot: entry.slot })}
+      >
+        <span>{entry.label}</span>
+        <span className="ward-status-chip-time">آخر تعديل {new Date(entry.updatedAt).toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' })}</span>
+      </button>
     </li>
   )
 
@@ -86,6 +101,12 @@ export function WardStatusBand({ startedCount, totalCount, notStarted = [], onPi
               <ul>{folded.map(chip)}</ul>
             </details>
           )}
+        </div>
+      )}
+      {quietWards.length > 0 && (
+        <div className="ward-status-band-pending ward-status-band-quiet">
+          <span className="ward-status-band-pending-label">بدأت لكنها هادئة منذ فترة — راجِعها</span>
+          <ul>{quietWards.map(quietChip)}</ul>
         </div>
       )}
     </div>

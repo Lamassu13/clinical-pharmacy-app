@@ -32,6 +32,21 @@ export default function FloorPickerScreen({
       .map((ward) => ({ label: ward, floor: null, ward })),
   ]
 
+  // Started charts with no save for a while — "began the round here, then went silent". The
+  // started / not-started split alone can't tell a finished ward from a stalled one; this can.
+  const QUIET_AFTER_MIN = 15
+  const quietWards = (dashboard?.startedWards ?? [])
+    .filter((item) => (item.minutesQuiet ?? 0) >= QUIET_AFTER_MIN)
+    .sort((a, b) => (b.minutesQuiet ?? 0) - (a.minutesQuiet ?? 0))
+    .map((item) => ({
+      key: `${item.floor ?? 'x'}|${item.ward}|${item.slot || 'main'}`,
+      label: `${item.floor ? `الطابق ${item.floor} — ${item.ward}` : item.ward}${item.slot === 'extra' ? ' — إضافي' : ''}`,
+      floor: item.floor ?? null,
+      ward: item.ward,
+      slot: item.slot || 'main',
+      updatedAt: item.updatedAt,
+    }))
+
   // For a manager reading the band, the grid is a second copy of the same 26 wards — so lead
   // with the floors that still need pushing and fold the finished ones out of the way.
   const managerView = isManager && dashboard
@@ -69,7 +84,7 @@ export default function FloorPickerScreen({
 
     {isManager && (
       <WardStatusBand
-        startedCount={startedCount} totalCount={totalCount} notStarted={notStarted}
+        startedCount={startedCount} totalCount={totalCount} notStarted={notStarted} quietWards={quietWards}
         onPickFloor={onPickFloor} onOpen={onOpen}
         loading={dashboardLoading} error={dashboardError} onRetry={onRetryDashboard}
       />

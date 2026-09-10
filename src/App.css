@@ -545,6 +545,14 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
   transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
 }
 .ward-status-chip:hover, .ward-status-chip:focus-visible { border-color: var(--green-300); background: var(--green-100); color: var(--primary-hover); }
+/* "Started but quiet" — a distinct group from never-started, so a rule sets it apart when
+   both lists show. Same attention ground, but the chip carries the last-save time and a
+   visible amber edge: "someone was here, then stopped". */
+.ward-status-band-quiet { border-top: 1px solid var(--border); padding-top: var(--space-3); }
+.ward-status-chip--quiet { gap: var(--space-2); border-color: var(--warning); }
+.ward-status-chip--quiet .ward-status-chip-time { font-weight: 400; color: var(--text-muted); white-space: nowrap; }
+.ward-status-chip--quiet:hover .ward-status-chip-time,
+.ward-status-chip--quiet:focus-visible .ward-status-chip-time { color: inherit; }
 .ward-status-band-more { margin-top: var(--space-2); }
 .ward-status-band-more > summary {
   display: inline-flex;

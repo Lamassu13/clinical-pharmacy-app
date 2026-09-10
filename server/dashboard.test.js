@@ -76,6 +76,23 @@ test('GET /api/dashboard startedWards: a ward counts only with a named patient A
   assert.ok(started.some((item) => item.floor === null && item.ward === 'ردهة الديلزة'))
 })
 
+test('GET /api/dashboard startedWards: each carries slot, updatedAt and minutesQuiet (minutes since last save)', async () => {
+  const user = await createUser({ role: 'user', floor: 5 })
+  const freshId = await seedChart({ floor: 5, ward: 'ردهة رجال', date: DATE, createdBy: user.id })
+  const staleId = await seedChart({ floor: 5, ward: 'ردهة النساء', date: DATE, createdBy: user.id })
+  await pool.query("UPDATE daily_charts SET updated_at = NOW() - INTERVAL '40 minutes' WHERE id = $1", [staleId])
+  await pool.query("UPDATE daily_charts SET updated_at = NOW() WHERE id = $1", [freshId])
+
+  const client = await loginAs({ role: 'admin' })
+  const started = (await client.get(`/api/dashboard?date=${DATE}`)).body.startedWards
+  const fresh = started.find((item) => item.ward === 'ردهة رجال')
+  const stale = started.find((item) => item.ward === 'ردهة النساء')
+  assert.equal(fresh.slot, 'main')
+  assert.ok(typeof fresh.updatedAt === 'string' && !Number.isNaN(Date.parse(fresh.updatedAt)))
+  assert.ok(fresh.minutesQuiet <= 1, `fresh chart should read ~0 min quiet, got ${fresh.minutesQuiet}`)
+  assert.ok(stale.minutesQuiet >= 39 && stale.minutesQuiet <= 41, `stale chart should read ~40 min, got ${stale.minutesQuiet}`)
+})
+
 test('GET /api/dashboard topMedicines (manager): sums across every ward, ranks by quantity, and honours the period window', async () => {
   const user = await createUser({ role: 'user', floor: 5 })
   const medicine = (await pool.query("INSERT INTO medicines (name) VALUES ('Amoxicillin Cap') RETURNING id")).rows[0]
