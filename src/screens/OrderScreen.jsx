@@ -35,7 +35,7 @@ export default function OrderScreen({ header, wardLabel, today, onBack, selected
               <thead><tr><th scope="col">التسلسل</th><th scope="col">اسم الدواء</th><th scope="col">الكمية</th><th scope="col">الكمية كتابةً</th></tr></thead>
               <tbody>{items.map((item, index) => <tr key={item.name}>
                 <td className="order-serial">{index + 1}</td>
-                <td>{item.name}</td>
+                <td lang="en">{item.name}</td>
                 <td className="order-qty">{item.quantity}</td>
                 <td>{item.quantityWords}</td>
               </tr>)}</tbody>

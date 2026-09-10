@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
-import hospitalLogo from './assets/hospital-logo.png'
-import { roleLabels, PATIENT_ROWS, CHART_COLUMNS, apiUrl } from './constants.js'
+import { roleLabels, PATIENT_ROWS, CHART_COLUMNS, apiUrl, floors, specialWards } from './constants.js'
 import { mergeChartSnapshots, parseChartRows, toEnglishDigits, medicineKey, nearestMedicine, UNIT_ONE, isSyringe, VIAL_AMP, SYRINGE_EXCLUDE, isoDate, locationBody, pillEntryList } from './helpers.js'
 import ConfirmDialog from './components/ConfirmDialog.jsx'
 import AppHeader from './components/AppHeader.jsx'
@@ -84,11 +83,6 @@ function App() {
   // falling to <body>. danger: turns the confirm button danger-styled for irreversible actions.
   const askConfirm = useCallback((message, { danger = false } = {}) => new Promise((resolve) => setConfirmDialog({ message, danger, opener: document.activeElement, resolve })), [])
   const resolveConfirm = useCallback((value) => { setConfirmDialog((current) => { current?.resolve(value); current?.opener?.focus?.(); return null }) }, [])
-  // Set for one beat right after a real login succeeds, so the dashboard can dissolve in
-  // instead of cutting to it instantly. Cleared on a timer rather than left mounted, so
-  // navigating between the dashboard and the admin/chart/pills screens afterward — which all
-  // share the same app-shell wrapper — never re-triggers it.
-  const [justLoggedIn, setJustLoggedIn] = useState(false)
   // Row currently being typed into, for the patient banner above the grid. One state
   // change per focus move — far cheaper than the re-render every keystroke already costs.
   const [activeRow, setActiveRow] = useState(-1)
@@ -235,10 +229,57 @@ function App() {
     return { unit, syringe, vialAmp }
   }, [columnMedicines])
 
+  // A 10-second window to reverse the last destructive chart edit (row delete, copy-forward).
+  // { message, undoFn } — undoFn puts the grid back; the autosave effect then re-PUTs it.
+  const [undo, setUndo] = useState(null)
+  const undoTimerRef = useRef(null)
+  const offerUndo = useCallback((message, undoFn) => {
+    clearTimeout(undoTimerRef.current)
+    setUndo({ message, undoFn })
+    undoTimerRef.current = setTimeout(() => setUndo(null), 10000)
+  }, [])
+  const takeUndo = useCallback(() => {
+    clearTimeout(undoTimerRef.current)
+    setUndo((current) => { current?.undoFn(); return null })
+  }, [])
+
+  // After a stale-lock merge, the cells where this tab's value won and the other device's was
+  // dropped: { "row:col": theirValue }. Shown on the grid as a "كان: X" tag until the
+  // pharmacist edits the cell or dismisses the clash note — so a silently-reverted dose is visible.
+  const [droppedCells, setDroppedCells] = useState({})
+
+  // The picker shows a plain user only their assigned floor/ward; a manager sees the unit. This
+  // replaces a post-paint effect that hid cards by reading their DOM text.
+  const visibleFloors = useMemo(
+    () => (isManager ? floors : floors.filter((item) => item.number === currentUser?.assignedFloor)),
+    [isManager, currentUser],
+  )
+  const visibleSpecialWards = useMemo(
+    () => (isManager ? specialWards : specialWards.filter((ward) => (currentUser?.assignedWards || []).includes(ward))),
+    [isManager, currentUser],
+  )
+  const assignedFloorObj = useMemo(
+    () => floors.find((item) => item.number === currentUser?.assignedFloor) || null,
+    [currentUser],
+  )
+  const didAutoLandRef = useRef(false)
+
   useEffect(() => {
     fetch(`${apiUrl}/auth/me`, { credentials: 'include' })
       .then((response) => response.json())
-      .then((result) => { if (result.user) { setCurrentUser(result.user); setIsLoggedIn(true) } })
+      .then((result) => {
+        if (!result.user) return
+        setCurrentUser(result.user)
+        setIsLoggedIn(true)
+        // Restore the ward/date open before a refresh or iOS tab-kill (only once we know the
+        // session is still good — otherwise a 401 chart-load would flash the expiry screen).
+        try {
+          const nav = JSON.parse(sessionStorage.getItem('cpa-nav') || 'null')
+          if (nav?.selectedDate) setSelectedDate(nav.selectedDate)
+          if (nav?.floor) setFloor(nav.floor)
+          if (nav?.selected) { didAutoLandRef.current = true; setSelected(nav.selected) }
+        } catch { /* storage unavailable or corrupt — start on the picker */ }
+      })
       .catch(() => undefined)
   }, [])
 
@@ -252,7 +293,6 @@ function App() {
       if (!response.ok) throw new Error(result.message || 'تعذر تسجيل الدخول')
       setCurrentUser(result.user)
       setIsLoggedIn(true)
-      setJustLoggedIn(true)
       // Back on the same screen with the same unsaved chart; the autosave effect resumes.
       setSessionExpired(false)
     } catch (error) { setLoginError(error.message || 'تعذر الاتصال بالخادم') } finally { setBusy(false) }
@@ -483,7 +523,15 @@ function App() {
       .catch(() => setLockState('editing'))
       .finally(() => { claimingLockRef.current = false })
   }, [lockState, selected, selectedDate, isExpired])
-  const updateQuantity = useCallback((rowIndex, columnIndex, value) => { noteChartEdit(); setQuantities((current) => current.map((row, currentRow) => {
+  const updateQuantity = useCallback((rowIndex, columnIndex, value) => { noteChartEdit()
+    // Editing a cell that still carries a post-merge "كان: X" tag resolves it — the pharmacist
+    // has now made a deliberate call on that dose.
+    setDroppedCells((current) => {
+      const cellKey = `${rowIndex}:${columnIndex}`
+      if (!(cellKey in current)) return current
+      const next = { ...current }; delete next[cellKey]; return next
+    })
+    setQuantities((current) => current.map((row, currentRow) => {
     if (currentRow !== rowIndex) return row
     // Digits only, capped at 4: a dose count never needs 5 digits, and an Excel paste that
     // concatenates a whole selection into one cell would otherwise save a nonsense number
@@ -557,25 +605,32 @@ function App() {
     }))
   }, [noteChartEdit, patientNames, specialColumns])
   // Remove a patient row and pull every following row up one, keeping the grid at PATIENT_ROWS.
-  // Triggered only by the explicit ✕ on the active row, and gated by a confirm: this deletes
-  // the patient's whole dose line and renumbers every row below it, and there is no undo.
+  // Triggered only by the explicit ✕ on the active row, gated by a confirm, and reversible for
+  // 10s via the undo toast (grid only — see the ponytail note on the server call below).
   const collapseRow = useCallback(async (rowIndex) => {
     const label = patientNames[rowIndex]?.trim() || `مريض ${rowIndex + 1}`
-    if (!(await askConfirm(`حذف صف «${label}»؟ ستُحذف كل جرعاته وستنتقل الصفوف التالية صفًّا واحدًا للأعلى — بلا تراجع.`, { danger: true }))) return
+    if (!(await askConfirm(`حذف صف «${label}»؟ ستُحذف كل جرعاته وستنتقل الصفوف التالية صفًّا واحدًا للأعلى.`, { danger: true }))) return
+    const prevNames = patientNames
+    const prevQuantities = quantities
     setPatientNames((current) => { const next = current.filter((_, index) => index !== rowIndex); next.push(''); return next })
     setQuantities((current) => { const next = current.filter((_, index) => index !== rowIndex); next.push(Array(CHART_COLUMNS).fill('')); return next })
+    offerUndo(`حُذف صف «${label}»`, () => { noteChartEdit(); setPatientNames(prevNames); setQuantities(prevQuantities) })
     // The ✕ that was just clicked has unmounted; without this focus falls to <body> right
     // after a destructive confirm. Land on the name of whoever moved up into this row.
     requestAnimationFrame(() => chartGridRef.current?.querySelector(`.chart-names tr[data-row="${rowIndex}"] input`)?.focus())
     // The pill form's dose times and room numbers are keyed by row number and live only on
     // the server, so they have to be pulled up by one as well. Left behind, they reattach to
     // whoever moves into the row — the next patient inherits the deleted one's room number.
+    // ponytail: fired immediately, so an undo restores the chart grid but not this server-side
+    // renumber. Pill rooms only matter on the pills form (a separate mode); the room can be
+    // re-typed there if it moved. Deferring this call to the undo window would avoid that, at
+    // the cost of a navigation-vs-timer race on a shared iPad.
     if (!selected || selected.mode !== 'chart') return
     fetch(`${apiUrl}/chart/collapse-row`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
       body: JSON.stringify({ floor: selected.floor, ward: selected.ward, date: selectedDate, slot: selected.slot || 'main', rowNumber: rowIndex + 1 }),
     }).catch(() => undefined)
-  }, [askConfirm, patientNames, selected, selectedDate])
+  }, [askConfirm, patientNames, quantities, selected, selectedDate, offerUndo, noteChartEdit])
   const buildChartBody = useCallback((date) => ({
     floor: selected?.floor ?? null,
     ward: selected?.ward,
@@ -603,19 +658,31 @@ function App() {
     const adopted = []
     merged.patientNames.forEach((value, row) => { if (value !== (mine.patientNames[row] ?? '')) adopted.push(`اسم المريض صف ${row + 1}`) })
     merged.columnMedicines.forEach((value, col) => { if (value !== (mine.columnMedicines[col] ?? '')) adopted.push(`دواء عمود ${col + 1}`) })
+    // Dose cells where this tab's value won and the other device's differed: keep the other
+    // number so the grid can show "كان: X" on that cell until the pharmacist rules on it.
+    const dropped = {}
     merged.quantities.forEach((cells, row) => cells.forEach((value, col) => {
-      if (value === (mine.quantities[row]?.[col] ?? '')) return
-      const who = merged.patientNames[row]?.trim() || `صف ${row + 1}`
-      const drug = merged.columnMedicines[col]?.trim() || `عمود ${col + 1}`
-      adopted.push(`${who} — ${drug}`)
+      const mineValue = mine.quantities[row]?.[col] ?? ''
+      const freshValue = fresh.quantities[row]?.[col] ?? ''
+      if (value !== mineValue) {
+        const who = merged.patientNames[row]?.trim() || `صف ${row + 1}`
+        const drug = merged.columnMedicines[col]?.trim() || `عمود ${col + 1}`
+        adopted.push(`${who} — ${drug}`)
+      } else if (freshValue !== mineValue) {
+        dropped[`${row}:${col}`] = freshValue || '—'
+      }
     }))
     setPatientNames(merged.patientNames)
     setColumnMedicines(merged.columnMedicines)
     setQuantities(merged.quantities)
+    setDroppedCells(dropped)
     chartVersionRef.current = result.chart ? result.chart.version : 0
     lastSyncedChartRef.current = fresh
-    if (adopted.length) {
-      setChartClashNote(`${adopted.length} حقلًا من جهاز آخر دُمج في هذا الجارت — راجِعها: ${adopted.slice(0, 4).join('، ')}${adopted.length > 4 ? '…' : ''}.`)
+    if (adopted.length || Object.keys(dropped).length) {
+      const parts = []
+      if (adopted.length) parts.push(`${adopted.length} حقلًا دُمج من جهاز آخر`)
+      if (Object.keys(dropped).length) parts.push(`${Object.keys(dropped).length} خلية اختلفت فيها قيمتك — تُعرض قيمة الجهاز الآخر بجانبها («كان: …»)`)
+      setChartClashNote(`${parts.join(' · ')}. راجِعها${adopted.length ? `: ${adopted.slice(0, 4).join('، ')}${adopted.length > 4 ? '…' : ''}` : ''}.`)
     }
   }, [columnMedicines, patientNames, quantities, selected])
   // Fire an immediate save (survives navigation / tab close) — only once the grid is loaded,
@@ -632,12 +699,25 @@ function App() {
     const entries = pillEntryList(pillEntries)
     try { fetch(`${apiUrl}/pills`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', keepalive: true, body: JSON.stringify({ floor: selected.floor, ward: selected.ward, slot: selected.slot || 'main', date: selectedDate, entries, rooms: pillRooms }) }) } catch { /* retry on next visit */ }
   }, [isLoggedIn, loadedPillsKey, pillEntries, pillRooms, pillsData, selected, selectedDate])
-  const goHome = useCallback(() => {
+  const goHome = useCallback(async () => {
+    // The brand logo is "home"; mid-chart with edits still in flight, a stray tap on a shared
+    // iPad shouldn't drop the round without a word. Only asks while something is actually unsaved.
+    if (selected?.mode === 'chart' && chartSaveStatus !== 'saved'
+      && !(await askConfirm('العودة إلى قائمة الطوابق؟ سيُحفَظ ما كتبته.'))) return
     if (selected?.mode === 'pills') flushPills(); else flushChart()
     setSelected(null)
     setFloor(null)
     setAdminView(null)
-  }, [selected, flushChart, flushPills])
+  }, [selected, flushChart, flushPills, chartSaveStatus, askConfirm])
+  // Jump straight to the assigned floor's ward list — a persistent shortcut for the
+  // one-pharmacist-one-floor case, and the target of the auto-land on login.
+  const goToMyWard = useCallback(() => {
+    if (!assignedFloorObj) return
+    if (selected?.mode === 'pills') flushPills(); else flushChart()
+    setSelected(null)
+    setAdminView(null)
+    setFloor(assignedFloorObj)
+  }, [assignedFloorObj, selected, flushChart, flushPills])
   // Ending the session is the likeliest accidental tap on a shared iPad, so it keeps the
   // session-expired screen's promise: flush any debounced edits first, and if something still
   // is not confirmed saved, say so before tearing down — the work stays mirrored on this
@@ -648,6 +728,8 @@ function App() {
     const unsaved = Boolean(selected) && (selected.mode === 'pills' ? pillsSaveStatus : chartSaveStatus) !== 'saved'
     if (unsaved && !(await askConfirm('لا يزال هناك ما لم يُحفَظ على الخادم. إن سجّلت الخروج الآن يبقى على هذا الجهاز ويُعاد حفظه فور دخولك من جديد. متابعة تسجيل الخروج؟'))) return
     try { await fetch(`${apiUrl}/auth/logout`, { method: 'POST', credentials: 'include' }) } catch { /* ignore network errors on logout */ }
+    didAutoLandRef.current = false
+    try { sessionStorage.removeItem('cpa-nav') } catch { /* storage unavailable */ }
     setIsLoggedIn(false)
     setCurrentUser(null)
     setAdminView(null)
@@ -801,6 +883,7 @@ function App() {
     setCopyError(false)
     setLastChartSaveAt(null)
     setChartClashNote(null)
+    setDroppedCells({})
     setLockState('idle')
     setLockHolder(null)
     let cancelled = false
@@ -860,10 +943,34 @@ function App() {
     const chartKey = selected ? `${selected.floor || 'special'}-${selected.ward}-${selectedDate}-${selected.slot || 'main'}` : null
     if (!selected || selected.mode !== 'chart' || loadedChartKey !== chartKey) return undefined
     try {
-      localStorage.setItem(`cpa-chart-draft:${chartKey}`, JSON.stringify({ base: lastSyncedChartRef.current, current: { patientNames, columnMedicines, quantities } }))
+      // `meta` lets the picker's resume card name the ward/date without parsing the key
+      // (which contains dashes from the ISO date). The load effect ignores it.
+      const meta = { floor: selected.floor ?? null, ward: selected.ward, date: selectedDate, slot: selected.slot || 'main' }
+      localStorage.setItem(`cpa-chart-draft:${chartKey}`, JSON.stringify({ meta, base: lastSyncedChartRef.current, current: { patientNames, columnMedicines, quantities } }))
     } catch { /* storage unavailable or full — the network autosave is still the source of truth */ }
     return undefined
   }, [columnMedicines, loadedChartKey, patientNames, quantities, selected, selectedDate])
+
+  // An unsynced chart draft left by a killed tab, surfaced on the picker as a one-tap "resume".
+  // Recomputed when navigation lands back on the picker; a draft is cleared by the load effect
+  // once its edits reach the server, so a lingering one really is unfinished work.
+  const resumeDraft = useMemo(() => {
+    if (!isLoggedIn || floor || selected || adminView) return null
+    try {
+      for (let i = 0; i < localStorage.length; i += 1) {
+        const key = localStorage.key(i)
+        if (!key || !key.startsWith('cpa-chart-draft:')) continue
+        const parsed = JSON.parse(localStorage.getItem(key) || 'null')
+        if (parsed?.meta?.ward) return parsed.meta
+      }
+    } catch { /* storage unavailable */ }
+    return null
+  }, [isLoggedIn, floor, selected, adminView])
+  const resumeFromDraft = useCallback(() => {
+    if (!resumeDraft) return
+    if (resumeDraft.date) setSelectedDate(resumeDraft.date)
+    setSelected({ floor: resumeDraft.floor, ward: resumeDraft.ward, mode: 'chart', slot: resumeDraft.slot || 'main' })
+  }, [resumeDraft])
 
   useEffect(() => {
     const chartKey = selected ? `${selected.floor || 'special'}-${selected.ward}-${selectedDate}-${selected.slot || 'main'}` : null
@@ -1055,26 +1162,34 @@ function App() {
     setSelectedDate(nextDate)
   }, [flushChart])
   const copyToNextDay = useCallback(async () => {
+    if (!selected) { setCopyError(true); return }
     const nextDate = isoDate(new Date(`${selectedDate}T12:00:00`).getTime() + 86400000)
-    if (!(await askConfirm(`نسخ جارت ${today} إلى اليوم التالي؟ سيُستبدل أي جارت محفوظ في ذلك اليوم.`))) return
     setCopyError(false)
     flushChart()
+    // Fetch the target day first so the confirm can say whether it is about to overwrite real
+    // work. expectedVersion also has to match THAT chart, not chartVersionRef (which tracks the
+    // chart being copied FROM); fetching fresh keeps the overwrite version-gated — a genuine
+    // concurrent edit on nextDate still 409s instead of being silently discarded.
+    let targetResult
     try {
-      if (!selected) throw new Error('copy failed')
-      // This intentionally overwrites whatever is already on nextDate (the confirmation
-      // above says so), so expectedVersion has to match THAT chart, not chartVersionRef —
-      // which is still tracking the chart being copied FROM. Fetching it fresh keeps the
-      // overwrite version-gated too: a genuine concurrent edit on nextDate in the moment
-      // between this GET and the PUT below still 409s instead of silently being discarded.
       const params = new URLSearchParams({ floor: selected.floor || '', ward: selected.ward, slot: selected.slot || 'main', date: nextDate })
       const targetResponse = await fetch(`${apiUrl}/chart?${params}`, { credentials: 'include' })
-      const targetResult = targetResponse.ok ? await targetResponse.json() : { chart: null }
+      targetResult = targetResponse.ok ? await targetResponse.json() : { chart: null }
+    } catch { setCopyError(true); return }
+    const targetCount = (targetResult.chart?.patients || []).filter((patient) => patient.patient_name?.trim()).length
+    const warn = targetCount > 0 ? `اليوم التالي يحتوي جارت بـ ${targetCount} مريض — سيُستبدل بالكامل.` : 'اليوم التالي فارغ.'
+    if (!(await askConfirm(`نسخ جارت ${today} إلى اليوم التالي؟ ${warn}`, { danger: targetCount > 0 }))) return
+    try {
       const body = { ...buildChartBody(nextDate), expectedVersion: targetResult.chart ? targetResult.chart.version : 0 }
       const response = await fetch(`${apiUrl}/chart`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body) })
       if (!response.ok) throw new Error('copy failed')
+      const sourceDate = selectedDate
       setSelectedDate(nextDate)
+      // ponytail: undo returns you to the source day (untouched there). It does not restore what
+      // the next day held before the copy — the informed confirm above is the guard for that.
+      offerUndo('نُسخ الجارت إلى اليوم التالي', () => setSelectedDate(sourceDate))
     } catch { setCopyError(true) }
-  }, [askConfirm, buildChartBody, flushChart, selected, selectedDate, today])
+  }, [askConfirm, buildChartBody, flushChart, selected, selectedDate, today, offerUndo])
 
   // Keep the latest handlers in refs. They are rebuilt on every patientNames change
   // (via buildChartBody -> flushChart), and depending on them directly made the effect
@@ -1133,21 +1248,27 @@ function App() {
     // three strips no longer scroll together.
   }, [selected, sessionExpired])
 
+  // A one-floor pharmacist's whole daily job is one ward's chart — land them on that floor's
+  // ward list instead of a picker with a single card. Once per login, and never over an
+  // admin screen or a chart they navigated to directly (e.g. via the resume card).
   useEffect(() => {
-    // The floor-number filter is the floor picker's job only. On the ward picker (a floor is
-    // selected) the same `.location-card:not(.special)` selector matches ward cards whose
-    // `.floor-number` is a glyph, not a number — so keep them all shown; the user already
-    // cleared the floor gate to reach them.
-    document.querySelectorAll('.location-card:not(.special)').forEach((card) => {
-      if (floor) { card.hidden = false; return }
-      const number = Number(card.querySelector('.floor-number')?.textContent)
-      card.hidden = !isManager && number !== currentUser?.assignedFloor
-    })
-    document.querySelectorAll('.location-card.special').forEach((card) => {
-      const wardName = card.querySelector('strong')?.textContent
-      card.hidden = !isManager && !(currentUser?.assignedWards || []).includes(wardName)
-    })
-  }, [currentUser, isManager, floor, selected])
+    if (didAutoLandRef.current) return
+    if (isLoggedIn && !isManager && assignedFloorObj && !floor && !selected && !adminView) {
+      didAutoLandRef.current = true
+      setFloor(assignedFloorObj)
+    }
+  }, [isLoggedIn, isManager, assignedFloorObj, floor, selected, adminView])
+
+  // Persist the open ward/date so a refresh or an iOS tab-kill+restore comes back here instead
+  // of the floor picker (the restore itself runs in the /auth/me effect above, once the
+  // session is confirmed). sessionStorage, so it clears when the tab really closes.
+  useEffect(() => {
+    try {
+      if (selected || floor) sessionStorage.setItem('cpa-nav', JSON.stringify({ selected, floor, selectedDate }))
+      else sessionStorage.removeItem('cpa-nav')
+    } catch { /* storage unavailable */ }
+  }, [selected, floor, selectedDate])
+
   useEffect(() => {
     if (!showMedicineForm) return undefined
     const opener = document.activeElement
@@ -1155,13 +1276,6 @@ function App() {
     window.addEventListener('keydown', onKey)
     return () => { window.removeEventListener('keydown', onKey); opener?.focus?.() }
   }, [showMedicineForm])
-  useEffect(() => {
-    if (!justLoggedIn) return undefined
-    // Matches .login-dissolve's animation: .7s duration + .15s delay.
-    const timer = setTimeout(() => setJustLoggedIn(false), 850)
-    return () => clearTimeout(timer)
-  }, [justLoggedIn])
-
   // Rendered by every screen that can raise it, not just the chart. askConfirm() is also
   // called from the users and medicines screens, and a dialog whose JSX never renders leaves
   // its promise pending forever: the click silently does nothing, and the dialog then ambushes
@@ -1175,7 +1289,7 @@ function App() {
 
   if (sessionExpired) return <SessionExpiredScreen credentials={credentials} setCredentials={setCredentials} loginError={loginError} busy={busy} onSubmit={submitLogin} onLogout={logout} confirmModal={confirmModal} />
 
-  const appHeader = <AppHeader theme={theme} onToggleTheme={toggleTheme} currentUser={currentUser} onLogout={logout} onHome={goHome} isAdmin={isAdmin} isManager={isManager} adminView={adminView} onNavigate={setAdminView} />
+  const appHeader = <AppHeader theme={theme} onToggleTheme={toggleTheme} currentUser={currentUser} onLogout={logout} onHome={goHome} onMyWard={!isManager && assignedFloorObj ? goToMyWard : undefined} isAdmin={isAdmin} isManager={isManager} adminView={adminView} onNavigate={setAdminView} />
 
   if (adminView === 'requests' && isAdmin) return <AdminRequestsScreen adminHeader={appHeader} registrations={registrations} registrationsError={registrationsError} adminSuccess={adminSuccess} pendingFloor={pendingFloor} setPendingFloor={setPendingFloor} busy={busy} onReload={loadRegistrations} onApprove={approveRegistration} onReject={rejectRegistration} confirmModal={confirmModal} />
 
@@ -1204,7 +1318,7 @@ function App() {
   if (selected && selected.mode === 'order') return <OrderScreen header={appHeader} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={orderLoading} data={orderData} loadError={orderError} onPrint={() => window.print()} />
   if (selected && selected.mode === 'pills') return <PillsScreen header={appHeader} wardLabel={wardLabel} roomLabel={/\bccu\b/i.test(selected.ward || '') ? 'رقم السرير' : 'رقم الغرفة'} today={today} editTime={editTime} onBack={() => { flushPills(); setSelected(null) }} selectedDate={selectedDate} onChangeDate={setSelectedDate} pillsLoading={pillsLoading} pillsData={pillsData} pillsSaveStatus={pillsSaveStatus} pillsLoadError={pillsLoadError} pillEntries={pillEntries} setPillEntries={setPillEntries} pillRooms={pillRooms} setPillRooms={setPillRooms} pillSelection={pillSelection} onTogglePatient={togglePillPatient} printScope={printScope} lastPrintingRow={lastPrintingRow} onPrint={startPillsPrint} confirmModal={confirmModal} />
 
-  return <main className="app-shell">{appHeader}{justLoggedIn && <div className="login-dissolve" aria-hidden="true"><img className="login-dissolve-logo" src={hospitalLogo} alt="" /><p className="login-dissolve-title">الصيدلة السريرية</p></div>}{!selected && !floor ? <FloorPickerScreen today={today} onPickFloor={setFloor} onOpen={setSelected} dashboard={dashboardData} dashboardLoading={dashboardData === null && !dashboardError} dashboardError={dashboardError} onRetryDashboard={retryDashboard} announcements={announcements} isManager={isManager} medicinesPeriod={medicinesPeriod} setMedicinesPeriod={setMedicinesPeriod} announcementDraft={announcementDraft} setAnnouncementDraft={setAnnouncementDraft} announcementError={announcementError} announcementBusy={announcementBusy} onPostAnnouncement={postAnnouncement} onEditAnnouncement={editAnnouncement} onDeleteAnnouncement={deleteAnnouncement} /> : !selected ? <WardPickerScreen floor={floor} today={today} dashboard={dashboardData} dashboardError={dashboardError} onBack={() => setFloor(null)} onOpen={setSelected} /> :<ChartScreen selected={selected} wardLabel={wardLabel} today={today} todayWeekday={todayWeekday} isManager={isManager} onBack={() => { flushChart(); setSelected(null) }} onGoToPills={() => { flushChart(); setSelected({ ...selected, mode: 'pills' }) }} onExportPdf={exportChartPdf} dateIsToday={dateIsToday} selectedDate={selectedDate} onChangeDate={changeDate} onCopyToNextDay={copyToNextDay} chartSaveStatus={chartSaveStatus} loadError={loadError} copyError={copyError} chartReady={chartReady} lastChartSaveAt={lastChartSaveAt} onRetryLoad={() => setChartLoadNonce((n) => n + 1)} onRetrySave={() => setChartSaveNonce((n) => n + 1)} lockState={lockState} lockHolder={lockHolder} chartClashNote={chartClashNote} onDismissClashNote={() => setChartClashNote(null)} medicines={medicines} patientNames={patientNames} columnMedicines={columnMedicines} quantities={quantities} totals={totals} isThursday={isThursday} activeRow={activeRow} activeColumn={activeColumn} labelBelow={labelBelow} setActiveRow={setActiveRow} setActiveColumn={setActiveColumn} setLabelBelow={setLabelBelow} onSetColumnMedicine={setColumnMedicine} onCommitColumnMedicine={commitColumnMedicine} columnMedicineNotice={columnMedicineNotice} onDismissNotice={() => setColumnMedicineNotice(null)} onApplySuggestion={applyMedicineSuggestion} onSetPatientName={setPatientName} onUpdateQuantity={updateQuantity} onCollapseRow={collapseRow} chartFrameRef={chartFrameRef} chartHeadRef={chartHeadRef} chartGridRef={chartGridRef} chartDosesRef={chartDosesRef} chartFootRef={chartFootRef} showMedicineForm={showMedicineForm} onOpenMedicineForm={() => { setRegistrationsError(''); setShowMedicineForm(true) }} onCloseMedicineForm={() => setShowMedicineForm(false)} onAddMedicine={addMedicine} newMedicine={newMedicine} setNewMedicine={setNewMedicine} registrationsError={registrationsError} />}{confirmModal}</main>
+  return <main className="app-shell">{appHeader}{!selected && !floor ? <FloorPickerScreen today={today} floors={visibleFloors} specialWards={visibleSpecialWards} resumeDraft={resumeDraft} onResume={resumeFromDraft} onPickFloor={setFloor} onOpen={setSelected} dashboard={dashboardData} dashboardLoading={dashboardData === null && !dashboardError} dashboardError={dashboardError} onRetryDashboard={retryDashboard} announcements={announcements} isManager={isManager} medicinesPeriod={medicinesPeriod} setMedicinesPeriod={setMedicinesPeriod} announcementDraft={announcementDraft} setAnnouncementDraft={setAnnouncementDraft} announcementError={announcementError} announcementBusy={announcementBusy} onPostAnnouncement={postAnnouncement} onEditAnnouncement={editAnnouncement} onDeleteAnnouncement={deleteAnnouncement} /> : !selected ? <WardPickerScreen floor={floor} today={today} dashboard={dashboardData} dashboardError={dashboardError} onBack={() => setFloor(null)} onOpen={setSelected} /> :<ChartScreen selected={selected} wardLabel={wardLabel} today={today} todayWeekday={todayWeekday} isManager={isManager} onBack={() => { flushChart(); setSelected(null) }} onGoToPills={() => { flushChart(); setSelected({ ...selected, mode: 'pills' }) }} onExportPdf={exportChartPdf} dateIsToday={dateIsToday} selectedDate={selectedDate} onChangeDate={changeDate} onCopyToNextDay={copyToNextDay} chartSaveStatus={chartSaveStatus} loadError={loadError} copyError={copyError} chartReady={chartReady} lastChartSaveAt={lastChartSaveAt} onRetryLoad={() => setChartLoadNonce((n) => n + 1)} onRetrySave={() => setChartSaveNonce((n) => n + 1)} lockState={lockState} lockHolder={lockHolder} chartClashNote={chartClashNote} onDismissClashNote={() => { setChartClashNote(null); setDroppedCells({}) }} droppedCells={droppedCells} undo={undo} onUndo={takeUndo} medicines={medicines} patientNames={patientNames} columnMedicines={columnMedicines} quantities={quantities} totals={totals} isThursday={isThursday} activeRow={activeRow} activeColumn={activeColumn} labelBelow={labelBelow} setActiveRow={setActiveRow} setActiveColumn={setActiveColumn} setLabelBelow={setLabelBelow} onSetColumnMedicine={setColumnMedicine} onCommitColumnMedicine={commitColumnMedicine} columnMedicineNotice={columnMedicineNotice} onDismissNotice={() => setColumnMedicineNotice(null)} onApplySuggestion={applyMedicineSuggestion} onSetPatientName={setPatientName} onUpdateQuantity={updateQuantity} onCollapseRow={collapseRow} chartFrameRef={chartFrameRef} chartHeadRef={chartHeadRef} chartGridRef={chartGridRef} chartDosesRef={chartDosesRef} chartFootRef={chartFootRef} showMedicineForm={showMedicineForm} onOpenMedicineForm={() => { setRegistrationsError(''); setShowMedicineForm(true) }} onCloseMedicineForm={() => setShowMedicineForm(false)} onAddMedicine={addMedicine} newMedicine={newMedicine} setNewMedicine={setNewMedicine} registrationsError={registrationsError} />}{confirmModal}</main>
 }
 
 export default App

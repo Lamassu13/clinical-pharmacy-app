@@ -1,4 +1,5 @@
 import { WardGlyph, CardStatus } from '../components/WardGlyph.jsx'
+import WardActions from '../components/WardActions.jsx'
 
 // The sub-wards of one floor. Mirrors FloorPickerScreen's header and card shape so moving
 // from the floor grid into a floor doesn't feel like a different screen. The floor number
@@ -22,12 +23,7 @@ export default function WardPickerScreen({ floor, today, dashboard, dashboardErr
         <span className="floor-number"><WardGlyph /></span>
         <span className="location-card-body"><strong>{ward}</strong></span>
         {dashboard ? <CardStatus started={started} /> : dashboardError && <CardStatus unavailable />}
-        <span className="ward-card-actions">
-          <button className={started ? 'secondary-button compact' : 'primary-button compact'} onClick={() => onOpen({ floor: floor.number, ward, mode: 'chart', slot: 'main' })}>الجارت</button>
-          <button className={started ? 'secondary-button compact' : 'chart-extra-button compact'} onClick={() => onOpen({ floor: floor.number, ward, mode: 'chart', slot: 'extra' })}>الجارت الإضافي</button>
-          <button className="secondary-button compact" onClick={() => onOpen({ floor: floor.number, ward, mode: 'pills' })}>الحبوب</button>
-          <button className="secondary-button compact" onClick={() => onOpen({ floor: floor.number, ward, mode: 'order', slot: 'main' })}>الطلبية</button>
-        </span>
+        <WardActions floor={floor.number} ward={ward} started={started} onOpen={onOpen} />
       </div>
     })}</div>
   </section>

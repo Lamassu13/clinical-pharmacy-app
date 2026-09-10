@@ -1,12 +1,12 @@
-import { floors, specialWards } from '../constants.js'
 import DashboardWidgets, { WardStatusBand } from '../components/DashboardWidgets.jsx'
 import { WardGlyph, ChevronStart, StatusCheck, CardStatus } from '../components/WardGlyph.jsx'
+import WardActions from '../components/WardActions.jsx'
 
-// The floor/special-ward grid. Which cards a given user may actually see is applied
-// imperatively by an effect in App (it hides cards outside their assignment), so this
-// renders all of them.
+// The floor/special-ward grid. `floors` / `specialWards` arrive already narrowed to what this
+// user may see (their assignment, or the whole unit for a manager) — no post-paint DOM hiding.
 export default function FloorPickerScreen({
-  today, onPickFloor, onOpen, dashboard, dashboardLoading, dashboardError, onRetryDashboard,
+  today, floors, specialWards, resumeDraft, onResume,
+  onPickFloor, onOpen, dashboard, dashboardLoading, dashboardError, onRetryDashboard,
   announcements, isManager,
   medicinesPeriod, setMedicinesPeriod,
   announcementDraft, setAnnouncementDraft, announcementError, announcementBusy,
@@ -47,11 +47,25 @@ export default function FloorPickerScreen({
     </button>
   )
 
+  const nothingAssigned = !isManager && floors.length === 0 && specialWards.length === 0
+
   return <section className="dashboard">
     <div className="section-heading">
       <div><h1>اختر الطابق أو الردهة</h1></div>
       <div className="date-chip"><span>اليوم</span><strong>{today}</strong></div>
     </div>
+
+    {resumeDraft && (
+      <button type="button" className="resume-draft-card" onClick={onResume}>
+        <span className="resume-draft-label">لديك جارت غير مكتمل</span>
+        <strong>{resumeDraft.floor ? `الطابق ${resumeDraft.floor} — ${resumeDraft.ward}` : resumeDraft.ward}{resumeDraft.slot === 'extra' ? ' — إضافي' : ''} · {resumeDraft.date}</strong>
+        <span className="resume-draft-go">المتابعة ←</span>
+      </button>
+    )}
+
+    {nothingAssigned && (
+      <div className="empty-state"><strong>لم يُسند إليك طابق أو ردهة بعد</strong><span>راجِع مسؤول وحدة الصيدلة السريرية لتعيين موقعك، ثم أعِد تسجيل الدخول.</span></div>
+    )}
 
     {isManager && (
       <WardStatusBand
@@ -75,12 +89,7 @@ export default function FloorPickerScreen({
           <span className="floor-number"><WardGlyph /></span>
           <span className="location-card-body"><strong>{ward}</strong><span className="card-kind">ردهة مستقلة</span></span>
           {dashboard ? <CardStatus started={started} /> : dashboardError && <CardStatus unavailable />}
-          <span className="ward-card-actions">
-            <button className={started ? 'secondary-button compact' : 'primary-button compact'} onClick={() => onOpen({ floor: null, ward, mode: 'chart', slot: 'main' })}>الجارت</button>
-            <button className={started ? 'secondary-button compact' : 'chart-extra-button compact'} onClick={() => onOpen({ floor: null, ward, mode: 'chart', slot: 'extra' })}>الجارت الإضافي</button>
-            <button className="secondary-button compact" onClick={() => onOpen({ floor: null, ward, mode: 'pills' })}>الحبوب</button>
-            <button className="secondary-button compact" onClick={() => onOpen({ floor: null, ward, mode: 'order', slot: 'main' })}>الطلبية</button>
-          </span>
+          <WardActions floor={null} ward={ward} started={started} onOpen={onOpen} />
         </div>
       })}
     </div>

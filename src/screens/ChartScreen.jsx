@@ -9,7 +9,7 @@ import { CHART_COLUMNS } from '../constants.js'
 export default function ChartScreen({
   selected, wardLabel, today, todayWeekday, isManager, dateIsToday, selectedDate, onChangeDate, onCopyToNextDay, onBack, onGoToPills, onExportPdf,
   chartSaveStatus, loadError, copyError, chartReady, lastChartSaveAt, onRetryLoad, onRetrySave, lockState, lockHolder,
-  chartClashNote, onDismissClashNote,
+  chartClashNote, onDismissClashNote, droppedCells, undo, onUndo,
   medicines, patientNames, columnMedicines, quantities, totals, isThursday,
   activeRow, activeColumn, labelBelow, setActiveRow, setActiveColumn, setLabelBelow,
   onSetColumnMedicine, onCommitColumnMedicine, columnMedicineNotice, onDismissNotice, onApplySuggestion,
@@ -37,10 +37,12 @@ export default function ChartScreen({
     : chartSaveStatus === 'pending' ? 'save-state save-state-pending'
     : 'save-state'
 
-  // Another device holds the edit lock: the grid and its edit affordances go inert/hidden and
-  // the view polls the holder's edits in. read = true only while it's genuinely someone else's.
+  // Another device holds the edit lock: the grid goes inert (below) and the view polls the
+  // holder's edits in. The toolbar/meta/status bars stay readable — an SR user still needs the
+  // ward name, date and save state during read-only. read = true only while it's someone else's.
   const readOnly = lockState === 'readonly'
-  const editInert = readOnly || undefined
+  const hasDropped = droppedCells && Object.keys(droppedCells).length > 0
+  const frameClass = ['chart-frame', readOnly && 'chart-frame-held', hasDropped && 'chart-frame--clash'].filter(Boolean).join(' ')
   const since = lockHolder?.since
     ? new Date(lockHolder.since).toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' })
     : ''
@@ -56,7 +58,7 @@ export default function ChartScreen({
       تعذّر تجديد القفل — قد يفتحه جهاز آخر. تعديلاتك محفوظة على هذا الجهاز.
     </div>}
 
-    <div className="chart-toolbar" inert={editInert}>
+    <div className="chart-toolbar">
       <button className="back-button" onClick={onBack}>→ العودة للردهات</button>
       <div><h1>{wardLabel}</h1></div>
       <div className="toolbar-actions">
@@ -66,7 +68,7 @@ export default function ChartScreen({
       </div>
     </div>
 
-    <div className="chart-meta" inert={editInert}>
+    <div className="chart-meta">
       {selected.slot === 'extra' && <span className="chart-slot-flag">جارت إضافي</span>}
       {lockState === 'editing' && <span className="chart-lock-mark">أنت تُحرّر</span>}
       {selected.floor && <span>الطابق: <b>{selected.floor}</b></span>}
@@ -85,13 +87,19 @@ export default function ChartScreen({
         Fixed height, and no other content flows into it: the recovery / clash lines render
         below the grid (.chart-recover-line, .chart-clash-note) so the grid never shifts under
         a finger. The save chip carries no aria-live — .chart-recover-line announces failures. */}
-    <div className="active-patient-bar" inert={editInert}>
+    <div className="active-patient-bar">
       <div className="bar-focus">{activeRow >= 0
         ? <><span className="bar-item"><span className="bar-key">المريض</span><strong>{patientNames[activeRow]?.trim() || 'بلا اسم'}</strong><span className="bar-num">صف {activeRow + 1}</span></span>{activeColumn >= 0 && <span className="bar-item"><span className="bar-key">العلاج</span><strong>{columnMedicines[activeColumn]?.trim() || 'بلا اسم'}</strong><span className="bar-num">عمود {activeColumn + 1}</span></span>}</>
         : <span className="muted">اضغط داخل خلية ليظهر المريض والعلاج هنا</span>}</div>
       {!dateIsToday && <span className="bar-date-warning">⚠ جارت {today} — ليس اليوم</span>}
       {chartReady && <span className={saveClass}>{saveText}</span>}
     </div>
+
+    {/* A blank 41×51 grid on a new chart otherwise looks the same as a load that failed and
+        was dismissed. Clears itself as soon as anything is typed. */}
+    {chartReady && !readOnly && patientNames.every((name) => !name.trim()) && columnMedicines.every((medicine) => !medicine.trim()) && (
+      <p className="chart-empty-hint">جارت جديد — اكتب اسم أول مريض في أقصى اليمين، ثم اسم الدواء في رأس العمود.</p>
+    )}
 
     {/* Held until the next valid commit or an explicit dismiss — no auto-timeout, since on a
         shared iPad the pharmacist usually looks up before a self-clearing notice can be read. */}
@@ -107,7 +115,7 @@ export default function ChartScreen({
 
     {/* chart-frame-held draws a desaturating scrim over the grid while another device is
         editing — reads as "held" without dimming the dose numbers themselves (opacity did). */}
-    <div className={readOnly ? 'chart-frame chart-frame-held' : 'chart-frame'} ref={chartFrameRef}>
+    <div className={frameClass} ref={chartFrameRef}>
       {!chartReady && <div className="chart-frame-loading" role="status">
         {loadError
           ? <><span>تعذّر تحميل الجارت. تُعاد المحاولة تلقائيًا كل بضع ثوانٍ.</span><button type="button" className="secondary-button compact" onClick={onRetryLoad}>إعادة المحاولة الآن</button></>
@@ -141,7 +149,7 @@ export default function ChartScreen({
             {activeRow === rowIndex && name.trim() && <button type="button" className="row-delete" aria-label={`حذف صف ${rowIndex + 1}`} title="حذف الصف" onPointerDown={(event) => event.preventDefault()} onMouseDown={(event) => event.preventDefault()} onClick={() => onCollapseRow(rowIndex)}>✕</button>}
           </th>
         </tr>)}</tbody></table></div>
-        <div className="chart-doses" ref={chartDosesRef}><table className="chart-table" role="grid" aria-label="جدول الجرعات — الأسهم للتنقّل بين الخلايا">{/* one grid; each cell's aria-label already carries its patient + medicine */}<tbody>{patientNames.map((name, rowIndex) => <ChartDoseRow key={rowIndex} rowIndex={rowIndex} patientName={name} quantities={quantities[rowIndex]} columnMedicines={columnMedicines} isActiveRow={activeRow === rowIndex} activeColumn={activeColumn} gridInactive={activeRow < 0} labelBelow={labelBelow} onUpdateQuantity={onUpdateQuantity} />)}</tbody></table></div>
+        <div className="chart-doses" ref={chartDosesRef}><table className="chart-table" role="grid" aria-label="جدول الجرعات — الأسهم للتنقّل بين الخلايا">{/* one grid; each cell's aria-label already carries its patient + medicine */}<tbody>{patientNames.map((name, rowIndex) => <ChartDoseRow key={rowIndex} rowIndex={rowIndex} patientName={name} quantities={quantities[rowIndex]} columnMedicines={columnMedicines} isActiveRow={activeRow === rowIndex} activeColumn={activeColumn} gridInactive={activeRow < 0} labelBelow={labelBelow} droppedCells={droppedCells} onUpdateQuantity={onUpdateQuantity} />)}</tbody></table></div>
       </div>
       <div className="chart-foot">
         <div className="chart-foot-corner"><span>المجموع</span>{isThursday && <span>المجموع المضاعف</span>}</div>
@@ -151,7 +159,7 @@ export default function ChartScreen({
 
     {/* Below the grid, so a save failure or a merge outcome never pushes the cells the
         pharmacist is typing into. */}
-    {chartReady && (chartSaveStatus === 'error' || copyError) && <div className="chart-recover-line" role="alert" inert={editInert}>
+    {chartReady && (chartSaveStatus === 'error' || copyError) && <div className="chart-recover-line" role="alert">
       {chartSaveStatus === 'error' && <>
         <span>لم يُحفظ — تُعاد المحاولة تلقائيًا. تعديلاتك محفوظة على هذا الجهاز.</span>
         <button type="button" className="secondary-button compact" onClick={onRetrySave}>إعادة المحاولة الآن</button>
@@ -159,9 +167,14 @@ export default function ChartScreen({
       {copyError && <span>تعذّر نسخ الجارت — أعِد الضغط على «نسخ إلى اليوم التالي».</span>}
     </div>}
 
-    {chartClashNote && <div className="chart-clash-note" role="status" inert={editInert}>
+    {chartClashNote && <div className="chart-clash-note" role="status">
       <span>{chartClashNote}</span>
       <button type="button" className="text-button compact" aria-label="إخفاء" onClick={onDismissClashNote}>حسنًا</button>
+    </div>}
+
+    {undo && <div className="undo-toast" role="status">
+      <span>{undo.message}</span>
+      <button type="button" className="text-button compact" onClick={onUndo}>تراجع</button>
     </div>}
 
     {showMedicineForm && <div className="modal-backdrop" onClick={onCloseMedicineForm}><form className="medicine-modal" role="dialog" aria-modal="true" aria-labelledby="add-medicine-title" onSubmit={onAddMedicine} onClick={(event) => event.stopPropagation()} onKeyDown={(event) => {

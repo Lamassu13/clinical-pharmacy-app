@@ -128,7 +128,7 @@ export function TopMedicinesWidget({ topMedicines, period, setPeriod, isManager,
         <div className="top-medicines-list">
           {topMedicines.map((item) => (
             <div className="top-medicines-row" key={item.name}>
-              <span className="top-medicines-name" title={item.name}>{item.name}</span>
+              <span className="top-medicines-name" lang="en" title={item.name}>{item.name}</span>
               <div className="top-medicines-bar-track"><div className="top-medicines-bar-fill" style={{ width: `${Math.round((item.quantity / maxQty) * 100)}%` }} /></div>
               <strong className="top-medicines-qty">{item.quantity}</strong>
             </div>
