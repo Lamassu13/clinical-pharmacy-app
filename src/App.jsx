@@ -19,7 +19,21 @@ import WardPickerScreen from './screens/WardPickerScreen.jsx'
 import ChartScreen from './screens/ChartScreen.jsx'
 import './App.css'
 
+// True while this tab is in the foreground. The polling effects below gate on it so a
+// backgrounded or screen-locked iPad stops hitting the server (and the Neon compute endpoint)
+// every few seconds — it has nothing to show until it's looked at again.
+function useDocumentVisible() {
+  const [visible, setVisible] = useState(() => typeof document === 'undefined' || !document.hidden)
+  useEffect(() => {
+    const onChange = () => setVisible(!document.hidden)
+    document.addEventListener('visibilitychange', onChange)
+    return () => document.removeEventListener('visibilitychange', onChange)
+  }, [])
+  return visible
+}
+
 function App() {
+  const documentVisible = useDocumentVisible()
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [authView, setAuthView] = useState('login')
   const [credentials, setCredentials] = useState({ username: '', password: '' })
@@ -710,11 +724,11 @@ function App() {
 
   useEffect(() => { if (isLoggedIn) loadMedicines() }, [isLoggedIn, loadMedicines])
   useEffect(() => {
-    if (!selected || selected.mode !== 'chart') return undefined
+    if (!selected || selected.mode !== 'chart' || !documentVisible) return undefined
     loadMedicines()
     const timer = setInterval(loadMedicines, 60000)
     return () => clearInterval(timer)
-  }, [selected, loadMedicines])
+  }, [selected, loadMedicines, documentVisible])
 
   // The dashboard aggregates — loaded for the floor-picker landing page and for the
   // manager's إدارة الطوابق screen (which now hosts the medicines + per-floor patients
@@ -908,20 +922,21 @@ function App() {
   // failed PATCH means it was taken after going stale — keep editing, show the soft 'stale'
   // warning; a later PATCH re-succeeds if the row is still ours (expired but untaken).
   useEffect(() => {
-    if (!selected || selected.mode !== 'chart' || (lockState !== 'editing' && lockState !== 'stale')) return undefined
+    if (!selected || selected.mode !== 'chart' || (lockState !== 'editing' && lockState !== 'stale') || !documentVisible) return undefined
     const body = { floor: selected.floor || '', ward: selected.ward, slot: selected.slot || 'main', date: selectedDate }
     const beat = () => fetch(`${apiUrl}/chart/lock`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body) })
       .then((response) => { isExpired(response); return response.ok ? response.json() : { ok: true } })
       .then((result) => setLockState((current) => (current === 'readonly' || current === 'available' ? current : result.ok ? 'editing' : 'stale')))
       .catch(() => { /* offline — keep editing; the save path handles a real conflict */ })
+    beat() // re-affirm the lock immediately on (re)focus, don't wait a full interval
     const timer = setInterval(beat, 30000)
     return () => clearInterval(timer)
-  }, [selected, selectedDate, lockState, isExpired])
+  }, [selected, selectedDate, lockState, isExpired, documentVisible])
 
   // Read-only: another device holds the lock. Poll the full chart so its edits show live, and
   // flip to 'available' the instant the lock frees.
   useEffect(() => {
-    if (!selected || selected.mode !== 'chart' || lockState !== 'readonly') return undefined
+    if (!selected || selected.mode !== 'chart' || lockState !== 'readonly' || !documentVisible) return undefined
     const params = new URLSearchParams({ floor: selected.floor || '', ward: selected.ward, slot: selected.slot || 'main', date: selectedDate })
     let cancelled = false
     const poll = () => fetch(`${apiUrl}/chart?${params}`, { credentials: 'include' })
@@ -938,9 +953,10 @@ function App() {
         else setLockHolder(lock.holder || null)
       })
       .catch(() => { /* transient — next poll retries */ })
+    poll() // catch up immediately on (re)focus rather than waiting a full interval
     const timer = setInterval(poll, 5000)
     return () => { cancelled = true; clearInterval(timer) }
-  }, [selected, selectedDate, lockState, isExpired])
+  }, [selected, selectedDate, lockState, isExpired, documentVisible])
 
   // Release the lock on back-out / date change / tab-close. keepalive survives the unload;
   // the server DELETE is a no-op when this tab didn't hold it.

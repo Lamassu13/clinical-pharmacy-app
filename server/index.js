@@ -48,9 +48,15 @@ app.use((request, response, next) => {
 app.use(cors({ origin: clientOrigin, credentials: true }))
 app.use(express.json({ limit: '512kb' }))
 const PgSession = connectPgSimple(session)
+// pruneSessionInterval defaults to 900s — a DELETE every 15 min, day and night, which alone
+// keeps the Neon compute endpoint from ever autosuspending. Expired rows are ignored on read
+// anyway, so turn the timer off and prune once, ~30s after boot (past createTableIfMissing),
+// which covers every deploy/restart. Stale rows between restarts are a handful and harmless.
+const sessionStore = new PgSession({ pool, createTableIfMissing: true, disableTouch: true, pruneSessionInterval: false })
+setTimeout(() => sessionStore.pruneSessions((error) => { if (error) console.error('session prune failed:', error) }), 30_000).unref?.()
 app.use(session({
   name: 'cpa.sid',
-  store: new PgSession({ pool, createTableIfMissing: true, disableTouch: true }),
+  store: sessionStore,
   secret: process.env.SESSION_SECRET || 'development-only-change-me',
   resave: false,
   saveUninitialized: false,
@@ -613,12 +619,19 @@ app.put('/api/pills', requireAuth, async (request, response) => {
   } finally { client.release() }
 })
 
-app.get('/api/health', async (_request, response) => {
+// Liveness only — no DB round-trip, so Render's frequent health pings don't hold the Neon
+// compute endpoint awake. A real DB outage still surfaces on the first genuine request.
+app.get('/api/health', (_request, response) => {
+  response.json({ ok: true, serverTime: new Date().toISOString() })
+})
+// Readiness — checks the database. Deliberately NOT render.yaml's healthCheckPath; for
+// manual/ops diagnostics only.
+app.get('/api/health/db', async (_request, response) => {
   try {
     const database = await checkDatabase()
     response.json({ ok: true, database: 'connected', serverTime: database.server_time })
   } catch (error) {
-    console.error('health check failed:', error)
+    console.error('db health check failed:', error)
     response.status(503).json({ ok: false, database: 'unavailable' })
   }
 })
