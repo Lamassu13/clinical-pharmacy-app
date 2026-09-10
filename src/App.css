@@ -791,8 +791,10 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
    the chart), removed from the printed sheet. */
 .pill-qty-cell { width: 88px; }
 .pill-qty-cell input { width: 100%; padding: 4px 6px; text-align: center; font: inherit; }
-/* Empty hand-write rows below the medicines — paper only. */
-.pill-blank-row { display: none; }
+/* The two spare rows below the medicines: a faint tint so they read as "add your own",
+   editable on screen, and printed blank when untouched. */
+.pill-extra-row td { background: var(--surface-alt); }
+.pill-extra-row .pill-name-cell input::placeholder { font-weight: 400; color: var(--text-muted); }
 
 /* flexible dropdown cell — the chosen text wraps and shows in full;
    a transparent native <select> on top keeps it pickable */
@@ -1327,9 +1329,10 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
      height on a cell is a minimum, so this sets the whole row's height. Measured cost: at
      100px a form holds 7 medicines on one A4 sheet, and an eighth pushes it onto a second. */
   .pill-table td:first-child { height: 100px; }
-  /* «كمية الحبوب» is a screen-only working column; the two blank rows are paper-only. */
+  /* «كمية الحبوب» is a screen-only working column. */
   .pill-qty-cell { display: none !important; }
-  .pill-blank-row { display: table-row; }
+  /* The spare rows print as plain ruled rows — no screen tint. */
+  .pill-extra-row td { background: transparent !important; }
   .pill-form-head { border-color: #000; }
   .pill-room input { border: 0; border-bottom: 1px solid #000; color: #000; padding: 0 2px; }
   /* The editable medicine name prints as plain text, no field box. */

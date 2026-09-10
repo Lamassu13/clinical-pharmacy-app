@@ -9,8 +9,16 @@ const doseTimeGroups = [
   ['جداول موزّعة', doseTimes.filter((time) => time.includes(' - '))],
 ]
 
+// Two always-present spare rows per patient for a medicine the chart doesn't carry. Editable
+// on screen (kept as pill_entries under these synthetic keys), and printed blank when unused —
+// the ruled hand-write rows the form always had.
+const EXTRA_ROWS = [
+  { key: 'extra-row-1', label: 'سطر إضافي ١' },
+  { key: 'extra-row-2', label: 'سطر إضافي ٢' },
+]
+
 export default function PillsScreen({
-  header, wardLabel, today, editTime, onBack,
+  header, wardLabel, roomLabel, today, editTime, onBack,
   selectedDate, onChangeDate, pillsLoading, pillsData, pillsSaveStatus, pillsLoadError,
   pillEntries, setPillEntries, pillRooms, setPillRooms, pillSelection, onTogglePatient,
   printScope, lastPrintingRow, onPrint, confirmModal,
@@ -71,7 +79,7 @@ export default function PillsScreen({
             <div className="pill-form-head">
               <label className="pill-pick"><input type="checkbox" checked={pillSelection.has(patient.rowNumber)} onChange={() => onTogglePatient(patient.rowNumber)} /><span>تحديد للطباعة</span></label>
               <div className="pill-form-patient"><strong>{patient.name}</strong><span>{today}</span></div>
-              <label className="pill-room">رقم الغرفة <input inputMode="numeric" value={pillRooms[patient.rowNumber] || ''} onChange={(event) => setPillRooms((current) => ({ ...current, [patient.rowNumber]: event.target.value }))} /></label>
+              <label className="pill-room">{roomLabel} <input inputMode="numeric" value={pillRooms[patient.rowNumber] || ''} onChange={(event) => setPillRooms((current) => ({ ...current, [patient.rowNumber]: event.target.value }))} /></label>
               <div className="pill-form-brand">
                 <div className="pill-form-title"><strong>مستشفى بغداد التعليمي</strong><span>وحدة الصيدلة السريرية</span><span>{wardLabel}</span></div>
                 <img className="hospital-logo header-logo" width="42" height="42" src={hospitalLogo} alt="" />
@@ -95,7 +103,18 @@ export default function PillsScreen({
                     <td><PillSelect value={entry.usageMethod} options={usageMethods} label={`طريقة الاستخدام — ${medName}`} onChange={(nextValue) => setPillEntries((current) => ({ ...current, [key]: { ...entry, usageMethod: nextValue } }))} /></td>
                     <td><PillSelect value={entry.note} options={noteOptions} label={`الملاحظات — ${medName}`} onChange={(nextValue) => setPillEntries((current) => ({ ...current, [key]: { ...entry, note: nextValue } }))} /></td>
                   </tr>
-                })}{lastPage && [0, 1].map((n) => <tr className="pill-blank-row" key={`blank-${n}`}><td className="pill-lead-cell"></td><td></td><td className="pill-qty-cell"></td><td></td><td></td><td></td></tr>)}</tbody>
+                })}{lastPage && EXTRA_ROWS.map((extra) => {
+                  const key = `${patient.rowNumber}:${extra.key}`
+                  const entry = pillEntries[key] || { doseTime: '', usageMethod: '', note: '', pillQty: '', pillName: '' }
+                  return <tr className="pill-extra-row" key={extra.key}>
+                    <td className="pill-lead-cell"></td>
+                    <td className="pill-name-cell"><input aria-label={`${extra.label} — العلاج`} placeholder="علاج إضافي" value={entry.pillName} onChange={(event) => setPillEntries((current) => ({ ...current, [key]: { ...entry, pillName: event.target.value } }))} /></td>
+                    <td className="pill-qty-cell"><input inputMode="numeric" aria-label={`${extra.label} — كمية الحبوب`} value={entry.pillQty} onChange={(event) => { const next = event.target.value.replace(/\D/g, ''); setPillEntries((current) => ({ ...current, [key]: { ...entry, pillQty: next } })) }} /></td>
+                    <td><PillSelect value={entry.doseTime} groups={doseTimeGroups} label={`${extra.label} — وقت الجرعة`} onChange={(nextValue) => setPillEntries((current) => ({ ...current, [key]: { ...entry, doseTime: nextValue } }))} /></td>
+                    <td><PillSelect value={entry.usageMethod} options={usageMethods} label={`${extra.label} — طريقة الاستخدام`} onChange={(nextValue) => setPillEntries((current) => ({ ...current, [key]: { ...entry, usageMethod: nextValue } }))} /></td>
+                    <td><PillSelect value={entry.note} options={noteOptions} label={`${extra.label} — الملاحظات`} onChange={(nextValue) => setPillEntries((current) => ({ ...current, [key]: { ...entry, note: nextValue } }))} /></td>
+                  </tr>
+                })}</tbody>
               </table>
             </div>
             <div className="pill-form-foot"><span className="pill-sign">توقيع الصيدلاني السريري</span><span className="pill-edit-time">وقت التحرير: {editTime}</span></div>

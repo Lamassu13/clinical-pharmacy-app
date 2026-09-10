@@ -83,6 +83,29 @@ test('PUT /api/pills: a pill_name override round-trips on its own and never rena
   assert.equal(chart.body.chart.columns[0].medicine_name, MED, 'the chart column name is untouched')
 })
 
+test('PUT /api/pills: a spare-row entry (synthetic key + new option lists) round-trips and stays out of medicines/matrix', async () => {
+  const client = await loginAs({ role: 'user', floor: FLOOR })
+  await client.put('/api/chart', chartBody())
+
+  const saved = await client.put('/api/pills', {
+    floor: FLOOR, ward: WARD, date: DATE,
+    entries: [{
+      patientRowNumber: 1, medicineKey: 'extra-row-1', pillName: 'فيتامين د',
+      usageMethod: 'حبة مع الطعام', note: 'لا يؤخذ مع الخضراوات الورقية الخضراء',
+    }],
+    rooms: {},
+  })
+  assert.equal(saved.status, 200)
+
+  const pills = (await client.get(`/api/pills?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=${DATE}`)).body.pills
+  const entry = pills.entries.find((e) => e.medicineKey === 'extra-row-1')
+  assert.equal(entry?.pillName, 'فيتامين د')
+  assert.equal(entry?.usageMethod, 'حبة مع الطعام', 'a newly added usage-method option is accepted')
+  assert.equal(entry?.note, 'لا يؤخذ مع الخضراوات الورقية الخضراء', 'a newly added note option is accepted')
+  assert.ok(!pills.medicines.some((m) => m.key === 'extra-row-1'), 'the spare row is not exposed as a medicine')
+  assert.ok(!(pills.matrix[1] || []).includes('extra-row-1'), 'the spare row is not in the patient matrix')
+})
+
 test('PUT /api/pills: pill_qty is digits-only and capped', async () => {
   const client = await loginAs({ role: 'user', floor: FLOOR })
   await client.put('/api/chart', chartBody())
