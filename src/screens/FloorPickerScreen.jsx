@@ -21,31 +21,31 @@ export default function FloorPickerScreen({
   const startedSpecialWards = new Set(specialWards.filter((ward) => startedKeys.has(`x|${ward}`)))
   const totalCount = floors.reduce((sum, floor) => sum + floor.wards.length, 0) + specialWards.length
   const startedCount = floors.reduce((sum, floor) => sum + floorStarted(floor), 0) + startedSpecialWards.size
-  // Each pending entry carries what it takes to route there: a floor object drills into its
-  // ward list; a special ward (floor: null) opens its chart directly.
+  // The band's one ranked list of wards that need a nudge, most urgent first: never-started
+  // (nothing is happening there), then started-but-stalled (someone stopped mid-round). Every
+  // row opens that ward's chart directly — the manager wants to see it, not re-navigate.
+  const QUIET_AFTER_MIN = 15
   const notStarted = [
     ...floors.flatMap((floor) => floor.wards
       .filter((ward) => !startedKeys.has(`${floor.number}|${ward}`))
-      .map((ward) => ({ label: `الطابق ${floor.number} — ${ward}`, floor, ward }))),
+      .map((ward) => ({ key: `p|${floor.number}|${ward}`, kind: 'pending', floorNumber: floor.number, ward, slot: 'main', name: `الطابق ${floor.number} — ${ward}` }))),
     ...specialWards
       .filter((ward) => !startedSpecialWards.has(ward))
-      .map((ward) => ({ label: ward, floor: null, ward })),
+      .map((ward) => ({ key: `p|x|${ward}`, kind: 'pending', floorNumber: null, ward, slot: 'main', name: ward })),
   ]
-
-  // Started charts with no save for a while — "began the round here, then went silent". The
-  // started / not-started split alone can't tell a finished ward from a stalled one; this can.
-  const QUIET_AFTER_MIN = 15
-  const quietWards = (dashboard?.startedWards ?? [])
+  const stalled = (dashboard?.startedWards ?? [])
     .filter((item) => (item.minutesQuiet ?? 0) >= QUIET_AFTER_MIN)
     .sort((a, b) => (b.minutesQuiet ?? 0) - (a.minutesQuiet ?? 0))
     .map((item) => ({
-      key: `${item.floor ?? 'x'}|${item.ward}|${item.slot || 'main'}`,
-      label: `${item.floor ? `الطابق ${item.floor} — ${item.ward}` : item.ward}${item.slot === 'extra' ? ' — إضافي' : ''}`,
-      floor: item.floor ?? null,
+      key: `s|${item.floor ?? 'x'}|${item.ward}|${item.slot || 'main'}`,
+      kind: 'stopped',
+      floorNumber: item.floor ?? null,
       ward: item.ward,
       slot: item.slot || 'main',
+      name: `${item.floor ? `الطابق ${item.floor} — ${item.ward}` : item.ward}${item.slot === 'extra' ? ' — إضافي' : ''}`,
       updatedAt: item.updatedAt,
     }))
+  const attention = [...notStarted, ...stalled]
 
   // For a manager reading the band, the grid is a second copy of the same 26 wards — so lead
   // with the floors that still need pushing and fold the finished ones out of the way.
@@ -84,8 +84,8 @@ export default function FloorPickerScreen({
 
     {isManager && (
       <WardStatusBand
-        startedCount={startedCount} totalCount={totalCount} notStarted={notStarted} quietWards={quietWards}
-        onPickFloor={onPickFloor} onOpen={onOpen}
+        startedCount={startedCount} totalCount={totalCount} attention={attention}
+        onOpen={onOpen}
         loading={dashboardLoading} error={dashboardError} onRetry={onRetryDashboard}
       />
     )}

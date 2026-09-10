@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { floors } from '../constants.js'
+import { ChevronStart, StatusCheck } from './WardGlyph.jsx'
 
 // The floor-picker's information layer, in two tiers.
 //
@@ -30,13 +31,14 @@ function SkeletonRows({ count = 3 }) {
   )
 }
 
-// Show the whole pending list unless it's a genuine backlog; past this many, show a chunk and
-// fold the rest so shift start (every ward not started) isn't a wall of amber. Mid-round there
-// are rarely more than a handful pending, so the fold never triggers then.
-const FOLD_THRESHOLD = 12
+// The rows shown before the overflow folds away. Mid-round there are rarely more than a
+// handful; the fold only bites at shift start, when nearly every ward is still pending.
 const FOLD_KEEP = 8
 
-export function WardStatusBand({ startedCount, totalCount, notStarted = [], quietWards = [], onPickFloor, onOpen, loading, error, onRetry }) {
+// The manager's morning-round answer, as one ranked list — the wards that need a nudge, most
+// urgent first: never-started, then started-and-stalled. `attention` arrives pre-sorted from
+// FloorPickerScreen. Everything else (in progress, done) is deliberately not shown.
+export function WardStatusBand({ startedCount, totalCount, attention = [], onOpen, loading, error, onRetry }) {
   if (error) {
     return <div className="ward-status-band"><DashboardError onRetry={onRetry} /></div>
   }
@@ -44,70 +46,54 @@ export function WardStatusBand({ startedCount, totalCount, notStarted = [], quie
     return <div className="ward-status-band ward-status-band--loading"><SkeletonRows count={2} /></div>
   }
 
-  const done = totalCount > 0 && startedCount === totalCount
-  const fresh = startedCount === 0
-  const startedPct = totalCount ? Math.round((startedCount / totalCount) * 100) : 0
-  const willFold = notStarted.length > FOLD_THRESHOLD
-  const inline = willFold ? notStarted.slice(0, FOLD_KEEP) : notStarted
-  const folded = willFold ? notStarted.slice(FOLD_KEEP) : []
+  const clear = attention.length === 0
+  const willFold = attention.length > FOLD_KEEP + 1
+  const inline = willFold ? attention.slice(0, FOLD_KEEP) : attention
+  const folded = willFold ? attention.slice(FOLD_KEEP) : []
 
-  const chip = (entry) => (
-    <li key={entry.label}>
-      <button
-        type="button"
-        className="ward-status-chip"
-        onClick={() => (entry.floor ? onPickFloor(entry.floor) : onOpen({ floor: null, ward: entry.ward, mode: 'chart', slot: 'main' }))}
-      >{entry.label}</button>
-    </li>
-  )
-
-  // A started chart that has gone quiet — open it directly (not the floor list): the manager
-  // is checking whether it stalled or just finished.
-  const quietChip = (entry) => (
+  const row = (entry) => (
     <li key={entry.key}>
       <button
         type="button"
-        className="ward-status-chip ward-status-chip--quiet"
-        onClick={() => onOpen({ floor: entry.floor, ward: entry.ward, mode: 'chart', slot: entry.slot })}
+        className="ward-status-row"
+        onClick={() => onOpen({ floor: entry.floorNumber, ward: entry.ward, mode: 'chart', slot: entry.slot })}
       >
-        <span>{entry.label}</span>
-        <span className="ward-status-chip-time">آخر تعديل {new Date(entry.updatedAt).toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' })}</span>
+        <span className={`ward-status-tag ward-status-tag--${entry.kind}`}>
+          {entry.kind === 'pending' ? 'لم تبدأ' : 'متوقفة'}
+        </span>
+        <span className="ward-status-row-name">{entry.name}</span>
+        {entry.kind === 'stopped' && (
+          <span className="ward-status-row-time">آخر تعديل {new Date(entry.updatedAt).toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' })}</span>
+        )}
+        <span className="ward-status-row-go" aria-hidden="true"><ChevronStart /></span>
       </button>
     </li>
   )
 
-  const cls = done ? 'ward-status-band is-done' : `ward-status-band${fresh ? ' ward-status-band--fresh' : ''}`
   return (
-    <div className={cls}>
+    <div className={clear ? 'ward-status-band is-done' : 'ward-status-band'}>
       <div className="ward-status-band-head">
-        <span className="ward-status-band-label">حالة جارتات اليوم</span>
-        {done ? (
-          <strong className="ward-status-band-done">كل الردهات بدأت جارتها اليوم</strong>
-        ) : (
-          <strong className="ward-status-band-count">
-            <span className="stat-good">{startedCount}</span>
-            <span className="ward-status-band-of"> من {totalCount} بدأت</span>
-          </strong>
-        )}
+        <span className="ward-status-band-label">حالة الجارت الآن</span>
+        <span className="ward-status-band-summary">
+          {!clear && <><strong>{attention.length}</strong> تحتاج متابعة<span className="ward-status-band-sep">·</span></>}
+          {startedCount} من {totalCount} بدأت
+        </span>
       </div>
-      <div className="progress-track"><div className="progress-fill" style={{ transform: `scaleX(${startedPct / 100})` }} /></div>
-      {!done && notStarted.length > 0 && (
-        <div className="ward-status-band-pending">
-          <span className="ward-status-band-pending-label">لم تبدأ بعد</span>
-          <ul>{inline.map(chip)}</ul>
+
+      {clear ? (
+        <p className="ward-status-band-clear" role="status"><StatusCheck /> كل الردهات بدأت جارتها اليوم</p>
+      ) : (
+        <ul className="ward-status-band-list">
+          {inline.map(row)}
           {folded.length > 0 && (
-            <details className="ward-status-band-more">
-              <summary>و {folded.length} غير ذلك</summary>
-              <ul>{folded.map(chip)}</ul>
-            </details>
+            <li>
+              <details className="ward-status-band-more">
+                <summary>و {folded.length} ردهة أخرى</summary>
+                <ul className="ward-status-band-list">{folded.map(row)}</ul>
+              </details>
+            </li>
           )}
-        </div>
-      )}
-      {quietWards.length > 0 && (
-        <div className="ward-status-band-pending ward-status-band-quiet">
-          <span className="ward-status-band-pending-label">بدأت لكنها هادئة منذ فترة — راجِعها</span>
-          <ul>{quietWards.map(quietChip)}</ul>
-        </div>
+        </ul>
       )}
     </div>
   )
