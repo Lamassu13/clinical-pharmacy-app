@@ -796,6 +796,17 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 .pill-extra-row td { background: var(--surface-alt); }
 .pill-extra-row .pill-name-cell input::placeholder { font-weight: 400; color: var(--text-muted); }
 
+/* الطلبية — a read-only requisition table derived from the ward's main chart. Reuses
+   .pill-table; RTL comes from the app's dir="rtl", so التسلسل is the rightmost column. */
+.order-page { width: min(100% - var(--space-6), 900px); margin: 0 auto; padding: var(--space-7) 0; }
+.order-toolbar { align-items: center; }
+.order-toolbar h1 { margin-bottom: 0; }
+.order-table-scroll { overflow-x: auto; }
+.order-table { min-width: 520px; }
+.order-table th:first-child, .order-table td:first-child { width: 56px; min-width: 56px; text-align: center; }
+.order-table .order-qty { text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
+.order-print-head { display: none; }
+
 /* flexible dropdown cell — the chosen text wraps and shows in full;
    a transparent native <select> on top keeps it pickable */
 .pill-select { position: relative; }
@@ -1417,4 +1428,19 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 
 @media print {
 	.app-credit { display: none !important; }
+}
+
+@media print {
+  /* A named page so this portrait rule can't collide with the chart's default @page
+     (landscape) or @page pills. */
+  @page order { size: A4 portrait; margin: 14mm; }
+  .topbar, .order-toolbar { display: none !important; }
+  .order-page { page: order; width: 100%; padding: 0; }
+  .order-print-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10mm; }
+  .order-print-head strong { display: block; color: #000; }
+  .order-print-head span { display: block; color: #000; font-size: 12px; }
+  .order-table-scroll { overflow: visible; }
+  .order-table { min-width: 0; width: 100%; }
+  .order-table th, .order-table td { border-color: #000; color: #000; font-size: 12px; }
+  .order-table thead th { background: #fff; }
 }

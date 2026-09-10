@@ -6,6 +6,7 @@ import {
   canAccessLocation, clampInt, isIsoDate, cleanText,
   normalizeMedicineKey, medicineKeySql,
 } from '../validation.js'
+import { numberToArabicWords } from '../arabic-number.js'
 
 const router = express.Router()
 
@@ -313,6 +314,35 @@ router.post('/chart/collapse-row', requireAuth, async (request, response) => {
     console.error('collapse row failed:', error)
     response.status(500).json({ message: 'تعذر إزاحة بيانات الحبوب' })
   } finally { client.release() }
+})
+
+// The requisition ("الطلبية"): one line per medicine on the ward's MAIN chart for the day,
+// quantity summed across every patient, plus the same total spelled out in Arabic. Read-only
+// and fully derived — nothing is stored.
+router.get('/order', requireAuth, async (request, response) => {
+  const floor = request.query.floor ? clampInt(request.query.floor, 2, 10) : null
+  const wardName = cleanText(request.query.ward, 120).trim()
+  const chartDate = request.query.date
+  if (request.query.floor && (floor === null || !ALLOWED_FLOORS.includes(floor))) return response.status(400).json({ message: 'الطابق غير مسموح' })
+  if (!wardName || !isIsoDate(chartDate)) return response.status(400).json({ message: 'بيانات الردهة والتاريخ مطلوبة' })
+  if (!isKnownWard(floor, wardName)) return response.status(400).json({ message: 'الردهة غير معروفة' })
+  if (!canAccessLocation(request.session.user, floor, wardName)) return response.status(403).json({ message: 'لا تملك صلاحية لهذه الردهة' })
+  const chartId = await resolveChartId(floor, wardName, chartDate, 'main')
+  if (!chartId) return response.json({ order: { items: [] } })
+  const rows = await query(
+    `SELECT COALESCE(m.name, cc.custom_name) AS name, SUM(cq.quantity)::int AS quantity
+     FROM chart_columns cc
+     JOIN chart_quantities cq ON cq.chart_id = cc.chart_id AND cq.column_number = cc.column_number
+     LEFT JOIN medicines m ON m.id = cc.medicine_id
+     WHERE cc.chart_id = $1
+     GROUP BY COALESCE(m.name, cc.custom_name)
+     HAVING COALESCE(m.name, cc.custom_name) <> '' AND SUM(cq.quantity) > 0
+     ORDER BY MIN(cc.column_number)`,
+    [chartId],
+  )
+  response.json({
+    order: { items: rows.rows.map((row) => ({ name: row.name, quantity: row.quantity, quantityWords: numberToArabicWords(row.quantity) })) },
+  })
 })
 
 export { resolveChartId }

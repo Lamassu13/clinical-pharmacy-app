@@ -79,6 +79,7 @@ export default function FloorPickerScreen({
             <button className={started ? 'secondary-button compact' : 'primary-button compact'} onClick={() => onOpen({ floor: null, ward, mode: 'chart', slot: 'main' })}>الجارت</button>
             <button className={started ? 'secondary-button compact' : 'chart-extra-button compact'} onClick={() => onOpen({ floor: null, ward, mode: 'chart', slot: 'extra' })}>الجارت الإضافي</button>
             <button className="secondary-button compact" onClick={() => onOpen({ floor: null, ward, mode: 'pills' })}>الحبوب</button>
+            <button className="secondary-button compact" onClick={() => onOpen({ floor: null, ward, mode: 'order', slot: 'main' })}>الطلبية</button>
           </span>
         </div>
       })}

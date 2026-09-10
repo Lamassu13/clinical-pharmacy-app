@@ -13,6 +13,7 @@ import AdminUsersScreen from './screens/AdminUsersScreen.jsx'
 import AdminMedicinesScreen from './screens/AdminMedicinesScreen.jsx'
 import AdminFloorsScreen from './screens/AdminFloorsScreen.jsx'
 import PillsScreen from './screens/PillsScreen.jsx'
+import OrderScreen from './screens/OrderScreen.jsx'
 import FloorPickerScreen from './screens/FloorPickerScreen.jsx'
 import WardPickerScreen from './screens/WardPickerScreen.jsx'
 import ChartScreen from './screens/ChartScreen.jsx'
@@ -140,6 +141,10 @@ function App() {
   // chartSaveStatus so the pills toolbar chip can tell "saved" from "not saved yet".
   const [pillsSaveStatus, setPillsSaveStatus] = useState('saved')
   const [pillsLoadError, setPillsLoadError] = useState(false)
+  // The requisition view (mode 'order') — read-only, derived from the main chart.
+  const [orderData, setOrderData] = useState(null)
+  const [orderLoading, setOrderLoading] = useState(false)
+  const [orderError, setOrderError] = useState(false)
   // Which patients go on paper. Every form stays on screen either way — the unpicked ones
   // are only dropped from the printed output, so ticking a box never hides a patient's data.
   const [pillSelection, setPillSelection] = useState(() => new Set())
@@ -447,7 +452,7 @@ function App() {
   const noteChartEdit = useCallback(() => {
     if (claimingLockRef.current) return
     if (lockState !== 'idle' && lockState !== 'available') return
-    if (!selected || selected.mode === 'pills') return
+    if (!selected || selected.mode !== 'chart') return
     claimingLockRef.current = true
     const body = { floor: selected.floor || '', ward: selected.ward, slot: selected.slot || 'main', date: selectedDate }
     fetch(`${apiUrl}/chart/lock`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body) })
@@ -551,7 +556,7 @@ function App() {
     // The pill form's dose times and room numbers are keyed by row number and live only on
     // the server, so they have to be pulled up by one as well. Left behind, they reattach to
     // whoever moves into the row — the next patient inherits the deleted one's room number.
-    if (!selected || selected.mode === 'pills') return
+    if (!selected || selected.mode !== 'chart') return
     fetch(`${apiUrl}/chart/collapse-row`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
       body: JSON.stringify({ floor: selected.floor, ward: selected.ward, date: selectedDate, slot: selected.slot || 'main', rowNumber: rowIndex + 1 }),
@@ -602,7 +607,7 @@ function App() {
   // Fire an immediate save (survives navigation / tab close) — only once the grid is loaded,
   // so we never overwrite unknown server state with a blank grid.
   const flushChart = useCallback(() => {
-    if (!selected || selected.mode === 'pills' || !isLoggedIn) return
+    if (!selected || selected.mode !== 'chart' || !isLoggedIn) return
     if (lockState === 'readonly' || lockState === 'available') return // only viewing — nothing of ours to flush
     if (loadedChartKey !== `${selected.floor || 'special'}-${selected.ward}-${selectedDate}-${selected.slot || 'main'}`) return
     try { fetch(`${apiUrl}/chart`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', keepalive: true, body: JSON.stringify(buildChartBody(selectedDate)) }) } catch { /* the debounced autosave or next visit will retry */ }
@@ -655,6 +660,7 @@ function App() {
     else if (adminView === 'users') screen = 'جميع المستخدمين'
     else if (adminView === 'medicines') screen = 'إدارة الأدوية'
     else if (selected?.mode === 'pills') screen = `الحبوب — ${ward}`
+    else if (selected?.mode === 'order') screen = `الطلبية — ${ward}`
     else if (selected) screen = `الجارت — ${ward}`
     else if (floor) screen = `الطابق ${floor.number} — اختر الردهة`
     document.title = `${screen} · ${base}`
@@ -704,7 +710,7 @@ function App() {
 
   useEffect(() => { if (isLoggedIn) loadMedicines() }, [isLoggedIn, loadMedicines])
   useEffect(() => {
-    if (!selected || selected.mode === 'pills') return undefined
+    if (!selected || selected.mode !== 'chart') return undefined
     loadMedicines()
     const timer = setInterval(loadMedicines, 60000)
     return () => clearInterval(timer)
@@ -771,7 +777,7 @@ function App() {
   }, [askConfirm, isExpired])
 
   useEffect(() => {
-    if (!selected || selected.mode === 'pills') return undefined
+    if (!selected || selected.mode !== 'chart') return undefined
     const chartKey = `${selected.floor || 'special'}-${selected.ward}-${selectedDate}-${selected.slot || 'main'}`
     const draftKey = `cpa-chart-draft:${chartKey}`
     setChartLoading(true)
@@ -838,7 +844,7 @@ function App() {
   // effect's merge can tell a real edit apart from a stale copy of old server data.
   useEffect(() => {
     const chartKey = selected ? `${selected.floor || 'special'}-${selected.ward}-${selectedDate}-${selected.slot || 'main'}` : null
-    if (!selected || selected.mode === 'pills' || loadedChartKey !== chartKey) return undefined
+    if (!selected || selected.mode !== 'chart' || loadedChartKey !== chartKey) return undefined
     try {
       localStorage.setItem(`cpa-chart-draft:${chartKey}`, JSON.stringify({ base: lastSyncedChartRef.current, current: { patientNames, columnMedicines, quantities } }))
     } catch { /* storage unavailable or full — the network autosave is still the source of truth */ }
@@ -849,7 +855,7 @@ function App() {
     const chartKey = selected ? `${selected.floor || 'special'}-${selected.ward}-${selectedDate}-${selected.slot || 'main'}` : null
     // Holding off while the session is expired is what stops the 4-second retry loop. The
     // effect re-runs when it clears, which saves everything typed in the meantime.
-    if (!selected || selected.mode === 'pills' || !isLoggedIn || sessionExpired || chartLoading || loadedChartKey !== chartKey) return undefined
+    if (!selected || selected.mode !== 'chart' || !isLoggedIn || sessionExpired || chartLoading || loadedChartKey !== chartKey) return undefined
     // Read-only (another device holds the lock) or not-yet-claimed: nothing of ours to save.
     if (lockState === 'readonly' || lockState === 'available') return undefined
     // Only claim "unsaved" when the grid actually differs from what the server last confirmed;
@@ -902,7 +908,7 @@ function App() {
   // failed PATCH means it was taken after going stale — keep editing, show the soft 'stale'
   // warning; a later PATCH re-succeeds if the row is still ours (expired but untaken).
   useEffect(() => {
-    if (!selected || selected.mode === 'pills' || (lockState !== 'editing' && lockState !== 'stale')) return undefined
+    if (!selected || selected.mode !== 'chart' || (lockState !== 'editing' && lockState !== 'stale')) return undefined
     const body = { floor: selected.floor || '', ward: selected.ward, slot: selected.slot || 'main', date: selectedDate }
     const beat = () => fetch(`${apiUrl}/chart/lock`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body) })
       .then((response) => { isExpired(response); return response.ok ? response.json() : { ok: true } })
@@ -915,7 +921,7 @@ function App() {
   // Read-only: another device holds the lock. Poll the full chart so its edits show live, and
   // flip to 'available' the instant the lock frees.
   useEffect(() => {
-    if (!selected || selected.mode === 'pills' || lockState !== 'readonly') return undefined
+    if (!selected || selected.mode !== 'chart' || lockState !== 'readonly') return undefined
     const params = new URLSearchParams({ floor: selected.floor || '', ward: selected.ward, slot: selected.slot || 'main', date: selectedDate })
     let cancelled = false
     const poll = () => fetch(`${apiUrl}/chart?${params}`, { credentials: 'include' })
@@ -939,7 +945,7 @@ function App() {
   // Release the lock on back-out / date change / tab-close. keepalive survives the unload;
   // the server DELETE is a no-op when this tab didn't hold it.
   useEffect(() => {
-    if (!selected || selected.mode === 'pills') return undefined
+    if (!selected || selected.mode !== 'chart') return undefined
     const params = new URLSearchParams({ floor: selected.floor || '', ward: selected.ward, slot: selected.slot || 'main', date: selectedDate })
     const release = () => { try { fetch(`${apiUrl}/chart/lock?${params}`, { method: 'DELETE', credentials: 'include', keepalive: true }) } catch { /* best effort */ } }
     window.addEventListener('pagehide', release)
@@ -1008,6 +1014,25 @@ function App() {
     const timer = setTimeout(save, 1200)
     return () => { clearTimeout(timer); clearTimeout(retryTimer) }
   }, [isExpired, isLoggedIn, loadedPillsKey, pillEntries, pillRooms, pillsData, pillsLoading, selected, selectedDate, sessionExpired])
+
+  // The requisition — a plain read-only fetch on ward/date change. No autosave, no lock.
+  useEffect(() => {
+    if (!selected || selected.mode !== 'order') return undefined
+    let cancelled = false
+    setOrderLoading(true)
+    setOrderError(false)
+    const params = new URLSearchParams({ floor: selected.floor || '', ward: selected.ward, date: selectedDate })
+    fetch(`${apiUrl}/order?${params}`, { credentials: 'include' })
+      .then((response) => { isExpired(response); return response.ok ? response.json() : null })
+      .then((result) => {
+        if (cancelled) return
+        if (result) { setOrderData(result.order || { items: [] }); setOrderError(false) }
+        else { setOrderData(null); setOrderError(true) }
+        setOrderLoading(false)
+      })
+      .catch(() => { if (!cancelled) { setOrderError(true); setOrderLoading(false) } })
+    return () => { cancelled = true }
+  }, [selected, selectedDate, isExpired])
 
   const changeDate = useCallback((nextDate) => {
     flushChart()
@@ -1160,6 +1185,7 @@ function App() {
   // express it — a hidden last patient would leave the break on the one before it.
   const printingRows = (pillsData?.patients || []).filter((patient) => printScope === 'all' || pillSelection.has(patient.rowNumber)).map((patient) => patient.rowNumber)
   const lastPrintingRow = printingRows[printingRows.length - 1]
+  if (selected && selected.mode === 'order') return <OrderScreen header={appHeader} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={orderLoading} data={orderData} loadError={orderError} onPrint={() => window.print()} />
   if (selected && selected.mode === 'pills') return <PillsScreen header={appHeader} wardLabel={wardLabel} roomLabel={/\bccu\b/i.test(selected.ward || '') ? 'رقم السرير' : 'رقم الغرفة'} today={today} editTime={editTime} onBack={() => { flushPills(); setSelected(null) }} selectedDate={selectedDate} onChangeDate={setSelectedDate} pillsLoading={pillsLoading} pillsData={pillsData} pillsSaveStatus={pillsSaveStatus} pillsLoadError={pillsLoadError} pillEntries={pillEntries} setPillEntries={setPillEntries} pillRooms={pillRooms} setPillRooms={setPillRooms} pillSelection={pillSelection} onTogglePatient={togglePillPatient} printScope={printScope} lastPrintingRow={lastPrintingRow} onPrint={startPillsPrint} confirmModal={confirmModal} />
 
   return <main className="app-shell">{appHeader}{justLoggedIn && <div className="login-dissolve" aria-hidden="true"><img className="login-dissolve-logo" src={hospitalLogo} alt="" /><p className="login-dissolve-title">الصيدلة السريرية</p></div>}{!selected && !floor ? <FloorPickerScreen today={today} onPickFloor={setFloor} onOpen={setSelected} dashboard={dashboardData} dashboardLoading={dashboardData === null && !dashboardError} dashboardError={dashboardError} onRetryDashboard={retryDashboard} announcements={announcements} isManager={isManager} medicinesPeriod={medicinesPeriod} setMedicinesPeriod={setMedicinesPeriod} announcementDraft={announcementDraft} setAnnouncementDraft={setAnnouncementDraft} announcementError={announcementError} announcementBusy={announcementBusy} onPostAnnouncement={postAnnouncement} onEditAnnouncement={editAnnouncement} onDeleteAnnouncement={deleteAnnouncement} /> : !selected ? <WardPickerScreen floor={floor} today={today} dashboard={dashboardData} dashboardError={dashboardError} onBack={() => setFloor(null)} onOpen={setSelected} /> :<ChartScreen selected={selected} wardLabel={wardLabel} today={today} todayWeekday={todayWeekday} isManager={isManager} onBack={() => { flushChart(); setSelected(null) }} onGoToPills={() => { flushChart(); setSelected({ ...selected, mode: 'pills' }) }} onExportPdf={exportChartPdf} dateIsToday={dateIsToday} selectedDate={selectedDate} onChangeDate={changeDate} onCopyToNextDay={copyToNextDay} chartSaveStatus={chartSaveStatus} loadError={loadError} copyError={copyError} chartReady={chartReady} lastChartSaveAt={lastChartSaveAt} onRetryLoad={() => setChartLoadNonce((n) => n + 1)} onRetrySave={() => setChartSaveNonce((n) => n + 1)} lockState={lockState} lockHolder={lockHolder} chartClashNote={chartClashNote} onDismissClashNote={() => setChartClashNote(null)} medicines={medicines} patientNames={patientNames} columnMedicines={columnMedicines} quantities={quantities} totals={totals} isThursday={isThursday} activeRow={activeRow} activeColumn={activeColumn} labelBelow={labelBelow} setActiveRow={setActiveRow} setActiveColumn={setActiveColumn} setLabelBelow={setLabelBelow} onSetColumnMedicine={setColumnMedicine} onCommitColumnMedicine={commitColumnMedicine} columnMedicineNotice={columnMedicineNotice} onDismissNotice={() => setColumnMedicineNotice(null)} onApplySuggestion={applyMedicineSuggestion} onSetPatientName={setPatientName} onUpdateQuantity={updateQuantity} onCollapseRow={collapseRow} chartFrameRef={chartFrameRef} chartHeadRef={chartHeadRef} chartGridRef={chartGridRef} chartDosesRef={chartDosesRef} chartFootRef={chartFootRef} showMedicineForm={showMedicineForm} onOpenMedicineForm={() => { setRegistrationsError(''); setShowMedicineForm(true) }} onCloseMedicineForm={() => setShowMedicineForm(false)} onAddMedicine={addMedicine} newMedicine={newMedicine} setNewMedicine={setNewMedicine} registrationsError={registrationsError} />}{confirmModal}</main>
