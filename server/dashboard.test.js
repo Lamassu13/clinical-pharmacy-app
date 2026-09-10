@@ -182,6 +182,38 @@ test('GET/POST/DELETE /api/announcements: a plain user can only read; a manager 
   assert.equal((await manager.delete('/api/announcements/999999')).status, 404)
 })
 
+test('GET /api/dashboard patientsByFloor (manager): cumulative patient-days per numbered floor, own window, independent of the medicines period', async () => {
+  const user = await createUser({ role: 'user', floor: 5 })
+  const two = [{ rowNumber: 1, name: 'أ' }, { rowNumber: 2, name: 'ب' }]
+  const three = [...two, { rowNumber: 3, name: 'ج' }]
+
+  await seedChart({ floor: 5, ward: 'ردهة رجال', date: DATE, createdBy: user.id, patients: two })
+  // A blank patient row alongside a named one — only the named one counts.
+  await seedChart({ floor: 5, ward: 'ردهة النساء', date: DATE, createdBy: user.id, patients: [{ rowNumber: 1, name: 'د' }, { rowNumber: 2, name: '' }] })
+  await seedChart({ floor: 5, ward: 'ردهة الخاص', date: FIVE_DAYS_AGO, createdBy: user.id, patients: three })
+  await seedChart({ floor: 6, ward: 'الوحدة الأولى', date: DATE, createdBy: user.id, patients: [{ rowNumber: 1, name: 'هـ' }] })
+  await seedChart({ floor: 6, ward: 'الوحدة الثالثة', date: THREE_WEEKS_AGO, createdBy: user.id, patients: two })
+  // A special (non-numbered) ward must never appear in a per-floor total.
+  await seedChart({ floor: null, ward: 'ردهة الديلزة', date: DATE, createdBy: user.id, patients: two })
+
+  const client = await loginAs({ role: 'admin' })
+  const at = async (patientsPeriod, period = 'month') =>
+    (await client.get(`/api/dashboard?date=${DATE}&period=${period}&patientsPeriod=${patientsPeriod}`)).body.patientsByFloor
+
+  assert.deepEqual(await at('today'), [{ floor: 5, count: 3 }, { floor: 6, count: 1 }])
+  assert.deepEqual(await at('week'), [{ floor: 5, count: 6 }, { floor: 6, count: 1 }])
+  assert.deepEqual(await at('month'), [{ floor: 5, count: 6 }, { floor: 6, count: 3 }])
+  // The medicines `period` param does not bleed into the patient window.
+  assert.deepEqual(await at('month', 'today'), [{ floor: 5, count: 6 }, { floor: 6, count: 3 }])
+})
+
+test('GET /api/dashboard patientsByFloor: a non-manager never receives it', async () => {
+  const user = await createUser({ role: 'user', floor: 5 })
+  await seedChart({ floor: 5, ward: 'ردهة رجال', date: DATE, createdBy: user.id, patients: [{ rowNumber: 1, name: 'أ' }] })
+  const client = await loginAs({ role: 'user', floor: 5 })
+  assert.deepEqual((await client.get(`/api/dashboard?date=${DATE}`)).body.patientsByFloor, [])
+})
+
 test('DELETE /api/users/:id: does not fail on a user who posted an announcement', async () => {
   const manager = await loginAs({ role: 'admin' })
   const author = await createUser({ role: 'user', floor: 5 })

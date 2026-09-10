@@ -52,6 +52,8 @@ function App() {
   const [announcementBusy, setAnnouncementBusy] = useState(false)
   // Manager-only window for the top-medicines widget (a plain user's is always the day).
   const [medicinesPeriod, setMedicinesPeriod] = useState('month')
+  // Independent window for the per-floor patients widget on إدارة الطوابق (manager-only).
+  const [patientsPeriod, setPatientsPeriod] = useState('month')
   const [medicines, setMedicines] = useState([])
   const [columnMedicines, setColumnMedicines] = useState(() => Array(CHART_COLUMNS).fill(''))
   // Set when a chart column is left holding a name not in the catalogue:
@@ -708,15 +710,16 @@ function App() {
     return () => clearInterval(timer)
   }, [selected, loadMedicines])
 
-  // The floor-picker dashboard only — loaded while it's the screen actually showing, not
-  // carried along while a chart or admin screen is open.
+  // The dashboard aggregates — loaded for the floor-picker landing page and for the
+  // manager's إدارة الطوابق screen (which now hosts the medicines + per-floor patients
+  // widgets), not carried along while a chart or another admin screen is open.
   useEffect(() => {
     // Also re-runs when adminView clears, so returning from a screen that changed things
     // (a chart purge, an announcement) lands on fresh numbers rather than the stale set.
-    if (!isLoggedIn || floor || selected || adminView) return undefined
+    if (!isLoggedIn || floor || selected || (adminView && adminView !== 'floors')) return undefined
     let cancelled = false
     const date = isoDate(new Date())
-    const periodQuery = isManager ? `&period=${medicinesPeriod}` : ''
+    const periodQuery = isManager ? `&period=${medicinesPeriod}&patientsPeriod=${patientsPeriod}` : ''
     fetch(`${apiUrl}/dashboard?date=${date}${periodQuery}`, { credentials: 'include' })
       .then((response) => { isExpired(response); return response.ok ? response.json() : null })
       .then((result) => {
@@ -724,12 +727,14 @@ function App() {
         if (result) { setDashboardData(result); setDashboardError(false) } else setDashboardError(true)
       })
       .catch(() => { if (!cancelled) setDashboardError(true) })
-    fetch(`${apiUrl}/announcements`, { credentials: 'include' })
-      .then((response) => { isExpired(response); return response.ok ? response.json() : null })
-      .then((result) => { if (!cancelled && result) setAnnouncements(result.announcements) })
-      .catch(() => undefined)
+    if (!adminView) {
+      fetch(`${apiUrl}/announcements`, { credentials: 'include' })
+        .then((response) => { isExpired(response); return response.ok ? response.json() : null })
+        .then((result) => { if (!cancelled && result) setAnnouncements(result.announcements) })
+        .catch(() => undefined)
+    }
     return () => { cancelled = true }
-  }, [isLoggedIn, floor, selected, adminView, isExpired, isManager, medicinesPeriod, dashboardReloadKey])
+  }, [isLoggedIn, floor, selected, adminView, isExpired, isManager, medicinesPeriod, patientsPeriod, dashboardReloadKey])
 
   const postAnnouncement = useCallback(async () => {
     const message = announcementDraft.trim()
@@ -1135,7 +1140,7 @@ function App() {
 
   if (adminView === 'users' && isManager) return <AdminUsersScreen adminHeader={appHeader} allUsers={allUsers} currentUser={currentUser} isAdmin={isAdmin} registrationsError={registrationsError} adminSuccess={adminSuccess} busy={busy} onReload={loadUsers} onChangeRole={changeUserRole} onAssignLocation={assignLocationToUser} onDeleteUser={deleteUser} confirmModal={confirmModal} />
 
-  if (adminView === 'floors' && isManager) return <AdminFloorsScreen adminHeader={appHeader} purgeFrom={purgeFrom} setPurgeFrom={setPurgeFrom} purgeTo={purgeTo} setPurgeTo={setPurgeTo} purgeAll={purgeAll} setPurgeAll={setPurgeAll} purgeTargets={purgeTargets} onToggleTarget={togglePurgeTarget} busy={busy} registrationsError={registrationsError} adminSuccess={adminSuccess} onPurge={purgeCharts} confirmModal={confirmModal} />
+  if (adminView === 'floors' && isManager) return <AdminFloorsScreen adminHeader={appHeader} purgeFrom={purgeFrom} setPurgeFrom={setPurgeFrom} purgeTo={purgeTo} setPurgeTo={setPurgeTo} purgeAll={purgeAll} setPurgeAll={setPurgeAll} purgeTargets={purgeTargets} onToggleTarget={togglePurgeTarget} busy={busy} registrationsError={registrationsError} adminSuccess={adminSuccess} onPurge={purgeCharts} confirmModal={confirmModal} dashboard={dashboardData} dashboardLoading={dashboardData === null && !dashboardError} dashboardError={dashboardError} onRetryDashboard={retryDashboard} medicinesPeriod={medicinesPeriod} setMedicinesPeriod={setMedicinesPeriod} patientsPeriod={patientsPeriod} setPatientsPeriod={setPatientsPeriod} isManager={isManager} />
 
   // adminMedicines holds the catalogue exactly as the server returned it, so its length is
   // the number of rows in the database; the filter only narrows what the table draws.

@@ -1,19 +1,36 @@
 import { floors, specialWards } from '../constants.js'
+import { TopMedicinesWidget, PatientsByFloorWidget } from '../components/DashboardWidgets.jsx'
 
-// Floor management. For now it holds one tool: bulk-deleting charts for a date range across
-// every ward, or a chosen set of floors and special wards. Manager-gated; the actual delete
-// is confirmed through the shared dialog in App.
+// Floor management. Two parts: the manager's analytics (most-dispensed medicines + patients
+// per floor, each with its own day/week/month window) and the chart-purge tool below.
+// Manager-gated; the actual delete is confirmed through the shared dialog in App.
 export default function AdminFloorsScreen({
   adminHeader, purgeFrom, setPurgeFrom, purgeTo, setPurgeTo, purgeAll, setPurgeAll,
   purgeTargets, onToggleTarget, busy, registrationsError, adminSuccess, onPurge, confirmModal,
+  dashboard, dashboardLoading, dashboardError, onRetryDashboard,
+  medicinesPeriod, setMedicinesPeriod, patientsPeriod, setPatientsPeriod, isManager,
 }) {
   return <main className="app-shell">{adminHeader}<section className="dashboard">
     <div className="section-heading"><div>
-      <h1>مسح الجارتات</h1>
+      <h1>إدارة الطوابق</h1>
     </div></div>
     {registrationsError && <p className="form-error" role="alert">{registrationsError}</p>}
     {adminSuccess && <p className="form-success" role="status">{adminSuccess}</p>}
 
+    <div className="dashboard-widgets">
+      <TopMedicinesWidget
+        topMedicines={dashboard?.topMedicines ?? []}
+        period={medicinesPeriod} setPeriod={setMedicinesPeriod} isManager={isManager} open
+        loading={dashboardLoading} error={dashboardError} onRetry={onRetryDashboard}
+      />
+      <PatientsByFloorWidget
+        patientsByFloor={dashboard?.patientsByFloor ?? []}
+        period={patientsPeriod} setPeriod={setPatientsPeriod}
+        loading={dashboardLoading} error={dashboardError} onRetry={onRetryDashboard}
+      />
+    </div>
+
+    <h2 className="admin-subheading">مسح الجارتات</h2>
     <form className="purge-form" onSubmit={(event) => { event.preventDefault(); onPurge() }}>
       <div className="purge-dates">
         <label>من تاريخ<input type="date" value={purgeFrom} onChange={(event) => setPurgeFrom(event.target.value)} required /></label>

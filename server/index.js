@@ -380,6 +380,8 @@ app.get('/api/dashboard', requireAuth, async (request, response) => {
   const user = request.session.user
   const isManager = user.role === 'admin' || user.role === 'supervisor'
   const days = isManager ? (PERIOD_DAYS[request.query.period] ?? PERIOD_DAYS.month) : PERIOD_DAYS.today
+  // The per-floor patient widget (manager-only, إدارة الطوابق) carries its own period toggle.
+  const patientDays = isManager ? (PERIOD_DAYS[request.query.patientsPeriod] ?? PERIOD_DAYS.month) : PERIOD_DAYS.today
 
   // A non-manager's medicine totals are scoped to whatever they can actually reach.
   let scopeClause = ''
@@ -396,7 +398,7 @@ app.get('/api/dashboard', requireAuth, async (request, response) => {
     }
   }
 
-  const [started, topMedicines] = await Promise.all([
+  const pending = [
     query(
       `SELECT w.floor_number, w.name
        FROM wards w
@@ -419,12 +421,30 @@ app.get('/api/dashboard', requireAuth, async (request, response) => {
        LIMIT 5`,
       medicineParams,
     ),
-  ])
+    // Cumulative patient-days per numbered floor, over the widget's own window. Managers only.
+    isManager
+      ? query(
+        `SELECT w.floor_number AS floor, COUNT(*)::int AS count
+         FROM chart_patients cp
+         JOIN daily_charts dc ON dc.id = cp.chart_id
+         JOIN wards w ON w.id = dc.ward_id
+         WHERE cp.patient_name <> ''
+           AND w.floor_number IS NOT NULL
+           AND dc.chart_date > ($1::date - $2::int) AND dc.chart_date <= $1::date
+         GROUP BY w.floor_number
+         ORDER BY w.floor_number`,
+        [date, patientDays],
+      )
+      : Promise.resolve({ rows: [] }),
+  ]
+  const [started, topMedicines, patientsByFloor] = await Promise.all(pending)
   response.json({
     startedWards: started.rows.map((row) => ({ floor: row.floor_number, ward: row.name })),
     topMedicines: topMedicines.rows.filter((row) => row.name).map((row) => ({ name: row.name, quantity: row.quantity })),
     medicinesPeriod: isManager ? (PERIOD_DAYS[request.query.period] ? request.query.period : 'month') : 'today',
     medicinesScope: isManager ? 'all' : 'own',
+    patientsByFloor: patientsByFloor.rows.map((row) => ({ floor: row.floor, count: row.count })),
+    patientsPeriod: isManager ? (PERIOD_DAYS[request.query.patientsPeriod] ? request.query.patientsPeriod : 'month') : 'today',
   })
 })
 
