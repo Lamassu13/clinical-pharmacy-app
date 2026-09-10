@@ -96,12 +96,6 @@ export default function ChartScreen({
       {chartReady && <span className={saveClass} aria-live="polite">{saveText}</span>}
     </div>
 
-    {/* A blank 41×51 grid on a new chart otherwise looks the same as a load that failed and
-        was dismissed. Clears itself as soon as anything is typed. */}
-    {chartReady && !readOnly && patientNames.every((name) => !name.trim()) && columnMedicines.every((medicine) => !medicine.trim()) && (
-      <p className="chart-empty-hint">جارت جديد — اكتب اسم أول مريض في أقصى اليمين، ثم اسم الدواء في رأس العمود.</p>
-    )}
-
     {/* Held until the next valid commit or an explicit dismiss — no auto-timeout, since on a
         shared iPad the pharmacist usually looks up before a self-clearing notice can be read. */}
     {columnMedicineNotice && <p className="form-error chart-medicine-notice" role="alert">
@@ -122,6 +116,11 @@ export default function ChartScreen({
           ? <><span>تعذّر تحميل الجارت. تُعاد المحاولة تلقائيًا كل بضع ثوانٍ.</span><button type="button" className="secondary-button compact" onClick={onRetryLoad}>إعادة المحاولة الآن</button></>
           : <span>جارٍ تحميل الجارت…</span>}
       </div>}
+      {/* A blank 41×51 grid on a new chart otherwise looks the same as a dismissed failed load.
+          Floats over the empty grid and clears the instant anything is typed — no layout shift. */}
+      {chartReady && !readOnly && patientNames.every((name) => !name.trim()) && columnMedicines.every((medicine) => !medicine.trim()) && (
+        <p className="chart-empty-hint">جارت جديد — اكتب اسم أول مريض في أقصى اليمين، ثم اسم الدواء في رأس العمود.</p>
+      )}
       <div className="chart-head" inert={(!chartReady || readOnly) || undefined}>
         <div className="chart-head-corner"><img className="patient-header-logo" src={hospitalLogo} alt="" /><span>مستشفى بغداد التعليمي</span><span>وحدة الصيدلة السريرية</span>{selected.floor && <span>الطابق {selected.floor}</span>}<span>{selected.ward}</span><span>{today}</span><span>{todayWeekday}</span></div>
         <div className="chart-head-scroll" ref={chartHeadRef}><table className="chart-table" role="presentation"><thead><tr>{Array.from({ length: CHART_COLUMNS }, (_, index) => <th key={index} className={activeColumn === index ? 'col-active' : undefined}><input className="medicine-select" list="medicine-options" value={columnMedicines[index]} onChange={(event) => onSetColumnMedicine(index, event.target.value)} onFocus={(event) => { columnFocusValue.current = event.target.value; setActiveColumn(index) }} onBlur={(event) => onCommitColumnMedicine(index, event.target.value, columnFocusValue.current)} placeholder="دواء" title="اكتب أول حروف الدواء واختر من القائمة" aria-label={`اسم الدواء، عمود ${index + 1}`} /></th>)}</tr></thead></table></div>
