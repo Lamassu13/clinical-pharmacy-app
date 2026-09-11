@@ -197,8 +197,23 @@ CREATE TABLE IF NOT EXISTS chart_locks (
   PRIMARY KEY (ward_id, chart_date, slot)
 );
 
+-- استمارات العلاج: a shared PDF library. Every member reads/downloads; a manager
+-- (admin/supervisor) uploads, renames, replaces, or deletes. The bytes live here, not on
+-- disk — the free Render web service has no persistent filesystem, so anything written to
+-- disk is gone on the next deploy. Neon is already the app's only durable store.
+CREATE TABLE IF NOT EXISTS treatment_forms (
+  id BIGSERIAL PRIMARY KEY,
+  title TEXT NOT NULL,
+  file_name TEXT NOT NULL,
+  file_size INTEGER NOT NULL,
+  file_data BYTEA NOT NULL,
+  uploaded_by BIGINT REFERENCES users(id),
+  uploaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE INDEX IF NOT EXISTS daily_charts_date_idx ON daily_charts (chart_date);
 CREATE INDEX IF NOT EXISTS chart_quantities_chart_idx ON chart_quantities (chart_id);
 CREATE INDEX IF NOT EXISTS users_account_status_idx ON users (account_status);
 CREATE INDEX IF NOT EXISTS pill_entries_chart_idx ON pill_entries (chart_id);
 CREATE INDEX IF NOT EXISTS announcements_created_at_idx ON announcements (created_at DESC);
+CREATE INDEX IF NOT EXISTS treatment_forms_title_idx ON treatment_forms (title);

@@ -16,6 +16,7 @@ import {
   normalizeMedicineKey, medicineKeySql,
 } from './validation.js'
 import chartRoutes, { resolveChartId, readSlot } from './routes/chart.js'
+import treatmentFormsRoutes from './routes/treatment-forms.js'
 
 const app = express()
 const port = Number(process.env.PORT || 3001)
@@ -498,6 +499,7 @@ app.delete('/api/announcements/:id', requireManager, async (request, response) =
 })
 
 app.use('/api', chartRoutes)
+app.use('/api', treatmentFormsRoutes)
 
 app.get('/api/pills', requireAuth, async (request, response) => {
   const floor = request.query.floor ? clampInt(request.query.floor, 2, 10) : null

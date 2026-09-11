@@ -95,3 +95,12 @@ export const pillEntryList = (entries) => Object.entries(entries).map(([key, val
     pillQty: value.pillQty || '', pillName: value.pillName || '',
   }
 })
+
+// A treatment-form's size, for the استمارات العلاج list — "340 كيلوبايت" / "1.2 ميغابايت".
+export const formatFileSize = (bytes) => {
+  const n = Number(bytes)
+  if (!Number.isFinite(n) || n < 0) return ''
+  if (n < 1024) return `${n} بايت`
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} كيلوبايت`
+  return `${(n / (1024 * 1024)).toFixed(1)} ميغابايت`
+}

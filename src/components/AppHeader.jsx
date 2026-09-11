@@ -61,6 +61,7 @@ export default function AppHeader({ theme, onToggleTheme, currentUser, onLogout,
     <TopBarBrand onClick={onHome} />
     <nav className="user-menu" aria-label="أدوات الحساب">
       {onMyWard && <button type="button" className="secondary-button compact my-ward-button" onClick={onMyWard}>ردهتي اليوم</button>}
+      <button type="button" className="secondary-button compact" aria-current={adminView === 'forms' || undefined} onClick={() => onNavigate('forms')}>استمارات العلاج</button>
       {isManager && <AdminMenu isAdmin={isAdmin} adminView={adminView} onNavigate={onNavigate} />}
       {isManager && <span className="topbar-divider" aria-hidden="true" />}
       <ThemeToggle theme={theme} onToggle={onToggleTheme} />

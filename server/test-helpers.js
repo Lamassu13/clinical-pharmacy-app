@@ -22,8 +22,8 @@ export const startServer = (app) => new Promise((resolve) => {
 // may not exist yet the first time a test file resets the database.
 export const resetDatabase = () => pool.query(`
   TRUNCATE TABLE chart_quantities, chart_columns, chart_patients, pill_entries,
-    pill_patient_meta, chart_locks, daily_charts, wards, medicines, user_floor_access,
-    user_ward_access, users RESTART IDENTITY CASCADE;
+    pill_patient_meta, chart_locks, daily_charts, wards, medicines, treatment_forms,
+    user_floor_access, user_ward_access, users RESTART IDENTITY CASCADE;
   DO $$ BEGIN
     IF to_regclass('public.session') IS NOT NULL THEN EXECUTE 'TRUNCATE TABLE session'; END IF;
   END $$;
@@ -55,15 +55,27 @@ export class ApiClient {
     this.baseUrl = baseUrl
     this.cookies = new Map()
   }
-  async request(method, path, body) {
-    const headers = { 'Content-Type': 'application/json' }
-    if (this.cookies.size) headers.cookie = [...this.cookies].map(([name, value]) => `${name}=${value}`).join('; ')
-    const response = await fetch(`${this.baseUrl}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) })
+  #rememberCookies(response) {
     for (const setCookie of response.headers.getSetCookie()) {
       const pair = setCookie.split(';')[0]
       const separator = pair.indexOf('=')
       this.cookies.set(pair.slice(0, separator), pair.slice(separator + 1))
     }
+  }
+  async request(method, path, body) {
+    const headers = { 'Content-Type': 'application/json' }
+    if (this.cookies.size) headers.cookie = [...this.cookies].map(([name, value]) => `${name}=${value}`).join('; ')
+    const response = await fetch(`${this.baseUrl}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) })
+    this.#rememberCookies(response)
+    const text = await response.text()
+    return { status: response.status, body: text ? JSON.parse(text) : null }
+  }
+  // Multipart, for file-upload routes — no Content-Type header, so fetch sets the boundary.
+  async requestForm(method, path, formData) {
+    const headers = {}
+    if (this.cookies.size) headers.cookie = [...this.cookies].map(([name, value]) => `${name}=${value}`).join('; ')
+    const response = await fetch(`${this.baseUrl}${path}`, { method, headers, body: formData })
+    this.#rememberCookies(response)
     const text = await response.text()
     return { status: response.status, body: text ? JSON.parse(text) : null }
   }
@@ -72,4 +84,6 @@ export class ApiClient {
   put(path, body) { return this.request('PUT', path, body) }
   patch(path, body) { return this.request('PATCH', path, body) }
   delete(path) { return this.request('DELETE', path) }
+  postForm(path, formData) { return this.requestForm('POST', path, formData) }
+  putForm(path, formData) { return this.requestForm('PUT', path, formData) }
 }

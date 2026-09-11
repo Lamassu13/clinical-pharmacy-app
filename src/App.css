@@ -815,7 +815,12 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 
 .medicine-add-row { display: flex; gap: var(--space-3); margin: var(--space-2) 0; flex-wrap: wrap; }
 .medicine-add-row input { flex: 1; min-width: 200px; padding: 11px 13px; }
+.medicine-add-row input[type="file"] { flex: 1 1 240px; padding: 8px; }
 .medicine-filter { width: 100%; padding: 10px 13px; margin-bottom: var(--space-3); }
+/* استمارات العلاج: the "replace file" control is a native file input dressed as a text-button
+   via its <label> — sr-only hides the input itself, the label stays the click target. */
+.form-replace-label { position: relative; cursor: pointer; }
+.form-file-pending { color: var(--text-muted); font-size: var(--text-xs); }
 
 /* Floor-management: the bulk chart-purge form */
 .admin-subheading { margin: var(--space-8) 0 var(--space-4); font-size: var(--text-lg); color: var(--heading); }
