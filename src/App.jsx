@@ -1013,12 +1013,18 @@ function App() {
       for (let i = 0; i < localStorage.length; i += 1) {
         const key = localStorage.key(i)
         if (!key || !key.startsWith('cpa-chart-draft:')) continue
-        const parsed = JSON.parse(localStorage.getItem(key) || 'null')
-        if (parsed?.meta?.ward) return parsed.meta
+        const meta = JSON.parse(localStorage.getItem(key) || 'null')?.meta
+        if (!meta?.ward) continue
+        // Shared iPads carry drafts across logins: a different ward's account may have left an
+        // unsynced chart in this same browser's storage. Only offer to resume what the current
+        // user can actually open — otherwise a floor-5 pharmacist gets a "resume" button into
+        // floor 3's chart.
+        const inScope = isManager || (meta.floor ? meta.floor === currentUser?.assignedFloor : (currentUser?.assignedWards || []).includes(meta.ward))
+        if (inScope) return meta
       }
     } catch { /* storage unavailable */ }
     return null
-  }, [isLoggedIn, floor, selected, adminView])
+  }, [isLoggedIn, floor, selected, adminView, isManager, currentUser])
   const resumeFromDraft = useCallback(() => {
     if (!resumeDraft) return
     if (resumeDraft.date) setSelectedDate(resumeDraft.date)
