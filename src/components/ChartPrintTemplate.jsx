@@ -14,17 +14,19 @@ import { CHART_COLUMNS, PATIENT_ROWS } from '../constants.js'
 // risked spilling onto a second physical page (see this session's history in
 // jaunty-marinating-koala.md). None of that applies here: this template always renders into
 // one fixed 297x210mm canvas by construction, so there's nothing to protect against — the
-// full page height (minus the header) is simply divided across all 41 rows plus the totals,
-// same as the "0 margin, let the file fill the page" the user asked for. Always all 41 rows
-// (not just the filled ones): the chart is one fixed-size form either way, and this way every
-// row gets an identical, generous height regardless of how many patients are in it.
+// space inside a real 12.7mm margin on all four sides (minus the header) is simply divided
+// across all 41 rows plus the totals. Always all 41 rows (not just the filled ones): the
+// chart is one fixed-size form either way, and this way every row gets an identical,
+// generous height regardless of how many patients are in it.
 const HEAD_MM = 28
 const NAME_COL_MM = 28
 const PAGE_HEIGHT_MM = 210
+const MARGIN_MM = 12.7
 
 const ChartPrintTemplate = forwardRef(function ChartPrintTemplate({ selected, today, todayWeekday, isThursday, patientNames, columnMedicines, quantities, totals }, ref) {
   const footRows = isThursday ? 2 : 1
-  const rowMM = (PAGE_HEIGHT_MM - HEAD_MM) / (PATIENT_ROWS + footRows)
+  const innerHeight = PAGE_HEIGHT_MM - MARGIN_MM * 2
+  const rowMM = (innerHeight - HEAD_MM) / (PATIENT_ROWS + footRows)
   const gridTemplateRows = `${HEAD_MM}mm repeat(${PATIENT_ROWS}, ${rowMM}mm) repeat(${footRows}, ${rowMM}mm)`
 
   return <div ref={ref} className="chart-print-template" style={{ gridTemplateRows, gridTemplateColumns: `${NAME_COL_MM}mm repeat(${CHART_COLUMNS}, 1fr)` }}>
@@ -37,7 +39,7 @@ const ChartPrintTemplate = forwardRef(function ChartPrintTemplate({ selected, to
       <span>{today}</span>
       <span>{todayWeekday}</span>
     </div>
-    {columnMedicines.map((name, columnIndex) => <div key={columnIndex} className="cpt-cell cpt-col-head"><span>{name}</span></div>)}
+    {columnMedicines.map((name, columnIndex) => <div key={columnIndex} className="cpt-cell cpt-col-head"><span className="cpt-col-head-text">{name}</span></div>)}
 
     {patientNames.map((name, rowIndex) => <Fragment key={rowIndex}>
       <div className="cpt-cell cpt-name">{name || `مريض ${rowIndex + 1}`}</div>

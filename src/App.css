@@ -1649,6 +1649,8 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
   z-index: -1;
   width: 297mm;
   height: 210mm;
+  box-sizing: border-box;
+  padding: 12.7mm;
   display: grid;
   direction: rtl;
   background: #fff;
@@ -1676,8 +1678,22 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 }
 .cpt-corner img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; opacity: .12; }
 .cpt-corner span { position: relative; z-index: 1; }
-.cpt-col-head { writing-mode: vertical-rl; text-orientation: mixed; border-inline-start-width: 0.6mm; padding: 1px 0; }
-.cpt-col-head span { white-space: normal; word-break: break-word; }
+/* Vertical medicine headers: html2canvas doesn't implement CSS Writing Modes (it silently
+   ignores writing-mode/text-orientation and lays text out horizontally, which is what wrapped
+   these into cramped stacked fragments instead of one rotated label — see
+   jaunty-marinating-koala.md). transform rotation is well supported by html2canvas, so the
+   label is centered and turned -90deg instead. Single line (no wrap): a wrapped line here
+   would stack side-by-side once rotated, overflowing the narrow column — same
+   clip-if-too-long behavior the app has always had for very long medicine names. */
+.cpt-col-head { position: relative; border-inline-start-width: 0.6mm; padding: 0; }
+.cpt-col-head-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 26mm;
+  white-space: nowrap;
+  transform: translate(-50%, -50%) rotate(-90deg);
+}
 .cpt-name { justify-content: flex-start; padding-inline-start: 2px; font-weight: 700; border-inline-start-width: 0.6mm; }
 .cpt-foot-corner { font-size: 8px; background: #e6f4ea; }
 .cpt-total { font-size: 8px; font-weight: 700; background: #e6f4ea; }
