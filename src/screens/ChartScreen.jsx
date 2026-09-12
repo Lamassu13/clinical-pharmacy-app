@@ -7,7 +7,7 @@ import { CHART_COLUMNS } from '../constants.js'
 // maintains it, stays in App so that swapping in the sign-in card when a session lapses does
 // not unmount the half-typed chart.
 export default function ChartScreen({
-  selected, wardLabel, today, todayWeekday, isManager, dateIsToday, selectedDate, onChangeDate, onCopyToNextDay, onBack, onGoToPills, onExportPdf, pdfBusy,
+  selected, wardLabel, today, todayWeekday, isManager, dateIsToday, selectedDate, onChangeDate, onCopyToNextDay, onBack, onGoToPills, onExportPdf, pdfBusy, pdfExportError,
   chartSaveStatus, loadError, copyError, chartReady, lastChartSaveAt, onRetryLoad, onRetrySave, lockState, lockHolder,
   chartClashNote, onDismissClashNote, droppedCells, undo, onUndo,
   medicines, patientNames, columnMedicines, quantities, totals, isThursday,
@@ -173,12 +173,13 @@ export default function ChartScreen({
 
     {/* Below the grid, so a save failure or a merge outcome never pushes the cells the
         pharmacist is typing into. */}
-    {chartReady && (chartSaveStatus === 'error' || copyError) && <div className="chart-recover-line" role="alert">
+    {chartReady && (chartSaveStatus === 'error' || copyError || pdfExportError) && <div className="chart-recover-line" role="alert">
       {chartSaveStatus === 'error' && <>
         <span>لم يُحفظ — تُعاد المحاولة تلقائيًا. تعديلاتك محفوظة على هذا الجهاز.</span>
         <button type="button" className="secondary-button compact" onClick={onRetrySave}>إعادة المحاولة الآن</button>
       </>}
       {copyError && <span>تعذّر نسخ الجارت — أعِد الضغط على «نسخ إلى اليوم التالي».</span>}
+      {pdfExportError && <span>{pdfExportError}</span>}
     </div>}
 
     {chartClashNote && <div className="chart-clash-note" role="status">
