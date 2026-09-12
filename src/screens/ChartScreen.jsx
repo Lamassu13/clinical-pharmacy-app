@@ -41,6 +41,13 @@ export default function ChartScreen({
   // holder's edits in. The toolbar/meta/status bars stay readable — an SR user still needs the
   // ward name, date and save state during read-only. read = true only while it's someone else's.
   const readOnly = lockState === 'readonly'
+  // Print only: the sheet normally shows 34 rows before المجموع, blank ones included — that's
+  // what fits one A4 landscape page on the ward's printer. A chart with a patient past row 34
+  // extends instead of truncating them: totals follow whichever is taller. Screen view is
+  // untouched — .print-hide-row only takes effect inside @media print.
+  const PRINT_MIN_ROWS = 34
+  const lastFilledRow = patientNames.reduce((last, name, index) => (name.trim() || quantities[index]?.some(Boolean) ? index : last), -1)
+  const printRowCount = Math.max(PRINT_MIN_ROWS, lastFilledRow + 1)
   const hasDropped = droppedCells && Object.keys(droppedCells).length > 0
   const frameClass = ['chart-frame', readOnly && 'chart-frame-held', hasDropped && 'chart-frame--clash'].filter(Boolean).join(' ')
   const since = lockHolder?.since
@@ -143,13 +150,13 @@ export default function ChartScreen({
           const next = chartDosesRef.current?.querySelector(`tr[data-row="${row}"] td[data-col="${col}"] input`)
           if (next) { event.preventDefault(); next.focus(); next.select() }
         }}>
-        <div className="chart-names"><table className="chart-table" role="presentation"><tbody>{patientNames.map((name, rowIndex) => <tr key={rowIndex} data-row={rowIndex} className={activeRow === rowIndex ? 'active-row' : undefined}>
+        <div className="chart-names"><table className="chart-table" role="presentation"><tbody>{patientNames.map((name, rowIndex) => <tr key={rowIndex} data-row={rowIndex} className={[activeRow === rowIndex && 'active-row', rowIndex >= printRowCount && 'print-hide-row'].filter(Boolean).join(' ') || undefined}>
           <th className="patient-cell">
             <input value={name} onChange={(event) => onSetPatientName(rowIndex, event.target.value)} placeholder={`مريض ${rowIndex + 1}`} aria-label={`اسم المريض، صف ${rowIndex + 1}`} />
             {activeRow === rowIndex && name.trim() && <button type="button" className="row-delete" aria-label={`حذف صف ${rowIndex + 1}`} title="حذف الصف" onPointerDown={(event) => event.preventDefault()} onMouseDown={(event) => event.preventDefault()} onClick={() => onCollapseRow(rowIndex)}>✕</button>}
           </th>
         </tr>)}</tbody></table></div>
-        <div className="chart-doses" ref={chartDosesRef}><table className="chart-table" role="grid" aria-label="جدول الجرعات — الأسهم للتنقّل بين الخلايا" aria-rowcount={patientNames.length} aria-colcount={CHART_COLUMNS}>{/* one grid; each cell's aria-label already carries its patient + medicine */}<tbody>{patientNames.map((name, rowIndex) => <ChartDoseRow key={rowIndex} rowIndex={rowIndex} patientName={name} quantities={quantities[rowIndex]} columnMedicines={columnMedicines} isActiveRow={activeRow === rowIndex} activeColumn={activeColumn} gridInactive={activeRow < 0} labelBelow={labelBelow} droppedCells={droppedCells} onUpdateQuantity={onUpdateQuantity} />)}</tbody></table></div>
+        <div className="chart-doses" ref={chartDosesRef}><table className="chart-table" role="grid" aria-label="جدول الجرعات — الأسهم للتنقّل بين الخلايا" aria-rowcount={patientNames.length} aria-colcount={CHART_COLUMNS}>{/* one grid; each cell's aria-label already carries its patient + medicine */}<tbody>{patientNames.map((name, rowIndex) => <ChartDoseRow key={rowIndex} rowIndex={rowIndex} patientName={name} quantities={quantities[rowIndex]} columnMedicines={columnMedicines} isActiveRow={activeRow === rowIndex} activeColumn={activeColumn} gridInactive={activeRow < 0} labelBelow={labelBelow} droppedCells={droppedCells} onUpdateQuantity={onUpdateQuantity} printHidden={rowIndex >= printRowCount} />)}</tbody></table></div>
       </div>
       <div className="chart-foot">
         <div className="chart-foot-corner"><span>المجموع</span>{isThursday && <span>المجموع المضاعف</span>}</div>

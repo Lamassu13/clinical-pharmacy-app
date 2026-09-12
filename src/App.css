@@ -1571,6 +1571,9 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 	.chart-doses .chart-table, .chart-head-scroll .chart-table, .chart-foot-scroll .chart-table { width: 100%; min-width: 0; }
 	.chart-table { table-layout: fixed; font-size: 4.5px; }
 	.chart-table th, .chart-table td { width: auto; min-width: 0; height: 2.8mm; line-height: 1; vertical-align: middle; }
+	/* Rows past the print cutoff (34, or the last row with data if further — see ChartScreen)
+	   take no space so المجموع sits right under the last row actually printed. */
+	.print-hide-row { display: none; }
 	/* Keep the three strips together — the totals must not slide onto a second page. */
 	.chart-frame, .chart-head, .chart-grid, .chart-foot { break-inside: avoid; }
 	.chart-frame { overflow: visible; }

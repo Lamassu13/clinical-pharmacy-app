@@ -9,9 +9,9 @@ import { memo } from 'react'
 // columns re-renders all 41 rows once. Keystrokes don't touch it, so the hot path is
 // unchanged. ponytail: if column nav ever feels heavy, drop the band and keep the header tint.
 // gridInactive flips only when focus enters/leaves the grid, so it costs one re-render pass.
-const ChartDoseRow = memo(function ChartDoseRow({ rowIndex, patientName, quantities, columnMedicines, isActiveRow, activeColumn, gridInactive, labelBelow, droppedCells, onUpdateQuantity }) {
+const ChartDoseRow = memo(function ChartDoseRow({ rowIndex, patientName, quantities, columnMedicines, isActiveRow, activeColumn, gridInactive, labelBelow, droppedCells, onUpdateQuantity, printHidden }) {
   const activeMedicineName = isActiveRow && activeColumn >= 0 ? columnMedicines[activeColumn]?.trim() : ''
-  return <tr data-row={rowIndex} role="row" aria-rowindex={rowIndex + 1} className={isActiveRow ? 'active-row' : undefined}>{quantities.map((quantity, columnIndex) => {
+  return <tr data-row={rowIndex} role="row" aria-rowindex={rowIndex + 1} className={[isActiveRow && 'active-row', printHidden && 'print-hide-row'].filter(Boolean).join(' ') || undefined}>{quantities.map((quantity, columnIndex) => {
     const isActiveCell = isActiveRow && activeColumn === columnIndex
     // After a stale-lock merge, the other device's value for a cell this tab overwrote — shown
     // until the pharmacist edits the cell (App's updateQuantity clears it).
