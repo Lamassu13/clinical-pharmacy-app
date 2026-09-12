@@ -17,6 +17,7 @@ import OrderScreen from './screens/OrderScreen.jsx'
 import FloorPickerScreen from './screens/FloorPickerScreen.jsx'
 import WardPickerScreen from './screens/WardPickerScreen.jsx'
 import ChartScreen from './screens/ChartScreen.jsx'
+import ChartPrintTemplate from './components/ChartPrintTemplate.jsx'
 import './App.css'
 
 // True while this tab is in the foreground. The polling effects below gate on it so a
@@ -101,6 +102,10 @@ function App() {
   const chartDosesRef = useRef(null)
   const chartHeadRef = useRef(null)
   const chartFootRef = useRef(null)
+  // The off-screen export render (ChartPrintTemplate) — always mounted alongside the live
+  // chart so exportChartPdf can rasterize it immediately with no separate mount/wait step.
+  // Cheap to keep around: plain text cells, not 2000+ live inputs like the editable grid.
+  const printTemplateRef = useRef(null)
   const [selectedDate, setSelectedDate] = useState(() => isoDate(new Date()))
   const [chartLoading, setChartLoading] = useState(false)
   const [loadedChartKey, setLoadedChartKey] = useState(null)
@@ -814,21 +819,41 @@ function App() {
     else if (floor) screen = `الطابق ${floor.number} — اختر الردهة`
     document.title = `${screen} · ${base}`
   }, [isLoggedIn, authView, adminView, selected, floor])
-  // "Export PDF" is the same print path — the chart's @media print rules already lay it out to
-  // one A4 landscape sheet. All this adds is a sensible default filename: browsers seed the
-  // "Save as PDF" name from document.title, so set a clean one, print, and let the title
-  // effect above put the real title back on the next render (afterprint also restores it in
-  // case nothing else re-renders).
-  const exportChartPdf = useCallback(() => {
-    if (!selected) return
-    const ward = selected.floor ? `الطابق ${selected.floor} - ${selected.ward}` : selected.ward
-    const previousTitle = document.title
-    const kind = selected.slot === 'extra' ? 'جارت إضافي' : 'جارت'
-    document.title = `${kind} ${ward} ${selectedDate}`.replace(/[\\/:*?"<>|]/g, '-')
-    const restore = () => { document.title = previousTitle; window.removeEventListener('afterprint', restore) }
-    window.addEventListener('afterprint', restore)
-    window.print()
-  }, [selected, selectedDate])
+  // Rasterizes the dedicated off-screen ChartPrintTemplate (plain text, no inputs, fixed at
+  // exactly the A4 landscape ratio) with html2canvas, then drops that image into a jsPDF page
+  // at 297x210mm with no margin — the printer's own hardware floor decides the rest at the
+  // physical print step, same as before, but the FILE itself is now byte-identical regardless
+  // of which device/browser generated it. Replaces window.print(), which handed the live DOM
+  // to whichever print engine the device had (see the plan this superseded for why that was
+  // the actual source of the iPad-specific quirks fought over several rounds this session).
+  const [pdfBusy, setPdfBusy] = useState(false)
+  const exportChartPdf = useCallback(async () => {
+    if (!selected || pdfBusy) return
+    const node = printTemplateRef.current
+    if (!node) return
+    setPdfBusy(true)
+    try {
+      await document.fonts.ready
+      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import('html2canvas'), import('jspdf')])
+      // html2canvas clones the document into an offscreen iframe to measure it; the clone
+      // carries over index.html's tiny inline dark-mode-flash script, which the iframe then
+      // tries to re-run and the app's CSP (correctly) blocks — harmless, since it's unrelated
+      // to the chart content, but strip it so the console stays clean.
+      const canvas = await html2canvas(node, { scale: 2, backgroundColor: '#ffffff', onclone: (clonedDoc) => clonedDoc.querySelectorAll('script').forEach((s) => s.remove()) })
+      const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+      pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, 297, 210)
+      const ward = selected.floor ? `الطابق ${selected.floor} - ${selected.ward}` : selected.ward
+      const kind = selected.slot === 'extra' ? 'جارت إضافي' : 'جارت'
+      const fileName = `${kind} ${ward} ${selectedDate}`.replace(/[\\/:*?"<>|]/g, '-')
+      // Opening the blob (rather than pdf.save()) hands it to the device's own PDF viewer, so
+      // printing from there uses that viewer's print path instead of triggering a download —
+      // smoother on iPad Safari, where a download just lands quietly in Files.
+      const blobUrl = pdf.output('bloburl', { filename: `${fileName}.pdf` })
+      window.open(blobUrl, '_blank')
+    } finally {
+      setPdfBusy(false)
+    }
+  }, [selected, selectedDate, pdfBusy])
   const [theme, setTheme] = useState(() => document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light')
   const toggleTheme = useCallback(() => {
     setTheme((current) => {
@@ -1382,7 +1407,7 @@ function App() {
   if (selected && selected.mode === 'order') return <OrderScreen header={appHeader} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={orderLoading} data={orderData} loadError={orderError} onPrint={() => window.print()} />
   if (selected && selected.mode === 'pills') return <PillsScreen header={appHeader} wardLabel={wardLabel} roomLabel={/\bccu\b/i.test(selected.ward || '') ? 'رقم السرير' : 'رقم الغرفة'} today={today} editTime={editTime} onBack={() => { flushPills(); setSelected(null) }} selectedDate={selectedDate} onChangeDate={setSelectedDate} pillsLoading={pillsLoading} pillsData={pillsData} pillsSaveStatus={pillsSaveStatus} pillsLoadError={pillsLoadError} pillEntries={pillEntries} setPillEntries={setPillEntries} pillRooms={pillRooms} setPillRooms={setPillRooms} pillSelection={pillSelection} onTogglePatient={togglePillPatient} printScope={printScope} lastPrintingRow={lastPrintingRow} onPrint={startPillsPrint} confirmModal={confirmModal} />
 
-  return <main className="app-shell">{appHeader}{!selected && !floor ? <FloorPickerScreen today={today} floors={visibleFloors} specialWards={visibleSpecialWards} resumeDraft={resumeDraft} onResume={resumeFromDraft} onPickFloor={setFloor} onOpen={setSelected} dashboard={dashboardData} dashboardLoading={dashboardData === null && !dashboardError} dashboardError={dashboardError} onRetryDashboard={retryDashboard} announcements={announcements} isManager={isManager} medicinesPeriod={medicinesPeriod} setMedicinesPeriod={setMedicinesPeriod} announcementDraft={announcementDraft} setAnnouncementDraft={setAnnouncementDraft} announcementError={announcementError} announcementBusy={announcementBusy} onPostAnnouncement={postAnnouncement} onEditAnnouncement={editAnnouncement} onDeleteAnnouncement={deleteAnnouncement} /> : !selected ? <WardPickerScreen floor={floor} today={today} dashboard={dashboardData} dashboardError={dashboardError} onBack={() => setFloor(null)} onOpen={setSelected} /> :<ChartScreen selected={selected} wardLabel={wardLabel} today={today} todayWeekday={todayWeekday} isManager={isManager} onBack={() => { flushChart(); setSelected(null) }} onGoToPills={() => { flushChart(); setSelected({ ...selected, mode: 'pills' }) }} onExportPdf={exportChartPdf} dateIsToday={dateIsToday} selectedDate={selectedDate} onChangeDate={changeDate} onCopyToNextDay={copyToNextDay} chartSaveStatus={chartSaveStatus} loadError={loadError} copyError={copyError} chartReady={chartReady} lastChartSaveAt={lastChartSaveAt} onRetryLoad={() => setChartLoadNonce((n) => n + 1)} onRetrySave={() => setChartSaveNonce((n) => n + 1)} lockState={lockState} lockHolder={lockHolder} chartClashNote={chartClashNote} onDismissClashNote={() => { setChartClashNote(null); setDroppedCells({}) }} droppedCells={droppedCells} undo={undo} onUndo={takeUndo} medicines={medicines} patientNames={patientNames} columnMedicines={columnMedicines} quantities={quantities} totals={totals} isThursday={isThursday} activeRow={activeRow} activeColumn={activeColumn} labelBelow={labelBelow} setActiveRow={setActiveRow} setActiveColumn={setActiveColumn} setLabelBelow={setLabelBelow} onSetColumnMedicine={setColumnMedicine} onCommitColumnMedicine={commitColumnMedicine} columnMedicineNotice={columnMedicineNotice} onDismissNotice={() => setColumnMedicineNotice(null)} onApplySuggestion={applyMedicineSuggestion} onSetPatientName={setPatientName} onUpdateQuantity={updateQuantity} onCollapseRow={collapseRow} chartFrameRef={chartFrameRef} chartHeadRef={chartHeadRef} chartGridRef={chartGridRef} chartDosesRef={chartDosesRef} chartFootRef={chartFootRef} showMedicineForm={showMedicineForm} onOpenMedicineForm={() => { setRegistrationsError(''); setShowMedicineForm(true) }} onCloseMedicineForm={() => setShowMedicineForm(false)} onAddMedicine={addMedicine} newMedicine={newMedicine} setNewMedicine={setNewMedicine} registrationsError={registrationsError} />}{confirmModal}</main>
+  return <main className="app-shell">{appHeader}{!selected && !floor ? <FloorPickerScreen today={today} floors={visibleFloors} specialWards={visibleSpecialWards} resumeDraft={resumeDraft} onResume={resumeFromDraft} onPickFloor={setFloor} onOpen={setSelected} dashboard={dashboardData} dashboardLoading={dashboardData === null && !dashboardError} dashboardError={dashboardError} onRetryDashboard={retryDashboard} announcements={announcements} isManager={isManager} medicinesPeriod={medicinesPeriod} setMedicinesPeriod={setMedicinesPeriod} announcementDraft={announcementDraft} setAnnouncementDraft={setAnnouncementDraft} announcementError={announcementError} announcementBusy={announcementBusy} onPostAnnouncement={postAnnouncement} onEditAnnouncement={editAnnouncement} onDeleteAnnouncement={deleteAnnouncement} /> : !selected ? <WardPickerScreen floor={floor} today={today} dashboard={dashboardData} dashboardError={dashboardError} onBack={() => setFloor(null)} onOpen={setSelected} /> :<ChartScreen selected={selected} wardLabel={wardLabel} today={today} todayWeekday={todayWeekday} isManager={isManager} onBack={() => { flushChart(); setSelected(null) }} onGoToPills={() => { flushChart(); setSelected({ ...selected, mode: 'pills' }) }} onExportPdf={exportChartPdf} pdfBusy={pdfBusy} dateIsToday={dateIsToday} selectedDate={selectedDate} onChangeDate={changeDate} onCopyToNextDay={copyToNextDay} chartSaveStatus={chartSaveStatus} loadError={loadError} copyError={copyError} chartReady={chartReady} lastChartSaveAt={lastChartSaveAt} onRetryLoad={() => setChartLoadNonce((n) => n + 1)} onRetrySave={() => setChartSaveNonce((n) => n + 1)} lockState={lockState} lockHolder={lockHolder} chartClashNote={chartClashNote} onDismissClashNote={() => { setChartClashNote(null); setDroppedCells({}) }} droppedCells={droppedCells} undo={undo} onUndo={takeUndo} medicines={medicines} patientNames={patientNames} columnMedicines={columnMedicines} quantities={quantities} totals={totals} isThursday={isThursday} activeRow={activeRow} activeColumn={activeColumn} labelBelow={labelBelow} setActiveRow={setActiveRow} setActiveColumn={setActiveColumn} setLabelBelow={setLabelBelow} onSetColumnMedicine={setColumnMedicine} onCommitColumnMedicine={commitColumnMedicine} columnMedicineNotice={columnMedicineNotice} onDismissNotice={() => setColumnMedicineNotice(null)} onApplySuggestion={applyMedicineSuggestion} onSetPatientName={setPatientName} onUpdateQuantity={updateQuantity} onCollapseRow={collapseRow} chartFrameRef={chartFrameRef} chartHeadRef={chartHeadRef} chartGridRef={chartGridRef} chartDosesRef={chartDosesRef} chartFootRef={chartFootRef} showMedicineForm={showMedicineForm} onOpenMedicineForm={() => { setRegistrationsError(''); setShowMedicineForm(true) }} onCloseMedicineForm={() => setShowMedicineForm(false)} onAddMedicine={addMedicine} newMedicine={newMedicine} setNewMedicine={setNewMedicine} registrationsError={registrationsError} />}{selected?.mode === 'chart' && chartReady && <ChartPrintTemplate ref={printTemplateRef} selected={selected} today={today} todayWeekday={todayWeekday} isThursday={isThursday} patientNames={patientNames} columnMedicines={columnMedicines} quantities={quantities} totals={totals} />}{confirmModal}</main>
 }
 
 export default App
