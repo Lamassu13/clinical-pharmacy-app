@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { floors } from '../constants.js'
+import { isoDate } from '../helpers.js'
 import { ChevronStart, StatusCheck } from './WardGlyph.jsx'
 
 // The floor-picker's information layer, in two tiers.
@@ -171,6 +172,75 @@ export function PatientsByFloorWidget({ patientsByFloor, period, setPeriod, load
               <strong className="top-medicines-qty">{row.count}</strong>
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Fixed 30-day lookback for the trend chart — a trend wants a stable window, not one that
+// resizes with the other widgets' day/week/month toggle.
+const TREND_DAYS = 30
+const lastDates = (n) => {
+  const now = Date.now()
+  return Array.from({ length: n }, (_, i) => isoDate(new Date(now - (n - 1 - i) * 86400000)))
+}
+
+// One floor's line: a small multiple, not a series in a shared plot — with 8 floors, overlaid
+// lines on one chart would be unreadable, and small multiples let every floor share one
+// y-scale (passed in as maxCount) for honest visual comparison without a categorical palette.
+function FloorTrendChart({ floorNumber, series, maxCount }) {
+  const width = 220
+  const height = 56
+  const pad = 4
+  const stepX = (width - pad * 2) / (series.length - 1)
+  const y = (count) => height - pad - (maxCount ? (count / maxCount) * (height - pad * 2) : 0)
+  const points = series.map((day, index) => [pad + index * stepX, y(day.count)])
+  const path = points.map(([x, py], index) => `${index === 0 ? 'M' : 'L'}${x.toFixed(1)},${py.toFixed(1)}`).join(' ')
+  const last = series[series.length - 1]
+  return (
+    <div className="floor-trend-card">
+      <div className="floor-trend-head">
+        <span>الطابق {floorNumber}</span>
+        <strong>{last.count}</strong>
+      </div>
+      <svg viewBox={`0 0 ${width} ${height}`} className="floor-trend-svg" preserveAspectRatio="none" role="img" aria-label={`اتجاه عدد المرضى في الطابق ${floorNumber} خلال آخر ${series.length} يومًا، آخر قيمة ${last.count}`}>
+        <line x1={pad} y1={height - pad} x2={width - pad} y2={height - pad} className="floor-trend-baseline" />
+        <path d={path} className="floor-trend-line" fill="none" />
+        {points.map(([x, py], index) => (
+          <circle key={series[index].date} cx={x} cy={py} r={index === points.length - 1 ? 2.5 : 1.5} className="floor-trend-dot">
+            <title>{`${series[index].date} — ${series[index].count} مريض`}</title>
+          </circle>
+        ))}
+      </svg>
+    </div>
+  )
+}
+
+// عدد المرضى لكل طابق, day by day — إدارة الطوابق only. PatientsByFloorWidget above already
+// answers "how many, over a chosen window"; this answers "is it trending up or down", which a
+// single cumulative number can't show.
+export function PatientsDailyTrendWidget({ dailyPatientsByFloor, loading, error, onRetry }) {
+  const dates = lastDates(TREND_DAYS)
+  const byFloorDate = new Map((dailyPatientsByFloor || []).map((row) => [`${row.floor}|${row.date}`, row.count]))
+  const seriesByFloor = floors.map((item) => ({
+    floor: item.number,
+    series: dates.map((date) => ({ date, count: byFloorDate.get(`${item.number}|${date}`) || 0 })),
+  }))
+  const maxCount = Math.max(0, ...seriesByFloor.flatMap(({ series }) => series.map((day) => day.count)))
+  return (
+    <div className="dashboard-widget dashboard-widget--wide">
+      <div className="dashboard-widget-head">
+        <span className="dashboard-widget-icon" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M3.5 19h17"></path><path d="M4.5 15.5 9 10l3.5 3 6-6.5"></path><path d="M15 6.5h3.5V10"></path></svg>
+        </span>
+        <strong>اتجاه عدد المرضى يوميًا — آخر {TREND_DAYS} يومًا</strong>
+      </div>
+      {loading ? <SkeletonRows /> : error ? <DashboardError onRetry={onRetry} /> : maxCount === 0 ? (
+        <p className="dashboard-widget-empty">لا يوجد مرضى مسجّلون خلال هذه المدة.</p>
+      ) : (
+        <div className="floor-trend-grid">
+          {seriesByFloor.map(({ floor, series }) => <FloorTrendChart key={floor} floorNumber={floor} series={series} maxCount={maxCount} />)}
         </div>
       )}
     </div>

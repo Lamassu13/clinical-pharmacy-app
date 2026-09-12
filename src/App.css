@@ -504,6 +504,19 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 .dashboard-widget-icon svg { width: 100%; height: 100%; }
 .dashboard-widget-head strong { display: block; font-size: var(--text-base); }
 .dashboard-widget-empty { color: var(--text-muted); font-size: var(--text-sm); }
+/* Full-width, below the two-column .dashboard-widgets grid — 8 small multiples need more
+   room than a half-width card gives them. */
+.dashboard-widget--wide { margin-bottom: var(--space-6); }
+
+/* ---- Daily patients-per-floor trend: one small-multiple line chart per floor ---- */
+.floor-trend-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: var(--space-4); }
+.floor-trend-card { padding: var(--space-2) var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-alt); }
+.floor-trend-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: var(--space-1); font-size: var(--text-sm); color: var(--text-muted); }
+.floor-trend-head strong { font-size: var(--text-base); color: var(--heading); }
+.floor-trend-svg { display: block; width: 100%; height: 56px; overflow: visible; }
+.floor-trend-baseline { stroke: var(--border-strong); stroke-width: 1; }
+.floor-trend-line { stroke: var(--primary); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.floor-trend-dot { fill: var(--primary); }
 
 /* ---- Ward status band (manager): the morning-round answer, full width, under the heading ---- */
 .ward-status-band {

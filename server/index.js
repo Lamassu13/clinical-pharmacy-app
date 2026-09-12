@@ -447,8 +447,26 @@ app.get('/api/dashboard', requireAuth, async (request, response) => {
         [date, patientDays],
       )
       : Promise.resolve({ rows: [] }),
+    // Same per-floor patient count, but day-by-day over a fixed 30-day trend window (not the
+    // widget's own period toggle — a trend chart wants a fixed lookback, not a resizable one).
+    // ::text keeps the date an unambiguous 'YYYY-MM-DD' rather than pg's default Date object
+    // (which JSON-serializes as a full UTC timestamp and risks an off-by-one on the client).
+    isManager
+      ? query(
+        `SELECT w.floor_number AS floor, dc.chart_date::text AS date, COUNT(*)::int AS count
+         FROM chart_patients cp
+         JOIN daily_charts dc ON dc.id = cp.chart_id
+         JOIN wards w ON w.id = dc.ward_id
+         WHERE cp.patient_name <> ''
+           AND w.floor_number IS NOT NULL
+           AND dc.chart_date > ($1::date - 29) AND dc.chart_date <= $1::date
+         GROUP BY w.floor_number, dc.chart_date
+         ORDER BY w.floor_number, dc.chart_date`,
+        [date],
+      )
+      : Promise.resolve({ rows: [] }),
   ]
-  const [started, topMedicines, patientsByFloor] = await Promise.all(pending)
+  const [started, topMedicines, patientsByFloor, dailyPatientsByFloor] = await Promise.all(pending)
   response.json({
     startedWards: started.rows.map((row) => ({
       floor: row.floor_number, ward: row.name, slot: row.slot,
@@ -459,6 +477,7 @@ app.get('/api/dashboard', requireAuth, async (request, response) => {
     medicinesScope: isManager ? 'all' : 'own',
     patientsByFloor: patientsByFloor.rows.map((row) => ({ floor: row.floor, count: row.count })),
     patientsPeriod: isManager ? (PERIOD_DAYS[request.query.patientsPeriod] ? request.query.patientsPeriod : 'month') : 'today',
+    dailyPatientsByFloor: dailyPatientsByFloor.rows.map((row) => ({ floor: row.floor, date: row.date, count: row.count })),
   })
 })
 

@@ -1,5 +1,5 @@
 import { floors, specialWards } from '../constants.js'
-import { TopMedicinesWidget, PatientsByFloorWidget } from '../components/DashboardWidgets.jsx'
+import { TopMedicinesWidget, PatientsByFloorWidget, PatientsDailyTrendWidget } from '../components/DashboardWidgets.jsx'
 
 // Floor management. Two parts: the manager's analytics (most-dispensed medicines + patients
 // per floor, each with its own day/week/month window) and the chart-purge tool below.
@@ -29,6 +29,11 @@ export default function AdminFloorsScreen({
         loading={dashboardLoading} error={dashboardError} onRetry={onRetryDashboard}
       />
     </div>
+
+    <PatientsDailyTrendWidget
+      dailyPatientsByFloor={dashboard?.dailyPatientsByFloor ?? []}
+      loading={dashboardLoading} error={dashboardError} onRetry={onRetryDashboard}
+    />
 
     <h2 className="admin-subheading">مسح الجارتات</h2>
     <form className="purge-form" onSubmit={(event) => { event.preventDefault(); onPurge() }}>
