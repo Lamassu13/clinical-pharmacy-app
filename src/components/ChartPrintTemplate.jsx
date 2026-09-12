@@ -42,7 +42,7 @@ const ChartPrintTemplate = forwardRef(function ChartPrintTemplate({ selected, to
     {columnMedicines.map((name, columnIndex) => <div key={columnIndex} className="cpt-cell cpt-col-head"><span className="cpt-col-head-text">{name}</span></div>)}
 
     {patientNames.map((name, rowIndex) => <Fragment key={rowIndex}>
-      <div className="cpt-cell cpt-name">{name || `مريض ${rowIndex + 1}`}</div>
+      <div className="cpt-cell cpt-name">{name}</div>
       {quantities[rowIndex].map((quantity, columnIndex) => <div key={columnIndex} className="cpt-cell cpt-qty">{quantity || ''}</div>)}
     </Fragment>)}
 
