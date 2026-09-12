@@ -48,6 +48,13 @@ export default function ChartScreen({
   const PRINT_MIN_ROWS = 34
   const lastFilledRow = patientNames.reduce((last, name, index) => (name.trim() || quantities[index]?.some(Boolean) ? index : last), -1)
   const printRowCount = Math.max(PRINT_MIN_ROWS, lastFilledRow + 1)
+  // Fewer printed rows used to just leave blank paper below المجموع (34 rows at the fixed
+  // 2.8mm only fills ~95mm of grid height, versus the ~115mm the 41-row case already proved
+  // safe on one page). Redistribute that same proven budget across however many rows actually
+  // print, so the grid grows to fill the page instead of leaving a gap — total footprint never
+  // exceeds what the 41-row case already used, so this can't newly overflow onto page two.
+  const PRINT_GRID_BUDGET_MM = 41 * 2.8
+  const printRowHeightMM = PRINT_GRID_BUDGET_MM / printRowCount
   const hasDropped = droppedCells && Object.keys(droppedCells).length > 0
   const frameClass = ['chart-frame', readOnly && 'chart-frame-held', hasDropped && 'chart-frame--clash'].filter(Boolean).join(' ')
   const since = lockHolder?.since
@@ -117,7 +124,7 @@ export default function ChartScreen({
 
     {/* chart-frame-held draws a desaturating scrim over the grid while another device is
         editing — reads as "held" without dimming the dose numbers themselves (opacity did). */}
-    <div className={frameClass} ref={chartFrameRef}>
+    <div className={frameClass} ref={chartFrameRef} style={{ '--print-row-height': `${printRowHeightMM}mm` }}>
       {!chartReady && <div className="chart-frame-loading" role="status">
         {loadError
           ? <><span>تعذّر تحميل الجارت. تُعاد المحاولة تلقائيًا كل بضع ثوانٍ.</span><button type="button" className="secondary-button compact" onClick={onRetryLoad}>إعادة المحاولة الآن</button></>

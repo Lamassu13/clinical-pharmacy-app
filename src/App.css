@@ -1570,7 +1570,7 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 	.chart-names .chart-table { width: 28mm; min-width: 0; }
 	.chart-doses .chart-table, .chart-head-scroll .chart-table, .chart-foot-scroll .chart-table { width: 100%; min-width: 0; }
 	.chart-table { table-layout: fixed; font-size: 4.5px; }
-	.chart-table th, .chart-table td { width: auto; min-width: 0; height: 2.8mm; line-height: 1; vertical-align: middle; }
+	.chart-table th, .chart-table td { width: auto; min-width: 0; height: var(--print-row-height, 2.8mm); line-height: 1; vertical-align: middle; }
 	/* Rows past the print cutoff (34, or the last row with data if further — see ChartScreen)
 	   take no space so المجموع sits right under the last row actually printed. */
 	.print-hide-row { display: none; }
@@ -1585,7 +1585,7 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 	/* The corner is sized by its labels, one per totals row, so Thursday's doubled line adds
 	   exactly one 2.8mm row. */
 	.chart-foot-corner { height: auto; font-size: 8px; }
-	.chart-foot-corner span { height: 2.8mm; }
+	.chart-foot-corner span { height: var(--print-row-height, 2.8mm); }
 	.chart-table thead th { width: auto; min-width: 0; max-width: none; height: 28mm; }
 	/* The name is set vertically, so the font size spends the header's HEIGHT, not its width,
 	   and the input cannot wrap or shrink — it just clips. At 7px a 27mm box holds about 26
@@ -1604,7 +1604,7 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 	   inside it cleanly. Patient names were already 7px. */
 	.chart-table td input { font-size: 7px; }
 	.chart-table .patient-cell { width: 28mm; min-width: 28mm; max-width: none; }
-	.chart-table tfoot td { height: 2.8mm; font-size: 8px; }
+	.chart-table tfoot td { height: var(--print-row-height, 2.8mm); font-size: 8px; }
 	/* white paper, black ink only */
 	.chart-page, .chart-page * { background: #fff !important; color: #000 !important; border-color: #000 !important; box-shadow: none !important; }
 	/* keep the vertical rule beside the patient names */
