@@ -23,7 +23,7 @@ export const startServer = (app) => new Promise((resolve) => {
 export const resetDatabase = () => pool.query(`
   TRUNCATE TABLE chart_quantities, chart_columns, chart_patients, pill_entries,
     pill_patient_meta, chart_locks, daily_charts, wards, medicines, treatment_forms,
-    user_floor_access, user_ward_access, users RESTART IDENTITY CASCADE;
+    extra_pill_forms, user_floor_access, user_ward_access, users RESTART IDENTITY CASCADE;
   DO $$ BEGIN
     IF to_regclass('public.session') IS NOT NULL THEN EXECUTE 'TRUNCATE TABLE session'; END IF;
   END $$;

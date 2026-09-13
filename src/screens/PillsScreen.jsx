@@ -1,13 +1,6 @@
 import hospitalLogo from '../assets/hospital-logo.png'
 import PillSelect from '../components/PillSelect.jsx'
-import { doseTimes, usageMethods, noteOptions } from '../constants.js'
-
-// The 18 dose times are a flat list on the server; split here for the picker only so a
-// single "٨ صباحًا" isn't buried among the "٨ صباحًا - ٤ عصرًا - ١٢ ليلًا" schedules.
-const doseTimeGroups = [
-  ['أوقات مفردة', doseTimes.filter((time) => !time.includes(' - '))],
-  ['جداول موزّعة', doseTimes.filter((time) => time.includes(' - '))],
-]
+import { usageMethods, noteOptions, doseTimeGroups } from '../constants.js'
 
 // Two always-present spare rows per patient for a medicine the chart doesn't carry. Editable
 // on screen (kept as pill_entries under these synthetic keys), and printed blank when unused —
