@@ -231,7 +231,7 @@ test('GET /api/dashboard patientsByFloor: a non-manager never receives it', asyn
   assert.deepEqual((await client.get(`/api/dashboard?date=${DATE}`)).body.patientsByFloor, [])
 })
 
-test('GET /api/dashboard dailyPatientsByWard (manager): per-ward patient count, day by day, over a fixed 7-day window regardless of the other widgets\' period', async () => {
+test('GET /api/dashboard dailyPatientsByFloor (manager): per-floor total (summed across its wards) plus one line per special ward, day by day, over a fixed 7-day window regardless of the other widgets\' period', async () => {
   const user = await createUser({ role: 'user', floor: 5 })
   const two = [{ rowNumber: 1, name: 'أ' }, { rowNumber: 2, name: 'ب' }]
   const three = [...two, { rowNumber: 3, name: 'ج' }]
@@ -243,30 +243,30 @@ test('GET /api/dashboard dailyPatientsByWard (manager): per-ward patient count, 
   await seedChart({ floor: 6, ward: 'الوحدة الأولى', date: DATE, createdBy: user.id, patients: [{ rowNumber: 1, name: 'هـ' }] })
   // Outside the fixed 7-day window — must never appear in the trend.
   await seedChart({ floor: 6, ward: 'الوحدة الثالثة', date: THREE_WEEKS_AGO, createdBy: user.id, patients: two })
-  // A special (non-numbered) ward must never appear in a per-ward breakdown.
+  // A special (non-numbered) ward has no floor total to fold into — it gets its own line.
   await seedChart({ floor: null, ward: 'ردهة الديلزة', date: DATE, createdBy: user.id, patients: two })
 
   const client = await loginAs({ role: 'admin' })
   const expected = [
-    { floor: 5, ward: 'ردهة الخاص', date: FIVE_DAYS_AGO, count: 3 },
-    { floor: 5, ward: 'ردهة النساء', date: DATE, count: 1 },
-    { floor: 5, ward: 'ردهة رجال', date: DATE, count: 2 },
-    { floor: 6, ward: 'الوحدة الأولى', date: DATE, count: 1 },
+    { floor: 5, ward: null, date: FIVE_DAYS_AGO, count: 3 },
+    { floor: 5, ward: null, date: DATE, count: 3 },
+    { floor: 6, ward: null, date: DATE, count: 1 },
+    { floor: null, ward: 'ردهة الديلزة', date: DATE, count: 2 },
   ]
-  const byRowKey = (row) => `${row.floor}|${row.ward}|${row.date}`
+  const byRowKey = (row) => `${row.floor ?? row.ward}|${row.date}`
   const sorted = (rows) => [...rows].sort((a, b) => byRowKey(a).localeCompare(byRowKey(b)))
   const at = async (patientsPeriod, period = 'month') =>
-    sorted((await client.get(`/api/dashboard?date=${DATE}&period=${period}&patientsPeriod=${patientsPeriod}`)).body.dailyPatientsByWard)
+    sorted((await client.get(`/api/dashboard?date=${DATE}&period=${period}&patientsPeriod=${patientsPeriod}`)).body.dailyPatientsByFloor)
   assert.deepEqual(await at('today'), sorted(expected))
   // Unaffected by the other widgets' own periods — this trend always uses its fixed window.
   assert.deepEqual(await at('month', 'today'), sorted(expected))
 })
 
-test('GET /api/dashboard dailyPatientsByWard: a non-manager never receives it', async () => {
+test('GET /api/dashboard dailyPatientsByFloor: a non-manager never receives it', async () => {
   const user = await createUser({ role: 'user', floor: 5 })
   await seedChart({ floor: 5, ward: 'ردهة رجال', date: DATE, createdBy: user.id, patients: [{ rowNumber: 1, name: 'أ' }] })
   const client = await loginAs({ role: 'user', floor: 5 })
-  assert.deepEqual((await client.get(`/api/dashboard?date=${DATE}`)).body.dailyPatientsByWard, [])
+  assert.deepEqual((await client.get(`/api/dashboard?date=${DATE}`)).body.dailyPatientsByFloor, [])
 })
 
 test('DELETE /api/users/:id: does not fail on a user who posted an announcement', async () => {

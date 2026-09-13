@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { floors } from '../constants.js'
+import { floors, specialWards } from '../constants.js'
 import { isoDate } from '../helpers.js'
 import { ChevronStart, StatusCheck } from './WardGlyph.jsx'
 
@@ -185,72 +185,91 @@ const lastDates = (n) => {
   const now = Date.now()
   return Array.from({ length: n }, (_, i) => isoDate(new Date(now - (n - 1 - i) * 86400000)))
 }
+// Arabic weekday name for the x-axis, definite article dropped ("الأحد" -> "أحد") to fit a
+// small-multiple's width — Intl's own "short" style returns the full name for ar, not an
+// abbreviation. Index matches Date#getDay() (0 = Sunday).
+const WEEKDAY_NAMES = ['أحد', 'اثنين', 'ثلاثاء', 'أربعاء', 'خميس', 'جمعة', 'سبت']
+const weekdayLabel = (date) => WEEKDAY_NAMES[new Date(`${date}T00:00:00`).getDay()]
 
-// One ward's line: a small multiple, not a series in a shared plot — with dozens of wards,
-// overlaid lines on one chart would be unreadable, and small multiples let every ward share
-// one y-scale (passed in as maxCount) for honest visual comparison without a categorical palette.
-function WardTrendChart({ wardName, series, maxCount }) {
-  const width = 220
-  const height = 56
-  const pad = 4
-  const stepX = (width - pad * 2) / (series.length - 1)
-  const y = (count) => height - pad - (maxCount ? (count / maxCount) * (height - pad * 2) : 0)
-  const points = series.map((day, index) => [pad + index * stepX, y(day.count)])
+// One entity's (floor or special ward) line: a small multiple, not a series in a shared plot —
+// with 11 entities, overlaid lines on one chart would be unreadable, and small multiples let
+// every entity share one y-scale (passed in as maxCount, drawn as the chart's own y-axis) for
+// honest visual comparison without a categorical palette.
+const CHART_W = 208
+const CHART_H = 82
+const AXIS_X = 22
+const PAD_TOP = 7
+const PAD_BOTTOM = 16
+const PAD_RIGHT = 8
+function FloorTrendChart({ label, series, maxCount }) {
+  const plotWidth = CHART_W - AXIS_X - PAD_RIGHT
+  const plotHeight = CHART_H - PAD_TOP - PAD_BOTTOM
+  const stepX = plotWidth / (series.length - 1)
+  const baselineY = PAD_TOP + plotHeight
+  const y = (count) => PAD_TOP + plotHeight - (maxCount ? (count / maxCount) * plotHeight : 0)
+  const points = series.map((day, index) => [AXIS_X + index * stepX, y(day.count)])
   const path = points.map(([x, py], index) => `${index === 0 ? 'M' : 'L'}${x.toFixed(1)},${py.toFixed(1)}`).join(' ')
   const last = series[series.length - 1]
   return (
     <div className="floor-trend-card">
       <div className="floor-trend-head">
-        <span>{wardName}</span>
+        <span>{label}</span>
         <strong>{last.count}</strong>
       </div>
-      <svg viewBox={`0 0 ${width} ${height}`} className="floor-trend-svg" preserveAspectRatio="none" role="img" aria-label={`اتجاه عدد المرضى في ${wardName} خلال آخر ${series.length} أيام، آخر قيمة ${last.count}`}>
-        <line x1={pad} y1={height - pad} x2={width - pad} y2={height - pad} className="floor-trend-baseline" />
+      <svg viewBox={`0 0 ${CHART_W} ${CHART_H}`} className="floor-trend-svg" preserveAspectRatio="none" role="img" aria-label={`اتجاه عدد المرضى في ${label} خلال آخر ${series.length} أيام، آخر قيمة ${last.count}`}>
+        {/* Vertical axis: patient count, from 0 at the baseline to the shared maxCount at top —
+            the same maxCount on every card, so the axis stays an honest shared scale. */}
+        <line x1={AXIS_X} y1={PAD_TOP} x2={AXIS_X} y2={baselineY} className="floor-trend-axis" />
+        <line x1={AXIS_X} y1={baselineY} x2={CHART_W - PAD_RIGHT} y2={baselineY} className="floor-trend-axis" />
+        {maxCount > 0 && <line x1={AXIS_X} y1={PAD_TOP} x2={CHART_W - PAD_RIGHT} y2={PAD_TOP} className="floor-trend-gridline" />}
+        <text x={AXIS_X - 4} y={baselineY} className="floor-trend-tick">0</text>
+        <text x={AXIS_X - 4} y={PAD_TOP + 4} className="floor-trend-tick">{maxCount}</text>
         <path d={path} className="floor-trend-line" fill="none" />
         {points.map(([x, py], index) => (
           <circle key={series[index].date} cx={x} cy={py} r={index === points.length - 1 ? 2.5 : 1.5} className="floor-trend-dot">
             <title>{`${series[index].date} — ${series[index].count} مريض`}</title>
           </circle>
         ))}
+        {/* Horizontal axis: a tick per day, but a weekday name only at the oldest, middle and
+            newest point — seven full names collide at this width. Coordinates never mirror for
+            rtl, so this lines up with the plot above exactly, right (today) to left (oldest). */}
+        {points.map(([x], index) => <line key={series[index].date} x1={x} y1={baselineY} x2={x} y2={baselineY + 3} className="floor-trend-axis" />)}
+        {[0, Math.floor((points.length - 1) / 2), points.length - 1].map((index) => (
+          <text key={series[index].date} x={points[index][0]} y={CHART_H - 3} className="floor-trend-weekday">{weekdayLabel(series[index].date)}</text>
+        ))}
       </svg>
     </div>
   )
 }
 
-// عدد المرضى لكل ردهة, day by day, grouped by floor — إدارة الطوابق only. PatientsByFloorWidget
-// above already answers "how many, over a chosen window"; this answers "is it trending up or
-// down, and in which ward specifically", which a per-floor total can't show.
-export function PatientsDailyTrendWidget({ dailyPatientsByWard, loading, error, onRetry }) {
+// عدد المرضى الكلي لكل طابق، إضافةً إلى الردهات الخاصة (العناية المركزة، الديلزة، الخدج) التي لا
+// تتبع طابقًا مرقّمًا — يومًا بيوم. PatientsByFloorWidget أعلاه يجيب "كم، خلال مدة يختارها
+// المدير"؛ هذا يجيب "هل الاتجاه صاعد أم هابط"، وهو ما لا يظهره رقم تراكمي واحد.
+export function PatientsDailyTrendWidget({ dailyPatientsByFloor, loading, error, onRetry }) {
   const dates = lastDates(TREND_DAYS)
-  const byWardDate = new Map((dailyPatientsByWard || []).map((row) => [`${row.floor}|${row.ward}|${row.date}`, row.count]))
-  const floorGroups = floors.map((item) => ({
-    floor: item.number,
-    wards: item.wards.map((wardName) => ({
-      wardName,
-      series: dates.map((date) => ({ date, count: byWardDate.get(`${item.number}|${wardName}|${date}`) || 0 })),
-    })),
+  const byKeyDate = new Map((dailyPatientsByFloor || []).map((row) => [`${row.floor ?? row.ward}|${row.date}`, row.count]))
+  const entities = [
+    ...floors.map((item) => ({ key: item.number, label: `الطابق ${item.number}` })),
+    ...specialWards.map((wardName) => ({ key: wardName, label: wardName })),
+  ].map(({ key, label }) => ({
+    key,
+    label,
+    series: dates.map((date) => ({ date, count: byKeyDate.get(`${key}|${date}`) || 0 })),
   }))
-  const maxCount = Math.max(0, ...floorGroups.flatMap(({ wards }) => wards.flatMap(({ series }) => series.map((day) => day.count))))
+  const maxCount = Math.max(0, ...entities.flatMap(({ series }) => series.map((day) => day.count)))
   return (
     <div className="dashboard-widget dashboard-widget--wide">
       <div className="dashboard-widget-head">
         <span className="dashboard-widget-icon" aria-hidden="true">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M3.5 19h17"></path><path d="M4.5 15.5 9 10l3.5 3 6-6.5"></path><path d="M15 6.5h3.5V10"></path></svg>
         </span>
-        <strong>اتجاه عدد المرضى يوميًا لكل ردهة — آخر {TREND_DAYS} أيام</strong>
+        <strong>اتجاه عدد المرضى يوميًا — آخر {TREND_DAYS} أيام</strong>
       </div>
       {loading ? <SkeletonRows /> : error ? <DashboardError onRetry={onRetry} /> : maxCount === 0 ? (
         <p className="dashboard-widget-empty">لا يوجد مرضى مسجّلون خلال هذه المدة.</p>
       ) : (
-        <div className="floor-trend-groups">
-          {floorGroups.map(({ floor, wards }) => (
-            <div className="floor-trend-group" key={floor}>
-              <h3 className="floor-trend-group-head">الطابق {floor}</h3>
-              <div className="floor-trend-grid">
-                {wards.map(({ wardName, series }) => <WardTrendChart key={wardName} wardName={wardName} series={series} maxCount={maxCount} />)}
-              </div>
-            </div>
-          ))}
+        <div className="floor-trend-grid">
+          {entities.map(({ key, label, series }) => <FloorTrendChart key={key} label={label} series={series} maxCount={maxCount} />)}
         </div>
       )}
     </div>

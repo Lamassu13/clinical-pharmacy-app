@@ -448,27 +448,31 @@ app.get('/api/dashboard', requireAuth, async (request, response) => {
         [date, patientDays],
       )
       : Promise.resolve({ rows: [] }),
-    // Same idea, but day-by-day per ward (not summed across a floor) over a fixed 7-day trend
-    // window (not the widget's own period toggle — a trend chart wants a fixed weekly lookback,
-    // not a resizable one). ::text keeps the date an unambiguous 'YYYY-MM-DD' rather than pg's
-    // default Date object (which JSON-serializes as a full UTC timestamp and risks an off-by-one
-    // on the client).
+    // Same idea, but day-by-day over a fixed 7-day trend window (not the widget's own period
+    // toggle — a trend chart wants a fixed weekly lookback, not a resizable one): total per
+    // numbered floor (summed across its wards), plus one line per special ward (العناية
+    // المركزة/الديلزة/الخدج have no floor number, so each stands as its own entry rather than
+    // being dropped or folded into a floor). ::text keeps the date an unambiguous 'YYYY-MM-DD'
+    // rather than pg's default Date object (which JSON-serializes as a full UTC timestamp and
+    // risks an off-by-one on the client).
     isManager
       ? query(
-        `SELECT w.floor_number AS floor, w.name AS ward, dc.chart_date::text AS date, COUNT(*)::int AS count
+        `SELECT w.floor_number AS floor,
+                CASE WHEN w.floor_number IS NULL THEN w.name END AS ward,
+                dc.chart_date::text AS date, COUNT(*)::int AS count
          FROM chart_patients cp
          JOIN daily_charts dc ON dc.id = cp.chart_id
          JOIN wards w ON w.id = dc.ward_id
          WHERE cp.patient_name <> ''
-           AND w.floor_number IS NOT NULL
+           AND (w.floor_number IS NOT NULL OR w.name = ANY($2::text[]))
            AND dc.chart_date > ($1::date - 6) AND dc.chart_date <= $1::date
-         GROUP BY w.floor_number, w.name, dc.chart_date
-         ORDER BY w.floor_number, w.name, dc.chart_date`,
-        [date],
+         GROUP BY w.floor_number, CASE WHEN w.floor_number IS NULL THEN w.name END, dc.chart_date
+         ORDER BY w.floor_number NULLS LAST, ward, dc.chart_date`,
+        [date, SPECIAL_WARDS],
       )
       : Promise.resolve({ rows: [] }),
   ]
-  const [started, topMedicines, patientsByFloor, dailyPatientsByWard] = await Promise.all(pending)
+  const [started, topMedicines, patientsByFloor, dailyPatientsByFloor] = await Promise.all(pending)
   response.json({
     startedWards: started.rows.map((row) => ({
       floor: row.floor_number, ward: row.name, slot: row.slot,
@@ -479,7 +483,7 @@ app.get('/api/dashboard', requireAuth, async (request, response) => {
     medicinesScope: isManager ? 'all' : 'own',
     patientsByFloor: patientsByFloor.rows.map((row) => ({ floor: row.floor, count: row.count })),
     patientsPeriod: isManager ? (PERIOD_DAYS[request.query.patientsPeriod] ? request.query.patientsPeriod : 'month') : 'today',
-    dailyPatientsByWard: dailyPatientsByWard.rows.map((row) => ({ floor: row.floor, ward: row.ward, date: row.date, count: row.count })),
+    dailyPatientsByFloor: dailyPatientsByFloor.rows.map((row) => ({ floor: row.floor, ward: row.ward, date: row.date, count: row.count })),
   })
 })
 
