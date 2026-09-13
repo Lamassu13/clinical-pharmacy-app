@@ -23,7 +23,14 @@ function ExtraPillFormCard({ form, floorLabel, today, editTime, selected, onTogg
     <div className="pill-form-head">
       <label className="pill-pick"><input type="checkbox" checked={selected} onChange={() => onToggleSelect(form.id)} /><span>تحديد للطباعة</span></label>
       <div className="pill-form-patient">
-        <input aria-label="اسم المريض" placeholder="اسم المريض" value={patientName} onChange={(event) => setPatientName(event.target.value)} />
+        {/* An <input> never shrinks to its value's width the way the real form's plain
+            <strong>{patient.name}</strong> does — left at that, this field stayed as wide as
+            its min-width regardless of the typed name, which shifted رقم الغرفة and the
+            hospital brand out of the real form's position in the header's flex row. Printing
+            a plain <strong> instead (screen keeps the input) makes the printed header
+            structurally identical to the real form's, so it lays out identically too. */}
+        <input className="pill-form-patient-input" aria-label="اسم المريض" placeholder="اسم المريض" value={patientName} onChange={(event) => setPatientName(event.target.value)} />
+        <strong className="pill-form-patient-print">{patientName}</strong>
         <span>{today}</span>
       </div>
       <label className="pill-room">رقم الغرفة <input inputMode="numeric" value={roomNumber} onChange={(event) => setRoomNumber(event.target.value)} /></label>

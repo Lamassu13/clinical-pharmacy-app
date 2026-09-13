@@ -882,8 +882,13 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 .pill-form-title span, .pill-form-patient span { display: block; color: var(--text-muted); font-size: var(--text-xs); }
 .pill-form-patient { text-align: start; }
 .pill-form-patient strong { display: block; font-size: var(--text-lg); color: var(--text); }
-/* استمارة الحبوب الإضافي: the patient name is typed here, not read from a chart. */
-.pill-form-patient input { display: block; font-size: var(--text-lg); font-weight: 700; color: var(--text); border: 0; border-bottom: 1px solid var(--border-strong); background: transparent; padding: 2px 0; min-width: 160px; }
+/* استمارة الحبوب الإضافي: the patient name is typed here, not read from a chart — shown as
+   an editable field on screen. .pill-form-patient-print (a plain <strong>, hidden here) takes
+   over at print time instead, so the printed header lays out exactly like the real form's;
+   an <input> never shrinks to its value's width the way plain text does, and left visible at
+   print it would throw off this header's flex layout by however long the typed name is. */
+.pill-form-patient-input { display: block; font-size: var(--text-lg); font-weight: 700; color: var(--text); border: 0; border-bottom: 1px solid var(--border-strong); background: transparent; padding: 2px 0; min-width: 160px; }
+.pill-form-patient-print { display: none; }
 .pill-room { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); font-weight: 700; color: var(--heading); white-space: nowrap; }
 .pill-room input { width: 90px; padding: 6px 8px; text-align: center; }
 
@@ -1542,7 +1547,8 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
   .pill-form.not-printing { display: none !important; }
   .pill-form.print-last { break-after: auto; }
   .pill-pick, .pill-repeat, .extra-pill-form-actions { display: none !important; }
-  .pill-form-patient input { border: 0; padding: 0; color: #000; background: transparent; }
+  .pill-form-patient-input { display: none; }
+  .pill-form-patient-print { display: block; }
   /* The leading column is the box the nurse fills in by hand, so give it room to write in.
      height on a cell is a minimum, so this sets the whole row's height. Measured cost: at
      100px a form holds 7 medicines on one A4 sheet, and an eighth pushes it onto a second. */
