@@ -178,18 +178,18 @@ export function PatientsByFloorWidget({ patientsByFloor, period, setPeriod, load
   )
 }
 
-// Fixed 30-day lookback for the trend chart — a trend wants a stable window, not one that
-// resizes with the other widgets' day/week/month toggle.
-const TREND_DAYS = 30
+// Fixed 7-day (weekly) lookback for the trend chart — a trend wants a stable window, not one
+// that resizes with the other widgets' day/week/month toggle.
+const TREND_DAYS = 7
 const lastDates = (n) => {
   const now = Date.now()
   return Array.from({ length: n }, (_, i) => isoDate(new Date(now - (n - 1 - i) * 86400000)))
 }
 
-// One floor's line: a small multiple, not a series in a shared plot — with 8 floors, overlaid
-// lines on one chart would be unreadable, and small multiples let every floor share one
-// y-scale (passed in as maxCount) for honest visual comparison without a categorical palette.
-function FloorTrendChart({ floorNumber, series, maxCount }) {
+// One ward's line: a small multiple, not a series in a shared plot — with dozens of wards,
+// overlaid lines on one chart would be unreadable, and small multiples let every ward share
+// one y-scale (passed in as maxCount) for honest visual comparison without a categorical palette.
+function WardTrendChart({ wardName, series, maxCount }) {
   const width = 220
   const height = 56
   const pad = 4
@@ -201,10 +201,10 @@ function FloorTrendChart({ floorNumber, series, maxCount }) {
   return (
     <div className="floor-trend-card">
       <div className="floor-trend-head">
-        <span>الطابق {floorNumber}</span>
+        <span>{wardName}</span>
         <strong>{last.count}</strong>
       </div>
-      <svg viewBox={`0 0 ${width} ${height}`} className="floor-trend-svg" preserveAspectRatio="none" role="img" aria-label={`اتجاه عدد المرضى في الطابق ${floorNumber} خلال آخر ${series.length} يومًا، آخر قيمة ${last.count}`}>
+      <svg viewBox={`0 0 ${width} ${height}`} className="floor-trend-svg" preserveAspectRatio="none" role="img" aria-label={`اتجاه عدد المرضى في ${wardName} خلال آخر ${series.length} أيام، آخر قيمة ${last.count}`}>
         <line x1={pad} y1={height - pad} x2={width - pad} y2={height - pad} className="floor-trend-baseline" />
         <path d={path} className="floor-trend-line" fill="none" />
         {points.map(([x, py], index) => (
@@ -217,30 +217,40 @@ function FloorTrendChart({ floorNumber, series, maxCount }) {
   )
 }
 
-// عدد المرضى لكل طابق, day by day — إدارة الطوابق only. PatientsByFloorWidget above already
-// answers "how many, over a chosen window"; this answers "is it trending up or down", which a
-// single cumulative number can't show.
-export function PatientsDailyTrendWidget({ dailyPatientsByFloor, loading, error, onRetry }) {
+// عدد المرضى لكل ردهة, day by day, grouped by floor — إدارة الطوابق only. PatientsByFloorWidget
+// above already answers "how many, over a chosen window"; this answers "is it trending up or
+// down, and in which ward specifically", which a per-floor total can't show.
+export function PatientsDailyTrendWidget({ dailyPatientsByWard, loading, error, onRetry }) {
   const dates = lastDates(TREND_DAYS)
-  const byFloorDate = new Map((dailyPatientsByFloor || []).map((row) => [`${row.floor}|${row.date}`, row.count]))
-  const seriesByFloor = floors.map((item) => ({
+  const byWardDate = new Map((dailyPatientsByWard || []).map((row) => [`${row.floor}|${row.ward}|${row.date}`, row.count]))
+  const floorGroups = floors.map((item) => ({
     floor: item.number,
-    series: dates.map((date) => ({ date, count: byFloorDate.get(`${item.number}|${date}`) || 0 })),
+    wards: item.wards.map((wardName) => ({
+      wardName,
+      series: dates.map((date) => ({ date, count: byWardDate.get(`${item.number}|${wardName}|${date}`) || 0 })),
+    })),
   }))
-  const maxCount = Math.max(0, ...seriesByFloor.flatMap(({ series }) => series.map((day) => day.count)))
+  const maxCount = Math.max(0, ...floorGroups.flatMap(({ wards }) => wards.flatMap(({ series }) => series.map((day) => day.count))))
   return (
     <div className="dashboard-widget dashboard-widget--wide">
       <div className="dashboard-widget-head">
         <span className="dashboard-widget-icon" aria-hidden="true">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M3.5 19h17"></path><path d="M4.5 15.5 9 10l3.5 3 6-6.5"></path><path d="M15 6.5h3.5V10"></path></svg>
         </span>
-        <strong>اتجاه عدد المرضى يوميًا — آخر {TREND_DAYS} يومًا</strong>
+        <strong>اتجاه عدد المرضى يوميًا لكل ردهة — آخر {TREND_DAYS} أيام</strong>
       </div>
       {loading ? <SkeletonRows /> : error ? <DashboardError onRetry={onRetry} /> : maxCount === 0 ? (
         <p className="dashboard-widget-empty">لا يوجد مرضى مسجّلون خلال هذه المدة.</p>
       ) : (
-        <div className="floor-trend-grid">
-          {seriesByFloor.map(({ floor, series }) => <FloorTrendChart key={floor} floorNumber={floor} series={series} maxCount={maxCount} />)}
+        <div className="floor-trend-groups">
+          {floorGroups.map(({ floor, wards }) => (
+            <div className="floor-trend-group" key={floor}>
+              <h3 className="floor-trend-group-head">الطابق {floor}</h3>
+              <div className="floor-trend-grid">
+                {wards.map(({ wardName, series }) => <WardTrendChart key={wardName} wardName={wardName} series={series} maxCount={maxCount} />)}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>

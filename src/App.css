@@ -509,7 +509,9 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
    room than a half-width card gives them. */
 .dashboard-widget--wide { margin-bottom: var(--space-6); }
 
-/* ---- Daily patients-per-floor trend: one small-multiple line chart per floor ---- */
+/* ---- Daily patients-per-ward trend: one small-multiple line chart per ward, grouped by floor ---- */
+.floor-trend-groups { display: flex; flex-direction: column; gap: var(--space-5); }
+.floor-trend-group-head { margin: 0 0 var(--space-2); font-size: var(--text-sm); font-weight: 700; color: var(--text-muted); }
 .floor-trend-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: var(--space-4); }
 .floor-trend-card { padding: var(--space-2) var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-alt); }
 .floor-trend-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: var(--space-1); font-size: var(--text-sm); color: var(--text-muted); }

@@ -31,7 +31,7 @@ export default function AdminFloorsScreen({
     </div>
 
     <PatientsDailyTrendWidget
-      dailyPatientsByFloor={dashboard?.dailyPatientsByFloor ?? []}
+      dailyPatientsByWard={dashboard?.dailyPatientsByWard ?? []}
       loading={dashboardLoading} error={dashboardError} onRetry={onRetryDashboard}
     />
 
