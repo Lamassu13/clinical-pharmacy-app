@@ -15,19 +15,28 @@ import { CHART_COLUMNS, PATIENT_ROWS } from '../constants.js'
 // jaunty-marinating-koala.md). None of that applies here: this template always renders into
 // one fixed 297x210mm canvas by construction, so there's nothing to protect against — the
 // space inside a real 12.7mm margin on all four sides (minus the header) is simply divided
-// across all 41 rows plus the totals. Always all 41 rows (not just the filled ones): the
-// chart is one fixed-size form either way, and this way every row gets an identical,
-// generous height regardless of how many patients are in it.
+// across the rows plus the totals — always 41 rows once more than 35 are filled, but capped
+// to a smaller 35-row compact form otherwise (see COMPACT_ROWS below), so a lightly-filled
+// ward prints with taller, more legible rows instead of 41 mostly-blank ones.
 const HEAD_MM = 28
 const NAME_COL_MM = 28
 const PAGE_HEIGHT_MM = 210
 const MARGIN_MM = 12.7
+// Below this many filled rows, print only a 35-row compact form (taller rows, totals on row
+// 36/37) instead of the full 41 — 35 is the largest compact size that can never truncate a
+// patient while staying strictly smaller than the full form; anything past it falls back to
+// all 41 rows exactly as before.
+const COMPACT_ROWS = 35
 
 const ChartPrintTemplate = forwardRef(function ChartPrintTemplate({ selected, today, todayWeekday, isThursday, patientNames, columnMedicines, quantities, totals }, ref) {
   const footRows = isThursday ? 2 : 1
   const innerHeight = PAGE_HEIGHT_MM - MARGIN_MM * 2
-  const rowMM = (innerHeight - HEAD_MM) / (PATIENT_ROWS + footRows)
-  const gridTemplateRows = `${HEAD_MM}mm repeat(${PATIENT_ROWS}, ${rowMM}mm) repeat(${footRows}, ${rowMM}mm)`
+  // A row counts as filled if it has a patient name or any quantity — same rule the live
+  // chart grid uses to decide how far a ward's data actually reaches.
+  const lastFilledRow = patientNames.reduce((last, name, index) => (name.trim() || quantities[index]?.some(Boolean) ? index : last), -1)
+  const visibleRows = lastFilledRow + 1 <= COMPACT_ROWS ? COMPACT_ROWS : PATIENT_ROWS
+  const rowMM = (innerHeight - HEAD_MM) / (visibleRows + footRows)
+  const gridTemplateRows = `${HEAD_MM}mm repeat(${visibleRows}, ${rowMM}mm) repeat(${footRows}, ${rowMM}mm)`
 
   return <div ref={ref} className="chart-print-template" style={{ gridTemplateRows, gridTemplateColumns: `${NAME_COL_MM}mm repeat(${CHART_COLUMNS}, 1fr)` }}>
     <div className="cpt-cell cpt-corner">
@@ -41,7 +50,7 @@ const ChartPrintTemplate = forwardRef(function ChartPrintTemplate({ selected, to
     </div>
     {columnMedicines.map((name, columnIndex) => <div key={columnIndex} className="cpt-cell cpt-col-head"><span className="cpt-col-head-text">{name}</span></div>)}
 
-    {patientNames.map((name, rowIndex) => <Fragment key={rowIndex}>
+    {patientNames.slice(0, visibleRows).map((name, rowIndex) => <Fragment key={rowIndex}>
       <div className="cpt-cell cpt-name">{name}</div>
       {quantities[rowIndex].map((quantity, columnIndex) => <div key={columnIndex} className="cpt-cell cpt-qty">{quantity || ''}</div>)}
     </Fragment>)}

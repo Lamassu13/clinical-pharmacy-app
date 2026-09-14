@@ -1720,8 +1720,10 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
   left: 50%;
   width: 26mm;
   white-space: nowrap;
+  font-weight: 700;
   transform: translate(-50%, -50%) rotate(-90deg);
 }
 .cpt-name { justify-content: flex-start; padding-inline-start: 2px; font-weight: 700; border-inline-start-width: 0.6mm; }
+.cpt-qty { font-weight: 700; }
 .cpt-foot-corner { font-size: 8px; background: #e6f4ea; }
 .cpt-total { font-size: 8px; font-weight: 700; background: #e6f4ea; }
