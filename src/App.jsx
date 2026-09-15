@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { roleLabels, PATIENT_ROWS, CHART_COLUMNS, apiUrl, floors, specialWards } from './constants.js'
-import { mergeChartSnapshots, parseChartRows, toEnglishDigits, medicineKey, nearestMedicine, UNIT_ONE, isSyringe, VIAL_AMP, SYRINGE_EXCLUDE, isoDate, locationBody, pillEntryList } from './helpers.js'
+import { mergeChartSnapshots, diffMergeOutcome, parseChartRows, toEnglishDigits, medicineKey, nearestMedicine, UNIT_ONE, isSyringe, VIAL_AMP, SYRINGE_EXCLUDE, isoDate, locationBody, pillEntryList } from './helpers.js'
 import ConfirmDialog from './components/ConfirmDialog.jsx'
 import AppHeader from './components/AppHeader.jsx'
 import LoginScreen from './screens/LoginScreen.jsx'
@@ -721,33 +721,18 @@ function App() {
     const fresh = parseChartRows(result.chart)
     const mine = { patientNames, columnMedicines, quantities }
     const merged = mergeChartSnapshots(lastSyncedChartRef.current, mine, fresh)
-    const adopted = []
-    merged.patientNames.forEach((value, row) => { if (value !== (mine.patientNames[row] ?? '')) adopted.push(`اسم المريض صف ${row + 1}`) })
-    merged.columnMedicines.forEach((value, col) => { if (value !== (mine.columnMedicines[col] ?? '')) adopted.push(`دواء عمود ${col + 1}`) })
-    // Dose cells where this tab's value won and the other device's differed: keep the other
-    // number so the grid can show "كان: X" on that cell until the pharmacist rules on it.
-    const dropped = {}
-    merged.quantities.forEach((cells, row) => cells.forEach((value, col) => {
-      const mineValue = mine.quantities[row]?.[col] ?? ''
-      const freshValue = fresh.quantities[row]?.[col] ?? ''
-      if (value !== mineValue) {
-        const who = merged.patientNames[row]?.trim() || `صف ${row + 1}`
-        const drug = merged.columnMedicines[col]?.trim() || `عمود ${col + 1}`
-        adopted.push(`${who} — ${drug}`)
-      } else if (freshValue !== mineValue) {
-        dropped[`${row}:${col}`] = freshValue || '—'
-      }
-    }))
+    const { adopted, dropped, droppedOther } = diffMergeOutcome(merged, mine, fresh)
     setPatientNames(merged.patientNames)
     setColumnMedicines(merged.columnMedicines)
     setQuantities(merged.quantities)
     setDroppedCells(dropped)
     chartVersionRef.current = result.chart ? result.chart.version : 0
     lastSyncedChartRef.current = fresh
-    if (adopted.length || Object.keys(dropped).length) {
+    if (adopted.length || Object.keys(dropped).length || droppedOther) {
       const parts = []
       if (adopted.length) parts.push(`${adopted.length} حقلًا دُمج من جهاز آخر`)
       if (Object.keys(dropped).length) parts.push(`${Object.keys(dropped).length} خلية اختلفت فيها قيمتك — تُعرض قيمة الجهاز الآخر بجانبها («كان: …»)`)
+      if (droppedOther) parts.push(`${droppedOther} من أسماء المرضى/الأدوية اختلفت أيضًا وأُبقيت قيمتك — راجعها يدويًا`)
       setChartClashNote(`${parts.join(' · ')}. راجِعها${adopted.length ? `: ${adopted.slice(0, 4).join('، ')}${adopted.length > 4 ? '…' : ''}` : ''}.`)
     }
   }, [columnMedicines, patientNames, quantities, selected])
@@ -756,9 +741,25 @@ function App() {
   const flushChart = useCallback(() => {
     if (!selected || selected.mode !== 'chart' || !isLoggedIn) return
     if (lockState === 'readonly' || lockState === 'available') return // only viewing — nothing of ours to flush
-    if (loadedChartKey !== `${selected.floor || 'special'}-${selected.ward}-${selectedDate}-${selected.slot || 'main'}`) return
-    try { fetch(`${apiUrl}/chart`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', keepalive: true, body: JSON.stringify(buildChartBody(selectedDate)) }) } catch { /* the debounced autosave or next visit will retry */ }
-  }, [buildChartBody, isLoggedIn, loadedChartKey, lockState, selected, selectedDate])
+    const chartKey = `${selected.floor || 'special'}-${selected.ward}-${selectedDate}-${selected.slot || 'main'}`
+    if (loadedChartKey !== chartKey) return
+    fetch(`${apiUrl}/chart`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', keepalive: true, body: JSON.stringify(buildChartBody(selectedDate)) })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((result) => {
+        if (!result?.ok) return
+        // This only runs if the tab is still alive when the response lands — true on a
+        // background/resume (the common case this fires for on the ward iPad), moot on a real
+        // kill (nothing left to correct). Without it, chartVersionRef/lastSyncedChartRef stay
+        // stale after a save that actually succeeded, so the very next autosave 409s against
+        // this tab's own already-saved edits and re-litigates them through mergeAfterConflict
+        // for no reason — and the leftover draft below would otherwise survive to clobber a
+        // genuinely newer save from elsewhere the next time this exact chart is opened.
+        chartVersionRef.current = result.version
+        lastSyncedChartRef.current = { patientNames, columnMedicines, quantities }
+        try { localStorage.removeItem(`cpa-chart-draft:${chartKey}`) } catch { /* best effort */ }
+      })
+      .catch(() => { /* the debounced autosave or next visit will retry */ })
+  }, [buildChartBody, columnMedicines, isLoggedIn, loadedChartKey, lockState, patientNames, quantities, selected, selectedDate])
   const flushPills = useCallback(() => {
     if (!selected || selected.mode !== 'pills' || !isLoggedIn || !pillsData) return
     if (loadedPillsKey !== `${selected.floor || 'special'}-${selected.ward}-${selectedDate}-${selected.slot || 'main'}`) return
@@ -1011,7 +1012,22 @@ function App() {
         // Always the server snapshot, not `next`: a recovered draft is still unsaved until the
         // next PUT actually succeeds, so it must still read as "pending" if that save 409s.
         lastSyncedChartRef.current = fresh
-        if (draft) { try { localStorage.removeItem(draftKey) } catch { /* best effort */ } }
+        if (draft) {
+          try { localStorage.removeItem(draftKey) } catch { /* best effort */ }
+          // Same reporting as a live save conflict (mergeAfterConflict) — a recovered draft is
+          // exactly that, just discovered on load instead of on a 409, and was previously
+          // applied in total silence: any field this tab's own draft happened to also touch
+          // could clobber a real, newer server value with zero indication.
+          const { adopted, dropped, droppedOther } = diffMergeOutcome(next, draft.current, fresh)
+          setDroppedCells(dropped)
+          if (adopted.length || Object.keys(dropped).length || droppedOther) {
+            const parts = []
+            if (adopted.length) parts.push(`${adopted.length} حقلًا حُدّث من آخر حفظ على الخادم`)
+            if (Object.keys(dropped).length) parts.push(`${Object.keys(dropped).length} خلية من مسودة غير محفوظة اختلفت — تُعرض القيمة الحالية بجانبها («كان: …»)`)
+            if (droppedOther) parts.push(`${droppedOther} من أسماء المرضى/الأدوية اختلفت أيضًا — راجعها يدويًا`)
+            setChartClashNote(`استُعيدت مسودة غير محفوظة من جلسة سابقة. ${parts.join(' · ')}.`)
+          }
+        }
         // Someone else is in this chart -> open read-only. If it's already ours (a re-open),
         // resume editing. Otherwise stay 'idle': the first edit will claim the lock.
         const lock = result.lock || {}

@@ -12,6 +12,47 @@ export const mergeChartSnapshots = (base, current, fresh) => ({
   quantities: fresh.quantities.map((row, rowIndex) => row.map((value, columnIndex) => (current.quantities[rowIndex][columnIndex] !== base.quantities[rowIndex]?.[columnIndex] ? current.quantities[rowIndex][columnIndex] : value))),
 })
 
+// Reports what a merge (mergeChartSnapshots above) actually did, relative to `mine` (this
+// tab's pre-merge state) and `fresh` (the other side's state) — so neither call site can
+// silently drop a real edit without telling the pharmacist. `adopted` lists fields fresh won
+// (this tab's own value was replaced). `dropped` keys quantity cells where mine won over a
+// differing, genuinely non-empty fresh value, shown on the grid as "كان: X" until resolved.
+// `droppedOther` counts the same silent-win case for patient names / medicine names, which
+// have no per-cell tag of their own — folded into the clash-note text instead of dropped on
+// the floor. A blank fresh value is never counted as "dropped": that's simply a field the
+// server never had data for yet (a brand-new edit landing during a conflict retry, not a
+// second writer's value being discarded), so flagging it would just be noise on top of an
+// otherwise-uneventful save.
+export const diffMergeOutcome = (merged, mine, fresh) => {
+  const adopted = []
+  let droppedOther = 0
+  merged.patientNames.forEach((value, row) => {
+    const mineValue = mine.patientNames[row] ?? ''
+    const freshValue = fresh.patientNames[row] ?? ''
+    if (value !== mineValue) adopted.push(`اسم المريض صف ${row + 1}`)
+    else if (freshValue !== mineValue && freshValue !== '') droppedOther += 1
+  })
+  merged.columnMedicines.forEach((value, col) => {
+    const mineValue = mine.columnMedicines[col] ?? ''
+    const freshValue = fresh.columnMedicines[col] ?? ''
+    if (value !== mineValue) adopted.push(`دواء عمود ${col + 1}`)
+    else if (freshValue !== mineValue && freshValue !== '') droppedOther += 1
+  })
+  const dropped = {}
+  merged.quantities.forEach((cells, row) => cells.forEach((value, col) => {
+    const mineValue = mine.quantities[row]?.[col] ?? ''
+    const freshValue = fresh.quantities[row]?.[col] ?? ''
+    if (value !== mineValue) {
+      const who = merged.patientNames[row]?.trim() || `صف ${row + 1}`
+      const drug = merged.columnMedicines[col]?.trim() || `عمود ${col + 1}`
+      adopted.push(`${who} — ${drug}`)
+    } else if (freshValue !== mineValue && freshValue !== '') {
+      dropped[`${row}:${col}`] = freshValue
+    }
+  }))
+  return { adopted, dropped, droppedOther }
+}
+
 // GET /api/chart's row-per-cell shape, expanded to the fixed-size grid the UI keeps in state.
 export const parseChartRows = (chart) => {
   const patientNames = Array(PATIENT_ROWS).fill('')
