@@ -1,6 +1,6 @@
 import { Fragment, forwardRef } from 'react'
 import hospitalLogo from '../assets/hospital-logo.png'
-import { CHART_COLUMNS, PATIENT_ROWS } from '../constants.js'
+import { PATIENT_ROWS } from '../constants.js'
 
 // A dedicated, static render of the chart for export — plain text, no inputs, no scrolling.
 // Captured with html2canvas and dropped into a fixed-size PDF (see exportChartPdf in App.jsx)
@@ -38,7 +38,7 @@ const ChartPrintTemplate = forwardRef(function ChartPrintTemplate({ selected, to
   const rowMM = (innerHeight - HEAD_MM) / (visibleRows + footRows)
   const gridTemplateRows = `${HEAD_MM}mm repeat(${visibleRows}, ${rowMM}mm) repeat(${footRows}, ${rowMM}mm)`
 
-  return <div ref={ref} className="chart-print-template" style={{ gridTemplateRows, gridTemplateColumns: `${NAME_COL_MM}mm repeat(${CHART_COLUMNS}, 1fr)` }}>
+  return <div ref={ref} className="chart-print-template" style={{ gridTemplateRows, gridTemplateColumns: `${NAME_COL_MM}mm repeat(${columnMedicines.length}, 1fr)` }}>
     <div className="cpt-cell cpt-corner">
       <img src={hospitalLogo} alt="" />
       <span>مستشفى بغداد التعليمي</span>
