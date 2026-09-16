@@ -332,7 +332,11 @@ router.get('/order', requireAuth, async (request, response) => {
   if (!isKnownWard(floor, wardName)) return response.status(400).json({ message: 'الردهة غير معروفة' })
   if (!canAccessLocation(request.session.user, floor, wardName)) return response.status(403).json({ message: 'لا تملك صلاحية لهذه الردهة' })
   const chartId = await resolveChartId(floor, wardName, chartDate, 'main')
-  if (!chartId) return response.json({ order: { items: [] } })
+  // Thursday means a 2-day supply (Friday is the ward's day off) — the chart itself shows a
+  // second "المجموع المضاعف" total alongside the normal one on Thursday; the requisition
+  // mirrors that with a doubled quantity alongside the normal one, not in place of it.
+  const isThursday = new Date(`${chartDate}T12:00:00`).getDay() === 4
+  if (!chartId) return response.json({ order: { items: [], isThursday } })
   const rows = await query(
     `SELECT COALESCE(m.name, cc.custom_name) AS name, SUM(cq.quantity)::int AS quantity
      FROM chart_columns cc
@@ -345,7 +349,15 @@ router.get('/order', requireAuth, async (request, response) => {
     [chartId],
   )
   response.json({
-    order: { items: rows.rows.map((row) => ({ name: row.name, quantity: row.quantity, quantityWords: numberToArabicWords(row.quantity) })) },
+    order: {
+      isThursday,
+      items: rows.rows.map((row) => ({
+        name: row.name,
+        quantity: row.quantity,
+        quantityWords: numberToArabicWords(row.quantity),
+        ...(isThursday ? { doubledQuantity: row.quantity * 2, doubledQuantityWords: numberToArabicWords(row.quantity * 2) } : {}),
+      })),
+    },
   })
 })
 

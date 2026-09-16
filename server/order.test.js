@@ -8,6 +8,7 @@ import { numberToArabicWords } from './arabic-number.js'
 const FLOOR = 5
 const WARD = 'ردهة رجال'
 const DATE = '2026-05-20'
+const THURSDAY = '2026-05-21'
 
 let server, baseUrl
 test.before(async () => { ({ server, baseUrl } = await startServer(app)) })
@@ -25,10 +26,10 @@ const makeWard = async () => (await pool.query(
   'INSERT INTO wards (floor_number, name, is_special) VALUES ($1, $2, false) RETURNING id', [FLOOR, WARD])).rows[0].id
 
 // Direct chart seed on a given ward: columns = [{ n, medicineId?, customName? }], cells = [{ row, col, qty }].
-const seedChart = async ({ wardId, slot = 'main', createdBy, columns, cells, patients = [1, 2] }) => {
+const seedChart = async ({ wardId, slot = 'main', createdBy, columns, cells, patients = [1, 2], date = DATE }) => {
   const chartId = (await pool.query(
     'INSERT INTO daily_charts (ward_id, chart_date, slot, created_by, updated_by, version) VALUES ($1, $2, $3, $4, $4, 1) RETURNING id',
-    [wardId, DATE, slot, createdBy],
+    [wardId, date, slot, createdBy],
   )).rows[0].id
   for (const r of patients) await pool.query('INSERT INTO chart_patients (chart_id, row_number, patient_name) VALUES ($1, $2, $3)', [chartId, r, `مريض ${r}`])
   for (const c of columns) await pool.query('INSERT INTO chart_columns (chart_id, column_number, medicine_id, custom_name) VALUES ($1, $2, $3, $4)', [chartId, c.n, c.medicineId ?? null, c.customName ?? null])
@@ -56,6 +57,39 @@ test('GET /api/order: one line per medicine, summed over the MAIN chart only, wi
   assert.equal(res.status, 200)
   assert.deepEqual(res.body.order.items, [
     { name: 'Paracetamol 500mg Tab', quantity: 23, quantityWords: 'ثلاثة وعشرون' },
+  ])
+})
+
+test('GET /api/order: Thursday adds a doubled quantity alongside the normal one; any other day does not', async () => {
+  const seeder = await createUser({ role: 'admin' })
+  const med = (await pool.query("INSERT INTO medicines (name) VALUES ('Amoxicillin Cap') RETURNING id")).rows[0].id
+  const wardId = await makeWard()
+
+  await seedChart({
+    wardId, slot: 'main', createdBy: seeder.id, date: THURSDAY,
+    columns: [{ n: 1, medicineId: med }],
+    cells: [{ row: 1, col: 1, qty: 10 }, { row: 2, col: 1, qty: 3 }],
+  })
+  // Same medicine, same quantities, a non-Thursday chart — to confirm doubling is date-gated,
+  // not something that always fires once a chart has data.
+  await seedChart({
+    wardId, slot: 'main', createdBy: seeder.id, date: DATE,
+    columns: [{ n: 1, medicineId: med }],
+    cells: [{ row: 1, col: 1, qty: 10 }, { row: 2, col: 1, qty: 3 }],
+  })
+
+  const client = await loginAs({ role: 'user', floor: FLOOR })
+  const res = await client.get(`/api/order?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=${THURSDAY}`)
+  assert.equal(res.status, 200)
+  assert.equal(res.body.order.isThursday, true)
+  assert.deepEqual(res.body.order.items, [
+    { name: 'Amoxicillin Cap', quantity: 13, quantityWords: 'ثلاثة عشر', doubledQuantity: 26, doubledQuantityWords: 'ستة وعشرون' },
+  ])
+
+  const wednesday = await client.get(`/api/order?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=${DATE}`)
+  assert.equal(wednesday.body.order.isThursday, false)
+  assert.deepEqual(wednesday.body.order.items, [
+    { name: 'Amoxicillin Cap', quantity: 13, quantityWords: 'ثلاثة عشر' },
   ])
 })
 

@@ -5,6 +5,7 @@ import hospitalLogo from '../assets/hospital-logo.png'
 // out in Arabic. RTL like the rest of the app, so التسلسل is the rightmost column.
 export default function OrderScreen({ header, wardLabel, today, onBack, selectedDate, onChangeDate, loading, data, loadError, onPrint }) {
   const items = data?.items || []
+  const isThursday = Boolean(data?.isThursday)
 
   return <main className="app-shell">
     {header}
@@ -32,12 +33,16 @@ export default function OrderScreen({ header, wardLabel, today, onBack, selected
         : !items.length ? <div className="empty-state"><strong>لا توجد طلبية لهذا اليوم</strong><span>سجّل جارت هذه الردهة أولًا، ثم تُبنى الطلبية تلقائيًا من كمياته.</span></div>
         : <div className="order-table-scroll">
             <table className="pill-table order-table">
-              <thead><tr><th scope="col">التسلسل</th><th scope="col">اسم الدواء</th><th scope="col">الكمية</th><th scope="col">الكمية كتابةً</th></tr></thead>
+              <thead><tr>
+                <th scope="col">التسلسل</th><th scope="col">اسم الدواء</th><th scope="col">الكمية</th><th scope="col">الكمية كتابةً</th>
+                {isThursday && <><th scope="col">الكمية المضاعفة</th><th scope="col">الكمية المضاعفة كتابةً</th></>}
+              </tr></thead>
               <tbody>{items.map((item, index) => <tr key={item.name}>
                 <td className="order-serial">{index + 1}</td>
                 <td lang="en">{item.name}</td>
                 <td className="order-qty">{item.quantity}</td>
                 <td>{item.quantityWords}</td>
+                {isThursday && <><td className="order-qty">{item.doubledQuantity}</td><td>{item.doubledQuantityWords}</td></>}
               </tr>)}</tbody>
             </table>
           </div>}
