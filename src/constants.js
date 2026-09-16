@@ -16,6 +16,9 @@ export const specialWards = ['ردهة الديلزة', 'ردهة العناية
 export const roleLabels = { admin: 'مدير', supervisor: 'مسؤول', user: 'مستخدم' }
 export const PATIENT_ROWS = 41
 export const CHART_COLUMNS = 51
+// Safety ceiling for "+ عمود" (src/App.jsx's addColumn) — keep in sync with
+// MAX_CHART_COLUMNS in server/validation.js and the CHECK constraints in server/schema.sql.
+export const MAX_CHART_COLUMNS = 80
 // Fixed pill-form option lists. Keep in sync with server/index.js.
 export const doseTimes = ['٨ صباحًا', '٩ صباحًا', '١٠ صباحًا', '١١ صباحًا', '١٢ ظهرًا', '٢ ظهرًا', '٣ ظهرًا', '٤ عصرًا', '٥ عصرًا', '٦ مساءً', '٨ ليلًا', '٩ ليلًا', '١٠ ليلًا', '١٠ صباحًا - ١٠ مساءً', '١٢ ظهرًا - ١٢ ليلًا', '١٢ ظهرًا - ٨ ليلًا', '٨ صباحًا - ٤ عصرًا - ١٢ ليلًا', '٦ صباحًا - ١٢ ظهرًا - ٦ مساءً - ١٢ ليلًا']
 export const usageMethods = ['حبة بعد الطعام مباشرة', 'حبة قبل الطعام بساعة أو بعده بساعتين', '٢ حبة بعد الطعام مباشرة', 'نصف حبة قبل الطعام', 'نصف حبة بعد الطعام', 'حبة قبل الفطور بساعة', 'كبسولة قبل الطعام بساعة أو بعده بساعتين', 'كبسولة بعد الطعام مباشرة', 'حبة مع الطعام', 'حبة تحت اللسان عند الحاجة', 'حبة ونصف بعد الطعام']

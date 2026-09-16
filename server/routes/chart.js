@@ -2,7 +2,7 @@ import express from 'express'
 import { pool, query } from '../db.js'
 import { requireAuth, requireManager } from '../auth.js'
 import {
-  ALLOWED_FLOORS, MAX_PATIENT_ROWS, SPECIAL_WARDS, isKnownWard,
+  ALLOWED_FLOORS, MAX_PATIENT_ROWS, MAX_CHART_COLUMNS, SPECIAL_WARDS, isKnownWard,
   canAccessLocation, clampInt, isIsoDate, cleanText,
   normalizeMedicineKey, medicineKeySql,
 } from '../validation.js'
@@ -184,10 +184,10 @@ router.put('/chart', requireAuth, async (request, response) => {
     .map((patient) => ({ rowNumber: clampInt(patient?.rowNumber, 1, MAX_PATIENT_ROWS), name: cleanText(patient?.name, 200) }))
     .filter((patient) => patient.rowNumber !== null)
   const columns = (Array.isArray(request.body.columns) ? request.body.columns : [])
-    .map((column) => ({ columnNumber: clampInt(column?.columnNumber, 1, 51), medicineName: cleanText(column?.medicineName, 200).trim() }))
+    .map((column) => ({ columnNumber: clampInt(column?.columnNumber, 1, MAX_CHART_COLUMNS), medicineName: cleanText(column?.medicineName, 200).trim() }))
     .filter((column) => column.columnNumber !== null)
   const quantities = (Array.isArray(request.body.quantities) ? request.body.quantities : [])
-    .map((entry) => ({ rowNumber: clampInt(entry?.rowNumber, 1, MAX_PATIENT_ROWS), columnNumber: clampInt(entry?.columnNumber, 1, 51), quantity: clampInt(entry?.quantity, 0, 1_000_000) }))
+    .map((entry) => ({ rowNumber: clampInt(entry?.rowNumber, 1, MAX_PATIENT_ROWS), columnNumber: clampInt(entry?.columnNumber, 1, MAX_CHART_COLUMNS), quantity: clampInt(entry?.quantity, 0, 1_000_000) }))
     .filter((entry) => entry.rowNumber !== null && entry.columnNumber !== null && entry.quantity !== null)
   // 0 means "I have no chart yet" — the correct baseline for a first save, since a plain
   // INSERT with no existing row always succeeds regardless of this value.

@@ -53,11 +53,15 @@ export const diffMergeOutcome = (merged, mine, fresh) => {
   return { adopted, dropped, droppedOther }
 }
 
-// GET /api/chart's row-per-cell shape, expanded to the fixed-size grid the UI keeps in state.
+// GET /api/chart's row-per-cell shape, expanded to the grid the UI keeps in state — at least
+// CHART_COLUMNS wide, wider if a manual "+ عمود" (src/App.jsx addColumn) previously grew this
+// particular chart past that and it was saved, so reopening it shows every column it actually
+// has rather than truncating back to the default width.
 export const parseChartRows = (chart) => {
+  const columnCount = chart ? Math.max(CHART_COLUMNS, ...chart.columns.map((c) => c.column_number), ...chart.quantities.map((q) => q.column_number)) : CHART_COLUMNS
   const patientNames = Array(PATIENT_ROWS).fill('')
-  const quantities = Array.from({ length: PATIENT_ROWS }, () => Array(CHART_COLUMNS).fill(''))
-  const columnMedicines = Array(CHART_COLUMNS).fill('')
+  const quantities = Array.from({ length: PATIENT_ROWS }, () => Array(columnCount).fill(''))
+  const columnMedicines = Array(columnCount).fill('')
   if (chart) {
     chart.patients.forEach((patient) => { patientNames[patient.row_number - 1] = patient.patient_name })
     chart.quantities.forEach((quantity) => { quantities[quantity.row_number - 1][quantity.column_number - 1] = String(quantity.quantity) })

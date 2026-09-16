@@ -3,6 +3,9 @@
 
 export const ALLOWED_FLOORS = [2, 3, 4, 5, 6, 8, 9, 10]
 export const MAX_PATIENT_ROWS = 41
+// Safety ceiling for the chart's manual "+ عمود" (add column) action — keep in sync with
+// MAX_CHART_COLUMNS in src/constants.js and the CHECK constraints in server/schema.sql.
+export const MAX_CHART_COLUMNS = 80
 export const SPECIAL_WARDS = ['ردهة الديلزة', 'ردهة العناية المركزة', 'ردهة الخدج']
 // Ward names per floor. Keep in sync with `floors` in src/App.jsx. Charts may only
 // reference a ward on this list, otherwise any string would mint a new wards row.

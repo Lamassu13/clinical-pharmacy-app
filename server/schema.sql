@@ -67,7 +67,7 @@ CREATE TABLE IF NOT EXISTS chart_patients (
 CREATE TABLE IF NOT EXISTS chart_columns (
   id BIGSERIAL PRIMARY KEY,
   chart_id BIGINT NOT NULL REFERENCES daily_charts(id) ON DELETE CASCADE,
-  column_number INTEGER NOT NULL CHECK (column_number BETWEEN 1 AND 51),
+  column_number INTEGER NOT NULL CHECK (column_number BETWEEN 1 AND 80),
   medicine_id BIGINT REFERENCES medicines(id),
   custom_name TEXT,
   UNIQUE (chart_id, column_number)
@@ -76,7 +76,7 @@ CREATE TABLE IF NOT EXISTS chart_columns (
 CREATE TABLE IF NOT EXISTS chart_quantities (
   chart_id BIGINT NOT NULL REFERENCES daily_charts(id) ON DELETE CASCADE,
   row_number INTEGER NOT NULL CHECK (row_number BETWEEN 1 AND 41),
-  column_number INTEGER NOT NULL CHECK (column_number BETWEEN 1 AND 51),
+  column_number INTEGER NOT NULL CHECK (column_number BETWEEN 1 AND 80),
   quantity INTEGER NOT NULL DEFAULT 0 CHECK (quantity >= 0),
   PRIMARY KEY (chart_id, row_number, column_number)
 );
@@ -172,6 +172,13 @@ ALTER TABLE pill_entries DROP CONSTRAINT IF EXISTS pill_entries_patient_row_numb
 ALTER TABLE pill_entries ADD CONSTRAINT pill_entries_patient_row_number_check CHECK (patient_row_number BETWEEN 1 AND 41);
 ALTER TABLE pill_patient_meta DROP CONSTRAINT IF EXISTS pill_patient_meta_patient_row_number_check;
 ALTER TABLE pill_patient_meta ADD CONSTRAINT pill_patient_meta_patient_row_number_check CHECK (patient_row_number BETWEEN 1 AND 41);
+
+-- Widen the chart column cap from 51 to 80 on databases created before this change — the
+-- manual "+ عمود" action (src/App.jsx addColumn) grows a chart past its original 51.
+ALTER TABLE chart_columns DROP CONSTRAINT IF EXISTS chart_columns_column_number_check;
+ALTER TABLE chart_columns ADD CONSTRAINT chart_columns_column_number_check CHECK (column_number BETWEEN 1 AND 80);
+ALTER TABLE chart_quantities DROP CONSTRAINT IF EXISTS chart_quantities_column_number_check;
+ALTER TABLE chart_quantities ADD CONSTRAINT chart_quantities_column_number_check CHECK (column_number BETWEEN 1 AND 80);
 
 -- Notices from the manager/admin shown on the dashboard everyone lands on after login.
 CREATE TABLE IF NOT EXISTS announcements (
