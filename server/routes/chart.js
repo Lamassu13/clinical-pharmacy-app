@@ -257,8 +257,12 @@ router.put('/chart', requireAuth, async (request, response) => {
       )
     }
 
+    // A column with no linked medicine (blank, or a name outside the catalogue) never gets a
+    // chart_columns row above — its quantities are dropped the same way, so a cleared column
+    // can never leave orphaned numbers behind server-side regardless of what the client sent.
+    const linkedColumnNumbers = new Set(linkedColumns.map((entry) => entry.columnNumber))
     const quantityByCell = new Map(quantities.map((entry) => [`${entry.rowNumber}:${entry.columnNumber}`, entry]))
-    const quantityList = [...quantityByCell.values()]
+    const quantityList = [...quantityByCell.values()].filter((entry) => linkedColumnNumbers.has(entry.columnNumber))
     if (quantityList.length) {
       await client.query('INSERT INTO chart_quantities (chart_id, row_number, column_number, quantity) SELECT $1, rn, cn, qty FROM UNNEST($2::int[], $3::int[], $4::int[]) AS u(rn, cn, qty)', [chartId, quantityList.map((entry) => entry.rowNumber), quantityList.map((entry) => entry.columnNumber), quantityList.map((entry) => entry.quantity)])
     }

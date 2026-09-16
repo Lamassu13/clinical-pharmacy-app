@@ -110,6 +110,30 @@ test('PUT /api/chart: a column naming a medicine outside the catalogue is droppe
   assert.equal(fetched.body.chart.columns[0].medicine_name, 'Amoxicillin Cap')
 })
 
+test('PUT /api/chart: quantities for a column with no linked medicine (blank or outside the catalogue) are never stored — no orphaned numbers under a dropped column', async () => {
+  const client = await loginAs({ role: 'user', floor: FLOOR })
+  const saved = await client.put('/api/chart', buildChartBody({
+    columns: [
+      { columnNumber: 1, medicineName: 'Amoxicillin Cap' },
+      { columnNumber: 2, medicineName: '' },
+      { columnNumber: 3, medicineName: 'Totally Made Up Syrup' },
+    ],
+    quantities: [
+      { rowNumber: 1, columnNumber: 1, quantity: 2 },
+      { rowNumber: 1, columnNumber: 2, quantity: 5 },
+      { rowNumber: 1, columnNumber: 3, quantity: 7 },
+    ],
+  }))
+  assert.equal(saved.status, 200)
+
+  const fetched = await client.get(`/api/chart?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=${DATE}`)
+  assert.deepEqual(
+    fetched.body.chart.quantities.map((q) => ({ row: q.row_number, col: q.column_number, qty: q.quantity })),
+    [{ row: 1, col: 1, qty: 2 }],
+    'only the linked column\'s quantity survives',
+  )
+})
+
 test('PUT /api/chart: a column matches the catalogue ignoring case and extra spaces', async () => {
   const client = await loginAs({ role: 'user', floor: FLOOR })
   await client.put('/api/chart', buildChartBody({ columns: [{ columnNumber: 1, medicineName: '  amoxicillin   cap ' }] }))

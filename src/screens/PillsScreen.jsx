@@ -1,14 +1,15 @@
+import { useState } from 'react'
 import hospitalLogo from '../assets/hospital-logo.png'
 import PillSelect from '../components/PillSelect.jsx'
 import { usageMethods, noteOptions, doseTimeGroups } from '../constants.js'
 
-// Two always-present spare rows per patient for a medicine the chart doesn't carry. Editable
-// on screen (kept as pill_entries under these synthetic keys), and printed blank when unused —
-// the ruled hand-write rows the form always had.
-const EXTRA_ROWS = [
-  { key: 'extra-row-1', label: 'سطر إضافي ١' },
-  { key: 'extra-row-2', label: 'سطر إضافي ٢' },
-]
+// At least two always-present spare rows per patient for a medicine the chart doesn't carry —
+// the ruled hand-write rows the form always had — with a screen-only button to add more on
+// demand. Editable on screen (kept as pill_entries under these synthetic keys, same as a real
+// medicine row) and printed blank when unused.
+const DEFAULT_EXTRA_ROWS = 2
+const extraRowsFor = (count) => Array.from({ length: count }, (_, i) => ({ key: `extra-row-${i + 1}`, label: `سطر إضافي ${(i + 1).toLocaleString('ar-IQ')}` }))
+const hasEntryData = (entry) => Boolean(entry && (entry.pillName || entry.pillQty || entry.doseTime || entry.usageMethod || entry.note))
 
 export default function PillsScreen({
   header, wardLabel, roomLabel, today, editTime, onBack,
@@ -16,6 +17,17 @@ export default function PillsScreen({
   pillEntries, setPillEntries, pillRooms, setPillRooms, pillSelection, onTogglePatient,
   printScope, lastPrintingRow, onPrint, confirmModal,
 }) {
+  // How many extra rows a patient's form shows beyond the default two: the higher of (a) this
+  // tab's own click count, ephemeral and reset on reload, and (b) however far a *saved* extra
+  // row actually reaches — reading pillEntries directly rather than trusting local state alone
+  // is what keeps a typed 3rd/4th row from silently disappearing behind the "+" button on the
+  // next visit just because nobody clicked it again yet.
+  const [extraRowCounts, setExtraRowCounts] = useState({})
+  const extraCountFor = (rowNumber) => {
+    let saved = DEFAULT_EXTRA_ROWS
+    while (hasEntryData(pillEntries[`${rowNumber}:extra-row-${saved + 1}`])) saved += 1
+    return Math.max(saved, extraRowCounts[rowNumber] ?? DEFAULT_EXTRA_ROWS)
+  }
   const saveErrored = pillsLoadError || pillsSaveStatus === 'error'
   const saveText = pillsLoadError ? '⚠ تعذّر تحميل الاستمارة — إعادة المحاولة…'
     : pillsSaveStatus === 'error' ? '⚠ لم يُحفظ — تُعاد المحاولة…'
@@ -100,7 +112,7 @@ export default function PillsScreen({
                     <td><PillSelect value={entry.usageMethod} options={usageMethods} label={`طريقة الاستخدام — ${medName}`} onChange={(nextValue) => setPillEntries((current) => ({ ...current, [key]: { ...entry, usageMethod: nextValue } }))} /></td>
                     <td><PillSelect value={entry.note} options={noteOptions} label={`الملاحظات — ${medName}`} onChange={(nextValue) => setPillEntries((current) => ({ ...current, [key]: { ...entry, note: nextValue } }))} /></td>
                   </tr>
-                })}{lastPage && EXTRA_ROWS.map((extra) => {
+                })}{lastPage && extraRowsFor(extraCountFor(patient.rowNumber)).map((extra) => {
                   const key = `${patient.rowNumber}:${extra.key}`
                   const entry = pillEntries[key] || { doseTime: '', usageMethod: '', note: '', pillQty: '', pillName: '' }
                   return <tr className="pill-extra-row" key={extra.key}>
@@ -111,7 +123,9 @@ export default function PillsScreen({
                     <td><PillSelect value={entry.usageMethod} options={usageMethods} label={`${extra.label} — طريقة الاستخدام`} onChange={(nextValue) => setPillEntries((current) => ({ ...current, [key]: { ...entry, usageMethod: nextValue } }))} /></td>
                     <td><PillSelect value={entry.note} options={noteOptions} label={`${extra.label} — الملاحظات`} onChange={(nextValue) => setPillEntries((current) => ({ ...current, [key]: { ...entry, note: nextValue } }))} /></td>
                   </tr>
-                })}</tbody>
+                })}{lastPage && <tr className="pill-add-extra-row"><td colSpan={6}>
+                  <button type="button" className="text-button" onClick={() => setExtraRowCounts((current) => ({ ...current, [patient.rowNumber]: extraCountFor(patient.rowNumber) + 1 }))}>+ سطر إضافي</button>
+                </td></tr>}</tbody>
               </table>
             </div>
             <div className="pill-form-foot"><span className="pill-sign">توقيع الصيدلاني السريري</span><span className="pill-edit-time">وقت التحرير: {editTime}</span></div>

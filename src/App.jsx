@@ -641,7 +641,14 @@ function App() {
   // to whatever it held when it was focused and a notice explains why.
   const commitColumnMedicine = useCallback((columnIndex, rawValue, previousValue = '') => {
     const trimmed = toEnglishDigits(String(rawValue ?? '')).replace(/\s+/g, ' ').trim()
-    if (!trimmed) { setColumnMedicineNotice(null); setColumnMedicine(columnIndex, ''); return }
+    if (!trimmed) {
+      setColumnMedicineNotice(null)
+      setColumnMedicine(columnIndex, '')
+      // The medicine that gave these numbers meaning is gone — leaving them behind shows
+      // orphaned quantities under a blank header, on screen and in print.
+      setQuantities((current) => current.map((row) => row.map((qty, index) => (index === columnIndex ? '' : qty))))
+      return
+    }
     const match = medicines.find((name) => medicineKey(name) === medicineKey(trimmed))
     if (match) { setColumnMedicineNotice(null); setColumnMedicine(columnIndex, match); return }
     setColumnMedicineNotice({
