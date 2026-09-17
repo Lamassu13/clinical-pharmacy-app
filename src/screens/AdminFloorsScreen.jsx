@@ -10,7 +10,7 @@ export default function AdminFloorsScreen({
   dashboard, dashboardLoading, dashboardError, onRetryDashboard,
   medicinesPeriod, setMedicinesPeriod, patientsPeriod, setPatientsPeriod, isManager,
 }) {
-  return <main className="app-shell">{adminHeader}<section className="dashboard">
+  return <main className="app-shell">{adminHeader}<section className="dashboard floor-admin-page">
     <div className="section-heading"><div>
       <h1>إدارة الطوابق</h1>
     </div></div>
@@ -69,7 +69,7 @@ export default function AdminFloorsScreen({
         className="danger-button"
         type="submit"
         disabled={busy || !purgeFrom || !purgeTo || (!purgeAll && purgeTargets.size === 0)}
-      >{busy ? 'جارٍ المسح…' : 'مسح الجارتات'}</button>
+      >{busy ? <><span className="spinner spinner--inline" aria-hidden="true" />جارٍ المسح…</> : 'مسح الجارتات'}</button>
     </form>
   </section>{confirmModal}</main>
 }
