@@ -187,10 +187,16 @@ function App() {
   // selection. flushSync commits it first, which is exactly what it is for.
   const startPillsPrint = useCallback((scope) => {
     flushSync(() => setPrintScope(scope))
+    // Not "call print() then reset the scope on the next line": window.print() blocks until
+    // the dialog closes on desktop, but on iOS/iPadOS Safari it hands off to the system print
+    // sheet and returns immediately — the very quirk ChartPrintTemplate's comment describes
+    // fighting over several rounds elsewhere in this app. Resetting synchronously after the
+    // call reverted the scope to "all" before the iPad's sheet ever captured the page, so every
+    // form printed regardless of selection. afterprint fires when the sheet actually closes on
+    // every browser (including where print() already blocks, where it's effectively instant).
+    const resetScope = () => { setPrintScope('all'); window.removeEventListener('afterprint', resetScope) }
+    window.addEventListener('afterprint', resetScope)
     window.print()
-    // window.print() is synchronous; once it returns the dialog is done, so the screen can
-    // drop back to showing every card instead of staying filtered to the last print set.
-    setPrintScope('all')
   }, [])
   const [adminMedicines, setAdminMedicines] = useState([])
   const [medicineFilter, setMedicineFilter] = useState('')

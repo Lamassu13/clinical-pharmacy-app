@@ -117,7 +117,12 @@ export default function PillsScreen({
                   const entry = pillEntries[key] || { doseTime: '', usageMethod: '', note: '', pillQty: '', pillName: '' }
                   return <tr className="pill-extra-row" key={extra.key}>
                     <td className="pill-lead-cell"></td>
-                    <td className="pill-name-cell"><input aria-label={`${extra.label} — العلاج`} placeholder="علاج إضافي" value={entry.pillName} onChange={(event) => setPillEntries((current) => ({ ...current, [key]: { ...entry, pillName: event.target.value } }))} /></td>
+                    <td className="pill-name-cell">
+                      <input aria-label={`${extra.label} — العلاج`} placeholder="علاج إضافي" value={entry.pillName} onChange={(event) => setPillEntries((current) => ({ ...current, [key]: { ...entry, pillName: event.target.value } }))} />
+                      {/* Print-only fallback for the same reason as ExtraPillsScreen's medicine
+                          field: Safari drops an empty <input>'s placeholder when printing. */}
+                      <span className={`pill-name-cell-print${entry.pillName ? '' : ' pill-name-cell-print-empty'}`}>{entry.pillName || 'علاج إضافي'}</span>
+                    </td>
                     <td className="pill-qty-cell"><input inputMode="numeric" aria-label={`${extra.label} — كمية الحبوب`} value={entry.pillQty} onChange={(event) => { const next = event.target.value.replace(/\D/g, ''); setPillEntries((current) => ({ ...current, [key]: { ...entry, pillQty: next } })) }} /></td>
                     <td><PillSelect value={entry.doseTime} groups={doseTimeGroups} label={`${extra.label} — وقت الجرعة`} onChange={(nextValue) => setPillEntries((current) => ({ ...current, [key]: { ...entry, doseTime: nextValue } }))} /></td>
                     <td><PillSelect value={entry.usageMethod} options={usageMethods} label={`${extra.label} — طريقة الاستخدام`} onChange={(nextValue) => setPillEntries((current) => ({ ...current, [key]: { ...entry, usageMethod: nextValue } }))} /></td>
