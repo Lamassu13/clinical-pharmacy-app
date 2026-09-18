@@ -671,11 +671,25 @@ app.get('/api/health/db', async (_request, response) => {
   }
 })
 
-app.use(express.static(path.join(projectRoot, '..', 'dist')))
+// Vite hashes every filename under dist/assets (a new deploy ships new filenames), so those
+// are safe to cache forever -- the browser only ever asks for one again if index.html itself
+// changed to reference it. Everything else (index.html, the PWA service worker/manifest,
+// favicon, icons) is unhashed and must be revalidated on every load, or a deployed update can
+// sit unseen behind the browser's own heuristic caching until that cache happens to expire --
+// previously unset here, which is what made a fresh deploy need several manual reloads to
+// actually show up. no-cache (not no-store): still a fast conditional GET / 304 off express's
+// own ETag/Last-Modified, just never served straight from cache without asking first.
+app.use(express.static(path.join(projectRoot, '..', 'dist'), {
+  setHeaders: (response, filePath) => {
+    const isHashedAsset = filePath.split(path.sep).includes('assets')
+    response.setHeader('Cache-Control', isHashedAsset ? 'public, max-age=31536000, immutable' : 'no-cache')
+  },
+}))
 app.use((request, response) => {
-  // A bare next() would skip the 4-arg error handler below and fall through to
+  // A plain next() would skip the 4-arg error handler below and fall through to
   // Express's default HTML 404, which the JSON-only client cannot parse.
   if (request.path.startsWith('/api/')) return response.status(404).json({ message: 'المسار غير موجود' })
+  response.set('Cache-Control', 'no-cache')
   response.sendFile(path.join(projectRoot, '..', 'dist', 'index.html'))
 })
 
