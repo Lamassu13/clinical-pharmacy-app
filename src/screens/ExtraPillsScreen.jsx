@@ -52,12 +52,12 @@ function ExtraPillFormCard({ form, floorLabel, today, editTime, selected, onTogg
             <td className="pill-lead-cell"></td>
             <td className="pill-name-cell">
               <input aria-label={`العلاج — سطر ${entry.slot}`} placeholder="اسم العلاج" value={entry.medicineName} onChange={(event) => setEntry(entry.slot, { medicineName: event.target.value })} />
-              {/* Print-only fallback: Safari doesn't render an <input>'s placeholder attribute
-                  when printing, so an empty field prints blank with no hint at all. A real typed
-                  value already prints fine through the input itself (see the print CSS), so this
-                  only needs to stand in for the placeholder — same swap as .pill-form-patient-print
-                  and PillSelect's .pill-select-value. */}
-              <span className={`pill-name-cell-print${entry.medicineName ? '' : ' pill-name-cell-print-empty'}`}>{entry.medicineName || 'اسم العلاج'}</span>
+              {/* Printed via this span, not the input itself: Safari drops an <input>'s
+                  placeholder when printing, but a real typed value prints fine either way — an
+                  empty field should print truly blank (no hint text), which an empty span
+                  already does for free. Same swap as .pill-form-patient-print and PillSelect's
+                  .pill-select-value. */}
+              <span className="pill-name-cell-print">{entry.medicineName}</span>
             </td>
             <td className="pill-qty-cell"><input inputMode="numeric" aria-label={`كمية الحبوب — ${medName}`} value={entry.pillQty} onChange={(event) => setEntry(entry.slot, { pillQty: event.target.value.replace(/\D/g, '') })} /></td>
             <td><PillSelect value={entry.doseTime} groups={doseTimeGroups} label={`وقت الجرعة — ${medName}`} onChange={(nextValue) => setEntry(entry.slot, { doseTime: nextValue })} /></td>

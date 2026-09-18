@@ -12,12 +12,13 @@ export default function ChartScreen({
   medicines, patientNames, columnMedicines, quantities, totals, isThursday,
   activeRow, activeColumn, labelBelow, setActiveRow, setActiveColumn, setLabelBelow,
   onSetColumnMedicine, onCommitColumnMedicine, columnMedicineNotice, onDismissNotice, onApplySuggestion,
-  onSetPatientName, onUpdateQuantity, onCollapseRow, onAddColumn, canAddColumn,
+  onSetPatientName, onCheckPreviousDay, onUpdateQuantity, onCollapseRow, onAddColumn, canAddColumn,
   chartFrameRef, chartHeadRef, chartGridRef, chartDosesRef, chartFootRef,
   showMedicineForm, onOpenMedicineForm, onCloseMedicineForm, onAddMedicine,
   newMedicine, setNewMedicine, registrationsError,
 }) {
   const columnFocusValue = useRef('')
+  const patientFocusEmpty = useRef(false)
 
   // One line, four states — see chartSaveStatus in App. loadError overrides it because a
   // chart that never loaded matters more than the last PUT; copyError gets its own slot
@@ -159,7 +160,10 @@ export default function ChartScreen({
         }}>
         <div className="chart-names"><table className="chart-table" role="presentation"><tbody>{patientNames.map((name, rowIndex) => <tr key={rowIndex} data-row={rowIndex} className={[activeRow === rowIndex && 'active-row', rowIndex >= printRowCount && 'print-hide-row'].filter(Boolean).join(' ') || undefined}>
           <th className="patient-cell">
-            <input value={name} onChange={(event) => onSetPatientName(rowIndex, event.target.value)} placeholder={`مريض ${rowIndex + 1}`} aria-label={`اسم المريض، صف ${rowIndex + 1}`} />
+            <input value={name} onChange={(event) => onSetPatientName(rowIndex, event.target.value)}
+              onFocus={(event) => { patientFocusEmpty.current = !event.target.value.trim() }}
+              onBlur={(event) => { if (patientFocusEmpty.current && event.target.value.trim()) onCheckPreviousDay(rowIndex, event.target.value) }}
+              placeholder={`مريض ${rowIndex + 1}`} aria-label={`اسم المريض، صف ${rowIndex + 1}`} />
             {activeRow === rowIndex && name.trim() && <button type="button" className="row-delete" aria-label={`حذف صف ${rowIndex + 1}`} title="حذف الصف" onPointerDown={(event) => event.preventDefault()} onMouseDown={(event) => event.preventDefault()} onClick={() => onCollapseRow(rowIndex)}>✕</button>}
           </th>
         </tr>)}</tbody></table></div>

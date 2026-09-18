@@ -78,6 +78,11 @@ export const toEnglishDigits = (value) => value.replace(/[٠-٩]/g, (digit) => S
 // normalise the same way.
 export const medicineKey = (value) => toEnglishDigits(String(value ?? '')).trim().replace(/\s+/g, ' ').toLowerCase()
 
+// Deliberately not medicineKey: a wrong-patient match here copies real doses onto the wrong
+// row, so only whitespace noise is absorbed — case/spelling differences count as different
+// patients on purpose.
+export const patientNameKey = (value) => String(value ?? '').trim().replace(/\s+/g, ' ')
+
 // Levenshtein distance, single-row iterative (older iPadOS Safari safe).
 const editDistance = (a, b) => {
   const row = Array.from({ length: b.length + 1 }, (_, i) => i)

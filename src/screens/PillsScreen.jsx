@@ -106,7 +106,13 @@ export default function PillsScreen({
                   const qtyValue = entry.pillQty !== undefined && entry.pillQty !== '' ? entry.pillQty : (chartQty != null ? String(chartQty) : '')
                   return <tr key={med.key}>
                     <td className="pill-lead-cell">{canRepeat && <button type="button" className="pill-repeat" title="نسخ وقت الجرعة والطريقة والملاحظة من السطر السابق" onClick={() => setPillEntries((current) => ({ ...current, [key]: { ...entry, doseTime: prevEntry.doseTime, usageMethod: prevEntry.usageMethod, note: prevEntry.note } }))}>↑ مثل السابق</button>}</td>
-                    <td className="pill-name-cell"><input aria-label={`العلاج — ${chartName}`} value={medName} onChange={(event) => setPillEntries((current) => ({ ...current, [key]: { ...entry, pillName: event.target.value } }))} /></td>
+                    <td className="pill-name-cell">
+                      <input aria-label={`العلاج — ${chartName}`} value={medName} onChange={(event) => setPillEntries((current) => ({ ...current, [key]: { ...entry, pillName: event.target.value } }))} />
+                      {/* Prints via this span, not the input — see the extra rows below for why
+                          the print CSS hides .pill-name-cell input outright. This row always has
+                          a real name (chart-derived), so there's no blank case to worry about. */}
+                      <span className="pill-name-cell-print">{medName}</span>
+                    </td>
                     <td className="pill-qty-cell"><input inputMode="numeric" aria-label={`كمية الحبوب — ${chartName}`} value={qtyValue} onChange={(event) => { const next = event.target.value.replace(/\D/g, ''); setPillEntries((current) => ({ ...current, [key]: { ...entry, pillQty: next } })) }} /></td>
                     <td><PillSelect value={entry.doseTime} groups={doseTimeGroups} label={`وقت الجرعة — ${medName}`} onChange={(nextValue) => setPillEntries((current) => ({ ...current, [key]: { ...entry, doseTime: nextValue } }))} /></td>
                     <td><PillSelect value={entry.usageMethod} options={usageMethods} label={`طريقة الاستخدام — ${medName}`} onChange={(nextValue) => setPillEntries((current) => ({ ...current, [key]: { ...entry, usageMethod: nextValue } }))} /></td>
@@ -119,9 +125,9 @@ export default function PillsScreen({
                     <td className="pill-lead-cell"></td>
                     <td className="pill-name-cell">
                       <input aria-label={`${extra.label} — العلاج`} placeholder="علاج إضافي" value={entry.pillName} onChange={(event) => setPillEntries((current) => ({ ...current, [key]: { ...entry, pillName: event.target.value } }))} />
-                      {/* Print-only fallback for the same reason as ExtraPillsScreen's medicine
-                          field: Safari drops an empty <input>'s placeholder when printing. */}
-                      <span className={`pill-name-cell-print${entry.pillName ? '' : ' pill-name-cell-print-empty'}`}>{entry.pillName || 'علاج إضافي'}</span>
+                      {/* Printed via this span (see ExtraPillsScreen's medicine field for why):
+                          an empty field should print truly blank, no hint text. */}
+                      <span className="pill-name-cell-print">{entry.pillName}</span>
                     </td>
                     <td className="pill-qty-cell"><input inputMode="numeric" aria-label={`${extra.label} — كمية الحبوب`} value={entry.pillQty} onChange={(event) => { const next = event.target.value.replace(/\D/g, ''); setPillEntries((current) => ({ ...current, [key]: { ...entry, pillQty: next } })) }} /></td>
                     <td><PillSelect value={entry.doseTime} groups={doseTimeGroups} label={`${extra.label} — وقت الجرعة`} onChange={(nextValue) => setPillEntries((current) => ({ ...current, [key]: { ...entry, doseTime: nextValue } }))} /></td>
