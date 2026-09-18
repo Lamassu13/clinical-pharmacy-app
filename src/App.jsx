@@ -166,7 +166,7 @@ function App() {
   const [orderData, setOrderData] = useState(null)
   const [orderLoading, setOrderLoading] = useState(false)
   const [orderError, setOrderError] = useState(false)
-  // استمارة الحبوب الإضافي (mode 'extra-pills') — a standalone, per-floor list of manually
+  // استمارة الحبوب الإضافي (mode 'extra-pills') — a standalone, per-ward list of manually
   // created pill forms with no chart behind them at all.
   const [extraPillsForms, setExtraPillsForms] = useState([])
   const [extraPillsLoading, setExtraPillsLoading] = useState(false)
@@ -924,7 +924,7 @@ function App() {
     else if (adminView === 'medicines') screen = 'إدارة الأدوية'
     else if (selected?.mode === 'pills') screen = `الحبوب — ${ward}`
     else if (selected?.mode === 'order') screen = `الطلبية — ${ward}`
-    else if (selected?.mode === 'extra-pills') screen = `استمارة الحبوب الإضافي — الطابق ${selected.floor}`
+    else if (selected?.mode === 'extra-pills') screen = `استمارة الحبوب الإضافي — ${wardName}`
     else if (selected) screen = `الجارت — ${ward}`
     else if (floor) screen = `الطابق ${floor.number} — اختر الردهة`
     document.title = `${screen} · ${base}`
@@ -1374,14 +1374,15 @@ function App() {
     return () => { cancelled = true }
   }, [selected, selectedDate, isExpired])
 
-  // استمارة الحبوب الإضافي: one shared, standing list per floor — no date scoping, since these
-  // aren't a daily/reset artifact like the chart or the real pills form.
+  // استمارة الحبوب الإضافي: one standing list per ward — no date scoping, since these aren't a
+  // daily/reset artifact like the chart or the real pills form.
   useEffect(() => {
     if (!selected || selected.mode !== 'extra-pills') return undefined
     let cancelled = false
     setExtraPillsLoading(true)
     setExtraPillsError(false)
-    fetch(`${apiUrl}/extra-pills?floor=${selected.floor}`, { credentials: 'include' })
+    const params = new URLSearchParams({ floor: selected.floor || '', ward: selected.ward })
+    fetch(`${apiUrl}/extra-pills?${params}`, { credentials: 'include' })
       .then((response) => { isExpired(response); return response.ok ? response.json() : null })
       .then((result) => {
         if (cancelled) return
@@ -1398,7 +1399,7 @@ function App() {
     setExtraPillsBusy(true)
     setExtraPillsActionError('')
     try {
-      const response = await fetch(`${apiUrl}/extra-pills`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ floor: selected.floor }) })
+      const response = await fetch(`${apiUrl}/extra-pills`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ floor: selected.floor, ward: selected.ward }) })
       isExpired(response)
       const result = await response.json()
       if (!response.ok) throw new Error(result.message)
@@ -1604,7 +1605,7 @@ function App() {
   const printingRows = (pillsData?.patients || []).filter((patient) => printScope === 'all' || pillSelection.has(patient.rowNumber)).map((patient) => patient.rowNumber)
   const lastPrintingRow = printingRows[printingRows.length - 1]
   if (selected && selected.mode === 'order') return <OrderScreen header={appHeader} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={orderLoading} data={orderData} loadError={orderError} onPrint={() => window.print()} />
-  if (selected && selected.mode === 'extra-pills') return <ExtraPillsScreen header={appHeader} floorLabel={`الطابق ${selected.floor}`} today={today} editTime={editTime} onBack={() => setSelected(null)} loading={extraPillsLoading} loadError={extraPillsError} forms={extraPillsForms} busy={extraPillsBusy} actionError={extraPillsActionError} onCreate={createExtraPillForm} onSave={saveExtraPillForm} onRemove={deleteExtraPillForm} confirmModal={confirmModal} />
+  if (selected && selected.mode === 'extra-pills') return <ExtraPillsScreen header={appHeader} floorLabel={wardLabel} today={today} editTime={editTime} onBack={() => setSelected(null)} loading={extraPillsLoading} loadError={extraPillsError} forms={extraPillsForms} busy={extraPillsBusy} actionError={extraPillsActionError} onCreate={createExtraPillForm} onSave={saveExtraPillForm} onRemove={deleteExtraPillForm} confirmModal={confirmModal} />
   if (selected && selected.mode === 'pills') return <PillsScreen header={appHeader} wardLabel={wardLabel} roomLabel={/\bccu\b/i.test(selected.ward || '') ? 'رقم السرير' : 'رقم الغرفة'} today={today} editTime={editTime} onBack={() => { flushPills(); setSelected(null) }} selectedDate={selectedDate} onChangeDate={setSelectedDate} pillsLoading={pillsLoading} pillsData={pillsData} pillsSaveStatus={pillsSaveStatus} pillsLoadError={pillsLoadError} pillEntries={pillEntries} setPillEntries={setPillEntries} pillRooms={pillRooms} setPillRooms={setPillRooms} pillSelection={pillSelection} onTogglePatient={togglePillPatient} printScope={printScope} lastPrintingRow={lastPrintingRow} onPrint={startPillsPrint} confirmModal={confirmModal} />
 
   return <main className="app-shell">{appHeader}{!selected && !floor ? <FloorPickerScreen today={today} floors={visibleFloors} specialWards={visibleSpecialWards} resumeDraft={resumeDraft} onResume={resumeFromDraft} onPickFloor={setFloor} onOpen={setSelected} dashboard={dashboardData} dashboardLoading={dashboardData === null && !dashboardError} dashboardError={dashboardError} onRetryDashboard={retryDashboard} announcements={announcements} isManager={isManager} medicinesPeriod={medicinesPeriod} setMedicinesPeriod={setMedicinesPeriod} announcementDraft={announcementDraft} setAnnouncementDraft={setAnnouncementDraft} announcementError={announcementError} announcementBusy={announcementBusy} onPostAnnouncement={postAnnouncement} onEditAnnouncement={editAnnouncement} onDeleteAnnouncement={deleteAnnouncement} /> : !selected ? <WardPickerScreen floor={floor} today={today} dashboard={dashboardData} dashboardError={dashboardError} onBack={() => setFloor(null)} onOpen={setSelected} /> :<ChartScreen selected={selected} wardLabel={wardLabel} today={today} todayWeekday={todayWeekday} isManager={isManager} onBack={() => { flushChart(); setSelected(null) }} onGoToPills={() => { flushChart(); setSelected({ ...selected, mode: 'pills' }) }} onExportPdf={exportChartPdf} pdfBusy={pdfBusy} pdfExportError={pdfExportError} dateIsToday={dateIsToday} selectedDate={selectedDate} onChangeDate={changeDate} onCopyToNextDay={copyToNextDay} chartSaveStatus={chartSaveStatus} loadError={loadError} copyError={copyError} chartReady={chartReady} lastChartSaveAt={lastChartSaveAt} onRetryLoad={() => setChartLoadNonce((n) => n + 1)} onRetrySave={() => setChartSaveNonce((n) => n + 1)} lockState={lockState} lockHolder={lockHolder} chartClashNote={chartClashNote} onDismissClashNote={() => { setChartClashNote(null); setDroppedCells({}) }} droppedCells={droppedCells} undo={undo} onUndo={takeUndo} medicines={medicines} patientNames={patientNames} columnMedicines={columnMedicines} quantities={quantities} totals={totals} isThursday={isThursday} activeRow={activeRow} activeColumn={activeColumn} labelBelow={labelBelow} setActiveRow={setActiveRow} setActiveColumn={setActiveColumn} setLabelBelow={setLabelBelow} onSetColumnMedicine={setColumnMedicine} onCommitColumnMedicine={commitColumnMedicine} columnMedicineNotice={columnMedicineNotice} onDismissNotice={() => setColumnMedicineNotice(null)} onApplySuggestion={applyMedicineSuggestion} onSetPatientName={setPatientName} onCheckPreviousDay={checkPreviousDayPatient} onUpdateQuantity={updateQuantity} onCollapseRow={collapseRow} onAddColumn={addColumn} canAddColumn={canAddColumn} chartFrameRef={chartFrameRef} chartHeadRef={chartHeadRef} chartGridRef={chartGridRef} chartDosesRef={chartDosesRef} chartFootRef={chartFootRef} showMedicineForm={showMedicineForm} onOpenMedicineForm={() => { setRegistrationsError(''); setShowMedicineForm(true) }} onCloseMedicineForm={() => setShowMedicineForm(false)} onAddMedicine={addMedicine} newMedicine={newMedicine} setNewMedicine={setNewMedicine} registrationsError={registrationsError} />}{selected?.mode === 'chart' && chartReady && <ChartPrintTemplate ref={printTemplateRef} selected={selected} today={today} todayWeekday={todayWeekday} isThursday={isThursday} patientNames={patientNames} columnMedicines={columnMedicines} quantities={quantities} totals={totals} />}{confirmModal}{copyChoiceModal}</main>

@@ -1,6 +1,11 @@
+// استمارة الحبوب الإضافي was only built for these four floors' wards — an independent/special
+// ward (floor null) never gets it, same as the server's own floor CHECK constraint.
+const EXTRA_PILLS_FLOORS = [3, 6, 8, 9]
+
 // The action row on a ward / special-ward card. «الجارت» is the standing daily task, so it is
-// the one prominent button; الإضافي / الحبوب / الطلبية fold behind a «…» the way the admin
-// sections do, so a card is not four look-alike targets under a gloved thumb.
+// the one prominent button; الإضافي / الحبوب / الطلبية / استمارة الحبوب الإضافي fold behind a
+// «…» the way the admin sections do, so a card is not five look-alike targets under a gloved
+// thumb.
 // `floor` is a number for a sub-ward, null for an independent ward.
 export default function WardActions({ floor, ward, started, onOpen }) {
   const primaryClass = started ? 'secondary-button compact' : 'primary-button compact'
@@ -13,6 +18,9 @@ export default function WardActions({ floor, ward, started, onOpen }) {
           <button className="secondary-button compact" onClick={() => onOpen({ floor, ward, mode: 'chart', slot: 'extra' })}>الجارت الإضافي</button>
           <button className="secondary-button compact" onClick={() => onOpen({ floor, ward, mode: 'pills' })}>الحبوب</button>
           <button className="secondary-button compact" onClick={() => onOpen({ floor, ward, mode: 'order', slot: 'main' })}>الطلبية</button>
+          {floor && EXTRA_PILLS_FLOORS.includes(floor) && (
+            <button className="secondary-button compact" onClick={() => onOpen({ floor, ward, mode: 'extra-pills' })}>استمارة الحبوب الإضافي</button>
+          )}
         </div>
       </details>
     </span>

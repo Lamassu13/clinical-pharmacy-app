@@ -218,20 +218,32 @@ CREATE TABLE IF NOT EXISTS treatment_forms (
   uploaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- استمارة الحبوب الإضافي: a standalone manual pill form for floors 3/6/8/9 — no chart behind
--- it at all (unlike the regular pills form, which is entirely derived from a ward's daily
--- chart). Patient name and every medicine slot are typed directly here; a fixed 7 slots per
--- form, normalized the same way chart_quantities/pill_entries are (one row per slot).
+-- استمارة الحبوب الإضافي: a standalone manual pill form, one list per ward, for floors 3/6/8/9
+-- — no chart behind it at all (unlike the regular pills form, which is entirely derived from a
+-- ward's daily chart). Patient name and every medicine slot are typed directly here; a fixed 7
+-- slots per form, normalized the same way chart_quantities/pill_entries are (one row per slot).
 CREATE TABLE IF NOT EXISTS extra_pill_forms (
   id BIGSERIAL PRIMARY KEY,
   -- Only the four floors this tool was actually built for — not every ALLOWED_FLOORS entry.
   floor_number INTEGER NOT NULL CHECK (floor_number IN (3, 6, 8, 9)),
+  ward TEXT NOT NULL,
   patient_name TEXT NOT NULL DEFAULT '',
   room_number TEXT NOT NULL DEFAULT '',
   created_by BIGINT REFERENCES users(id),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+-- This shipped floor-wide (no ward column) for a few days before any real form had been saved
+-- against it — confirmed with the user there was nothing real to preserve, so the one-time fix
+-- is to clear those floor-only rows rather than guess which ward each belonged to. Guarded on
+-- `ward` not existing yet so this only ever runs once.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'extra_pill_forms' AND column_name = 'ward') THEN
+    DELETE FROM extra_pill_forms; -- cascades to extra_pill_form_entries
+    ALTER TABLE extra_pill_forms ADD COLUMN ward TEXT NOT NULL DEFAULT '';
+    ALTER TABLE extra_pill_forms ALTER COLUMN ward DROP DEFAULT;
+  END IF;
+END $$;
 CREATE TABLE IF NOT EXISTS extra_pill_form_entries (
   form_id BIGINT NOT NULL REFERENCES extra_pill_forms(id) ON DELETE CASCADE,
   slot_number INTEGER NOT NULL CHECK (slot_number BETWEEN 1 AND 7),
@@ -248,5 +260,5 @@ CREATE INDEX IF NOT EXISTS chart_quantities_chart_idx ON chart_quantities (chart
 CREATE INDEX IF NOT EXISTS users_account_status_idx ON users (account_status);
 CREATE INDEX IF NOT EXISTS pill_entries_chart_idx ON pill_entries (chart_id);
 CREATE INDEX IF NOT EXISTS announcements_created_at_idx ON announcements (created_at DESC);
-CREATE INDEX IF NOT EXISTS extra_pill_forms_floor_idx ON extra_pill_forms (floor_number);
+CREATE INDEX IF NOT EXISTS extra_pill_forms_floor_ward_idx ON extra_pill_forms (floor_number, ward);
 CREATE INDEX IF NOT EXISTS treatment_forms_title_idx ON treatment_forms (title);

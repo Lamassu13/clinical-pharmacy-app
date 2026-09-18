@@ -1,18 +1,18 @@
 import express from 'express'
 import { pool, query } from '../db.js'
 import { requireAuth } from '../auth.js'
-import { canAccessLocation, clampInt, cleanText, DOSE_TIMES, USAGE_METHODS, NOTE_OPTIONS } from '../validation.js'
+import { canAccessLocation, isKnownWard, clampInt, cleanText, DOSE_TIMES, USAGE_METHODS, NOTE_OPTIONS } from '../validation.js'
 
 const router = express.Router()
 
-// استمارة الحبوب الإضافي — a standalone manual pill form, one per floor workspace, with no
-// chart behind it at all (unlike /api/pills, which is entirely chart-derived). Only the four
-// floors this was built for; see extra_pill_forms' own CHECK constraint in schema.sql.
+// استمارة الحبوب الإضافي — a standalone manual pill form, one per ward, with no chart behind
+// it at all (unlike /api/pills, which is entirely chart-derived). Only the four floors this
+// was built for; see extra_pill_forms' own CHECK constraint in schema.sql.
 const EXTRA_PILL_FLOORS = [3, 6, 8, 9]
 const SLOTS = [1, 2, 3, 4, 5, 6, 7]
 
 const loadForm = async (id) => {
-  const formResult = await query('SELECT id, floor_number, patient_name, room_number FROM extra_pill_forms WHERE id = $1', [id])
+  const formResult = await query('SELECT id, floor_number, ward, patient_name, room_number FROM extra_pill_forms WHERE id = $1', [id])
   const form = formResult.rows[0]
   if (!form) return null
   const entries = (await query(
@@ -23,6 +23,7 @@ const loadForm = async (id) => {
   return {
     id: form.id,
     floor: form.floor_number,
+    ward: form.ward,
     patientName: form.patient_name,
     roomNumber: form.room_number,
     entries: SLOTS.map((slot) => {
@@ -34,23 +35,27 @@ const loadForm = async (id) => {
 
 router.get('/extra-pills', requireAuth, async (request, response) => {
   const floor = clampInt(request.query.floor, 1, 99)
+  const ward = cleanText(request.query.ward, 120).trim()
   if (floor === null || !EXTRA_PILL_FLOORS.includes(floor)) return response.status(400).json({ message: 'الطابق غير مسموح' })
-  if (!canAccessLocation(request.session.user, floor, null)) return response.status(403).json({ message: 'لا تملك صلاحية لهذا الطابق' })
-  const ids = (await query('SELECT id FROM extra_pill_forms WHERE floor_number = $1 ORDER BY created_at', [floor])).rows.map((row) => row.id)
+  if (!isKnownWard(floor, ward)) return response.status(400).json({ message: 'الردهة غير معروفة' })
+  if (!canAccessLocation(request.session.user, floor, ward)) return response.status(403).json({ message: 'لا تملك صلاحية لهذه الردهة' })
+  const ids = (await query('SELECT id FROM extra_pill_forms WHERE floor_number = $1 AND ward = $2 ORDER BY created_at', [floor, ward])).rows.map((row) => row.id)
   const forms = await Promise.all(ids.map(loadForm))
   response.json({ forms })
 })
 
 router.post('/extra-pills', requireAuth, async (request, response) => {
   const floor = clampInt(request.body.floor, 1, 99)
+  const ward = cleanText(request.body.ward, 120).trim()
   if (floor === null || !EXTRA_PILL_FLOORS.includes(floor)) return response.status(400).json({ message: 'الطابق غير مسموح' })
-  if (!canAccessLocation(request.session.user, floor, null)) return response.status(403).json({ message: 'لا تملك صلاحية لهذا الطابق' })
+  if (!isKnownWard(floor, ward)) return response.status(400).json({ message: 'الردهة غير معروفة' })
+  if (!canAccessLocation(request.session.user, floor, ward)) return response.status(403).json({ message: 'لا تملك صلاحية لهذه الردهة' })
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
     const formId = (await client.query(
-      'INSERT INTO extra_pill_forms (floor_number, created_by) VALUES ($1, $2) RETURNING id',
-      [floor, request.session.user.id],
+      'INSERT INTO extra_pill_forms (floor_number, ward, created_by) VALUES ($1, $2, $3) RETURNING id',
+      [floor, ward, request.session.user.id],
     )).rows[0].id
     await client.query(
       'INSERT INTO extra_pill_form_entries (form_id, slot_number) SELECT $1, s FROM UNNEST($2::int[]) AS u(s)',
@@ -69,10 +74,11 @@ router.post('/extra-pills', requireAuth, async (request, response) => {
 router.put('/extra-pills/:id', requireAuth, async (request, response) => {
   const id = clampInt(request.params.id, 1, Number.MAX_SAFE_INTEGER)
   if (id === null) return response.status(404).json({ message: 'الاستمارة غير موجودة' })
-  const existing = await query('SELECT floor_number FROM extra_pill_forms WHERE id = $1', [id])
+  const existing = await query('SELECT floor_number, ward FROM extra_pill_forms WHERE id = $1', [id])
   const floor = existing.rows[0]?.floor_number
+  const ward = existing.rows[0]?.ward
   if (!floor) return response.status(404).json({ message: 'الاستمارة غير موجودة' })
-  if (!canAccessLocation(request.session.user, floor, null)) return response.status(403).json({ message: 'لا تملك صلاحية لهذا الطابق' })
+  if (!canAccessLocation(request.session.user, floor, ward)) return response.status(403).json({ message: 'لا تملك صلاحية لهذه الردهة' })
 
   const patientName = cleanText(request.body.patientName, 200).trim()
   const roomNumber = cleanText(request.body.roomNumber, 40).trim()
@@ -114,10 +120,11 @@ router.put('/extra-pills/:id', requireAuth, async (request, response) => {
 router.delete('/extra-pills/:id', requireAuth, async (request, response) => {
   const id = clampInt(request.params.id, 1, Number.MAX_SAFE_INTEGER)
   if (id === null) return response.status(404).json({ message: 'الاستمارة غير موجودة' })
-  const existing = await query('SELECT floor_number FROM extra_pill_forms WHERE id = $1', [id])
+  const existing = await query('SELECT floor_number, ward FROM extra_pill_forms WHERE id = $1', [id])
   const floor = existing.rows[0]?.floor_number
+  const ward = existing.rows[0]?.ward
   if (!floor) return response.status(404).json({ message: 'الاستمارة غير موجودة' })
-  if (!canAccessLocation(request.session.user, floor, null)) return response.status(403).json({ message: 'لا تملك صلاحية لهذا الطابق' })
+  if (!canAccessLocation(request.session.user, floor, ward)) return response.status(403).json({ message: 'لا تملك صلاحية لهذه الردهة' })
   await query('DELETE FROM extra_pill_forms WHERE id = $1', [id])
   response.json({ ok: true })
 })
