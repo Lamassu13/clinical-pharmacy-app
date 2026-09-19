@@ -1,14 +1,12 @@
 import { floors, specialWards } from '../constants.js'
-import { TopMedicinesWidget, PatientsByFloorWidget, PatientsDailyTrendWidget } from '../components/DashboardWidgets.jsx'
 
-// Floor management. Two parts: the manager's analytics (most-dispensed medicines + patients
-// per floor, each with its own day/week/month window) and the chart-purge tool below.
-// Manager-gated; the actual delete is confirmed through the shared dialog in App.
+// Floor management: the chart-purge tool. The analytics that used to open this screen (most-
+// dispensed medicines, patients per floor, the daily trend) now live on لوحة التحكم — the
+// manager's landing page inside «الإدارة» — so this one stays focused on its own destructive
+// action. Manager-gated; the actual delete is confirmed through the shared dialog in App.
 export default function AdminFloorsScreen({
   adminHeader, purgeFrom, setPurgeFrom, purgeTo, setPurgeTo, purgeAll, setPurgeAll,
   purgeTargets, onToggleTarget, busy, registrationsError, adminSuccess, onPurge, confirmModal,
-  dashboard, dashboardLoading, dashboardError, onRetryDashboard,
-  medicinesPeriod, setMedicinesPeriod, patientsPeriod, setPatientsPeriod, isManager,
 }) {
   return <main className="app-shell">{adminHeader}<section className="dashboard floor-admin-page">
     <div className="section-heading"><div>
@@ -17,25 +15,10 @@ export default function AdminFloorsScreen({
     {registrationsError && <p className="form-error" role="alert">{registrationsError}</p>}
     {adminSuccess && <p className="form-success" role="status">{adminSuccess}</p>}
 
-    <div className="dashboard-widgets">
-      <TopMedicinesWidget
-        topMedicines={dashboard?.topMedicines ?? []}
-        period={medicinesPeriod} setPeriod={setMedicinesPeriod} isManager={isManager} open
-        loading={dashboardLoading} error={dashboardError} onRetry={onRetryDashboard}
-      />
-      <PatientsByFloorWidget
-        patientsByFloor={dashboard?.patientsByFloor ?? []}
-        period={patientsPeriod} setPeriod={setPatientsPeriod}
-        loading={dashboardLoading} error={dashboardError} onRetry={onRetryDashboard}
-      />
-    </div>
-
-    <PatientsDailyTrendWidget
-      dailyPatientsByFloor={dashboard?.dailyPatientsByFloor ?? []}
-      loading={dashboardLoading} error={dashboardError} onRetry={onRetryDashboard}
-    />
-
-    <h2 className="admin-subheading">مسح الجارتات</h2>
+    {/* No subheading here on purpose: the purge tool is this page's only section now that the
+        analytics moved to لوحة التحكم, so a second "مسح الجارتات" label right under the h1
+        would just repeat it — the page title and the form's own legend/button already say
+        what this does. */}
     <form className="purge-form" onSubmit={(event) => { event.preventDefault(); onPurge() }}>
       <div className="purge-dates">
         <label>من تاريخ<input type="date" value={purgeFrom} onChange={(event) => setPurgeFrom(event.target.value)} required /></label>

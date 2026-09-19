@@ -857,24 +857,39 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 .purge-form .danger-button { align-self: flex-start; }
 .spinner--inline { width: 16px; height: 16px; border-width: 2px; border-color: var(--danger-border); border-top-color: var(--danger); }
 
-/* إدارة الطوابق: widgets and the purge form settle in on load instead of popping in place —
-   only this page, since .dashboard-widget/.dashboard-widgets are shared with other screens. */
-.floor-admin-page .dashboard-widgets .dashboard-widget,
-.floor-admin-page .dashboard-widget--wide,
+/* إدارة الطوابق: the purge form settles in on load instead of popping in place — only this
+   page, since .purge-form is unique to it. */
 .floor-admin-page .purge-form > * {
   animation: widget-in .32s var(--ease) both;
 }
-.floor-admin-page .dashboard-widgets .dashboard-widget:nth-child(2) { animation-delay: .06s; }
-.floor-admin-page .dashboard-widget--wide { animation-delay: .12s; }
 .floor-admin-page .purge-form > *:nth-child(1) { animation-delay: .16s; }
 .floor-admin-page .purge-form > *:nth-child(2) { animation-delay: .2s; }
 .floor-admin-page .purge-form > *:nth-child(3) { animation-delay: .24s; }
 .floor-admin-page .purge-form > *:nth-child(4) { animation-delay: .28s; }
+
+/* لوحة التحكم: the stat cards, requests table and analytics settle in on load — same rhythm
+   as إدارة الطوابق's widgets used to have, now that they live here instead. */
+.admin-dashboard-page .location-grid .location-card,
+.admin-dashboard-page .table-frame,
+.admin-dashboard-page .dashboard-widgets .dashboard-widget,
+.admin-dashboard-page .dashboard-widget--wide {
+  animation: widget-in .32s var(--ease) both;
+}
+.admin-dashboard-page .location-grid .location-card:nth-child(2) { animation-delay: .04s; }
+.admin-dashboard-page .location-grid .location-card:nth-child(3) { animation-delay: .08s; }
+.admin-dashboard-page .location-grid .location-card:nth-child(4) { animation-delay: .12s; }
+.admin-dashboard-page .location-grid .location-card:nth-child(5) { animation-delay: .16s; }
+.admin-dashboard-page .table-frame { animation-delay: .1s; }
+.admin-dashboard-page .dashboard-widgets .dashboard-widget:nth-child(2) { animation-delay: .06s; }
+.admin-dashboard-page .dashboard-widget--wide { animation-delay: .12s; }
+
 @keyframes widget-in { from { opacity: 0; transform: translateY(10px); } }
 @media (prefers-reduced-motion: reduce) {
-  .floor-admin-page .dashboard-widgets .dashboard-widget,
-  .floor-admin-page .dashboard-widget--wide,
-  .floor-admin-page .purge-form > * {
+  .floor-admin-page .purge-form > *,
+  .admin-dashboard-page .location-grid .location-card,
+  .admin-dashboard-page .table-frame,
+  .admin-dashboard-page .dashboard-widgets .dashboard-widget,
+  .admin-dashboard-page .dashboard-widget--wide {
     animation: none;
   }
 }

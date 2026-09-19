@@ -7,6 +7,7 @@ import TopBarBrand from './TopBarBrand.jsx'
 // brand (which is also "home"), the manager's admin sections behind one disclosure, and the
 // user's own controls (theme, name, sign out).
 const ADMIN_SECTIONS = [
+  { view: 'dashboard', label: 'لوحة التحكم' },
   { view: 'requests', label: 'طلبات الانضمام', adminOnly: true },
   { view: 'medicines', label: 'إدارة الأدوية' },
   { view: 'floors', label: 'إدارة الطوابق' },

@@ -8,6 +8,7 @@ import AppHeader from './components/AppHeader.jsx'
 import LoginScreen from './screens/LoginScreen.jsx'
 import RegisterScreen from './screens/RegisterScreen.jsx'
 import SessionExpiredScreen from './screens/SessionExpiredScreen.jsx'
+import AdminDashboardScreen from './screens/AdminDashboardScreen.jsx'
 import AdminRequestsScreen from './screens/AdminRequestsScreen.jsx'
 import AdminUsersScreen from './screens/AdminUsersScreen.jsx'
 import AdminMedicinesScreen from './screens/AdminMedicinesScreen.jsx'
@@ -593,7 +594,13 @@ function App() {
     if (adminView === 'users') loadUsers()
     if (adminView === 'medicines') loadMedicinesAdmin()
     if (adminView === 'forms') loadTreatmentForms()
-  }, [adminView, loadRegistrations, loadUsers, loadMedicinesAdmin, loadTreatmentForms])
+    // لوحة التحكم needs a count from each of the sections it links to — a supervisor just
+    // skips the admin-only requests count, same gate AdminRequestsScreen itself uses.
+    if (adminView === 'dashboard') {
+      if (isAdmin) loadRegistrations()
+      loadUsers(); loadMedicinesAdmin(); loadTreatmentForms()
+    }
+  }, [adminView, isAdmin, loadRegistrations, loadUsers, loadMedicinesAdmin, loadTreatmentForms])
   // Success notices are transient; errors stay until the next action.
   useEffect(() => {
     if (!adminSuccess) return undefined
@@ -1000,6 +1007,7 @@ function App() {
     const ward = selected?.slot === 'extra' ? `${wardName} — إضافي` : wardName
     let screen = 'اختر الطابق'
     if (!isLoggedIn) screen = authView === 'register' ? 'إنشاء حساب' : 'تسجيل الدخول'
+    else if (adminView === 'dashboard') screen = 'لوحة التحكم'
     else if (adminView === 'requests') screen = 'طلبات الانضمام'
     else if (adminView === 'users') screen = 'جميع المستخدمين'
     else if (adminView === 'medicines') screen = 'إدارة الأدوية'
@@ -1089,13 +1097,13 @@ function App() {
     return () => clearInterval(timer)
   }, [selected, loadMedicines, documentVisible])
 
-  // The dashboard aggregates — loaded for the floor-picker landing page and for the
-  // manager's إدارة الطوابق screen (which now hosts the medicines + per-floor patients
-  // widgets), not carried along while a chart or another admin screen is open.
+  // The dashboard aggregates — loaded for the floor-picker landing page and for لوحة التحكم
+  // (which hosts the medicines + per-floor patients + daily-trend widgets), not carried along
+  // while a chart or another admin screen is open.
   useEffect(() => {
     // Also re-runs when adminView clears, so returning from a screen that changed things
     // (a chart purge, an announcement) lands on fresh numbers rather than the stale set.
-    if (!isLoggedIn || floor || selected || (adminView && adminView !== 'floors')) return undefined
+    if (!isLoggedIn || floor || selected || (adminView && adminView !== 'dashboard')) return undefined
     let cancelled = false
     const date = isoDate(new Date())
     const periodQuery = isManager ? `&period=${medicinesPeriod}&patientsPeriod=${patientsPeriod}` : ''
@@ -1804,11 +1812,13 @@ function App() {
 
   const appHeader = <AppHeader theme={theme} onToggleTheme={toggleTheme} currentUser={currentUser} onLogout={logout} onHome={goHome} onMyWard={!isManager && assignedFloorObj ? goToMyWard : undefined} isAdmin={isAdmin} isManager={isManager} adminView={adminView} onNavigate={setAdminView} isOnline={isOnline} />
 
+  if (adminView === 'dashboard' && isManager) return <AdminDashboardScreen adminHeader={appHeader} isAdmin={isAdmin} onNavigate={setAdminView} registrations={registrations} allUsers={allUsers} adminMedicines={adminMedicines} treatmentForms={treatmentForms} dashboard={dashboardData} dashboardLoading={dashboardData === null && !dashboardError} dashboardError={dashboardError} onRetryDashboard={retryDashboard} medicinesPeriod={medicinesPeriod} setMedicinesPeriod={setMedicinesPeriod} patientsPeriod={patientsPeriod} setPatientsPeriod={setPatientsPeriod} pendingFloor={pendingFloor} setPendingFloor={setPendingFloor} busy={busy} onApprove={approveRegistration} onReject={rejectRegistration} registrationsError={registrationsError} adminSuccess={adminSuccess} confirmModal={confirmModal} />
+
   if (adminView === 'requests' && isAdmin) return <AdminRequestsScreen adminHeader={appHeader} registrations={registrations} registrationsError={registrationsError} adminSuccess={adminSuccess} pendingFloor={pendingFloor} setPendingFloor={setPendingFloor} busy={busy} onReload={loadRegistrations} onApprove={approveRegistration} onReject={rejectRegistration} confirmModal={confirmModal} />
 
   if (adminView === 'users' && isManager) return <AdminUsersScreen adminHeader={appHeader} allUsers={allUsers} currentUser={currentUser} isAdmin={isAdmin} registrationsError={registrationsError} adminSuccess={adminSuccess} busy={busy} onReload={loadUsers} onChangeRole={changeUserRole} onAssignLocation={assignLocationToUser} onDeleteUser={deleteUser} confirmModal={confirmModal} />
 
-  if (adminView === 'floors' && isManager) return <AdminFloorsScreen adminHeader={appHeader} purgeFrom={purgeFrom} setPurgeFrom={setPurgeFrom} purgeTo={purgeTo} setPurgeTo={setPurgeTo} purgeAll={purgeAll} setPurgeAll={setPurgeAll} purgeTargets={purgeTargets} onToggleTarget={togglePurgeTarget} busy={busy} registrationsError={registrationsError} adminSuccess={adminSuccess} onPurge={purgeCharts} confirmModal={confirmModal} dashboard={dashboardData} dashboardLoading={dashboardData === null && !dashboardError} dashboardError={dashboardError} onRetryDashboard={retryDashboard} medicinesPeriod={medicinesPeriod} setMedicinesPeriod={setMedicinesPeriod} patientsPeriod={patientsPeriod} setPatientsPeriod={setPatientsPeriod} isManager={isManager} />
+  if (adminView === 'floors' && isManager) return <AdminFloorsScreen adminHeader={appHeader} purgeFrom={purgeFrom} setPurgeFrom={setPurgeFrom} purgeTo={purgeTo} setPurgeTo={setPurgeTo} purgeAll={purgeAll} setPurgeAll={setPurgeAll} purgeTargets={purgeTargets} onToggleTarget={togglePurgeTarget} busy={busy} registrationsError={registrationsError} adminSuccess={adminSuccess} onPurge={purgeCharts} confirmModal={confirmModal} />
 
   // adminMedicines holds the catalogue exactly as the server returned it, so its length is
   // the number of rows in the database; the filter only narrows what the table draws.
