@@ -326,6 +326,14 @@ function App() {
     [currentUser],
   )
   const didAutoLandRef = useRef(false)
+  // Guards the nav-persist effect below from wiping cpa-nav before this effect has even had a
+  // chance to read it: both run on mount, but this one only *schedules* an async read (fetch),
+  // while the persist effect's body is synchronous — so without this guard it always ran first
+  // and saw selected/floor still at their initial null, deleting cpa-nav on every single mount
+  // regardless of connectivity. That silently broke "resume after a refresh" entirely; the
+  // resume-draft card (a real localStorage draft, unrelated to this session-only nav pointer)
+  // was the only reason it still looked like it worked.
+  const navRestoreAttemptedRef = useRef(false)
 
   useEffect(() => {
     const landFromNav = () => {
@@ -361,6 +369,7 @@ function App() {
           landFromNav()
         } catch { /* storage unavailable or corrupt — start on the picker */ }
       })
+      .finally(() => { navRestoreAttemptedRef.current = true })
   }, [])
 
   const submitLogin = async (event) => {
@@ -1731,10 +1740,16 @@ function App() {
   // of the floor picker (the restore itself runs in the /auth/me effect above, once the
   // session is confirmed). sessionStorage, so it clears when the tab really closes.
   useEffect(() => {
+    // Both this effect and the /auth/me one above run on mount; this one is synchronous and
+    // would otherwise always win the race, wiping cpa-nav (selected/floor start null) before
+    // the other ever gets to read it. Holding off until that attempt has actually finished is
+    // what lets a restored selection get persisted at all, instead of being deleted on arrival.
+    if (!navRestoreAttemptedRef.current) return undefined
     try {
       if (selected || floor) sessionStorage.setItem('cpa-nav', JSON.stringify({ selected, floor, selectedDate }))
       else sessionStorage.removeItem('cpa-nav')
     } catch { /* storage unavailable */ }
+    return undefined
   }, [selected, floor, selectedDate])
 
   useEffect(() => {
