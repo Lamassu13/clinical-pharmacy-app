@@ -83,6 +83,29 @@ test('PUT /api/pills: a pill_name override round-trips on its own and never rena
   assert.equal(chart.body.chart.columns[0].medicine_name, MED, 'the chart column name is untouched')
 })
 
+test('PUT /api/medicines/:id: renaming a medicine carries its already-entered pill_entries over to the new name (regression — used to orphan them, hiding recorded doses)', async () => {
+  const client = await loginAs({ role: 'user', floor: FLOOR })
+  await client.put('/api/chart', chartBody())
+  const dosed = await client.put('/api/pills', {
+    floor: FLOOR, ward: WARD, date: DATE,
+    entries: [{ patientRowNumber: 1, medicineKey: KEY, doseTime: '٨ صباحًا', pillQty: '12' }],
+    rooms: {},
+  })
+  assert.equal(dosed.status, 200)
+
+  const admin = await loginAs({ role: 'admin' })
+  const medicineId = (await pool.query('SELECT id FROM medicines WHERE name = $1', [MED])).rows[0].id
+  const renamed = await admin.put(`/api/medicines/${medicineId}`, { name: 'Aspirin 100 mg Tablet' })
+  assert.equal(renamed.status, 200)
+
+  const pills = await client.get(`/api/pills?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=${DATE}`)
+  const newKey = 'aspirin 100 mg tablet'
+  const entry = pills.body.pills.entries.find((e) => e.patientRowNumber === 1 && e.medicineKey === newKey)
+  assert.ok(entry, 'the dose entered under the old name must still show up under the renamed medicine')
+  assert.equal(entry.doseTime, '٨ صباحًا')
+  assert.equal(entry.pillQty, '12')
+})
+
 test('PUT /api/pills: a spare-row entry (synthetic key + new option lists) round-trips and stays out of medicines/matrix', async () => {
   const client = await loginAs({ role: 'user', floor: FLOOR })
   await client.put('/api/chart', chartBody())

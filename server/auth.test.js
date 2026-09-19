@@ -71,6 +71,15 @@ test('login: a correct active login establishes a session usable by /api/auth/me
   assert.equal(afterLogout.body.user, null)
 })
 
+test('login: email is matched case-insensitively (registration lowercases it, login must too)', async () => {
+  const user = await createUser({ accountStatus: 'active', password: 'right-password' })
+  const client = new ApiClient(baseUrl)
+  const upperCaseEmail = `${user.username}@EXAMPLE.TEST`
+  const login = await client.post('/api/auth/login', { username: upperCaseEmail, password: 'right-password' })
+  assert.equal(login.status, 200, 'a correct password with the email typed in a different case must still log in')
+  assert.equal(login.body.user.username, user.username)
+})
+
 test('requireAuth: an endpoint behind login refuses an anonymous request', async () => {
   const client = new ApiClient(baseUrl)
   const response = await client.get('/api/medicines')

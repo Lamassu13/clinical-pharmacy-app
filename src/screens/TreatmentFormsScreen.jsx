@@ -49,7 +49,12 @@ export default function TreatmentFormsScreen({
         : <div className="table-frame"><table className="requests-table">
             <thead><tr><th>العنوان</th><th>الحجم</th><th>{isManager ? 'إجراء' : 'تنزيل'}</th></tr></thead>
             <tbody>{forms.map((item) => isManager
-              ? <TreatmentFormRow key={item.id} item={item} onSave={onSave} onRemove={onRemove} busy={busy} />
+              // Keyed on id+title (not just id), like AdminMedicinesScreen's MedicineRow — a
+              // co-admin renaming this form while this row is open and untouched must remount
+              // it with the fresh title, or this row's still-mounted local `title` state (seeded
+              // once from the old prop) makes `dirty` read true from the prop change alone, and
+              // "حفظ" would silently send the stale title back over the other admin's rename.
+              ? <TreatmentFormRow key={`${item.id}:${item.title}`} item={item} onSave={onSave} onRemove={onRemove} busy={busy} />
               : <tr key={item.id}>
                   <td>{item.title}</td>
                   <td>{formatFileSize(item.fileSize)}</td>

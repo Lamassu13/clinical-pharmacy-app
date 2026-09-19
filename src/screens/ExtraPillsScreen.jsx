@@ -113,7 +113,14 @@ export default function ExtraPillsScreen({
         : loadError ? <div className="empty-state"><strong>تعذّر تحميل الاستمارات</strong></div>
         : forms.length === 0 ? <div className="empty-state"><strong>لا توجد استمارات بعد</strong><span>اضغط «+ إنشاء استمارة جديدة» لإضافة أول مريض.</span></div>
         : forms.map((form) => <ExtraPillFormCard
-            key={form.id} form={form} floorLabel={floorLabel} today={today} editTime={editTime}
+            // Keyed on more than id, like AdminMedicinesScreen's MedicineRow — this card seeds
+            // patientName/roomNumber/entries into local state once (below) and never re-syncs
+            // from a later prop change while untouched. A synced update from another device
+            // (or this same offline queue flushing) would otherwise sit ignored, and `dirty`
+            // would flip true purely from the prop change, letting a "حفظ" tap overwrite the
+            // fresher server data with this card's now-stale copy.
+            key={`${form.id}:${form.patientName}:${form.roomNumber}:${JSON.stringify(form.entries)}`}
+            form={form} floorLabel={floorLabel} today={today} editTime={editTime}
             selected={selection.has(form.id)} onToggleSelect={toggleSelect}
             willPrint={printScope === 'all' || selection.has(form.id)} printLast={form.id === lastPrintingId}
             onSave={onSave} onRemove={onRemove} busy={busy}

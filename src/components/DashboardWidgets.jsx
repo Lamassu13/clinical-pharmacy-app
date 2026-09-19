@@ -44,7 +44,7 @@ export function WardStatusBand({ startedCount, totalCount, attention = [], onOpe
     return <div className="ward-status-band"><DashboardError onRetry={onRetry} /></div>
   }
   if (loading) {
-    return <div className="ward-status-band ward-status-band--loading"><SkeletonRows count={2} /></div>
+    return <div className="ward-status-band"><SkeletonRows count={2} /></div>
   }
 
   const clear = attention.length === 0

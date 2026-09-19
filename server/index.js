@@ -179,19 +179,39 @@ app.put('/api/medicines/:id', requireManager, async (request, response) => {
   const name = request.body.name === undefined ? null : cleanText(request.body.name, 200).trim()
   const arabicName = request.body.arabicName === undefined ? null : cleanText(request.body.arabicName, 200).trim()
   if (name !== null && !name) return response.status(400).json({ message: 'اسم العلاج مطلوب' })
+  const client = await pool.connect()
   try {
+    await client.query('BEGIN')
     if (name !== null) {
       const clash = await findMedicineByName(name, id)
-      if (clash.rows[0]) return response.status(409).json({ message: `"${clash.rows[0].name}" موجود في القائمة أصلًا`, medicine: clash.rows[0] })
+      if (clash.rows[0]) { await client.query('ROLLBACK'); return response.status(409).json({ message: `"${clash.rows[0].name}" موجود في القائمة أصلًا`, medicine: clash.rows[0] }) }
     }
-    const result = await query('UPDATE medicines SET name = COALESCE($2, name), arabic_name = COALESCE($3, arabic_name) WHERE id = $1 RETURNING id, name, arabic_name', [id, name, arabicName])
-    if (!result.rows[0]) return response.status(404).json({ message: 'الدواء غير موجود' })
+    const existing = await client.query('SELECT name FROM medicines WHERE id = $1', [id])
+    if (!existing.rows[0]) { await client.query('ROLLBACK'); return response.status(404).json({ message: 'الدواء غير موجود' }) }
+    const result = await client.query('UPDATE medicines SET name = COALESCE($2, name), arabic_name = COALESCE($3, arabic_name) WHERE id = $1 RETURNING id, name, arabic_name', [id, name, arabicName])
+    // pill_entries are keyed by the medicine's *normalized name text* (see GET/PUT /api/pills'
+    // keyByColumn), not this row's id — a rename changes that key even though chart_columns
+    // still links to this same id, so every dose time/usage note/quantity already entered
+    // under the old name would otherwise become unreachable the moment the pill form for that
+    // chart next autosaves (a full delete+reinsert of only what it can currently see).
+    const oldKey = normalizeMedicineKey(existing.rows[0].name)
+    const newKey = normalizeMedicineKey(result.rows[0].name)
+    if (oldKey !== newKey) {
+      await client.query(
+        `UPDATE pill_entries pe SET medicine_key = $1
+         FROM chart_columns cc
+         WHERE cc.medicine_id = $2 AND pe.chart_id = cc.chart_id AND pe.medicine_key = $3`,
+        [newKey, id, oldKey],
+      )
+    }
+    await client.query('COMMIT')
     response.json({ medicine: result.rows[0] })
   } catch (error) {
+    await client.query('ROLLBACK')
     if (error.code === '23505') return response.status(409).json({ message: 'اسم الدواء مستخدم بالفعل' })
     console.error('medicine update failed:', error)
     response.status(500).json({ message: 'تعذر تحديث الدواء' })
-  }
+  } finally { client.release() }
 })
 app.delete('/api/medicines/:id', requireManager, async (request, response) => {
   const id = Number(request.params.id)
@@ -270,8 +290,12 @@ app.delete('/api/users/:id', requireAdmin, async (request, response) => {
     const target = await client.query('SELECT role FROM users WHERE id = $1', [id])
     if (!target.rows[0]) { await client.query('ROLLBACK'); return response.status(404).json({ message: 'المستخدم غير موجود' }) }
     if (target.rows[0].role === 'admin') {
-      const admins = await client.query("SELECT COUNT(*)::int AS count FROM users WHERE role = 'admin'")
-      if (admins.rows[0].count <= 1) { await client.query('ROLLBACK'); return response.status(400).json({ message: 'لا يمكن حذف آخر مدير في النظام' }) }
+      // FOR UPDATE locks every admin row for the rest of this transaction: a second request
+      // doing the same check for a *different* admin blocks here until this one commits or
+      // rolls back, instead of both reading "2 admins" concurrently and both proceeding —
+      // which could otherwise drop the system to zero admins with no one left to fix it.
+      const admins = await client.query("SELECT id FROM users WHERE role = 'admin' FOR UPDATE")
+      if (admins.rows.length <= 1) { await client.query('ROLLBACK'); return response.status(400).json({ message: 'لا يمكن حذف آخر مدير في النظام' }) }
     }
     const actingAdmin = request.session.user.id
     await client.query('UPDATE users SET approved_by = NULL WHERE approved_by = $1', [id])
@@ -310,8 +334,9 @@ app.put('/api/users/:id/role', requireAdmin, async (request, response) => {
     if (!target.rows[0]) { await client.query('ROLLBACK'); return response.status(404).json({ message: 'المستخدم غير موجود' }) }
     if (target.rows[0].role === role) { await client.query('ROLLBACK'); return response.json({ ok: true, role }) }
     if (target.rows[0].role === 'admin') {
-      const admins = await client.query("SELECT COUNT(*)::int AS count FROM users WHERE role = 'admin'")
-      if (admins.rows[0].count <= 1) { await client.query('ROLLBACK'); return response.status(400).json({ message: 'لا يمكن تنزيل آخر مدير في النظام' }) }
+      // See DELETE /api/users/:id above for why this is FOR UPDATE and not a plain COUNT.
+      const admins = await client.query("SELECT id FROM users WHERE role = 'admin' FOR UPDATE")
+      if (admins.rows.length <= 1) { await client.query('ROLLBACK'); return response.status(400).json({ message: 'لا يمكن تنزيل آخر مدير في النظام' }) }
     }
     await client.query('UPDATE users SET role = $2 WHERE id = $1', [id, role])
     await client.query('COMMIT')
@@ -356,7 +381,9 @@ const setUserAccess = async (userId, location, assignedBy) => {
 app.put('/api/access/by-username', requireManager, async (request, response) => {
   const location = resolveLocation(request.body)
   if (!location) return response.status(400).json({ message: 'الطابق أو الردهة غير مسموح' })
-  const userResult = await query('SELECT id FROM users WHERE username = $1 OR email = $1', [String(request.body.username || '').trim()])
+  // Email is stored lowercase (register normalizes it) but typed here in whatever case the
+  // manager enters — same case-insensitivity fix as login, see auth.js.
+  const userResult = await query('SELECT id FROM users WHERE username = $1 OR LOWER(email) = LOWER($1)', [String(request.body.username || '').trim()])
   if (!userResult.rows[0]) return response.status(404).json({ message: 'المستخدم غير موجود' })
   await setUserAccess(userResult.rows[0].id, location, request.session.user.id)
   await revokeUserSessions(pool, userResult.rows[0].id)

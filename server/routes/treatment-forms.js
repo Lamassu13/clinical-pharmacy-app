@@ -29,7 +29,11 @@ router.get('/treatment-forms/:id/file', requireAuth, async (request, response) =
   const row = result.rows[0]
   if (!row) return response.status(404).json({ message: 'الاستمارة غير موجودة' })
   response.set('Content-Type', 'application/pdf')
-  response.set('Content-Disposition', `attachment; filename="${encodeURIComponent(row.file_name)}"`)
+  // Every title here is Arabic (استمارات العلاج), so the plain `filename` fallback — which
+  // browsers take literally rather than percent-decoding — would show the raw %-escaped
+  // name. filename* (RFC 5987) is what actually gets decoded; the fallback stays as a plain,
+  // always-safe name for the rare client that ignores filename*.
+  response.set('Content-Disposition', `attachment; filename="treatment-form.pdf"; filename*=UTF-8''${encodeURIComponent(row.file_name)}`)
   response.send(row.file_data)
 })
 

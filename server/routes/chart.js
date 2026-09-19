@@ -220,6 +220,14 @@ router.put('/chart', requireAuth, async (request, response) => {
       return response.status(409).json({ message: 'الجارت تغيّر من جهاز آخر، يجري تحديثه', conflict: true })
     }
     const chartId = chartResult.rows[0].id
+    // A column preserved after its medicine was deleted from the catalogue carries the old
+    // name as custom_name (see DELETE /api/medicines/:id) precisely so it survives being
+    // reloaded and resaved. Read that out before the delete+reinsert below wipes it, so a
+    // column whose text doesn't match anything in the *current* catalogue can still be told
+    // apart from a genuinely bogus name: "this chart already had exactly this preserved name"
+    // vs. "this text has never matched any medicine, drop it" (the backstop two lines down).
+    const existingCustom = await client.query('SELECT column_number, custom_name FROM chart_columns WHERE chart_id = $1 AND custom_name IS NOT NULL', [chartId])
+    const customNameByColumn = new Map(existingCustom.rows.map((row) => [row.column_number, row.custom_name]))
     await client.query('DELETE FROM chart_patients WHERE chart_id = $1', [chartId])
     await client.query('DELETE FROM chart_columns WHERE chart_id = $1', [chartId])
     await client.query('DELETE FROM chart_quantities WHERE chart_id = $1', [chartId])
@@ -235,9 +243,12 @@ router.put('/chart', requireAuth, async (request, response) => {
 
     // A column may only name a medicine that already exists in the shared catalogue, matched
     // ignoring case and repeated spaces — "amoxicillin  cap" and "Amoxicillin Cap" are one
-    // medicine to a pharmacist. A column whose text matches nothing is simply dropped (no
-    // custom_name is ever written from the chart): the client rejects unknown names at the
-    // input, and this is the backstop so typing in the chart can never introduce a medicine.
+    // medicine to a pharmacist. A column whose text matches nothing in the catalogue is
+    // dropped UNLESS it's exactly the custom_name this same column already carried (read
+    // above) — that's not bogus input, it's a medicine deleted from the catalogue after this
+    // chart used it, and the client is just resending what it loaded. Everything else — the
+    // client rejects unknown names at the input — still gets dropped as the backstop against
+    // typing in the chart ever introducing a medicine on its own.
     const medicineByColumn = new Map(columns.map((column) => [column.columnNumber, column.medicineName]))
     const wantedKeys = [...new Set([...medicineByColumn.values()].filter(Boolean).map(normalizeMedicineKey))]
     const idByKey = new Map()
@@ -248,12 +259,17 @@ router.put('/chart', requireAuth, async (request, response) => {
       known.rows.forEach((row) => { const key = normalizeMedicineKey(row.name); if (!idByKey.has(key)) idByKey.set(key, row.id) })
     }
     const linkedColumns = [...medicineByColumn.keys()]
-      .map((columnNumber) => ({ columnNumber, medicineId: idByKey.get(normalizeMedicineKey(medicineByColumn.get(columnNumber))) ?? null }))
-      .filter((entry) => entry.medicineId !== null)
+      .map((columnNumber) => {
+        const medicineName = medicineByColumn.get(columnNumber)
+        const medicineId = idByKey.get(normalizeMedicineKey(medicineName)) ?? null
+        const preservedCustomName = medicineId === null && medicineName && customNameByColumn.get(columnNumber) === medicineName ? medicineName : null
+        return { columnNumber, medicineId, customName: preservedCustomName }
+      })
+      .filter((entry) => entry.medicineId !== null || entry.customName !== null)
     if (linkedColumns.length) {
       await client.query(
-        'INSERT INTO chart_columns (chart_id, column_number, medicine_id, custom_name) SELECT $1, cn, mid, NULL FROM UNNEST($2::int[], $3::bigint[]) AS u(cn, mid)',
-        [chartId, linkedColumns.map((entry) => entry.columnNumber), linkedColumns.map((entry) => entry.medicineId)],
+        'INSERT INTO chart_columns (chart_id, column_number, medicine_id, custom_name) SELECT $1, cn, mid, cname FROM UNNEST($2::int[], $3::bigint[], $4::text[]) AS u(cn, mid, cname)',
+        [chartId, linkedColumns.map((entry) => entry.columnNumber), linkedColumns.map((entry) => entry.medicineId), linkedColumns.map((entry) => entry.customName)],
       )
     }
 

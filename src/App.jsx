@@ -382,6 +382,11 @@ function App() {
       if (!response.ok) throw new Error(result.message || 'تعذر تسجيل الدخول')
       setCurrentUser(result.user)
       setIsLoggedIn(true)
+      // A manual login doesn't go through the /auth/me effect above, so if that background
+      // check is still in flight (or never settles), its ref would otherwise keep gating the
+      // nav-persist effect forever, silently breaking "resume after a refresh" for this whole
+      // session even though the user is now genuinely logged in.
+      navRestoreAttemptedRef.current = true
       // Back on the same screen with the same unsaved chart; the autosave effect resumes.
       setSessionExpired(false)
     } catch (error) { setLoginError(error.message || 'تعذر الاتصال بالخادم') } finally { setBusy(false) }
@@ -823,6 +828,7 @@ function App() {
   const collapseRow = useCallback(async (rowIndex) => {
     const label = patientNames[rowIndex]?.trim() || `مريض ${rowIndex + 1}`
     if (!(await askConfirm(`حذف صف «${label}»؟ ستُحذف كل جرعاته وستنتقل الصفوف التالية صفًّا واحدًا للأعلى.`, { danger: true }))) return
+    noteChartEdit()
     const prevNames = patientNames
     const prevQuantities = quantities
     setPatientNames((current) => { const next = current.filter((_, index) => index !== rowIndex); next.push(''); return next })
@@ -920,20 +926,33 @@ function App() {
   }, [buildChartBody, columnMedicines, isLoggedIn, loadedChartKey, lockState, patientNames, quantities, selected, selectedDate])
   const flushPills = useCallback(() => {
     if (!selected || selected.mode !== 'pills' || !isLoggedIn || !pillsData) return
-    if (loadedPillsKey !== `${selected.floor || 'special'}-${selected.ward}-${selectedDate}-${selected.slot || 'main'}`) return
+    const pillsKey = `${selected.floor || 'special'}-${selected.ward}-${selectedDate}-${selected.slot || 'main'}`
+    if (loadedPillsKey !== pillsKey) return
     const entries = pillEntryList(pillEntries)
-    try { fetch(`${apiUrl}/pills`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', keepalive: true, body: JSON.stringify({ floor: selected.floor, ward: selected.ward, slot: selected.slot || 'main', date: selectedDate, entries, rooms: pillRooms }) }) } catch { /* retry on next visit */ }
+    // fetch() rejects asynchronously — a synchronous try/catch around the call never sees that
+    // rejection, so (unlike the mirror comment once claimed) a real failure surfaced as an
+    // unhandled promise rejection instead of being swallowed. .catch() actually does that.
+    fetch(`${apiUrl}/pills`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', keepalive: true, body: JSON.stringify({ floor: selected.floor, ward: selected.ward, slot: selected.slot || 'main', date: selectedDate, entries, rooms: pillRooms }) })
+      .then((response) => {
+        if (!response.ok) return
+        // Same bookkeeping flushChart does on its own success path — without it a tab that
+        // resumes after this flush lands treats its own already-saved edits as still dirty.
+        lastSyncedPillsRef.current = { entries: pillEntries, rooms: pillRooms }
+        try { localStorage.removeItem(`cpa-pills-draft:${pillsKey}`) } catch { /* best effort */ }
+      })
+      .catch(() => { /* the debounced autosave or next visit will retry */ })
   }, [isLoggedIn, loadedPillsKey, pillEntries, pillRooms, pillsData, selected, selectedDate])
   const goHome = useCallback(async () => {
-    // The brand logo is "home"; mid-chart with edits still in flight, a stray tap on a shared
-    // iPad shouldn't drop the round without a word. Only asks while something is actually unsaved.
-    if (selected?.mode === 'chart' && chartSaveStatus !== 'saved'
-      && !(await askConfirm('العودة إلى قائمة الطوابق؟ سيُحفَظ ما كتبته.'))) return
+    // The brand logo is "home"; mid-edit with a save still in flight, a stray tap on a shared
+    // iPad shouldn't drop the round without a word. Only asks while something is actually
+    // unsaved — chart or pills alike (logout already treats both the same way, below).
+    const unsaved = Boolean(selected) && (selected.mode === 'pills' ? pillsSaveStatus : chartSaveStatus) !== 'saved'
+    if (unsaved && !(await askConfirm('العودة إلى قائمة الطوابق؟ سيُحفَظ ما كتبته.'))) return
     if (selected?.mode === 'pills') flushPills(); else flushChart()
     setSelected(null)
     setFloor(null)
     setAdminView(null)
-  }, [selected, flushChart, flushPills, chartSaveStatus, askConfirm])
+  }, [selected, flushChart, flushPills, chartSaveStatus, pillsSaveStatus, askConfirm])
   // Jump straight to the assigned floor's ward list — a persistent shortcut for the
   // one-pharmacist-one-floor case, and the target of the auto-land on login.
   const goToMyWard = useCallback(() => {
@@ -955,6 +974,10 @@ function App() {
     try { await fetch(`${apiUrl}/auth/logout`, { method: 'POST', credentials: 'include' }) } catch { /* ignore network errors on logout */ }
     didAutoLandRef.current = false
     try { sessionStorage.removeItem('cpa-nav'); localStorage.removeItem('cpa-session-cache') } catch { /* storage unavailable */ }
+    // Ward iPads are shared between pharmacists — the next person to sign in on this device
+    // shouldn't be able to see this session's cached chart/pills/extra-pills responses if they
+    // go offline before their own first successful load. Name must match sw.js's API_CACHE.
+    try { await caches.delete('cpa-api-v1') } catch { /* Cache API unavailable — nothing cached to worry about either */ }
     setIsLoggedIn(false)
     setCurrentUser(null)
     setAdminView(null)
@@ -1429,6 +1452,12 @@ function App() {
     if (!selected || selected.mode !== 'pills' || !isLoggedIn || sessionExpired || pillsLoading) return undefined
     const pillsKey = `${selected.floor || 'special'}-${selected.ward}-${selectedDate}-${selected.slot || 'main'}`
     if (loadedPillsKey !== pillsKey || !pillsData) return undefined
+    // Same guard chart's autosave uses: this effect also re-runs on navigation-shaped dep
+    // changes (a load completing, a ward/date switch) that carry no real edit — without it,
+    // every one of those re-PUT identical data a moment later for no reason.
+    const synced = lastSyncedPillsRef.current
+    const dirty = JSON.stringify(pillEntries) !== JSON.stringify(synced.entries) || JSON.stringify(pillRooms) !== JSON.stringify(synced.rooms)
+    if (!dirty) return undefined
     let retryTimer
     const save = async () => {
       const entries = pillEntryList(pillEntries)

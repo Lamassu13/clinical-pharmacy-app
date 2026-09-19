@@ -103,7 +103,13 @@ export default function PillsScreen({
                 <thead><tr><th scope="col"></th><th scope="col">العلاج</th><th className="pill-qty-cell" scope="col">كمية الحبوب</th><th scope="col">وقت الجرعة</th><th scope="col">طريقة الاستخدام</th><th scope="col">الملاحظات</th></tr></thead>
                 <tbody>{pageMeds.map((med, medIndex) => {
                   const key = `${patient.rowNumber}:${med.key}`
-                  const entry = pillEntries[key] || { doseTime: '', usageMethod: '', note: '', pillQty: '', pillName: '' }
+                  // pillQty defaults to null, not '' — null means "never touched, show the
+                  // chart's auto-filled quantity below"; '' means the pharmacist cleared it on
+                  // purpose and must see it blank. Collapsing both to '' made backspacing the
+                  // auto-filled value re-render it immediately (a controlled input snapping back
+                  // to its old value), so the next keystroke appended after it instead of typing
+                  // into an actually-empty field — e.g. clearing "10" to type "5" produced "105".
+                  const entry = pillEntries[key] || { doseTime: '', usageMethod: '', note: '', pillQty: null, pillName: '' }
                   // One tap to carry the previous row's schedule down — a ward's pill form
                   // usually repeats the same «بعد الطعام» line for most medicines.
                   const prevEntry = medIndex > 0 ? pillEntries[`${patient.rowNumber}:${pageMeds[medIndex - 1].key}`] : null
@@ -111,7 +117,7 @@ export default function PillsScreen({
                   const chartName = med.arabicName || med.name
                   const medName = entry.pillName ? entry.pillName : chartName
                   const chartQty = (pillsData.quantityByCell || {})[key]
-                  const qtyValue = entry.pillQty !== undefined && entry.pillQty !== '' ? entry.pillQty : (chartQty != null ? String(chartQty) : '')
+                  const qtyValue = entry.pillQty !== null ? entry.pillQty : (chartQty != null ? String(chartQty) : '')
                   return <tr key={med.key}>
                     <td className="pill-lead-cell">{canRepeat && <button type="button" className="pill-repeat" title="نسخ وقت الجرعة والطريقة والملاحظة من السطر السابق" onClick={() => setPillEntries((current) => ({ ...current, [key]: { ...entry, doseTime: prevEntry.doseTime, usageMethod: prevEntry.usageMethod, note: prevEntry.note } }))}>↑ مثل السابق</button>}</td>
                     <td className="pill-name-cell">

@@ -110,6 +110,58 @@ test('PUT /api/chart: a column naming a medicine outside the catalogue is droppe
   assert.equal(fetched.body.chart.columns[0].medicine_name, 'Amoxicillin Cap')
 })
 
+test('PUT /api/chart: a column survives its medicine being deleted from the catalogue, then resaved (regression — used to silently vanish on the next autosave)', async () => {
+  const client = await loginAs({ role: 'user', floor: FLOOR })
+  await client.put('/api/chart', buildChartBody({
+    columns: [{ columnNumber: 1, medicineName: 'Amoxicillin Cap' }],
+    quantities: [{ rowNumber: 1, columnNumber: 1, quantity: 2 }],
+  }))
+
+  const admin = await loginAs({ role: 'admin' })
+  const medicineId = (await pool.query("SELECT id FROM medicines WHERE name = 'Amoxicillin Cap'")).rows[0].id
+  const deleted = await admin.delete(`/api/medicines/${medicineId}`)
+  assert.equal(deleted.status, 200)
+
+  // The medicine is gone, but the chart still shows its name (custom_name preserved) — this
+  // is what the client would resend on the very next autosave, unchanged.
+  const afterDelete = await client.get(`/api/chart?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=${DATE}`)
+  assert.equal(afterDelete.body.chart.columns[0].medicine_name, 'Amoxicillin Cap')
+
+  const resaved = await client.put('/api/chart', buildChartBody({
+    columns: [{ columnNumber: 1, medicineName: 'Amoxicillin Cap' }],
+    quantities: [{ rowNumber: 1, columnNumber: 1, quantity: 2 }],
+    expectedVersion: afterDelete.body.chart.version,
+  }))
+  assert.equal(resaved.status, 200)
+
+  const afterResave = await client.get(`/api/chart?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=${DATE}`)
+  assert.equal(afterResave.body.chart.columns.length, 1, 'the column must survive the resave, not silently disappear')
+  assert.equal(afterResave.body.chart.columns[0].medicine_name, 'Amoxicillin Cap')
+  assert.deepEqual(
+    afterResave.body.chart.quantities.map((q) => ({ row: q.row_number, col: q.column_number, qty: q.quantity })),
+    [{ row: 1, col: 1, qty: 2 }],
+    'its quantity must survive the resave too',
+  )
+})
+
+test('PUT /api/chart: a column preserved after a medicine deletion is dropped the moment it\'s actually cleared', async () => {
+  const client = await loginAs({ role: 'user', floor: FLOOR })
+  await client.put('/api/chart', buildChartBody({ columns: [{ columnNumber: 1, medicineName: 'Amoxicillin Cap' }] }))
+  const admin = await loginAs({ role: 'admin' })
+  const medicineId = (await pool.query("SELECT id FROM medicines WHERE name = 'Amoxicillin Cap'")).rows[0].id
+  await admin.delete(`/api/medicines/${medicineId}`)
+  const afterDelete = await client.get(`/api/chart?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=${DATE}`)
+
+  const cleared = await client.put('/api/chart', buildChartBody({
+    columns: [{ columnNumber: 1, medicineName: '' }],
+    quantities: [],
+    expectedVersion: afterDelete.body.chart.version,
+  }))
+  assert.equal(cleared.status, 200)
+  const afterClear = await client.get(`/api/chart?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=${DATE}`)
+  assert.equal(afterClear.body.chart.columns.length, 0, 'clearing the column for real must still work, not be stuck "preserved" forever')
+})
+
 test('PUT /api/chart: quantities for a column with no linked medicine (blank or outside the catalogue) are never stored — no orphaned numbers under a dropped column', async () => {
   const client = await loginAs({ role: 'user', floor: FLOOR })
   const saved = await client.put('/api/chart', buildChartBody({
