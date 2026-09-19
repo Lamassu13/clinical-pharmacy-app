@@ -56,10 +56,14 @@ function AdminMenu({ isAdmin, adminView, onNavigate }) {
   </details>
 }
 
-export default function AppHeader({ theme, onToggleTheme, currentUser, onLogout, onHome, onMyWard, isAdmin, isManager, adminView, onNavigate }) {
+export default function AppHeader({ theme, onToggleTheme, currentUser, onLogout, onHome, onMyWard, isAdmin, isManager, adminView, onNavigate, isOnline }) {
   return <header className="topbar">
     <TopBarBrand onClick={onHome} />
     <nav className="user-menu" aria-label="أدوات الحساب">
+      {/* One clear top-level state instead of a per-screen chip: chart/pills/extra-pills each
+          already say "not saved yet" on their own, this just names *why* when it's connectivity
+          rather than a slow save. */}
+      {isOnline === false && <span className="offline-badge" role="status">○ غير متصل — سيُرفع تلقائيًا</span>}
       {onMyWard && <button type="button" className="secondary-button compact my-ward-button" onClick={onMyWard}>ردهتي اليوم</button>}
       <button type="button" className="secondary-button compact" aria-current={adminView === 'forms' || undefined} onClick={() => onNavigate('forms')}>استمارات العلاج</button>
       {isManager && <AdminMenu isAdmin={isAdmin} adminView={adminView} onNavigate={onNavigate} />}

@@ -331,6 +331,7 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
    of links + name + sign-out. */
 .topbar-divider { align-self: stretch; width: 1px; min-height: 22px; margin-inline: var(--space-1); background: var(--border); }
 .topbar-user { color: var(--text); font-weight: 500; }
+.offline-badge { color: var(--warning-text); font-weight: 700; font-size: var(--text-xs); white-space: nowrap; }
 
 .admin-menu { position: relative; }
 .admin-menu > summary {

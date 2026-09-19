@@ -15,7 +15,7 @@ export default function PillsScreen({
   header, wardLabel, roomLabel, today, editTime, onBack,
   selectedDate, onChangeDate, pillsLoading, pillsData, pillsSaveStatus, pillsLoadError,
   pillEntries, setPillEntries, pillRooms, setPillRooms, pillSelection, onTogglePatient,
-  printScope, lastPrintingRow, onPrint, confirmModal,
+  printScope, lastPrintingRow, onPrint, confirmModal, pillsClashNote, onDismissPillsClashNote,
 }) {
   // How many extra rows a patient's form shows beyond the default two: the higher of (a) this
   // tab's own click count, ephemeral and reset on reload, and (b) however far a *saved* extra
@@ -57,6 +57,14 @@ export default function PillsScreen({
           <button className="secondary-button compact" disabled={pillSelection.size === 0} onClick={() => onPrint('selected')}>طباعة المحدّدين ({pillSelection.size})</button>
         </div>
       </div>
+
+      {/* Same warning-tinted banner chart uses for a recovered offline draft (.chart-clash-note) —
+          reused as-is rather than duplicated, since it's plain "review this" styling, not
+          chart-specific. */}
+      {pillsClashNote && <div className="chart-clash-note" role="status">
+        <span>{pillsClashNote}</span>
+        <button type="button" className="text-button compact" aria-label="إخفاء" onClick={onDismissPillsClashNote}>حسنًا</button>
+      </div>}
 
       {pillsData && pillsData.patients.length > 0 && (
         pillSelection.size === 0

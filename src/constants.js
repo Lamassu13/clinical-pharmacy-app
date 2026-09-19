@@ -29,4 +29,7 @@ export const doseTimeGroups = [
   ['أوقات مفردة', doseTimes.filter((time) => !time.includes(' - '))],
   ['جداول موزّعة', doseTimes.filter((time) => time.includes(' - '))],
 ]
-export const apiUrl = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:3001/api' : '/api')
+// Optional chaining (not just a Vite habit): `import.meta.env` is undefined under plain
+// `node --test`, which is how src/helpers.test.js imports this module — Vite itself always
+// provides a real env object, so this is a no-op there.
+export const apiUrl = import.meta.env?.VITE_API_URL || (import.meta.env?.DEV ? 'http://localhost:3001/api' : '/api')

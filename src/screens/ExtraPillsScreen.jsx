@@ -15,6 +15,9 @@ function ExtraPillFormCard({ form, floorLabel, today, editTime, selected, onTogg
   const [roomNumber, setRoomNumber] = useState(form.roomNumber)
   const [entries, setEntries] = useState(form.entries)
   const dirty = patientName !== form.patientName || roomNumber !== form.roomNumber || JSON.stringify(entries) !== JSON.stringify(form.entries)
+  // Set by App.jsx when this create/edit is still queued offline (see enqueueExtraPillsOp) —
+  // a not-yet-created form's id is a local "temp-" placeholder, not a real one yet either.
+  const pendingSync = form.pending || (typeof form.id === 'string' && form.id.startsWith('temp-'))
 
   const setEntry = (slot, patch) => setEntries((current) => current.map((entry) => (entry.slot === slot ? { ...entry, ...patch } : entry)))
   const save = () => onSave(form.id, { patientName: patientName.trim(), roomNumber: roomNumber.trim(), entries })
@@ -39,6 +42,7 @@ function ExtraPillFormCard({ form, floorLabel, today, editTime, selected, onTogg
         <img className="hospital-logo header-logo" width="42" height="42" src={hospitalLogo} alt="" />
       </div>
       <span className="extra-pill-form-actions">
+        {pendingSync && <span className="save-state save-state-pending" role="status">○ معلّق للمزامنة</span>}
         <button type="button" className="primary-button compact" disabled={!dirty || busy} onClick={save}>حفظ</button>
         <button type="button" className="danger-button compact" disabled={busy} onClick={() => onRemove(form.id)}>حذف الاستمارة</button>
       </span>

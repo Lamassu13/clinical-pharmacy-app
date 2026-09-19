@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { roleLabels, PATIENT_ROWS, CHART_COLUMNS, MAX_CHART_COLUMNS, apiUrl, floors, specialWards } from './constants.js'
-import { mergeChartSnapshots, diffMergeOutcome, parseChartRows, toEnglishDigits, medicineKey, patientNameKey, nearestMedicine, UNIT_ONE, isSyringe, VIAL_AMP, SYRINGE_EXCLUDE, isoDate, locationBody, pillEntryList } from './helpers.js'
+import { mergeChartSnapshots, diffMergeOutcome, mergeKeyedSnapshots, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, blankExtraPillForm, parseChartRows, toEnglishDigits, medicineKey, patientNameKey, nearestMedicine, UNIT_ONE, isSyringe, VIAL_AMP, SYRINGE_EXCLUDE, isoDate, locationBody, pillEntryList } from './helpers.js'
 import ConfirmDialog from './components/ConfirmDialog.jsx'
 import CopyChartDialog from './components/CopyChartDialog.jsx'
 import AppHeader from './components/AppHeader.jsx'
@@ -35,8 +35,33 @@ function useDocumentVisible() {
   return visible
 }
 
+// True while the browser reports connectivity. Drives the one top-level "غير متصل" banner and
+// lets the extra-pills queue (which has no fixed retry timer of its own — see below) flush the
+// instant the network returns instead of waiting for the next screen visit.
+function useOnlineStatus() {
+  const [online, setOnline] = useState(() => typeof navigator === 'undefined' || navigator.onLine)
+  useEffect(() => {
+    const onOnline = () => setOnline(true)
+    const onOffline = () => setOnline(false)
+    window.addEventListener('online', onOnline)
+    window.addEventListener('offline', onOffline)
+    return () => { window.removeEventListener('online', onOnline); window.removeEventListener('offline', onOffline) }
+  }, [])
+  return online
+}
+
+// استمارة الحبوب الإضافي has no chart-style version/lock machinery on the server (every PUT
+// just overwrites), so unlike chart/pills there's nothing to merge — only one offline write
+// per form is ever queued at a time (see enqueueExtraPillsOp), stored here keyed by ward so a
+// reload before reconnecting doesn't lose it.
+const extraPillsQueueKey = (floorValue, ward) => `cpa-extra-pills-queue:${floorValue || 'special'}-${ward}`
+const readExtraPillsQueue = (key) => { try { return JSON.parse(localStorage.getItem(key) || '[]') } catch { return [] } }
+const writeExtraPillsQueue = (key, queue) => {
+  try { if (queue.length) localStorage.setItem(key, JSON.stringify(queue)); else localStorage.removeItem(key) } catch { /* best effort */ }
+}
 function App() {
   const documentVisible = useDocumentVisible()
+  const isOnline = useOnlineStatus()
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [authView, setAuthView] = useState('login')
   const [credentials, setCredentials] = useState({ username: '', password: '' })
@@ -162,6 +187,10 @@ function App() {
   // chartSaveStatus so the pills toolbar chip can tell "saved" from "not saved yet".
   const [pillsSaveStatus, setPillsSaveStatus] = useState('saved')
   const [pillsLoadError, setPillsLoadError] = useState(false)
+  // What this tab last knew the server to have — the merge base for a localStorage draft left
+  // by a killed/offline tab (cpa-pills-draft:<key>), same role as lastSyncedChartRef for chart.
+  const lastSyncedPillsRef = useRef({ entries: {}, rooms: {} })
+  const [pillsClashNote, setPillsClashNote] = useState(null)
   // The requisition view (mode 'order') — read-only, derived from the main chart.
   const [orderData, setOrderData] = useState(null)
   const [orderLoading, setOrderLoading] = useState(false)
@@ -225,6 +254,9 @@ function App() {
   const isExpired = useCallback((response) => {
     if (response.status !== 401) return false
     setSessionExpired(true)
+    // A real 401, not a network failure — the offline auth-bootstrap fallback (App boot effect)
+    // must not resurrect this identity on the next cold, offline reopen.
+    try { localStorage.removeItem('cpa-session-cache') } catch { /* best effort */ }
     return true
   }, [])
   const today = new Date(`${selectedDate}T12:00:00`).toLocaleDateString('ar-IQ')
@@ -296,22 +328,39 @@ function App() {
   const didAutoLandRef = useRef(false)
 
   useEffect(() => {
+    const landFromNav = () => {
+      try {
+        const nav = JSON.parse(sessionStorage.getItem('cpa-nav') || 'null')
+        if (nav?.selectedDate) setSelectedDate(nav.selectedDate)
+        if (nav?.floor) setFloor(nav.floor)
+        if (nav?.selected) { didAutoLandRef.current = true; setSelected(nav.selected) }
+      } catch { /* storage unavailable or corrupt — start on the picker */ }
+    }
     fetch(`${apiUrl}/auth/me`, { credentials: 'include' })
       .then((response) => response.json())
       .then((result) => {
         if (!result.user) return
         setCurrentUser(result.user)
         setIsLoggedIn(true)
+        try { localStorage.setItem('cpa-session-cache', JSON.stringify(result.user)) } catch { /* best effort */ }
         // Restore the ward/date open before a refresh or iOS tab-kill (only once we know the
         // session is still good — otherwise a 401 chart-load would flash the expiry screen).
+        landFromNav()
+      })
+      .catch(() => {
+        // A network error (offline cold start), not a 401 — the session cookie may well still
+        // be good. Fall back to the last identity we actually confirmed, so the app renders the
+        // shell and cached ward data instead of forcing a login screen the pharmacist can't get
+        // past without a connection. A real 401 (session actually gone) still logs out — that
+        // response reaches the .then() branch above, not here.
         try {
-          const nav = JSON.parse(sessionStorage.getItem('cpa-nav') || 'null')
-          if (nav?.selectedDate) setSelectedDate(nav.selectedDate)
-          if (nav?.floor) setFloor(nav.floor)
-          if (nav?.selected) { didAutoLandRef.current = true; setSelected(nav.selected) }
+          const cached = JSON.parse(localStorage.getItem('cpa-session-cache') || 'null')
+          if (!cached) return
+          setCurrentUser(cached)
+          setIsLoggedIn(true)
+          landFromNav()
         } catch { /* storage unavailable or corrupt — start on the picker */ }
       })
-      .catch(() => undefined)
   }, [])
 
   const submitLogin = async (event) => {
@@ -896,7 +945,7 @@ function App() {
     if (unsaved && !(await askConfirm('لا يزال هناك ما لم يُحفَظ على الخادم. إن سجّلت الخروج الآن يبقى على هذا الجهاز ويُعاد حفظه فور دخولك من جديد. متابعة تسجيل الخروج؟'))) return
     try { await fetch(`${apiUrl}/auth/logout`, { method: 'POST', credentials: 'include' }) } catch { /* ignore network errors on logout */ }
     didAutoLandRef.current = false
-    try { sessionStorage.removeItem('cpa-nav') } catch { /* storage unavailable */ }
+    try { sessionStorage.removeItem('cpa-nav'); localStorage.removeItem('cpa-session-cache') } catch { /* storage unavailable */ }
     setIsLoggedIn(false)
     setCurrentUser(null)
     setAdminView(null)
@@ -1295,10 +1344,12 @@ function App() {
   useEffect(() => {
     if (!selected || selected.mode !== 'pills') return undefined
     const pillsKey = `${selected.floor || 'special'}-${selected.ward}-${selectedDate}-${selected.slot || 'main'}`
+    const draftKey = `cpa-pills-draft:${pillsKey}`
     setPillsLoading(true)
     setLoadedPillsKey(null)
     setPillsSaveStatus('saved')
     setPillsLoadError(false)
+    setPillsClashNote(null)
     // A different ward or day is a different set of patients — carrying ticks across would
     // silently print the wrong people.
     setPillSelection(new Set())
@@ -1316,8 +1367,32 @@ function App() {
         setPillsData(result.pills || null)
         const seed = {}
         ;(result.pills?.entries || []).forEach((entry) => { seed[`${entry.patientRowNumber}:${entry.medicineKey}`] = { doseTime: entry.doseTime || '', usageMethod: entry.usageMethod || '', note: entry.note || '', pillQty: entry.pillQty || '', pillName: entry.pillName || '' } })
-        setPillEntries(seed)
-        setPillRooms(result.pills?.rooms || {})
+        const freshRooms = result.pills?.rooms || {}
+        // A draft left by a killed/offline tab (see the localStorage-mirror effect below) may
+        // hold edits that never reached the server — merged in exactly like chart's own
+        // recovered-draft path: draft.base is what that earlier tab last knew the server had.
+        let draft = null
+        try {
+          const raw = localStorage.getItem(draftKey)
+          if (raw) draft = JSON.parse(raw)
+        } catch { /* storage unavailable or the draft was corrupt — fall back to the server state */ }
+        const nextEntries = draft ? mergeKeyedSnapshots(draft.base.entries, draft.current.entries, seed) : seed
+        const nextRooms = draft ? mergeKeyedSnapshots(draft.base.rooms, draft.current.rooms, freshRooms) : freshRooms
+        setPillEntries(nextEntries)
+        setPillRooms(nextRooms)
+        // Always the server snapshot, not the merged result: a recovered draft is still unsaved
+        // until the next PUT actually succeeds.
+        lastSyncedPillsRef.current = { entries: seed, rooms: freshRooms }
+        if (draft) {
+          try { localStorage.removeItem(draftKey) } catch { /* best effort */ }
+          const { adopted, dropped } = diffKeyedMergeOutcome(nextEntries, draft.current.entries, seed)
+          if (adopted || dropped) {
+            const parts = []
+            if (adopted) parts.push(`${adopted} حقلًا حُدّث من آخر حفظ على الخادم`)
+            if (dropped) parts.push(`${dropped} حقلًا من مسودة غير محفوظة اختلف عن الخادم وأُبقيت قيمتك — راجعها يدويًا`)
+            setPillsClashNote(`استُعيدت مسودة غير محفوظة من جلسة سابقة. ${parts.join(' · ')}.`)
+          }
+        }
         setPillsLoadError(false)
         setLoadedPillsKey(pillsKey)
         setPillsLoading(false)
@@ -1331,6 +1406,15 @@ function App() {
     load()
     return () => { cancelled = true; clearTimeout(retryTimer) }
   }, [selected, selectedDate, isExpired])
+  // Mirrors the live pills form to localStorage so a killed/offline tab doesn't lose whatever
+  // hadn't reached the server yet — same role as chart's cpa-chart-draft mirror below.
+  useEffect(() => {
+    const pillsKey = selected ? `${selected.floor || 'special'}-${selected.ward}-${selectedDate}-${selected.slot || 'main'}` : null
+    if (!selected || selected.mode !== 'pills' || loadedPillsKey !== pillsKey) return undefined
+    try {
+      localStorage.setItem(`cpa-pills-draft:${pillsKey}`, JSON.stringify({ base: lastSyncedPillsRef.current, current: { entries: pillEntries, rooms: pillRooms } }))
+    } catch { /* storage unavailable or full — the network autosave is still the source of truth */ }
+  }, [loadedPillsKey, pillEntries, pillRooms, selected, selectedDate])
 
   useEffect(() => {
     if (!selected || selected.mode !== 'pills' || !isLoggedIn || sessionExpired || pillsLoading) return undefined
@@ -1344,6 +1428,8 @@ function App() {
         const response = await fetch(`${apiUrl}/pills`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ floor: selected.floor, ward: selected.ward, slot: selected.slot || 'main', date: selectedDate, entries, rooms: pillRooms }) })
         if (isExpired(response)) return
         if (!response.ok) throw new Error('save failed')
+        lastSyncedPillsRef.current = { entries: pillEntries, rooms: pillRooms }
+        try { localStorage.removeItem(`cpa-pills-draft:${pillsKey}`) } catch { /* best effort */ }
         setPillsSaveStatus('saved')
       } catch {
         setPillsSaveStatus('error')
@@ -1375,18 +1461,22 @@ function App() {
   }, [selected, selectedDate, isExpired])
 
   // استمارة الحبوب الإضافي: one standing list per ward — no date scoping, since these aren't a
-  // daily/reset artifact like the chart or the real pills form.
+  // daily/reset artifact like the chart or the real pills form. `applyExtraPillsQueue` layers
+  // in whatever create/edit/delete didn't reach the server yet (see the callbacks below), so a
+  // pending offline change still shows right after this GET — including one served from the
+  // service worker's cache while genuinely offline.
   useEffect(() => {
     if (!selected || selected.mode !== 'extra-pills') return undefined
     let cancelled = false
     setExtraPillsLoading(true)
     setExtraPillsError(false)
     const params = new URLSearchParams({ floor: selected.floor || '', ward: selected.ward })
+    const queueKey = extraPillsQueueKey(selected.floor, selected.ward)
     fetch(`${apiUrl}/extra-pills?${params}`, { credentials: 'include' })
       .then((response) => { isExpired(response); return response.ok ? response.json() : null })
       .then((result) => {
         if (cancelled) return
-        if (result) { setExtraPillsForms(result.forms); setExtraPillsError(false) }
+        if (result) { setExtraPillsForms(applyExtraPillsQueue(result.forms, readExtraPillsQueue(queueKey))); setExtraPillsError(false) }
         else { setExtraPillsForms([]); setExtraPillsError(true) }
         setExtraPillsLoading(false)
       })
@@ -1404,10 +1494,33 @@ function App() {
       const result = await response.json()
       if (!response.ok) throw new Error(result.message)
       setExtraPillsForms((current) => [...current, result.form])
-    } catch { setExtraPillsActionError('تعذّر إنشاء الاستمارة — حاول مرة أخرى') } finally { setExtraPillsBusy(false) }
+    } catch (error) {
+      if (error instanceof TypeError) {
+        // Offline: show a blank editable card immediately and queue its creation for reconnect
+        // — there's no real id yet, so edits to it (below) fold into this same queued op.
+        const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+        setExtraPillsForms((current) => [...current, { id: tempId, ...blankExtraPillForm(selected.floor, selected.ward) }])
+        const queueKey = extraPillsQueueKey(selected.floor, selected.ward)
+        writeExtraPillsQueue(queueKey, enqueueExtraPillsOp(readExtraPillsQueue(queueKey), { key: tempId, op: 'create', floor: selected.floor, ward: selected.ward, patch: null }))
+      } else {
+        setExtraPillsActionError('تعذّر إنشاء الاستمارة — حاول مرة أخرى')
+      }
+    } finally { setExtraPillsBusy(false) }
   }, [selected, isExpired])
 
   const saveExtraPillForm = useCallback(async (id, patch) => {
+    const isTemp = typeof id === 'string' && id.startsWith('temp-')
+    const form = extraPillsForms.find((item) => item.id === id)
+    if (isTemp) {
+      // Still waiting on its own creation to reach the server — fold the edit into the queued
+      // create instead of PUTting to an id the server has never seen.
+      setExtraPillsForms((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)))
+      if (form) {
+        const queueKey = extraPillsQueueKey(form.floor, form.ward)
+        writeExtraPillsQueue(queueKey, enqueueExtraPillsOp(readExtraPillsQueue(queueKey), { key: id, op: 'create', floor: form.floor, ward: form.ward, patch }))
+      }
+      return
+    }
     setExtraPillsBusy(true)
     setExtraPillsActionError('')
     try {
@@ -1415,21 +1528,93 @@ function App() {
       isExpired(response)
       const result = await response.json()
       if (!response.ok) throw new Error(result.message)
-      setExtraPillsForms((current) => current.map((form) => (form.id === id ? result.form : form)))
-    } catch { setExtraPillsActionError('تعذّر حفظ الاستمارة — حاول مرة أخرى') } finally { setExtraPillsBusy(false) }
-  }, [isExpired])
+      setExtraPillsForms((current) => current.map((item) => (item.id === id ? result.form : item)))
+    } catch (error) {
+      if (error instanceof TypeError) {
+        setExtraPillsForms((current) => current.map((item) => (item.id === id ? { ...item, ...patch, pending: true } : item)))
+        if (form) {
+          const queueKey = extraPillsQueueKey(form.floor, form.ward)
+          writeExtraPillsQueue(queueKey, enqueueExtraPillsOp(readExtraPillsQueue(queueKey), { key: String(id), op: 'update', id, patch }))
+        }
+      } else {
+        setExtraPillsActionError('تعذّر حفظ الاستمارة — حاول مرة أخرى')
+      }
+    } finally { setExtraPillsBusy(false) }
+  }, [isExpired, extraPillsForms])
 
   const deleteExtraPillForm = useCallback(async (id) => {
     if (!(await askConfirm('حذف هذه الاستمارة؟', { danger: true }))) return
+    const isTemp = typeof id === 'string' && id.startsWith('temp-')
+    const form = extraPillsForms.find((item) => item.id === id)
+    if (isTemp) {
+      // Never reached the server — drop the local card and cancel its queued creation outright.
+      setExtraPillsForms((current) => current.filter((item) => item.id !== id))
+      if (form) {
+        const queueKey = extraPillsQueueKey(form.floor, form.ward)
+        writeExtraPillsQueue(queueKey, enqueueExtraPillsOp(readExtraPillsQueue(queueKey), { key: id, op: 'delete', id: null }))
+      }
+      return
+    }
     setExtraPillsBusy(true)
     setExtraPillsActionError('')
     try {
       const response = await fetch(`${apiUrl}/extra-pills/${id}`, { method: 'DELETE', credentials: 'include' })
       isExpired(response)
       if (!response.ok && response.status !== 404) throw new Error()
-      setExtraPillsForms((current) => current.filter((form) => form.id !== id))
-    } catch { setExtraPillsActionError('تعذّر حذف الاستمارة — حاول مرة أخرى') } finally { setExtraPillsBusy(false) }
-  }, [askConfirm, isExpired])
+      setExtraPillsForms((current) => current.filter((item) => item.id !== id))
+    } catch (error) {
+      if (error instanceof TypeError) {
+        setExtraPillsForms((current) => current.filter((item) => item.id !== id))
+        if (form) {
+          const queueKey = extraPillsQueueKey(form.floor, form.ward)
+          writeExtraPillsQueue(queueKey, enqueueExtraPillsOp(readExtraPillsQueue(queueKey), { key: String(id), op: 'delete', id }))
+        }
+      } else {
+        setExtraPillsActionError('تعذّر حذف الاستمارة — حاول مرة أخرى')
+      }
+    } finally { setExtraPillsBusy(false) }
+  }, [askConfirm, isExpired, extraPillsForms])
+
+  // Replays queued extra-pills writes in order once the network is back — there's no fixed
+  // retry timer for this screen (see the constant above), so reconnecting is the trigger.
+  const flushExtraPillsQueue = useCallback(async (floorValue, ward) => {
+    const queueKey = extraPillsQueueKey(floorValue, ward)
+    let queue = readExtraPillsQueue(queueKey)
+    for (const entry of queue) {
+      try {
+        if (entry.op === 'create') {
+          const response = await fetch(`${apiUrl}/extra-pills`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ floor: floorValue, ward }) })
+          if (isExpired(response)) return
+          if (!response.ok) throw new Error()
+          let { form } = await response.json()
+          if (entry.patch) {
+            const putResponse = await fetch(`${apiUrl}/extra-pills/${form.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(entry.patch) })
+            if (putResponse.ok) form = (await putResponse.json()).form
+          }
+          setExtraPillsForms((current) => current.map((item) => (item.id === entry.key ? form : item)))
+        } else if (entry.op === 'update') {
+          const response = await fetch(`${apiUrl}/extra-pills/${entry.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(entry.patch) })
+          if (isExpired(response)) return
+          if (!response.ok) throw new Error()
+          const { form } = await response.json()
+          setExtraPillsForms((current) => current.map((item) => (item.id === entry.id ? form : item)))
+        } else if (entry.op === 'delete' && entry.id) {
+          const response = await fetch(`${apiUrl}/extra-pills/${entry.id}`, { method: 'DELETE', credentials: 'include' })
+          if (isExpired(response)) return
+          if (!response.ok && response.status !== 404) throw new Error()
+        }
+        queue = queue.filter((item) => item.key !== entry.key)
+        writeExtraPillsQueue(queueKey, queue)
+      } catch {
+        return // still offline / still failing — leave the rest queued for next time
+      }
+    }
+  }, [isExpired])
+
+  useEffect(() => {
+    if (!selected || selected.mode !== 'extra-pills' || !isOnline) return undefined
+    flushExtraPillsQueue(selected.floor, selected.ward)
+  }, [selected, isOnline, flushExtraPillsQueue])
 
   const changeDate = useCallback((nextDate) => {
     flushChart()
@@ -1573,7 +1758,7 @@ function App() {
 
   if (sessionExpired) return <SessionExpiredScreen credentials={credentials} setCredentials={setCredentials} loginError={loginError} busy={busy} onSubmit={submitLogin} onLogout={logout} confirmModal={confirmModal} />
 
-  const appHeader = <AppHeader theme={theme} onToggleTheme={toggleTheme} currentUser={currentUser} onLogout={logout} onHome={goHome} onMyWard={!isManager && assignedFloorObj ? goToMyWard : undefined} isAdmin={isAdmin} isManager={isManager} adminView={adminView} onNavigate={setAdminView} />
+  const appHeader = <AppHeader theme={theme} onToggleTheme={toggleTheme} currentUser={currentUser} onLogout={logout} onHome={goHome} onMyWard={!isManager && assignedFloorObj ? goToMyWard : undefined} isAdmin={isAdmin} isManager={isManager} adminView={adminView} onNavigate={setAdminView} isOnline={isOnline} />
 
   if (adminView === 'requests' && isAdmin) return <AdminRequestsScreen adminHeader={appHeader} registrations={registrations} registrationsError={registrationsError} adminSuccess={adminSuccess} pendingFloor={pendingFloor} setPendingFloor={setPendingFloor} busy={busy} onReload={loadRegistrations} onApprove={approveRegistration} onReject={rejectRegistration} confirmModal={confirmModal} />
 
@@ -1606,7 +1791,7 @@ function App() {
   const lastPrintingRow = printingRows[printingRows.length - 1]
   if (selected && selected.mode === 'order') return <OrderScreen header={appHeader} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={orderLoading} data={orderData} loadError={orderError} onPrint={() => window.print()} />
   if (selected && selected.mode === 'extra-pills') return <ExtraPillsScreen header={appHeader} floorLabel={wardLabel} today={today} editTime={editTime} onBack={() => setSelected(null)} loading={extraPillsLoading} loadError={extraPillsError} forms={extraPillsForms} busy={extraPillsBusy} actionError={extraPillsActionError} onCreate={createExtraPillForm} onSave={saveExtraPillForm} onRemove={deleteExtraPillForm} confirmModal={confirmModal} />
-  if (selected && selected.mode === 'pills') return <PillsScreen header={appHeader} wardLabel={wardLabel} roomLabel={/\bccu\b/i.test(selected.ward || '') ? 'رقم السرير' : 'رقم الغرفة'} today={today} editTime={editTime} onBack={() => { flushPills(); setSelected(null) }} selectedDate={selectedDate} onChangeDate={setSelectedDate} pillsLoading={pillsLoading} pillsData={pillsData} pillsSaveStatus={pillsSaveStatus} pillsLoadError={pillsLoadError} pillEntries={pillEntries} setPillEntries={setPillEntries} pillRooms={pillRooms} setPillRooms={setPillRooms} pillSelection={pillSelection} onTogglePatient={togglePillPatient} printScope={printScope} lastPrintingRow={lastPrintingRow} onPrint={startPillsPrint} confirmModal={confirmModal} />
+  if (selected && selected.mode === 'pills') return <PillsScreen header={appHeader} wardLabel={wardLabel} roomLabel={/\bccu\b/i.test(selected.ward || '') ? 'رقم السرير' : 'رقم الغرفة'} today={today} editTime={editTime} onBack={() => { flushPills(); setSelected(null) }} selectedDate={selectedDate} onChangeDate={setSelectedDate} pillsLoading={pillsLoading} pillsData={pillsData} pillsSaveStatus={pillsSaveStatus} pillsLoadError={pillsLoadError} pillEntries={pillEntries} setPillEntries={setPillEntries} pillRooms={pillRooms} setPillRooms={setPillRooms} pillSelection={pillSelection} onTogglePatient={togglePillPatient} printScope={printScope} lastPrintingRow={lastPrintingRow} onPrint={startPillsPrint} confirmModal={confirmModal} pillsClashNote={pillsClashNote} onDismissPillsClashNote={() => setPillsClashNote(null)} />
 
   return <main className="app-shell">{appHeader}{!selected && !floor ? <FloorPickerScreen today={today} floors={visibleFloors} specialWards={visibleSpecialWards} resumeDraft={resumeDraft} onResume={resumeFromDraft} onPickFloor={setFloor} onOpen={setSelected} dashboard={dashboardData} dashboardLoading={dashboardData === null && !dashboardError} dashboardError={dashboardError} onRetryDashboard={retryDashboard} announcements={announcements} isManager={isManager} medicinesPeriod={medicinesPeriod} setMedicinesPeriod={setMedicinesPeriod} announcementDraft={announcementDraft} setAnnouncementDraft={setAnnouncementDraft} announcementError={announcementError} announcementBusy={announcementBusy} onPostAnnouncement={postAnnouncement} onEditAnnouncement={editAnnouncement} onDeleteAnnouncement={deleteAnnouncement} /> : !selected ? <WardPickerScreen floor={floor} today={today} dashboard={dashboardData} dashboardError={dashboardError} onBack={() => setFloor(null)} onOpen={setSelected} /> :<ChartScreen selected={selected} wardLabel={wardLabel} today={today} todayWeekday={todayWeekday} isManager={isManager} onBack={() => { flushChart(); setSelected(null) }} onGoToPills={() => { flushChart(); setSelected({ ...selected, mode: 'pills' }) }} onExportPdf={exportChartPdf} pdfBusy={pdfBusy} pdfExportError={pdfExportError} dateIsToday={dateIsToday} selectedDate={selectedDate} onChangeDate={changeDate} onCopyToNextDay={copyToNextDay} chartSaveStatus={chartSaveStatus} loadError={loadError} copyError={copyError} chartReady={chartReady} lastChartSaveAt={lastChartSaveAt} onRetryLoad={() => setChartLoadNonce((n) => n + 1)} onRetrySave={() => setChartSaveNonce((n) => n + 1)} lockState={lockState} lockHolder={lockHolder} chartClashNote={chartClashNote} onDismissClashNote={() => { setChartClashNote(null); setDroppedCells({}) }} droppedCells={droppedCells} undo={undo} onUndo={takeUndo} medicines={medicines} patientNames={patientNames} columnMedicines={columnMedicines} quantities={quantities} totals={totals} isThursday={isThursday} activeRow={activeRow} activeColumn={activeColumn} labelBelow={labelBelow} setActiveRow={setActiveRow} setActiveColumn={setActiveColumn} setLabelBelow={setLabelBelow} onSetColumnMedicine={setColumnMedicine} onCommitColumnMedicine={commitColumnMedicine} columnMedicineNotice={columnMedicineNotice} onDismissNotice={() => setColumnMedicineNotice(null)} onApplySuggestion={applyMedicineSuggestion} onSetPatientName={setPatientName} onCheckPreviousDay={checkPreviousDayPatient} onUpdateQuantity={updateQuantity} onCollapseRow={collapseRow} onAddColumn={addColumn} canAddColumn={canAddColumn} chartFrameRef={chartFrameRef} chartHeadRef={chartHeadRef} chartGridRef={chartGridRef} chartDosesRef={chartDosesRef} chartFootRef={chartFootRef} showMedicineForm={showMedicineForm} onOpenMedicineForm={() => { setRegistrationsError(''); setShowMedicineForm(true) }} onCloseMedicineForm={() => setShowMedicineForm(false)} onAddMedicine={addMedicine} newMedicine={newMedicine} setNewMedicine={setNewMedicine} registrationsError={registrationsError} />}{selected?.mode === 'chart' && chartReady && <ChartPrintTemplate ref={printTemplateRef} selected={selected} today={today} todayWeekday={todayWeekday} isThursday={isThursday} patientNames={patientNames} columnMedicines={columnMedicines} quantities={quantities} totals={totals} />}{confirmModal}{copyChoiceModal}</main>
 }

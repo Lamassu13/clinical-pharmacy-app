@@ -53,6 +53,75 @@ export const diffMergeOutcome = (merged, mine, fresh) => {
   return { adopted, dropped, droppedOther }
 }
 
+// Same three-way merge as mergeChartSnapshots, generalized to any flat string-keyed map —
+// pills' entries (`"row:medicineKey"` -> {...}) and rooms (`"row"` -> roomNumber) are both this
+// shape, one merge unit per key rather than per grid cell (a pill entry's fields are always
+// edited together, so there's no finer level worth splitting).
+export const mergeKeyedSnapshots = (base, current, fresh) => {
+  const keys = new Set([...Object.keys(base || {}), ...Object.keys(current || {}), ...Object.keys(fresh || {})])
+  const merged = {}
+  keys.forEach((key) => {
+    const changedHere = JSON.stringify(current?.[key] ?? null) !== JSON.stringify(base?.[key] ?? null)
+    const value = changedHere ? current?.[key] : fresh?.[key]
+    if (value !== undefined) merged[key] = value
+  })
+  return merged
+}
+
+// Counts-only sibling of diffMergeOutcome for a mergeKeyedSnapshots result — pill forms are
+// short enough that a per-field breakdown (chart's "كان" tags) isn't worth the extra UI; a
+// pharmacist reviewing "N حقلًا حُدّث" already knows to re-check the form.
+export const diffKeyedMergeOutcome = (merged, mine, fresh) => {
+  const keys = new Set([...Object.keys(merged || {}), ...Object.keys(mine || {}), ...Object.keys(fresh || {})])
+  let adopted = 0
+  let dropped = 0
+  keys.forEach((key) => {
+    const mergedValue = JSON.stringify(merged?.[key] ?? null)
+    const mineValue = JSON.stringify(mine?.[key] ?? null)
+    const freshValue = JSON.stringify(fresh?.[key] ?? null)
+    if (mergedValue !== mineValue) adopted += 1
+    else if (freshValue !== mineValue && fresh?.[key] !== undefined) dropped += 1
+  })
+  return { adopted, dropped }
+}
+
+// استمارة الحبوب الإضافي always has exactly 7 medicine slots (server/routes/extra-pills.js'
+// own SLOTS) — the shape a brand-new form starts with, both for the optimistic card shown the
+// instant "+ إنشاء استمارة جديدة" is clicked offline and for applyExtraPillsQueue's own fallback
+// below when that create is recovered from a reload before it was ever filled in (patch: null).
+// One shared shape so those two call sites can't quietly drift apart.
+export const EXTRA_PILL_SLOTS = 7
+export const blankExtraPillForm = (floorValue, ward) => ({
+  floor: floorValue, ward, patientName: '', roomNumber: '',
+  entries: Array.from({ length: EXTRA_PILL_SLOTS }, (_, i) => ({ slot: i + 1, medicineName: '', pillQty: '', doseTime: '', usageMethod: '', note: '' })),
+})
+
+// Upserts a locally queued استمارة الحبوب الإضافي write by key: a repeated offline edit to the
+// same not-yet-synced form replaces the pending payload instead of piling up redundant ops —
+// the same "latest write wins" policy chart/pills already use for their own autosave. Deleting
+// a form whose 'create' never reached the server just cancels that create — there's nothing to
+// delete yet.
+export const enqueueExtraPillsOp = (queue, entry) => {
+  if (entry.op === 'delete' && queue.some((item) => item.key === entry.key && item.op === 'create')) {
+    return queue.filter((item) => item.key !== entry.key)
+  }
+  return [...queue.filter((item) => item.key !== entry.key), entry]
+}
+
+// Projects the server's extra-pill forms plus locally queued, not-yet-synced changes into what
+// the screen should show — a queued create/edit/delete is visible (and survives a reload)
+// before it ever reaches the server. Applied in queue order, oldest first.
+export const applyExtraPillsQueue = (forms, queue) => {
+  const byKey = new Map(forms.map((form) => [String(form.id), form]))
+  const order = forms.map((form) => String(form.id))
+  queue.forEach((entry) => {
+    if (entry.op === 'create') { byKey.set(entry.key, { ...blankExtraPillForm(entry.floor, entry.ward), ...(entry.patch || {}), id: entry.key, pending: true }); order.push(entry.key) }
+    else if (entry.op === 'update') { const existing = byKey.get(entry.key); if (existing) byKey.set(entry.key, { ...existing, ...entry.patch, pending: true }) }
+    else if (entry.op === 'delete') { byKey.delete(entry.key); const i = order.indexOf(entry.key); if (i !== -1) order.splice(i, 1) }
+  })
+  return order.map((key) => byKey.get(key)).filter(Boolean)
+}
+
 // GET /api/chart's row-per-cell shape, expanded to the grid the UI keeps in state — at least
 // CHART_COLUMNS wide, wider if a manual "+ عمود" (src/App.jsx addColumn) previously grew this
 // particular chart past that and it was saved, so reopening it shows every column it actually
