@@ -412,6 +412,17 @@ app.put('/api/access/:userId', requireManager, async (request, response) => {
 //    window (today / week / month); anyone else sees only their own floor or wards, for the
 //    day. No patient names in either — the floor/ward grid is already visible to everyone.
 const PERIOD_DAYS = { today: 1, week: 7, month: 30 }
+// Logs only the slow ones — a manager complaint of "التحليلات بطيئة" with no visibility into
+// which of the five queries is actually the cost is unfixable from a support message alone.
+// This turns the next real slow load into a Render log line naming the guilty query.
+const timeQuery = (label, promise) => {
+  const startedAt = Date.now()
+  return promise.then((result) => {
+    const ms = Date.now() - startedAt
+    if (ms > 300) console.warn(`[dashboard] ${label} took ${ms}ms`)
+    return result
+  })
+}
 app.get('/api/dashboard', requireAuth, async (request, response) => {
   const date = request.query.date
   if (!isIsoDate(date)) return response.status(400).json({ message: 'التاريخ مطلوب' })
@@ -437,7 +448,7 @@ app.get('/api/dashboard', requireAuth, async (request, response) => {
   }
 
   const pending = [
-    query(
+    timeQuery('startedWards', query(
       `SELECT w.floor_number, w.name, dc.slot, dc.updated_at,
               GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (NOW() - dc.updated_at)) / 60))::int AS minutes_quiet
        FROM wards w
@@ -446,8 +457,8 @@ app.get('/api/dashboard', requireAuth, async (request, response) => {
          AND EXISTS (SELECT 1 FROM chart_patients cp WHERE cp.chart_id = dc.id AND cp.patient_name <> '')
          AND EXISTS (SELECT 1 FROM chart_quantities cq WHERE cq.chart_id = dc.id AND cq.quantity > 0)`,
       [date],
-    ),
-    query(
+    )),
+    timeQuery('topMedicines', query(
       `SELECT COALESCE(m.name, cc.custom_name) AS name, SUM(cq.quantity)::int AS quantity
        FROM chart_quantities cq
        JOIN chart_columns cc ON cc.chart_id = cq.chart_id AND cc.column_number = cq.column_number
@@ -459,10 +470,10 @@ app.get('/api/dashboard', requireAuth, async (request, response) => {
        ORDER BY quantity DESC
        LIMIT 5`,
       medicineParams,
-    ),
+    )),
     // Cumulative patient-days per numbered floor, over the widget's own window. Managers only.
     isManager
-      ? query(
+      ? timeQuery('patientsByFloor', query(
         `SELECT w.floor_number AS floor, COUNT(*)::int AS count
          FROM chart_patients cp
          JOIN daily_charts dc ON dc.id = cp.chart_id
@@ -473,8 +484,24 @@ app.get('/api/dashboard', requireAuth, async (request, response) => {
          GROUP BY w.floor_number
          ORDER BY w.floor_number`,
         [date, patientDays],
-      )
+      ))
       : Promise.resolve({ rows: [] }),
+    // The real headline count, over the same window: patientsByFloor sums one row per
+    // chart-day, so a patient staying several days (or moving ward) is counted once per day —
+    // fine for "how busy was this floor" but not for "how many actual patients". This counts
+    // distinct patient names instead (normalised the same way the pill_entries medicine_key
+    // migration above does, so stray double-spaces don't split one patient into two), across
+    // every ward including the special ones patientsByFloor excludes. Managers only.
+    isManager
+      ? timeQuery('totalPatients', query(
+        `SELECT COUNT(DISTINCT btrim(regexp_replace(cp.patient_name, '\\s+', ' ', 'g')))::int AS count
+         FROM chart_patients cp
+         JOIN daily_charts dc ON dc.id = cp.chart_id
+         WHERE cp.patient_name <> ''
+           AND dc.chart_date > ($1::date - $2::int) AND dc.chart_date <= $1::date`,
+        [date, patientDays],
+      ))
+      : Promise.resolve({ rows: [{ count: 0 }] }),
     // Same idea, but day-by-day over a fixed 7-day trend window (not the widget's own period
     // toggle — a trend chart wants a fixed weekly lookback, not a resizable one): total per
     // numbered floor (summed across its wards), plus one line per special ward (العناية
@@ -483,7 +510,7 @@ app.get('/api/dashboard', requireAuth, async (request, response) => {
     // rather than pg's default Date object (which JSON-serializes as a full UTC timestamp and
     // risks an off-by-one on the client).
     isManager
-      ? query(
+      ? timeQuery('dailyPatientsByFloor', query(
         `SELECT w.floor_number AS floor,
                 CASE WHEN w.floor_number IS NULL THEN w.name END AS ward,
                 dc.chart_date::text AS date, COUNT(*)::int AS count
@@ -496,10 +523,10 @@ app.get('/api/dashboard', requireAuth, async (request, response) => {
          GROUP BY w.floor_number, CASE WHEN w.floor_number IS NULL THEN w.name END, dc.chart_date
          ORDER BY w.floor_number NULLS LAST, ward, dc.chart_date`,
         [date, SPECIAL_WARDS],
-      )
+      ))
       : Promise.resolve({ rows: [] }),
   ]
-  const [started, topMedicines, patientsByFloor, dailyPatientsByFloor] = await Promise.all(pending)
+  const [started, topMedicines, patientsByFloor, totalPatients, dailyPatientsByFloor] = await Promise.all(pending)
   response.json({
     startedWards: started.rows.map((row) => ({
       floor: row.floor_number, ward: row.name, slot: row.slot,
@@ -509,6 +536,7 @@ app.get('/api/dashboard', requireAuth, async (request, response) => {
     medicinesPeriod: isManager ? (PERIOD_DAYS[request.query.period] ? request.query.period : 'month') : 'today',
     medicinesScope: isManager ? 'all' : 'own',
     patientsByFloor: patientsByFloor.rows.map((row) => ({ floor: row.floor, count: row.count })),
+    totalPatients: totalPatients.rows[0]?.count ?? 0,
     patientsPeriod: isManager ? (PERIOD_DAYS[request.query.patientsPeriod] ? request.query.patientsPeriod : 'month') : 'today',
     dailyPatientsByFloor: dailyPatientsByFloor.rows.map((row) => ({ floor: row.floor, ward: row.ward, date: row.date, count: row.count })),
   })

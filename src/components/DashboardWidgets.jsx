@@ -148,7 +148,7 @@ export function TopMedicinesWidget({ topMedicines, period, setPeriod, isManager,
 }
 
 // Patients summed across every ward of a numbered floor, over this widget's own period.
-export function PatientsByFloorWidget({ patientsByFloor, period, setPeriod, loading, error, onRetry }) {
+export function PatientsByFloorWidget({ patientsByFloor, totalPatients, period, setPeriod, loading, error, onRetry }) {
   const byFloor = new Map((patientsByFloor || []).map((row) => [row.floor, row.count]))
   const rows = floors.map((item) => ({ floor: item.number, count: byFloor.get(item.number) || 0 }))
   const maxCount = Math.max(1, ...rows.map((row) => row.count))
@@ -160,6 +160,11 @@ export function PatientsByFloorWidget({ patientsByFloor, period, setPeriod, load
         </span>
         <strong>عدد المرضى لكل طابق</strong>
       </div>
+      {!loading && !error && (
+        <p className="dashboard-widget-total">
+          إجمالي عدد المرضى (الفعلي، غير مكرر): <strong>{totalPatients ?? 0}</strong>
+        </p>
+      )}
       <PeriodToggle period={period} setPeriod={setPeriod} label="مدة احتساب المرضى" />
       {loading ? <SkeletonRows /> : error ? <DashboardError onRetry={onRetry} /> : rows.every((row) => row.count === 0) ? (
         <p className="dashboard-widget-empty">لا يوجد مرضى مسجّلون في هذه المدة.</p>

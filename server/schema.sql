@@ -262,3 +262,12 @@ CREATE INDEX IF NOT EXISTS pill_entries_chart_idx ON pill_entries (chart_id);
 CREATE INDEX IF NOT EXISTS announcements_created_at_idx ON announcements (created_at DESC);
 CREATE INDEX IF NOT EXISTS extra_pill_forms_floor_ward_idx ON extra_pill_forms (floor_number, ward);
 CREATE INDEX IF NOT EXISTS treatment_forms_title_idx ON treatment_forms (title);
+
+-- GET /api/dashboard's startedWards/patientsByFloor/totalPatients/dailyPatientsByFloor every
+-- filter chart_patients down to the named rows and chart_quantities down to the entered
+-- (non-zero) cells before doing anything else. A chart carries one chart_patients row per
+-- patient slot (named or not, up to 41) and every chart_quantities cell actually typed, so a
+-- plain chart_id index still makes Postgres visit every blank row before discarding it.
+-- Partial indexes let it skip straight to the rows that matter.
+CREATE INDEX IF NOT EXISTS chart_patients_named_idx ON chart_patients (chart_id) WHERE patient_name <> '';
+CREATE INDEX IF NOT EXISTS chart_quantities_positive_idx ON chart_quantities (chart_id) WHERE quantity > 0;

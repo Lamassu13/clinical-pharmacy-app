@@ -224,6 +224,33 @@ test('GET /api/dashboard patientsByFloor (manager): cumulative patient-days per 
   assert.deepEqual(await at('month', 'today'), [{ floor: 5, count: 6 }, { floor: 6, count: 3 }])
 })
 
+test('GET /api/dashboard totalPatients (manager): distinct patient names across every ward (including special), not one count per chart-day', async () => {
+  const user = await createUser({ role: 'user', floor: 5 })
+  // Same real patient, same name, two different days (and wards) — must count once, not twice.
+  await seedChart({ floor: 5, ward: 'ردهة رجال', date: DATE, createdBy: user.id, patients: [{ rowNumber: 1, name: 'أحمد' }] })
+  await seedChart({ floor: 5, ward: 'ردهة النساء', date: FIVE_DAYS_AGO, createdBy: user.id, patients: [{ rowNumber: 1, name: 'أحمد' }] })
+  // A different real patient on a special ward — patientsByFloor would drop this; totalPatients must not.
+  await seedChart({ floor: null, ward: 'ردهة الديلزة', date: DATE, createdBy: user.id, patients: [{ rowNumber: 1, name: 'سارة' }] })
+  // A blank patient row must never count.
+  await seedChart({ floor: 6, ward: 'الوحدة الأولى', date: DATE, createdBy: user.id, patients: [{ rowNumber: 1, name: '' }] })
+  // Outside the month window.
+  await seedChart({ floor: 6, ward: 'الوحدة الثالثة', date: THREE_WEEKS_AGO, createdBy: user.id, patients: [{ rowNumber: 1, name: 'ليلى' }] })
+
+  const client = await loginAs({ role: 'admin' })
+  const at = async (patientsPeriod) => (await client.get(`/api/dashboard?date=${DATE}&patientsPeriod=${patientsPeriod}`)).body.totalPatients
+
+  assert.equal(await at('today'), 2) // أحمد + سارة
+  assert.equal(await at('week'), 2) // same two — أحمد's two entries still count once
+  assert.equal(await at('month'), 3) // + ليلى
+})
+
+test('GET /api/dashboard totalPatients: a non-manager never receives it', async () => {
+  const user = await createUser({ role: 'user', floor: 5 })
+  await seedChart({ floor: 5, ward: 'ردهة رجال', date: DATE, createdBy: user.id, patients: [{ rowNumber: 1, name: 'أ' }] })
+  const client = await loginAs({ role: 'user', floor: 5 })
+  assert.equal((await client.get(`/api/dashboard?date=${DATE}`)).body.totalPatients, 0)
+})
+
 test('GET /api/dashboard patientsByFloor: a non-manager never receives it', async () => {
   const user = await createUser({ role: 'user', floor: 5 })
   await seedChart({ floor: 5, ward: 'ردهة رجال', date: DATE, createdBy: user.id, patients: [{ rowNumber: 1, name: 'أ' }] })

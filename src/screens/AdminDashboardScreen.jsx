@@ -121,6 +121,7 @@ export default function AdminDashboardScreen({
       />
       <PatientsByFloorWidget
         patientsByFloor={dashboard?.patientsByFloor ?? []}
+        totalPatients={dashboard?.totalPatients ?? 0}
         period={patientsPeriod} setPeriod={setPatientsPeriod}
         loading={dashboardLoading} error={dashboardError} onRetry={onRetryDashboard}
       />
