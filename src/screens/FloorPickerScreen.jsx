@@ -1,4 +1,4 @@
-import DashboardWidgets, { WardStatusBand } from '../components/DashboardWidgets.jsx'
+import DashboardWidgets from '../components/DashboardWidgets.jsx'
 import { WardGlyph, ChevronStart, StatusCheck, CardStatus } from '../components/WardGlyph.jsx'
 import WardActions from '../components/WardActions.jsx'
 import { wardAttention } from '../helpers.js'
@@ -15,10 +15,9 @@ export default function FloorPickerScreen({
 }) {
   // Count at ward granularity, not floor: a floor with one of three wards started is one
   // third done, and the two that haven't are exactly what the morning round is there to
-  // catch. The band's one ranked list of wards that need a nudge, most urgent first: never-
-  // started, then started-but-stalled — every row opens that ward's chart directly. Shared
-  // with AdminDashboardScreen (its "لوحة التحكم" needs the same answer) via helpers.js.
-  const { startedCount, totalCount, floorStarted, startedSpecialWards, attention } = wardAttention(floors, specialWards, dashboard)
+  // catch. Shared with AdminDashboardScreen (its "لوحة التحكم" needs the same answer, via its
+  // own WardStatusBand) through this one helpers.js function.
+  const { floorStarted, startedSpecialWards } = wardAttention(floors, specialWards, dashboard)
 
   // For a manager reading the band, the grid is a second copy of the same 26 wards — so lead
   // with the floors that still need pushing and fold the finished ones out of the way.
@@ -53,14 +52,6 @@ export default function FloorPickerScreen({
 
     {nothingAssigned && (
       <div className="empty-state"><strong>لم يُسند إليك طابق أو ردهة بعد</strong><span>راجِع مسؤول وحدة الصيدلة السريرية لتعيين موقعك، ثم أعِد تسجيل الدخول.</span></div>
-    )}
-
-    {isManager && (
-      <WardStatusBand
-        startedCount={startedCount} totalCount={totalCount} attention={attention}
-        onOpen={onOpen}
-        loading={dashboardLoading} error={dashboardError} onRetry={onRetryDashboard}
-      />
     )}
 
     <div className="location-grid">
