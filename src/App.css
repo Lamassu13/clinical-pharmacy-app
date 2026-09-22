@@ -594,8 +594,9 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 }
 .ward-status-row:hover { background: var(--green-50); }
 .ward-status-row:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; border-radius: var(--radius-sm); }
-/* Worded status, aligned in its own column; colour only reinforces. The dot carries the
-   rank: filled = nothing has started here, hollow = someone started then went quiet. */
+/* Worded status, aligned in its own column; colour only reinforces. A filled dot marks
+   "nothing has started here"; a small clock icon marks "someone started then went quiet" —
+   a shape difference, not just fill vs. hollow, so the more urgent case reads at a glance. */
 .ward-status-tag {
   flex: 0 0 auto;
   display: inline-flex;
@@ -606,15 +607,15 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
   font-size: var(--text-xs);
   font-weight: 700;
 }
-.ward-status-tag::before {
+.ward-status-tag--pending::before {
   content: '';
   flex: 0 0 auto;
   width: 7px;
   height: 7px;
   border-radius: 999px;
+  background: var(--warning);
 }
-.ward-status-tag--pending::before { background: var(--warning); }
-.ward-status-tag--stopped::before { border: 1.5px solid var(--warning); }
+.ward-status-tag--stopped svg { flex: 0 0 auto; }
 .ward-status-row-name {
   flex: 1 1 auto;
   min-width: 0;

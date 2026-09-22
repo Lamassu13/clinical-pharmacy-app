@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { floors, specialWards } from '../constants.js'
 import { isoDate } from '../helpers.js'
-import { ChevronStart, StatusCheck } from './WardGlyph.jsx'
+import { ChevronStart, StatusCheck, StalledIcon } from './WardGlyph.jsx'
 
 // The floor-picker's information layer, in two tiers.
 //
@@ -15,10 +15,14 @@ import { ChevronStart, StatusCheck } from './WardGlyph.jsx'
 // GET /api/dashboard never renders as a real "nothing happened today".
 const PERIOD_LABELS = { today: 'اليوم', week: 'أسبوع', month: 'شهر' }
 
-function DashboardError({ onRetry }) {
+// `message` defaults to the generic notice; the announcements widget overrides it below, since
+// it renders right after WardStatusBand on the manager's floor/ward hub — two widgets keyed off
+// the same GET /api/dashboard failure, back to back, in byte-identical wording, reads as the UI
+// itself broken rather than one data source down.
+function DashboardError({ onRetry, message = 'تعذّر تحميل بيانات اللوحة.' }) {
   return (
     <div className="dashboard-widget-notice" role="alert">
-      <span>تعذّر تحميل بيانات اللوحة.</span>
+      <span>{message}</span>
       <button type="button" className="text-button" onClick={onRetry}>إعادة المحاولة</button>
     </div>
   )
@@ -60,6 +64,7 @@ export function WardStatusBand({ startedCount, totalCount, attention = [], onOpe
         onClick={() => onOpen({ floor: entry.floorNumber, ward: entry.ward, mode: 'chart', slot: entry.slot })}
       >
         <span className={`ward-status-tag ward-status-tag--${entry.kind}`}>
+          {entry.kind === 'stopped' && <StalledIcon />}
           {entry.kind === 'pending' ? 'لم تبدأ' : 'متوقفة'}
         </span>
         <span className="ward-status-row-name">{entry.name}</span>
@@ -361,7 +366,7 @@ export default function DashboardWidgets({
           </span>
           <strong>إعلانات الإدارة</strong>
         </div>
-        {loading ? <SkeletonRows /> : error ? <DashboardError onRetry={onRetry} /> : announcements.length === 0 ? (
+        {loading ? <SkeletonRows /> : error ? <DashboardError onRetry={onRetry} message="تعذّر تحميل الإعلانات أيضًا." /> : announcements.length === 0 ? (
           <p className="dashboard-widget-empty">لا توجد إعلانات حاليًا.</p>
         ) : (
           <ul className="announcement-list">

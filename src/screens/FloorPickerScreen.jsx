@@ -6,7 +6,7 @@ import { wardAttention } from '../helpers.js'
 // The floor/special-ward grid. `floors` / `specialWards` arrive already narrowed to what this
 // user may see (their assignment, or the whole unit for a manager) — no post-paint DOM hiding.
 export default function FloorPickerScreen({
-  today, floors, specialWards, resumeDraft, onResume,
+  today, floors = [], specialWards = [], resumeDraft, onResume,
   onPickFloor, onOpen, dashboard, dashboardLoading, dashboardError, onRetryDashboard,
   announcements, isManager,
   medicinesPeriod, setMedicinesPeriod,

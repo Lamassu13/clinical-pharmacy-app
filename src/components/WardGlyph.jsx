@@ -23,6 +23,19 @@ export function ChevronStart() {
   )
 }
 
+// A ward started then went quiet — distinct from the plain "hasn't started" dot (a filled
+// hollow circle read too close to it at a glance for a fast morning scan), a small clock reads
+// unambiguously as "idle", not "not started" or "done".
+export function StalledIcon() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3.5 3.5" />
+    </svg>
+  )
+}
+
 // The tick on a ward whose chart has started today — same stroke family as the glyphs above.
 export function StatusCheck() {
   return (
@@ -41,9 +54,12 @@ export function CardStatus({ started, done, total, unavailable }) {
   if (unavailable) return <span className="card-status card-status--muted">الحالة غير متاحة</span>
   if (total != null) {
     if (done === total) return <span className="card-status card-status--done"><StatusCheck /> اكتملت</span>
-    // A floor with some wards started reads differently from one nobody has touched.
+    // A floor with some wards started reads differently from one nobody has touched. Worded
+    // even mid-count — a bare "٢/٣" reads as a patient number under the same glare/gloves this
+    // rule exists for, and it's the only status on this screen that used to skip the word.
     const cls = done > 0 ? 'card-status card-status--partial' : 'card-status card-status--pending'
-    return <span className={cls} aria-label={`بدأت ${done} من ${total} من أروقة الطابق`}>{done}/{total}</span>
+    const label = done > 0 ? `جزئي — ${done}/${total}` : `لم تبدأ — ${done}/${total}`
+    return <span className={cls} aria-label={`بدأت ${done} من ${total} من أروقة الطابق`}>{label}</span>
   }
   return started
     ? <span className="card-status card-status--done"><StatusCheck /> بدأت</span>
