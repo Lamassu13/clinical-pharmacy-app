@@ -227,7 +227,7 @@ export const wardAttention = (floors, specialWards, dashboard) => {
       name: `${item.floor ? `الطابق ${item.floor} — ${item.ward}` : item.ward}${item.slot === 'extra' ? ' — إضافي' : ''}`,
       updatedAt: item.updatedAt,
     }))
-  return { startedCount, totalCount, floorStarted, attention: [...notStarted, ...stalled] }
+  return { startedCount, totalCount, floorStarted, startedSpecialWards, attention: [...notStarted, ...stalled] }
 }
 
 export const locationBody = (value) => {

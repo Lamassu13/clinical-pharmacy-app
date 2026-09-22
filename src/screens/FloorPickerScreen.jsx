@@ -18,7 +18,7 @@ export default function FloorPickerScreen({
   // catch. The band's one ranked list of wards that need a nudge, most urgent first: never-
   // started, then started-but-stalled — every row opens that ward's chart directly. Shared
   // with AdminDashboardScreen (its "لوحة التحكم" needs the same answer) via helpers.js.
-  const { startedCount, totalCount, floorStarted, attention } = wardAttention(floors, specialWards, dashboard)
+  const { startedCount, totalCount, floorStarted, startedSpecialWards, attention } = wardAttention(floors, specialWards, dashboard)
 
   // For a manager reading the band, the grid is a second copy of the same 26 wards — so lead
   // with the floors that still need pushing and fold the finished ones out of the way.
