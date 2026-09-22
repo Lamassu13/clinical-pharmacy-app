@@ -271,14 +271,14 @@ test('GET /api/dashboard dailyPatientsByFloor (manager): per-floor total (summed
   // Outside the fixed 7-day window — must never appear in the trend.
   await seedChart({ floor: 6, ward: 'الوحدة الثالثة', date: THREE_WEEKS_AGO, createdBy: user.id, patients: two })
   // A special (non-numbered) ward has no floor total to fold into — it gets its own line.
-  await seedChart({ floor: null, ward: 'ردهة الديلزة', date: DATE, createdBy: user.id, patients: two })
+  await seedChart({ floor: null, ward: 'ردهة العناية المركزة', date: DATE, createdBy: user.id, patients: two })
 
   const client = await loginAs({ role: 'admin' })
   const expected = [
     { floor: 5, ward: null, date: FIVE_DAYS_AGO, count: 3 },
     { floor: 5, ward: null, date: DATE, count: 3 },
     { floor: 6, ward: null, date: DATE, count: 1 },
-    { floor: null, ward: 'ردهة الديلزة', date: DATE, count: 2 },
+    { floor: null, ward: 'ردهة العناية المركزة', date: DATE, count: 2 },
   ]
   const byRowKey = (row) => `${row.floor ?? row.ward}|${row.date}`
   const sorted = (rows) => [...rows].sort((a, b) => byRowKey(a).localeCompare(byRowKey(b)))
@@ -294,6 +294,34 @@ test('GET /api/dashboard dailyPatientsByFloor: a non-manager never receives it',
   await seedChart({ floor: 5, ward: 'ردهة رجال', date: DATE, createdBy: user.id, patients: [{ rowNumber: 1, name: 'أ' }] })
   const client = await loginAs({ role: 'user', floor: 5 })
   assert.deepEqual((await client.get(`/api/dashboard?date=${DATE}`)).body.dailyPatientsByFloor, [])
+})
+
+test('GET /api/dashboard patientsByFloorRange (manager): per-floor/ward totals over a manager-chosen date range, ICU included, outside-range excluded', async () => {
+  const user = await createUser({ role: 'user', floor: 5 })
+  const two = [{ rowNumber: 1, name: 'أ' }, { rowNumber: 2, name: 'ب' }]
+
+  await seedChart({ floor: 5, ward: 'ردهة رجال', date: '2026-04-01', createdBy: user.id, patients: two })
+  await seedChart({ floor: null, ward: 'ردهة العناية المركزة', date: '2026-04-02', createdBy: user.id, patients: [{ rowNumber: 1, name: 'ج' }] })
+  // Outside the requested range — must never appear.
+  await seedChart({ floor: 5, ward: 'ردهة النساء', date: '2026-05-01', createdBy: user.id, patients: two })
+
+  const client = await loginAs({ role: 'admin' })
+  const body = (await client.get(`/api/dashboard?date=2026-04-15&rangeFrom=2026-04-01&rangeTo=2026-04-10`)).body
+  assert.deepEqual(body.patientsByFloorRange, [
+    { floor: 5, ward: null, date: '2026-04-01', count: 2 },
+    { floor: null, ward: 'ردهة العناية المركزة', date: '2026-04-02', count: 1 },
+  ])
+})
+
+test('GET /api/dashboard patientsByFloorRange: a non-manager never receives it, and an absent/invalid range comes back empty rather than failing the request', async () => {
+  const user = await createUser({ role: 'user', floor: 5 })
+  await seedChart({ floor: 5, ward: 'ردهة رجال', date: DATE, createdBy: user.id, patients: [{ rowNumber: 1, name: 'أ' }] })
+
+  const plainUser = await loginAs({ role: 'user', floor: 5 })
+  assert.deepEqual((await plainUser.get(`/api/dashboard?date=${DATE}&rangeFrom=2026-04-01&rangeTo=2026-04-10`)).body.patientsByFloorRange, [])
+
+  const manager = await loginAs({ role: 'admin' })
+  assert.deepEqual((await manager.get(`/api/dashboard?date=${DATE}`)).body.patientsByFloorRange, [])
 })
 
 test('DELETE /api/users/:id: does not fail on a user who posted an announcement', async () => {

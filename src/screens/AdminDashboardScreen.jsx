@@ -1,5 +1,5 @@
 import { floors, specialWards, roleLabels } from '../constants.js'
-import { TopMedicinesWidget, PatientsByFloorWidget, PatientsDailyTrendWidget } from '../components/DashboardWidgets.jsx'
+import { TopMedicinesWidget, PatientsByFloorWidget, PatientsDailyTrendWidget, PatientsRangeTableWidget } from '../components/DashboardWidgets.jsx'
 import { ChevronStart } from '../components/WardGlyph.jsx'
 
 // The manager's landing page inside «الإدارة» — an at-a-glance answer to "does anything need
@@ -56,6 +56,7 @@ export default function AdminDashboardScreen({
   registrations, allUsers, adminMedicines, treatmentForms,
   dashboard, dashboardLoading, dashboardError, onRetryDashboard,
   medicinesPeriod, setMedicinesPeriod, patientsPeriod, setPatientsPeriod,
+  rangeFrom, setRangeFrom, rangeTo, setRangeTo,
   pendingFloor, setPendingFloor, busy, onApprove, onReject,
   registrationsError, adminSuccess, confirmModal,
 }) {
@@ -128,6 +129,11 @@ export default function AdminDashboardScreen({
     </div>
     <PatientsDailyTrendWidget
       dailyPatientsByFloor={dashboard?.dailyPatientsByFloor ?? []}
+      loading={dashboardLoading} error={dashboardError} onRetry={onRetryDashboard}
+    />
+    <PatientsRangeTableWidget
+      patientsByFloorRange={dashboard?.patientsByFloorRange ?? []}
+      rangeFrom={rangeFrom} setRangeFrom={setRangeFrom} rangeTo={rangeTo} setRangeTo={setRangeTo}
       loading={dashboardLoading} error={dashboardError} onRetry={onRetryDashboard}
     />
   </section>{confirmModal}</main>

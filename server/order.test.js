@@ -60,6 +60,22 @@ test('GET /api/order: one line per medicine, summed over the MAIN chart only, wi
   ])
 })
 
+test('GET /api/order: slot=extra returns totals from the extra chart, excluding the main one', async () => {
+  const seeder = await createUser({ role: 'admin' })
+  const med = (await pool.query("INSERT INTO medicines (name) VALUES ('Paracetamol 500mg Tab') RETURNING id")).rows[0].id
+  const wardId = await makeWard()
+
+  await seedChart({ wardId, slot: 'main', createdBy: seeder.id, columns: [{ n: 1, medicineId: med }], cells: [{ row: 1, col: 1, qty: 999 }] })
+  await seedChart({ wardId, slot: 'extra', createdBy: seeder.id, columns: [{ n: 1, medicineId: med }], cells: [{ row: 1, col: 1, qty: 7 }, { row: 2, col: 1, qty: 3 }] })
+
+  const client = await loginAs({ role: 'user', floor: FLOOR })
+  const res = await client.get(`/api/order?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=${DATE}&slot=extra`)
+  assert.equal(res.status, 200)
+  assert.deepEqual(res.body.order.items, [
+    { name: 'Paracetamol 500mg Tab', quantity: 10, quantityWords: 'عشرة' },
+  ])
+})
+
 test('GET /api/order: Thursday adds a doubled quantity alongside the normal one; any other day does not', async () => {
   const seeder = await createUser({ role: 'admin' })
   const med = (await pool.query("INSERT INTO medicines (name) VALUES ('Amoxicillin Cap') RETURNING id")).rows[0].id

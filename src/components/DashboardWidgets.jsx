@@ -247,9 +247,9 @@ function FloorTrendChart({ label, series, maxCount }) {
   )
 }
 
-// عدد المرضى الكلي لكل طابق، إضافةً إلى الردهات الخاصة (العناية المركزة، الديلزة، الخدج) التي لا
-// تتبع طابقًا مرقّمًا — يومًا بيوم. PatientsByFloorWidget أعلاه يجيب "كم، خلال مدة يختارها
-// المدير"؛ هذا يجيب "هل الاتجاه صاعد أم هابط"، وهو ما لا يظهره رقم تراكمي واحد.
+// عدد المرضى الكلي لكل طابق، إضافةً إلى الردهات الخاصة (العناية المركزة) التي لا تتبع طابقًا
+// مرقّمًا — يومًا بيوم. PatientsByFloorWidget أعلاه يجيب "كم، خلال مدة يختارها المدير"؛ هذا
+// يجيب "هل الاتجاه صاعد أم هابط"، وهو ما لا يظهره رقم تراكمي واحد.
 export function PatientsDailyTrendWidget({ dailyPatientsByFloor, loading, error, onRetry }) {
   const dates = lastDates(TREND_DAYS)
   const byKeyDate = new Map((dailyPatientsByFloor || []).map((row) => [`${row.floor ?? row.ward}|${row.date}`, row.count]))
@@ -276,6 +276,60 @@ export function PatientsDailyTrendWidget({ dailyPatientsByFloor, loading, error,
         <div className="floor-trend-grid">
           {entities.map(({ key, label, series }) => <FloorTrendChart key={key} label={label} series={series} maxCount={maxCount} />)}
         </div>
+      )}
+    </div>
+  )
+}
+
+// Keep in sync with the server's LEAST(...) clamp on GET /api/dashboard's patientsByFloorRange
+// query — otherwise a manager-typed multi-year range would try to render thousands of empty
+// <td> columns client-side even though the server only ever returns 120 days of rows.
+const RANGE_MAX_DAYS = 120
+const datesBetween = (from, to) => {
+  const dates = []
+  let cursor = new Date(`${from}T00:00:00`)
+  while (dates.length < RANGE_MAX_DAYS && isoDate(cursor) <= to) {
+    dates.push(isoDate(cursor))
+    cursor = new Date(cursor.getTime() + 86400000)
+  }
+  return dates
+}
+
+// The manager-chosen-range counterpart to the fixed-7-day trend above: a plain table (one row
+// per floor/ICU, one column per actual calendar date in the range) rather than a chart, since
+// the point here is reading exact counts over whatever window the manager picks, not a shape.
+export function PatientsRangeTableWidget({ patientsByFloorRange, rangeFrom, setRangeFrom, rangeTo, setRangeTo, loading, error, onRetry }) {
+  const hasRange = Boolean(rangeFrom && rangeTo)
+  const dates = hasRange ? datesBetween(rangeFrom, rangeTo) : []
+  const byKeyDate = new Map((patientsByFloorRange || []).map((row) => [`${row.floor ?? row.ward}|${row.date}`, row.count]))
+  const rows = [
+    ...floors.map((item) => ({ key: item.number, label: `الطابق ${item.number}` })),
+    ...specialWards.map((wardName) => ({ key: wardName, label: wardName })),
+  ]
+  return (
+    <div className="dashboard-widget dashboard-widget--wide">
+      <div className="dashboard-widget-head">
+        <span className="dashboard-widget-icon" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="2" fill="currentColor" fillOpacity="0.14" stroke="none"></rect><rect x="3.5" y="5" width="17" height="15" rx="2"></rect><circle cx="12" cy="3.25" r="1.25" fill="currentColor" stroke="none"></circle><line x1="7.5" y1="10" x2="16.5" y2="10"></line><line x1="7.5" y1="13.5" x2="16.5" y2="13.5"></line></svg>
+        </span>
+        <strong>عدد المرضى حسب الطابق والتاريخ</strong>
+      </div>
+      <div className="purge-dates">
+        <label>من تاريخ<input type="date" value={rangeFrom} onChange={(event) => setRangeFrom(event.target.value)} /></label>
+        <label>إلى تاريخ<input type="date" value={rangeTo} onChange={(event) => setRangeTo(event.target.value)} /></label>
+      </div>
+      {!hasRange ? <p className="dashboard-widget-empty">اختر تاريخ البداية والنهاية لعرض الجدول.</p>
+        : loading ? <SkeletonRows /> : error ? <DashboardError onRetry={onRetry} /> : (
+        <div className="table-frame"><table className="requests-table patients-range-table">
+          <thead><tr>
+            <th>الطابق / الردهة</th>
+            {dates.map((date) => <th key={date}>{date}<br /><small>{weekdayLabel(date)}</small></th>)}
+          </tr></thead>
+          <tbody>{rows.map((row) => <tr key={row.key}>
+            <td>{row.label}</td>
+            {dates.map((date) => <td key={date}>{byKeyDate.get(`${row.key}|${date}`) || 0}</td>)}
+          </tr>)}</tbody>
+        </table></div>
       )}
     </div>
   )

@@ -6,7 +6,7 @@ import ChartDoseRow from '../components/ChartDoseRow.jsx'
 // maintains it, stays in App so that swapping in the sign-in card when a session lapses does
 // not unmount the half-typed chart.
 export default function ChartScreen({
-  selected, wardLabel, today, todayWeekday, isManager, dateIsToday, selectedDate, onChangeDate, onCopyToNextDay, onBack, onGoToPills, onExportPdf, pdfBusy, pdfExportError,
+  selected, wardLabel, today, todayWeekday, isManager, dateIsToday, selectedDate, onChangeDate, onCopyToNextDay, onBack, onGoToPills, onGoToOrder, onExportPdf, pdfBusy, pdfExportError,
   chartSaveStatus, loadError, copyError, chartReady, lastChartSaveAt, onRetryLoad, onRetrySave, lockState, lockHolder,
   chartClashNote, onDismissClashNote, droppedCells, undo, onUndo,
   medicines, patientNames, columnMedicines, quantities, totals, isThursday,
@@ -80,6 +80,7 @@ export default function ChartScreen({
         {!readOnly && <button className="secondary-button compact" onClick={onAddColumn} disabled={!canAddColumn} title={canAddColumn ? undefined : `الحد الأقصى لعدد الأعمدة`}>+ عمود</button>}
         <button className="primary-button compact" onClick={onExportPdf} disabled={pdfBusy}>{pdfBusy ? 'جارٍ التحضير…' : 'طباعة A4 / PDF'}</button>
         <button className="secondary-button compact go-pills" onClick={onGoToPills}>استمارة الحبوب ←</button>
+        <button className="secondary-button compact" onClick={onGoToOrder}>الطلبية ←</button>
       </div>
     </div>
 

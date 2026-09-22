@@ -56,10 +56,10 @@ test('POST /api/charts/purge: deletes only charts inside the range on the chosen
   await seedChart({ floor: 5, ward: 'ردهة النساء', date: '2026-05-15', createdBy: user.id })
   const outOfRange = await seedChart({ floor: 5, ward: 'ردهة الخاص', date: '2026-06-01', createdBy: user.id })
   const otherFloor = await seedChart({ floor: 3, ward: 'ردهة CCU', date: '2026-05-12', createdBy: user.id })
-  const specialWard = await seedChart({ floor: null, ward: 'ردهة الديلزة', date: '2026-05-12', createdBy: user.id })
+  const specialWard = await seedChart({ floor: null, ward: 'ردهة العناية المركزة', date: '2026-05-12', createdBy: user.id })
 
   const manager = await loginAs({ role: 'admin' })
-  const response = await manager.post('/api/charts/purge', { from: '2026-05-01', to: '2026-05-31', floors: [5], wards: ['ردهة الديلزة'] })
+  const response = await manager.post('/api/charts/purge', { from: '2026-05-01', to: '2026-05-31', floors: [5], wards: ['ردهة العناية المركزة'] })
   assert.equal(response.status, 200)
   assert.equal(response.body.deleted, 3) // two floor-5 charts in May + the special ward
 

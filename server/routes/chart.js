@@ -347,7 +347,7 @@ router.get('/order', requireAuth, async (request, response) => {
   if (!wardName || !isIsoDate(chartDate)) return response.status(400).json({ message: 'بيانات الردهة والتاريخ مطلوبة' })
   if (!isKnownWard(floor, wardName)) return response.status(400).json({ message: 'الردهة غير معروفة' })
   if (!canAccessLocation(request.session.user, floor, wardName)) return response.status(403).json({ message: 'لا تملك صلاحية لهذه الردهة' })
-  const chartId = await resolveChartId(floor, wardName, chartDate, 'main')
+  const chartId = await resolveChartId(floor, wardName, chartDate, readSlot(request.query.slot))
   // Thursday means a 2-day supply (Friday is the ward's day off) — the chart itself shows a
   // second "المجموع المضاعف" total alongside the normal one on Thursday; the requisition
   // mirrors that with a doubled quantity alongside the normal one, not in place of it.

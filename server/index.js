@@ -525,8 +525,30 @@ app.get('/api/dashboard', requireAuth, async (request, response) => {
         [date, SPECIAL_WARDS],
       ))
       : Promise.resolve({ rows: [] }),
+    // The floor×date range table on لوحة التحكم — same shape as dailyPatientsByFloor above,
+    // but bound by a manager-chosen from/to instead of a fixed trailing week, so it lives as
+    // its own field rather than replacing that one (the trend widget's fixed window has to
+    // keep working regardless of what range this table is showing). LEAST(...) caps the
+    // window at 120 days so a mistyped multi-year range can't blow up the response; an
+    // absent/invalid range just comes back empty rather than 400ing the whole dashboard.
+    isManager && isIsoDate(request.query.rangeFrom) && isIsoDate(request.query.rangeTo)
+      ? timeQuery('patientsByFloorRange', query(
+        `SELECT w.floor_number AS floor,
+                CASE WHEN w.floor_number IS NULL THEN w.name END AS ward,
+                dc.chart_date::text AS date, COUNT(*)::int AS count
+         FROM chart_patients cp
+         JOIN daily_charts dc ON dc.id = cp.chart_id
+         JOIN wards w ON w.id = dc.ward_id
+         WHERE cp.patient_name <> ''
+           AND (w.floor_number IS NOT NULL OR w.name = ANY($3::text[]))
+           AND dc.chart_date >= $1::date AND dc.chart_date <= LEAST($2::date, $1::date + 119)
+         GROUP BY w.floor_number, CASE WHEN w.floor_number IS NULL THEN w.name END, dc.chart_date
+         ORDER BY w.floor_number NULLS LAST, ward, dc.chart_date`,
+        [request.query.rangeFrom, request.query.rangeTo, SPECIAL_WARDS],
+      ))
+      : Promise.resolve({ rows: [] }),
   ]
-  const [started, topMedicines, patientsByFloor, totalPatients, dailyPatientsByFloor] = await Promise.all(pending)
+  const [started, topMedicines, patientsByFloor, totalPatients, dailyPatientsByFloor, patientsByFloorRange] = await Promise.all(pending)
   response.json({
     startedWards: started.rows.map((row) => ({
       floor: row.floor_number, ward: row.name, slot: row.slot,
@@ -539,6 +561,7 @@ app.get('/api/dashboard', requireAuth, async (request, response) => {
     totalPatients: totalPatients.rows[0]?.count ?? 0,
     patientsPeriod: isManager ? (PERIOD_DAYS[request.query.patientsPeriod] ? request.query.patientsPeriod : 'month') : 'today',
     dailyPatientsByFloor: dailyPatientsByFloor.rows.map((row) => ({ floor: row.floor, ward: row.ward, date: row.date, count: row.count })),
+    patientsByFloorRange: patientsByFloorRange.rows.map((row) => ({ floor: row.floor, ward: row.ward, date: row.date, count: row.count })),
   })
 })
 

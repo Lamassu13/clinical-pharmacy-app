@@ -11,7 +11,7 @@ export const floors = [
   { number: 9, wards: ['ردهة الخاص', 'الردهة الرابعة', 'الردهة الثانية'] },
   { number: 10, wards: ['الردهة العصبية', 'ردهة المفاصل', 'الردهة النفسية'] },
 ]
-export const specialWards = ['ردهة الديلزة', 'ردهة العناية المركزة', 'ردهة الخدج']
+export const specialWards = ['ردهة العناية المركزة']
 // Keep in sync with ASSIGNABLE_ROLES in server/index.js.
 export const roleLabels = { admin: 'مدير', supervisor: 'مسؤول', user: 'مستخدم' }
 export const PATIENT_ROWS = 41

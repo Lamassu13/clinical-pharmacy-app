@@ -43,8 +43,11 @@ test('isKnownWard: a ward is only known on its own floor', () => {
 })
 
 test('isKnownWard: a non-integer floor falls back to the special-ward list', () => {
-  assert.equal(isKnownWard(null, 'ردهة الخدج'), true)
+  assert.equal(isKnownWard(null, 'ردهة العناية المركزة'), true)
   assert.equal(isKnownWard(null, 'ردهة رجال'), false)
+  // Retired (hidden from the app, historical data kept) — no longer a known ward.
+  assert.equal(isKnownWard(null, 'ردهة الديلزة'), false)
+  assert.equal(isKnownWard(null, 'ردهة الخدج'), false)
 })
 
 test('clampInt: accepts the bounds and rejects everything outside or unparseable', () => {
