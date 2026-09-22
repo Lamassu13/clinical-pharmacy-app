@@ -85,3 +85,32 @@ test('requireAuth: an endpoint behind login refuses an anonymous request', async
   const response = await client.get('/api/medicines')
   assert.equal(response.status, 401)
 })
+
+test('PUT /api/auth/me: anonymous is refused, and a logged-in user updates their own name/email/phone', async () => {
+  const anon = new ApiClient(baseUrl)
+  const refused = await anon.put('/api/auth/me', { fullName: 'X', email: 'x@example.test', phone: '123' })
+  assert.equal(refused.status, 401)
+
+  const user = await createUser({ accountStatus: 'active', password: 'right-password' })
+  const client = new ApiClient(baseUrl)
+  await client.post('/api/auth/login', { username: user.username, password: 'right-password' })
+
+  const updated = await client.put('/api/auth/me', { fullName: 'New Name', email: 'new-email@example.test', phone: '0700000000' })
+  assert.equal(updated.status, 200)
+  assert.equal(updated.body.user.fullName, 'New Name')
+  assert.equal(updated.body.user.email, 'new-email@example.test')
+
+  const me = await client.get('/api/auth/me')
+  assert.equal(me.body.user.fullName, 'New Name')
+  assert.equal(me.body.user.email, 'new-email@example.test')
+})
+
+test('PUT /api/auth/me: taking another user\'s email is rejected as a conflict', async () => {
+  const other = await createUser({ accountStatus: 'active' })
+  const user = await createUser({ accountStatus: 'active', password: 'right-password' })
+  const client = new ApiClient(baseUrl)
+  await client.post('/api/auth/login', { username: user.username, password: 'right-password' })
+
+  const clash = await client.put('/api/auth/me', { fullName: 'New Name', email: `${other.username}@example.test`, phone: '0700000000' })
+  assert.equal(clash.status, 409)
+})

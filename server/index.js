@@ -144,6 +144,25 @@ app.post('/api/auth/register', registerLimiter, async (request, response) => {
 })
 app.post('/api/auth/logout', (request, response) => request.session.destroy(() => response.status(204).end()))
 app.get('/api/auth/me', (request, response) => response.json({ user: request.session.user || null }))
+app.put('/api/auth/me', requireAuth, async (request, response) => {
+  const fullName = String(request.body.fullName || '').trim()
+  const email = String(request.body.email || '').trim().toLowerCase()
+  const phone = String(request.body.phone || '').trim()
+  if (!fullName || !email || !phone) return response.status(400).json({ message: 'يرجى ملء جميع الحقول' })
+  if (fullName.length > 120 || email.length > 160 || phone.length > 30) return response.status(400).json({ message: 'إحدى القيم أطول من المسموح' })
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return response.status(400).json({ message: 'صيغة البريد الإلكتروني غير صحيحة' })
+  if (!/^[0-9+()\s-]{5,30}$/.test(phone)) return response.status(400).json({ message: 'صيغة رقم الهاتف غير صحيحة' })
+  try {
+    await query('UPDATE users SET full_name = $2, email = $3, phone = $4 WHERE id = $1', [request.session.user.id, fullName, email, phone])
+    request.session.user = { ...request.session.user, fullName, email, phone }
+    await new Promise((resolve, reject) => request.session.save((error) => error ? reject(error) : resolve()))
+    response.json({ user: request.session.user })
+  } catch (error) {
+    if (error.code === '23505') return response.status(409).json({ message: 'البريد الإلكتروني مستخدم بالفعل' })
+    console.error('profile update failed:', error)
+    response.status(500).json({ message: 'تعذر تحديث البيانات' })
+  }
+})
 
 app.get('/api/medicines', requireAuth, async (_request, response) => {
   const result = await query('SELECT id, name, arabic_name FROM medicines ORDER BY name ASC')

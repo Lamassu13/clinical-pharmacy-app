@@ -14,6 +14,7 @@ import AdminUsersScreen from './screens/AdminUsersScreen.jsx'
 import AdminMedicinesScreen from './screens/AdminMedicinesScreen.jsx'
 import AdminFloorsScreen from './screens/AdminFloorsScreen.jsx'
 import TreatmentFormsScreen from './screens/TreatmentFormsScreen.jsx'
+import ProfileScreen from './screens/ProfileScreen.jsx'
 import PillsScreen from './screens/PillsScreen.jsx'
 import OrderScreen from './screens/OrderScreen.jsx'
 import ExtraPillsScreen from './screens/ExtraPillsScreen.jsx'
@@ -71,6 +72,9 @@ function App() {
   const [registerError, setRegisterError] = useState('')
   const [registerSuccess, setRegisterSuccess] = useState('')
   const [currentUser, setCurrentUser] = useState(null)
+  const [profileForm, setProfileForm] = useState({ fullName: '', email: '', phone: '' })
+  const [profileError, setProfileError] = useState('')
+  const [profileSuccess, setProfileSuccess] = useState('')
   const [adminView, setAdminView] = useState(null)
   const [registrations, setRegistrations] = useState([])
   const [allUsers, setAllUsers] = useState([])
@@ -413,6 +417,25 @@ function App() {
       setRegisterSuccess(result.message || 'تم إنشاء الحساب، بانتظار موافقة المدير')
       setRegisterForm({ fullName: '', username: '', phone: '', email: '', fingerprintNumber: '', password: '' })
     } catch (error) { setRegisterError(error.message || 'تعذر الاتصال بالخادم') } finally { setBusy(false) }
+  }
+  const openProfile = useCallback(() => {
+    setProfileForm({ fullName: currentUser?.fullName || '', email: currentUser?.email || '', phone: currentUser?.phone || '' })
+    setProfileError('')
+    setProfileSuccess('')
+    setAdminView('profile')
+  }, [currentUser])
+  const submitProfile = async (event) => {
+    event.preventDefault()
+    if (busy) return
+    setProfileError(''); setProfileSuccess(''); setBusy(true)
+    try {
+      const response = await fetch(`${apiUrl}/auth/me`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(profileForm) })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.message || 'تعذر حفظ التغييرات')
+      setCurrentUser(result.user)
+      try { localStorage.setItem('cpa-session-cache', JSON.stringify(result.user)) } catch { /* best effort */ }
+      setProfileSuccess('تم حفظ التغييرات')
+    } catch (error) { setProfileError(error.message || 'تعذر الاتصال بالخادم') } finally { setBusy(false) }
   }
   const loadRegistrations = useCallback(async () => {
     setRegistrationsError('')
@@ -1863,7 +1886,9 @@ function App() {
 
   if (sessionExpired) return <SessionExpiredScreen credentials={credentials} setCredentials={setCredentials} loginError={loginError} busy={busy} onSubmit={submitLogin} onLogout={logout} confirmModal={confirmModal} />
 
-  const appHeader = <AppHeader theme={theme} onToggleTheme={toggleTheme} currentUser={currentUser} onLogout={logout} onHome={goHome} onMyWard={!isManager && assignedFloorObj ? goToMyWard : undefined} isAdmin={isAdmin} isManager={isManager} adminView={adminView} onNavigate={setAdminView} isOnline={isOnline} />
+  const appHeader = <AppHeader theme={theme} onToggleTheme={toggleTheme} currentUser={currentUser} onLogout={logout} onHome={goHome} onMyWard={!isManager && assignedFloorObj ? goToMyWard : undefined} onOpenProfile={openProfile} isAdmin={isAdmin} isManager={isManager} adminView={adminView} onNavigate={setAdminView} isOnline={isOnline} />
+
+  if (adminView === 'profile') return <ProfileScreen adminHeader={appHeader} profileForm={profileForm} setProfileForm={setProfileForm} profileError={profileError} profileSuccess={profileSuccess} busy={busy} onSubmit={submitProfile} />
 
   if (adminView === 'dashboard' && isManager) return <AdminDashboardScreen adminHeader={appHeader} isAdmin={isAdmin} onNavigate={setAdminView} onOpenWard={(target) => { setAdminView(null); setSelected(target) }} registrations={registrations} allUsers={allUsers} adminMedicines={adminMedicines} treatmentForms={treatmentForms} dashboard={dashboardData} dashboardLoading={dashboardData === null && !dashboardError} dashboardError={dashboardError} onRetryDashboard={retryDashboard} medicinesPeriod={medicinesPeriod} setMedicinesPeriod={setMedicinesPeriod} patientsPeriod={patientsPeriod} setPatientsPeriod={setPatientsPeriod} rangeFrom={rangeFrom} setRangeFrom={setRangeFrom} rangeTo={rangeTo} setRangeTo={setRangeTo} pendingFloor={pendingFloor} setPendingFloor={setPendingFloor} busy={busy} onApprove={approveRegistration} onReject={rejectRegistration} registrationsError={registrationsError} adminSuccess={adminSuccess} confirmModal={confirmModal} />
 

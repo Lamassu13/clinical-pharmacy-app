@@ -57,7 +57,7 @@ function AdminMenu({ isAdmin, adminView, onNavigate }) {
   </details>
 }
 
-export default function AppHeader({ theme, onToggleTheme, currentUser, onLogout, onHome, onMyWard, isAdmin, isManager, adminView, onNavigate, isOnline }) {
+export default function AppHeader({ theme, onToggleTheme, currentUser, onLogout, onHome, onMyWard, onOpenProfile, isAdmin, isManager, adminView, onNavigate, isOnline }) {
   return <header className="topbar">
     <TopBarBrand onClick={onHome} />
     <nav className="user-menu" aria-label="أدوات الحساب">
@@ -70,7 +70,7 @@ export default function AppHeader({ theme, onToggleTheme, currentUser, onLogout,
       {isManager && <AdminMenu isAdmin={isAdmin} adminView={adminView} onNavigate={onNavigate} />}
       {isManager && <span className="topbar-divider" aria-hidden="true" />}
       <ThemeToggle theme={theme} onToggle={onToggleTheme} />
-      <span className="topbar-user">{currentUser?.fullName || 'مستخدم'}</span>
+      <button type="button" className="topbar-user" aria-current={adminView === 'profile' || undefined} onClick={onOpenProfile}>{currentUser?.fullName || 'مستخدم'}</button>
       <button type="button" onClick={onLogout} className="text-button">تسجيل الخروج</button>
     </nav>
   </header>

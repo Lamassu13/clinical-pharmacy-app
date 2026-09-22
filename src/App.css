@@ -331,6 +331,8 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
    of links + name + sign-out. */
 .topbar-divider { align-self: stretch; width: 1px; min-height: 22px; margin-inline: var(--space-1); background: var(--border); }
 .topbar-user { color: var(--text); font-weight: 500; }
+button.topbar-user { background: none; border: none; padding: 0; font: inherit; cursor: pointer; }
+button.topbar-user:hover { color: var(--primary); }
 .offline-badge { color: var(--warning-text); font-weight: 700; font-size: var(--text-xs); white-space: nowrap; }
 
 .admin-menu { position: relative; }
@@ -494,6 +496,7 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
   padding: var(--space-4) var(--space-5);
   box-shadow: var(--shadow-xs);
 }
+.profile-card { max-width: 480px; }
 .dashboard-widget-head { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-4); }
 /* The medicines widget is reference, not a round task — closed by default on the hub, one tap
    open for whoever wants it, no scroll cost for everyone else. */
