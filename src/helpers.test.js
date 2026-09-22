@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mergeKeyedSnapshots, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, EXTRA_PILL_SLOTS } from './helpers.js'
+import { mergeKeyedSnapshots, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, EXTRA_PILL_SLOTS, isDraftStale } from './helpers.js'
 
 test('mergeKeyedSnapshots keeps a local edit and adopts an unrelated server change', () => {
   const base = { a: '1', b: '2' }
@@ -61,4 +61,10 @@ test('applyExtraPillsQueue layers a pending create, update and delete onto serve
   assert.equal(result[0].patientName, 'Ali edited')
   assert.equal(result[0].pending, true)
   assert.equal(result[1].patientName, 'New patient')
+})
+
+test('isDraftStale is false only when the draft date matches today', () => {
+  assert.equal(isDraftStale({ date: '2026-09-22' }, '2026-09-22'), false)
+  assert.equal(isDraftStale({ date: '2026-09-14' }, '2026-09-22'), true)
+  assert.equal(isDraftStale({}, '2026-09-22'), true)
 })

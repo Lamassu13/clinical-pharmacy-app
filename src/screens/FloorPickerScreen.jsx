@@ -44,7 +44,7 @@ export default function FloorPickerScreen({
 
     {resumeDraft && (
       <button type="button" className="resume-draft-card" onClick={onResume}>
-        <span className="resume-draft-label">لديك جارت غير مكتمل</span>
+        <span className="resume-draft-label">لديك تعديلات لم تُحفظ</span>
         <strong>{resumeDraft.floor ? `الطابق ${resumeDraft.floor} — ${resumeDraft.ward}` : resumeDraft.ward}{resumeDraft.slot === 'extra' ? ' — إضافي' : ''} · {resumeDraft.date}</strong>
         <span className="resume-draft-go">المتابعة ←</span>
       </button>

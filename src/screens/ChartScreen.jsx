@@ -1,6 +1,7 @@
 import { useRef } from 'react'
 import hospitalLogo from '../assets/hospital-logo.png'
 import ChartDoseRow from '../components/ChartDoseRow.jsx'
+import { StatusCheck } from '../components/WardGlyph.jsx'
 
 // Presentational only: every piece of chart state, and the autosave/lock/draft logic that
 // maintains it, stays in App so that swapping in the sign-in card when a session lapses does
@@ -8,6 +9,7 @@ import ChartDoseRow from '../components/ChartDoseRow.jsx'
 export default function ChartScreen({
   selected, wardLabel, today, todayWeekday, isManager, dateIsToday, selectedDate, onChangeDate, onCopyToNextDay, onBack, onGoToPills, onGoToOrder, onExportPdf, pdfBusy, pdfExportError,
   chartSaveStatus, loadError, copyError, chartReady, lastChartSaveAt, onRetryLoad, onRetrySave, lockState, lockHolder,
+  chartCompleted, completedByName, onToggleComplete,
   chartClashNote, onDismissClashNote, droppedCells, undo, onUndo,
   medicines, patientNames, columnMedicines, quantities, totals, isThursday,
   activeRow, activeColumn, labelBelow, setActiveRow, setActiveColumn, setLabelBelow,
@@ -78,6 +80,7 @@ export default function ChartScreen({
       <div className="toolbar-actions">
         {isManager && !readOnly && <button className="secondary-button compact" onClick={onOpenMedicineForm}>+ علاج جديد</button>}
         {!readOnly && <button className="secondary-button compact" onClick={onAddColumn} disabled={!canAddColumn} title={canAddColumn ? undefined : `الحد الأقصى لعدد الأعمدة`}>+ عمود</button>}
+        {!readOnly && <button type="button" className="secondary-button compact" onClick={onToggleComplete}>{chartCompleted ? '✓ اكتملت — إلغاء' : 'اكتملت الجارت'}</button>}
         <button className="primary-button compact" onClick={onExportPdf} disabled={pdfBusy}>{pdfBusy ? 'جارٍ التحضير…' : 'طباعة A4 / PDF'}</button>
         <button className="secondary-button compact go-pills" onClick={onGoToPills}>استمارة الحبوب ←</button>
         <button className="secondary-button compact" onClick={onGoToOrder}>الطلبية ←</button>
@@ -87,6 +90,7 @@ export default function ChartScreen({
     <div className="chart-meta">
       {selected.slot === 'extra' && <span className="chart-slot-flag">جارت إضافي</span>}
       {lockState === 'editing' && <span className="chart-lock-mark">أنت تُحرّر</span>}
+      {chartCompleted && <span className="card-status card-status--done"><StatusCheck /> اكتملت{completedByName ? ` — ${completedByName}` : ''}</span>}
       {selected.floor && <span>الطابق: <b>{selected.floor}</b></span>}
       <span>الفرع: <b>{selected.ward}</b></span>
       <span>التاريخ: <b>{today}</b> — <b>{todayWeekday}</b></span>

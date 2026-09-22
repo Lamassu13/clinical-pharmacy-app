@@ -196,6 +196,11 @@ export const isoDate = (value) => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
+// A resumable chart draft (localStorage `cpa-chart-draft:*`) only makes sense for today — a
+// draft from a past date is orphaned (the tab that wrote it never flushed) and would otherwise
+// resurface forever, since a draft only clears on a successful save.
+export const isDraftStale = (meta, todayIso) => !meta?.date || meta.date !== todayIso
+
 // Ward-attention data, shared by the floor/ward hub and the manager dashboard: started counts
 // at ward granularity, plus one ranked list of wards needing a nudge — never-started first,
 // then started-but-stalled (idle QUIET_AFTER_MIN+ minutes). Every entry names the ward its row

@@ -113,9 +113,13 @@ router.get('/chart', requireAuth, async (request, response) => {
     query('SELECT row_number, patient_name FROM chart_patients WHERE chart_id = $1 ORDER BY row_number', [chartId]),
     query('SELECT cc.column_number, cc.medicine_id, COALESCE(m.name, cc.custom_name) AS medicine_name FROM chart_columns cc LEFT JOIN medicines m ON m.id = cc.medicine_id WHERE cc.chart_id = $1 ORDER BY cc.column_number', [chartId]),
     query('SELECT row_number, column_number, quantity FROM chart_quantities WHERE chart_id = $1', [chartId]),
-    query('SELECT version FROM daily_charts WHERE id = $1', [chartId]),
+    query('SELECT dc.version, dc.completed_at, dc.completed_by, u.full_name AS completed_by_name FROM daily_charts dc LEFT JOIN users u ON u.id = dc.completed_by WHERE dc.id = $1', [chartId]),
   ])
-  response.json({ chart: { patients: patients.rows, columns: columns.rows, quantities: quantities.rows, version: chartRow.rows[0].version }, lock })
+  response.json({ chart: {
+    patients: patients.rows, columns: columns.rows, quantities: quantities.rows,
+    version: chartRow.rows[0].version,
+    completedAt: chartRow.rows[0].completed_at, completedBy: chartRow.rows[0].completed_by, completedByName: chartRow.rows[0].completed_by_name,
+  }, lock })
 })
 
 // Acquire (or re-affirm) the edit lock. Granted when the chart is free, when the current
@@ -170,6 +174,31 @@ router.get('/chart/lock', requireAuth, async (request, response) => {
   if (target.status) return response.status(target.status).json({ message: target.message })
   response.json(lockView(await readLock(target.wardId, target.chartDate, target.slot), request.session.user.id))
 })
+
+// Manual "اكتملت الجارت" mark — a pharmacist's own signal, not inferred from chart content.
+// Independent of PUT /chart's heavy patients/columns/quantities payload and its optimistic-
+// concurrency version check on purpose: this is a small, low-frequency toggle, and keeping it
+// out of that save path avoids touching the merge/conflict machinery it relies on.
+router.patch('/chart/complete', requireAuth, async (request, response) => {
+  const target = await resolveLockTarget(request.body, request.session.user)
+  if (target.status) return response.status(target.status).json({ message: target.message })
+  const completed = request.body.completed === true
+  const wardId = target.wardId ?? await ensureWardId(target.floor, target.wardName)
+  const user = request.session.user
+  // No `version` touched here — it stays at the schema DEFAULT 0, so marking a brand-new
+  // chart complete before its first real save still matches that first PUT's expectedVersion=0.
+  const result = await query(
+    `INSERT INTO daily_charts (ward_id, chart_date, slot, created_by, updated_by, completed_at, completed_by)
+     VALUES ($1, $2, $3, $4, $4, $5, $6)
+     ON CONFLICT (ward_id, chart_date, slot) DO UPDATE
+       SET completed_at = $5, completed_by = $6
+     RETURNING completed_at, completed_by`,
+    [wardId, target.chartDate, target.slot, user.id, completed ? new Date() : null, completed ? user.id : null],
+  )
+  const row = result.rows[0]
+  response.json({ ok: true, completedAt: row.completed_at, completedBy: row.completed_by, completedByName: completed ? user.fullName : null })
+})
+
 router.put('/chart', requireAuth, async (request, response) => {
   const floor = request.body.floor ? clampInt(request.body.floor, 2, 10) : null
   const wardName = cleanText(request.body.ward, 120).trim()

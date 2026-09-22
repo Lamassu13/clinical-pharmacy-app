@@ -267,3 +267,41 @@ test('chart lock: one holder at a time, released and re-taken, and a stale lock 
   assert.equal((await a.post('/api/chart/lock', body)).body.ok, true)
   assert.equal((await b.get(`/api/chart/lock?${q}`)).body.mine, false)
 })
+
+test('PATCH /api/chart/complete: marks a brand-new chart complete, round-trips through GET, and clears', async () => {
+  const client = await loginAs({ role: 'user', floor: FLOOR })
+  const body = { floor: FLOOR, ward: WARD, date: DATE, slot: 'main' }
+
+  const marked = await client.patch('/api/chart/complete', { ...body, completed: true })
+  assert.equal(marked.status, 200)
+  assert.equal(marked.body.ok, true)
+  assert.ok(marked.body.completedAt)
+  assert.match(marked.body.completedByName, /Test User/)
+
+  const fetched = await client.get(`/api/chart?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=${DATE}&slot=main`)
+  assert.ok(fetched.body.chart.completedAt)
+  assert.match(fetched.body.chart.completedByName, /Test User/)
+
+  const cleared = await client.patch('/api/chart/complete', { ...body, completed: false })
+  assert.equal(cleared.body.completedAt, null)
+  const refetched = await client.get(`/api/chart?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=${DATE}&slot=main`)
+  assert.equal(refetched.body.chart.completedAt, null)
+})
+
+test('PATCH /api/chart/complete: marking complete before any save still lets that first save succeed at expectedVersion 0', async () => {
+  const client = await loginAs({ role: 'user', floor: FLOOR })
+  await client.patch('/api/chart/complete', { floor: FLOOR, ward: WARD, date: DATE, slot: 'main', completed: true })
+  const saved = await client.put('/api/chart', buildChartBody())
+  assert.equal(saved.status, 200)
+  assert.equal(saved.body.version, 1)
+})
+
+test('PATCH /api/chart/complete: refuses an anonymous request and one for an unassigned floor', async () => {
+  const anon = new ApiClient(baseUrl)
+  const anonResponse = await anon.patch('/api/chart/complete', { floor: FLOOR, ward: WARD, date: DATE, slot: 'main', completed: true })
+  assert.equal(anonResponse.status, 401)
+
+  const client = await loginAs({ role: 'user', floor: OTHER_FLOOR })
+  const wrongFloor = await client.patch('/api/chart/complete', { floor: FLOOR, ward: WARD, date: DATE, slot: 'main', completed: true })
+  assert.equal(wrongFloor.status, 403)
+})

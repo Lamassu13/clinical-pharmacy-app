@@ -104,6 +104,13 @@ DO $$ BEGIN
   END IF;
 END $$;
 
+-- Manual "chart complete" mark ("اكتملت الجارت") — pharmacist-set, not inferred from content
+-- (dashboard.startedWards already covers "has data"). completed_at NULL = not marked complete.
+-- Does not lock the chart; it stays editable and clears the moment a real edit follows
+-- (see PATCH /api/chart/complete and noteChartEdit in src/App.jsx).
+ALTER TABLE daily_charts ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
+ALTER TABLE daily_charts ADD COLUMN IF NOT EXISTS completed_by BIGINT REFERENCES users(id);
+
 -- Keyed by the medicine's normalised name, not by a catalogue id. A chart column is free
 -- text: it links to the catalogue when it matches one, and stands alone when it does not.
 -- Keying on the id meant an unlinked column could hold no dose times at all, and deleting
