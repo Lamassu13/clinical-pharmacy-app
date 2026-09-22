@@ -250,7 +250,7 @@ function FloorTrendChart({ label, series, maxCount }) {
 // عدد المرضى الكلي لكل طابق، إضافةً إلى الردهات الخاصة (العناية المركزة) التي لا تتبع طابقًا
 // مرقّمًا — يومًا بيوم. PatientsByFloorWidget أعلاه يجيب "كم، خلال مدة يختارها المدير"؛ هذا
 // يجيب "هل الاتجاه صاعد أم هابط"، وهو ما لا يظهره رقم تراكمي واحد.
-export function PatientsDailyTrendWidget({ dailyPatientsByFloor, loading, error, onRetry }) {
+export function PatientsDailyTrendWidget({ dailyPatientsByFloor, open, loading, error, onRetry }) {
   const dates = lastDates(TREND_DAYS)
   const byKeyDate = new Map((dailyPatientsByFloor || []).map((row) => [`${row.floor ?? row.ward}|${row.date}`, row.count]))
   const entities = [
@@ -263,13 +263,13 @@ export function PatientsDailyTrendWidget({ dailyPatientsByFloor, loading, error,
   }))
   const maxCount = Math.max(0, ...entities.flatMap(({ series }) => series.map((day) => day.count)))
   return (
-    <div className="dashboard-widget dashboard-widget--wide">
-      <div className="dashboard-widget-head">
+    <details className="dashboard-widget dashboard-widget--wide dashboard-widget--collapsible" open={open || undefined}>
+      <summary className="dashboard-widget-head">
         <span className="dashboard-widget-icon" aria-hidden="true">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M3.5 19h17"></path><path d="M4.5 15.5 9 10l3.5 3 6-6.5"></path><path d="M15 6.5h3.5V10"></path></svg>
         </span>
         <strong>اتجاه عدد المرضى يوميًا — آخر {TREND_DAYS} أيام</strong>
-      </div>
+      </summary>
       {loading ? <SkeletonRows /> : error ? <DashboardError onRetry={onRetry} /> : maxCount === 0 ? (
         <p className="dashboard-widget-empty">لا يوجد مرضى مسجّلون خلال هذه المدة.</p>
       ) : (
@@ -277,7 +277,7 @@ export function PatientsDailyTrendWidget({ dailyPatientsByFloor, loading, error,
           {entities.map(({ key, label, series }) => <FloorTrendChart key={key} label={label} series={series} maxCount={maxCount} />)}
         </div>
       )}
-    </div>
+    </details>
   )
 }
 
@@ -298,7 +298,7 @@ const datesBetween = (from, to) => {
 // The manager-chosen-range counterpart to the fixed-7-day trend above: a plain table (one row
 // per floor/ICU, one column per actual calendar date in the range) rather than a chart, since
 // the point here is reading exact counts over whatever window the manager picks, not a shape.
-export function PatientsRangeTableWidget({ patientsByFloorRange, rangeFrom, setRangeFrom, rangeTo, setRangeTo, loading, error, onRetry }) {
+export function PatientsRangeTableWidget({ patientsByFloorRange, rangeFrom, setRangeFrom, rangeTo, setRangeTo, open, loading, error, onRetry }) {
   const hasRange = Boolean(rangeFrom && rangeTo)
   const dates = hasRange ? datesBetween(rangeFrom, rangeTo) : []
   const byKeyDate = new Map((patientsByFloorRange || []).map((row) => [`${row.floor ?? row.ward}|${row.date}`, row.count]))
@@ -307,13 +307,13 @@ export function PatientsRangeTableWidget({ patientsByFloorRange, rangeFrom, setR
     ...specialWards.map((wardName) => ({ key: wardName, label: wardName })),
   ]
   return (
-    <div className="dashboard-widget dashboard-widget--wide">
-      <div className="dashboard-widget-head">
+    <details className="dashboard-widget dashboard-widget--wide dashboard-widget--collapsible" open={open || undefined}>
+      <summary className="dashboard-widget-head">
         <span className="dashboard-widget-icon" aria-hidden="true">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="2" fill="currentColor" fillOpacity="0.14" stroke="none"></rect><rect x="3.5" y="5" width="17" height="15" rx="2"></rect><circle cx="12" cy="3.25" r="1.25" fill="currentColor" stroke="none"></circle><line x1="7.5" y1="10" x2="16.5" y2="10"></line><line x1="7.5" y1="13.5" x2="16.5" y2="13.5"></line></svg>
         </span>
         <strong>عدد المرضى حسب الطابق والتاريخ</strong>
-      </div>
+      </summary>
       <div className="purge-dates">
         <label>من تاريخ<input type="date" value={rangeFrom} onChange={(event) => setRangeFrom(event.target.value)} /></label>
         <label>إلى تاريخ<input type="date" value={rangeTo} onChange={(event) => setRangeTo(event.target.value)} /></label>
@@ -331,7 +331,7 @@ export function PatientsRangeTableWidget({ patientsByFloorRange, rangeFrom, setR
           </tr>)}</tbody>
         </table></div>
       )}
-    </div>
+    </details>
   )
 }
 

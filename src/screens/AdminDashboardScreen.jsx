@@ -1,10 +1,14 @@
 import { floors, specialWards, roleLabels } from '../constants.js'
-import { TopMedicinesWidget, PatientsByFloorWidget, PatientsDailyTrendWidget, PatientsRangeTableWidget } from '../components/DashboardWidgets.jsx'
+import { TopMedicinesWidget, PatientsByFloorWidget, PatientsDailyTrendWidget, PatientsRangeTableWidget, WardStatusBand } from '../components/DashboardWidgets.jsx'
 import { ChevronStart } from '../components/WardGlyph.jsx'
+import { wardAttention } from '../helpers.js'
 
 // The manager's landing page inside «الإدارة» — an at-a-glance answer to "does anything need
-// my attention right now", plus the fastest way into whichever section it points at. Every
-// stat card below reuses .location-card verbatim (icon badge in .floor-number, value+label in
+// my attention right now", plus the fastest way into whichever section it points at. The
+// highest-stakes answer (which wards haven't charted yet) gets the WardStatusBand itself, same
+// as the floor/ward hub — not a stat card, so it never has to compete with "medicines in the
+// registry" for weight or route through an admin screen to be useful. Every stat card below it
+// reuses .location-card verbatim (icon badge in .floor-number, value+label in
 // .location-card-body, chevron in .arrow) rather than inventing a parallel "stat tile" —
 // it's the exact same "a number that opens a screen" shape the floor/ward picker already is.
 function RequestsIcon() {
@@ -35,14 +39,6 @@ function FormsIcon() {
     <path d="M14 3.5V7.5h4" /><path d="M9 12h6M9 15.5h6" />
   </svg>
 }
-function WardsIcon() {
-  return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <path d="M3 13h18v4" fill="currentColor" fillOpacity="0.14" stroke="none" /><path d="M3 13h18v4" />
-    <path d="M3 8v9" /><path d="M21 17v-4H3" />
-    <path d="M6 13v-1.5A1.5 1.5 0 0 1 7.5 10h3A1.5 1.5 0 0 1 12 11.5V13" />
-  </svg>
-}
-
 function StatCard({ icon, value, label, onClick }) {
   return <button type="button" className="location-card location-card--link" onClick={onClick}>
     <span className="floor-number">{icon}</span>
@@ -52,7 +48,7 @@ function StatCard({ icon, value, label, onClick }) {
 }
 
 export default function AdminDashboardScreen({
-  adminHeader, isAdmin, onNavigate,
+  adminHeader, isAdmin, onNavigate, onOpenWard,
   registrations, allUsers, adminMedicines, treatmentForms,
   dashboard, dashboardLoading, dashboardError, onRetryDashboard,
   medicinesPeriod, setMedicinesPeriod, patientsPeriod, setPatientsPeriod,
@@ -60,12 +56,9 @@ export default function AdminDashboardScreen({
   pendingFloor, setPendingFloor, busy, onApprove, onReject,
   registrationsError, adminSuccess, confirmModal,
 }) {
-  // Ward granularity, same rule as the floor/ward picker's own count (WardStatusBand):
-  // one key per started ward, a floor's total is the sum of its sub-wards.
-  const startedKeys = new Set((dashboard?.startedWards ?? []).map((item) => `${item.floor ?? 'x'}|${item.ward}`))
-  const totalWards = floors.reduce((sum, floor) => sum + floor.wards.length, 0) + specialWards.length
-  const startedWards = floors.reduce((sum, floor) => sum + floor.wards.filter((ward) => startedKeys.has(`${floor.number}|${ward}`)).length, 0)
-    + specialWards.filter((ward) => startedKeys.has(`x|${ward}`)).length
+  // The morning round's own answer (WardStatusBand), same as the floor/ward hub — the
+  // reason this screen exists gets the hub's full treatment, not a bare fraction.
+  const { startedCount, totalCount, attention } = wardAttention(floors, specialWards, dashboard)
 
   const roleCounts = allUsers.reduce((counts, user) => ({ ...counts, [user.role]: (counts[user.role] || 0) + 1 }), {})
   const roleBreakdown = ['admin', 'supervisor', 'user'].map((role) => `${roleCounts[role] || 0} ${roleLabels[role]}`).join(' · ')
@@ -78,14 +71,19 @@ export default function AdminDashboardScreen({
     {registrationsError && <p className="form-error" role="alert">{registrationsError}</p>}
     {adminSuccess && <p className="form-success" role="status">{adminSuccess}</p>}
 
+    <WardStatusBand
+      startedCount={startedCount} totalCount={totalCount} attention={attention}
+      onOpen={onOpenWard}
+      loading={dashboardLoading} error={dashboardError} onRetry={onRetryDashboard}
+    />
+
     <div className="location-grid">
       {isAdmin && (
         <StatCard icon={<RequestsIcon />} value={registrations.length} label="طلبات بانتظار الموافقة" onClick={() => onNavigate('requests')} />
       )}
-      <StatCard icon={<UsersIcon />} value={allUsers.length} label={`المستخدمون — ${roleBreakdown}`} onClick={() => onNavigate('users')} />
+      <StatCard icon={<UsersIcon />} value={allUsers.length} label={<span title={roleBreakdown}>{`المستخدمون — ${roleBreakdown}`}</span>} onClick={() => onNavigate('users')} />
       <StatCard icon={<MedicineIcon />} value={adminMedicines.length} label="الأدوية في القائمة" onClick={() => onNavigate('medicines')} />
       <StatCard icon={<FormsIcon />} value={treatmentForms.length} label="استمارات العلاج" onClick={() => onNavigate('forms')} />
-      <StatCard icon={<WardsIcon />} value={`${startedWards} / ${totalWards}`} label="الردهات التي بدأت جارتها اليوم" onClick={() => onNavigate('floors')} />
     </div>
 
     {isAdmin && recentRequests.length > 0 && (
@@ -127,6 +125,9 @@ export default function AdminDashboardScreen({
         loading={dashboardLoading} error={dashboardError} onRetry={onRetryDashboard}
       />
     </div>
+    {/* Trend and range widgets are closed by default, like the medicines widget on the shared
+        hub — reference content, not the reason this screen exists, so neither adds scroll cost
+        for a manager who only opened it to check ward status or approve a request. */}
     <PatientsDailyTrendWidget
       dailyPatientsByFloor={dashboard?.dailyPatientsByFloor ?? []}
       loading={dashboardLoading} error={dashboardError} onRetry={onRetryDashboard}

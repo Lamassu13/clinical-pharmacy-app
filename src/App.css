@@ -438,7 +438,7 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 .location-card--link { cursor: pointer; }
 .location-card--link:hover, .location-card--link:focus-visible { transform: translateY(-3px); box-shadow: var(--shadow-sm); }
 .location-card strong, .location-card small { display: block; }
-.location-card small { margin-top: var(--space-1); color: var(--text-muted); font-size: var(--text-xs); }
+.location-card small { margin-top: var(--space-1); color: var(--text-muted); font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .location-card-body { flex: 1 1 auto; min-width: 0; }
 /* An independent ward is a different kind of destination from a numbered floor — say so in
    words, not only with the darker glyph badge. */

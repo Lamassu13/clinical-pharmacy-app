@@ -1,6 +1,7 @@
 import DashboardWidgets, { WardStatusBand } from '../components/DashboardWidgets.jsx'
 import { WardGlyph, ChevronStart, StatusCheck, CardStatus } from '../components/WardGlyph.jsx'
 import WardActions from '../components/WardActions.jsx'
+import { wardAttention } from '../helpers.js'
 
 // The floor/special-ward grid. `floors` / `specialWards` arrive already narrowed to what this
 // user may see (their assignment, or the whole unit for a manager) — no post-paint DOM hiding.
@@ -14,38 +15,10 @@ export default function FloorPickerScreen({
 }) {
   // Count at ward granularity, not floor: a floor with one of three wards started is one
   // third done, and the two that haven't are exactly what the morning round is there to
-  // catch. One key per started ward — a ward with both a main and an extra chart comes back
-  // from the dashboard twice.
-  const startedKeys = new Set((dashboard?.startedWards ?? []).map((item) => `${item.floor ?? 'x'}|${item.ward}`))
-  const floorStarted = (floor) => floor.wards.filter((ward) => startedKeys.has(`${floor.number}|${ward}`)).length
-  const startedSpecialWards = new Set(specialWards.filter((ward) => startedKeys.has(`x|${ward}`)))
-  const totalCount = floors.reduce((sum, floor) => sum + floor.wards.length, 0) + specialWards.length
-  const startedCount = floors.reduce((sum, floor) => sum + floorStarted(floor), 0) + startedSpecialWards.size
-  // The band's one ranked list of wards that need a nudge, most urgent first: never-started
-  // (nothing is happening there), then started-but-stalled (someone stopped mid-round). Every
-  // row opens that ward's chart directly — the manager wants to see it, not re-navigate.
-  const QUIET_AFTER_MIN = 15
-  const notStarted = [
-    ...floors.flatMap((floor) => floor.wards
-      .filter((ward) => !startedKeys.has(`${floor.number}|${ward}`))
-      .map((ward) => ({ key: `p|${floor.number}|${ward}`, kind: 'pending', floorNumber: floor.number, ward, slot: 'main', name: `الطابق ${floor.number} — ${ward}` }))),
-    ...specialWards
-      .filter((ward) => !startedSpecialWards.has(ward))
-      .map((ward) => ({ key: `p|x|${ward}`, kind: 'pending', floorNumber: null, ward, slot: 'main', name: ward })),
-  ]
-  const stalled = (dashboard?.startedWards ?? [])
-    .filter((item) => (item.minutesQuiet ?? 0) >= QUIET_AFTER_MIN)
-    .sort((a, b) => (b.minutesQuiet ?? 0) - (a.minutesQuiet ?? 0))
-    .map((item) => ({
-      key: `s|${item.floor ?? 'x'}|${item.ward}|${item.slot || 'main'}`,
-      kind: 'stopped',
-      floorNumber: item.floor ?? null,
-      ward: item.ward,
-      slot: item.slot || 'main',
-      name: `${item.floor ? `الطابق ${item.floor} — ${item.ward}` : item.ward}${item.slot === 'extra' ? ' — إضافي' : ''}`,
-      updatedAt: item.updatedAt,
-    }))
-  const attention = [...notStarted, ...stalled]
+  // catch. The band's one ranked list of wards that need a nudge, most urgent first: never-
+  // started, then started-but-stalled — every row opens that ward's chart directly. Shared
+  // with AdminDashboardScreen (its "لوحة التحكم" needs the same answer) via helpers.js.
+  const { startedCount, totalCount, floorStarted, attention } = wardAttention(floors, specialWards, dashboard)
 
   // For a manager reading the band, the grid is a second copy of the same 26 wards — so lead
   // with the floors that still need pushing and fold the finished ones out of the way.

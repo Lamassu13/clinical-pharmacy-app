@@ -196,6 +196,40 @@ export const isoDate = (value) => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
+// Ward-attention data, shared by the floor/ward hub and the manager dashboard: started counts
+// at ward granularity, plus one ranked list of wards needing a nudge — never-started first,
+// then started-but-stalled (idle QUIET_AFTER_MIN+ minutes). Every entry names the ward its row
+// opens, so a caller with a chart-opening handler can jump straight to it.
+const QUIET_AFTER_MIN = 15
+export const wardAttention = (floors, specialWards, dashboard) => {
+  const startedKeys = new Set((dashboard?.startedWards ?? []).map((item) => `${item.floor ?? 'x'}|${item.ward}`))
+  const floorStarted = (floor) => floor.wards.filter((ward) => startedKeys.has(`${floor.number}|${ward}`)).length
+  const startedSpecialWards = new Set(specialWards.filter((ward) => startedKeys.has(`x|${ward}`)))
+  const totalCount = floors.reduce((sum, floor) => sum + floor.wards.length, 0) + specialWards.length
+  const startedCount = floors.reduce((sum, floor) => sum + floorStarted(floor), 0) + startedSpecialWards.size
+  const notStarted = [
+    ...floors.flatMap((floor) => floor.wards
+      .filter((ward) => !startedKeys.has(`${floor.number}|${ward}`))
+      .map((ward) => ({ key: `p|${floor.number}|${ward}`, kind: 'pending', floorNumber: floor.number, ward, slot: 'main', name: `الطابق ${floor.number} — ${ward}` }))),
+    ...specialWards
+      .filter((ward) => !startedSpecialWards.has(ward))
+      .map((ward) => ({ key: `p|x|${ward}`, kind: 'pending', floorNumber: null, ward, slot: 'main', name: ward })),
+  ]
+  const stalled = (dashboard?.startedWards ?? [])
+    .filter((item) => (item.minutesQuiet ?? 0) >= QUIET_AFTER_MIN)
+    .sort((a, b) => (b.minutesQuiet ?? 0) - (a.minutesQuiet ?? 0))
+    .map((item) => ({
+      key: `s|${item.floor ?? 'x'}|${item.ward}|${item.slot || 'main'}`,
+      kind: 'stopped',
+      floorNumber: item.floor ?? null,
+      ward: item.ward,
+      slot: item.slot || 'main',
+      name: `${item.floor ? `الطابق ${item.floor} — ${item.ward}` : item.ward}${item.slot === 'extra' ? ' — إضافي' : ''}`,
+      updatedAt: item.updatedAt,
+    }))
+  return { startedCount, totalCount, floorStarted, attention: [...notStarted, ...stalled] }
+}
+
 export const locationBody = (value) => {
   const asFloor = Number(value)
   if (floors.some((item) => item.number === asFloor)) return { floor: asFloor }
