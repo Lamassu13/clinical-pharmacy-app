@@ -257,9 +257,13 @@ test('chart lock: one holder at a time, released and re-taken, and a stale lock 
   assert.equal((await a.get(`/api/chart?${q}`)).body.lock.mine, true)
   assert.equal((await b.get(`/api/chart?${q}`)).body.lock.mine, false)
 
-  // A releases; B sees it free and takes it.
+  // A releases; B sees it free.
   await a.delete(`/api/chart/lock?${q}`)
   assert.equal((await b.get(`/api/chart/lock?${q}`)).body.held, false)
+  // A resumed tab (iPad bfcache: pagehide already released it) re-claims a free lock by heartbeat.
+  assert.equal((await a.patch('/api/chart/lock', body)).body.ok, true)
+  assert.equal((await b.get(`/api/chart/lock?${q}`)).body.held, true)
+  await a.delete(`/api/chart/lock?${q}`)
   assert.equal((await b.post('/api/chart/lock', body)).body.ok, true)
 
   // A lock whose heartbeat has gone stale can be overwritten by anyone.

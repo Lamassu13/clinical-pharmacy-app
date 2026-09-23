@@ -18,10 +18,10 @@ export const readSlot = (value) => (CHART_SLOTS.includes(value) ? value : 'main'
 // treated as free — the ~30s client heartbeat means 4 missed beats releases it.
 const LOCK_TTL_SECONDS = 120
 
-// Same access rules as GET/PUT /chart, plus the ward_id the lock is keyed by. `source` is the
-// query or the body. Returns { status, message } on rejection, { wardId, chartDate, slot } otherwise;
-// wardId is null when this ward has never been touched (no wards row yet).
-const resolveLockTarget = async (source, user) => {
+// The floor/ward/date/slot every chart-scoped route (chart, lock, order, pills) is addressed by,
+// validated and access-checked. `source` is the query or the body. Returns { status, message }
+// on rejection, { floor, wardName, chartDate, slot } otherwise.
+export const readLocation = (source, user) => {
   const floor = source.floor ? clampInt(source.floor, 2, 10) : null
   const wardName = cleanText(source.ward, 120).trim()
   const chartDate = source.date
@@ -29,8 +29,16 @@ const resolveLockTarget = async (source, user) => {
   if (!wardName || !isIsoDate(chartDate)) return { status: 400, message: 'بيانات الردهة والتاريخ مطلوبة' }
   if (!isKnownWard(floor, wardName)) return { status: 400, message: 'الردهة غير معروفة' }
   if (!canAccessLocation(user, floor, wardName)) return { status: 403, message: 'لا تملك صلاحية لهذه الردهة' }
-  const wardResult = await query('SELECT id FROM wards WHERE floor_number IS NOT DISTINCT FROM $1 AND name = $2 ORDER BY id LIMIT 1', [floor, wardName])
-  return { wardId: wardResult.rows[0]?.id ?? null, floor, wardName, chartDate, slot: readSlot(source.slot) }
+  return { floor, wardName, chartDate, slot: readSlot(source.slot) }
+}
+
+// readLocation plus the ward_id the lock is keyed by — null when this ward has never been
+// touched (no wards row yet).
+const resolveLockTarget = async (source, user) => {
+  const target = readLocation(source, user)
+  if (target.status) return target
+  const wardResult = await query('SELECT id FROM wards WHERE floor_number IS NOT DISTINCT FROM $1 AND name = $2 ORDER BY id LIMIT 1', [target.floor, target.wardName])
+  return { ...target, wardId: wardResult.rows[0]?.id ?? null }
 }
 
 // ponytail: a brand-new special ward (floor_number IS NULL, no unique across NULLs) touched by
@@ -93,14 +101,9 @@ router.post('/charts/purge', requireManager, async (request, response) => {
 })
 
 router.get('/chart', requireAuth, async (request, response) => {
-  const floor = request.query.floor ? clampInt(request.query.floor, 2, 10) : null
-  const wardName = cleanText(request.query.ward, 120).trim()
-  const chartDate = request.query.date
-  if (request.query.floor && (floor === null || !ALLOWED_FLOORS.includes(floor))) return response.status(400).json({ message: 'الطابق غير مسموح' })
-  if (!wardName || !isIsoDate(chartDate)) return response.status(400).json({ message: 'بيانات الردهة والتاريخ مطلوبة' })
-  if (!isKnownWard(floor, wardName)) return response.status(400).json({ message: 'الردهة غير معروفة' })
-  if (!canAccessLocation(request.session.user, floor, wardName)) return response.status(403).json({ message: 'لا تملك صلاحية لهذه الردهة' })
-  const slot = readSlot(request.query.slot)
+  const location = readLocation(request.query, request.session.user)
+  if (location.status) return response.status(location.status).json({ message: location.message })
+  const { floor, wardName, chartDate, slot } = location
   const wardResult = await query('SELECT id, floor_number, name FROM wards WHERE floor_number IS NOT DISTINCT FROM $1 AND name = $2 ORDER BY id LIMIT 1', [floor, wardName])
   const wardId = wardResult.rows[0]?.id ?? null
   // The read-only device polls this too, so the lock rides along on every GET.
@@ -125,7 +128,11 @@ router.get('/chart', requireAuth, async (request, response) => {
 // Acquire (or re-affirm) the edit lock. Granted when the chart is free, when the current
 // lock has gone stale, or when it is already this user's. Otherwise 200 with { ok: false }
 // and who holds it, so the client can drop into read-only.
-router.post('/chart/lock', requireAuth, async (request, response) => {
+// Also the heartbeat (PATCH): re-claiming a free lock matters there too. iPad Safari fires
+// pagehide — which releases the lock — when it parks a tab in the back/forward cache, and a
+// resumed tab whose heartbeat could only refresh an existing row stayed 'stale' for good while
+// any other device was free to take the chart.
+const acquireLock = async (request, response) => {
   const target = await resolveLockTarget(request.body, request.session.user)
   if (target.status) return response.status(target.status).json({ message: target.message })
   const wardId = target.wardId ?? await ensureWardId(target.floor, target.wardName)
@@ -143,20 +150,11 @@ router.post('/chart/lock', requireAuth, async (request, response) => {
   )
   if (granted.rows[0]) return response.json({ ok: true })
   response.json({ ok: false, ...lockView(await readLock(wardId, target.chartDate, target.slot), user.id) })
-})
-
-// Heartbeat — keeps this user's lock alive. { ok: false } means the lock was lost (taken
-// after it went stale); the client keeps editing locally and a save will 409 into the merge fallback.
-router.patch('/chart/lock', requireAuth, async (request, response) => {
-  const target = await resolveLockTarget(request.body, request.session.user)
-  if (target.status) return response.status(target.status).json({ message: target.message })
-  if (!target.wardId) return response.json({ ok: false })
-  const kept = await query(
-    'UPDATE chart_locks SET heartbeat_at = NOW() WHERE ward_id = $1 AND chart_date = $2 AND slot = $3 AND holder_id = $4 RETURNING holder_id',
-    [target.wardId, target.chartDate, target.slot, request.session.user.id],
-  )
-  response.json({ ok: kept.rows.length > 0 })
-})
+}
+router.post('/chart/lock', requireAuth, acquireLock)
+// Heartbeat. { ok: false } means another device holds a fresh lock; the client keeps editing
+// locally and a save will 409 into the merge fallback.
+router.patch('/chart/lock', requireAuth, acquireLock)
 
 // Release — on back-out / tab-close. Idempotent.
 router.delete('/chart/lock', requireAuth, async (request, response) => {
@@ -200,14 +198,9 @@ router.patch('/chart/complete', requireAuth, async (request, response) => {
 })
 
 router.put('/chart', requireAuth, async (request, response) => {
-  const floor = request.body.floor ? clampInt(request.body.floor, 2, 10) : null
-  const wardName = cleanText(request.body.ward, 120).trim()
-  const chartDate = request.body.date
-  if (request.body.floor && (floor === null || !ALLOWED_FLOORS.includes(floor))) return response.status(400).json({ message: 'الطابق غير مسموح' })
-  if (!wardName || !isIsoDate(chartDate)) return response.status(400).json({ message: 'بيانات الردهة والتاريخ مطلوبة' })
-  if (!isKnownWard(floor, wardName)) return response.status(400).json({ message: 'الردهة غير معروفة' })
-  if (!canAccessLocation(request.session.user, floor, wardName)) return response.status(403).json({ message: 'لا تملك صلاحية لهذه الردهة' })
-  const slot = readSlot(request.body.slot)
+  const location = readLocation(request.body, request.session.user)
+  if (location.status) return response.status(location.status).json({ message: location.message })
+  const { floor, wardName, chartDate, slot } = location
 
   const patients = (Array.isArray(request.body.patients) ? request.body.patients : [])
     .map((patient) => ({ rowNumber: clampInt(patient?.rowNumber, 1, MAX_PATIENT_ROWS), name: cleanText(patient?.name, 200) }))
@@ -326,15 +319,12 @@ router.put('/chart', requireAuth, async (request, response) => {
 // on the wrong patient's printed administration form. Reinsert rather than UPDATE ... - 1:
 // the primary key is checked per row, so shifting rows in an unspecified order collides.
 router.post('/chart/collapse-row', requireAuth, async (request, response) => {
-  const floor = request.body.floor ? clampInt(request.body.floor, 2, 10) : null
-  const wardName = cleanText(request.body.ward, 120).trim()
-  const chartDate = request.body.date
+  const location = readLocation(request.body, request.session.user)
+  if (location.status) return response.status(location.status).json({ message: location.message })
+  const { floor, wardName, chartDate, slot } = location
   const rowNumber = clampInt(request.body.rowNumber, 1, MAX_PATIENT_ROWS)
-  if (request.body.floor && (floor === null || !ALLOWED_FLOORS.includes(floor))) return response.status(400).json({ message: 'الطابق غير مسموح' })
-  if (!wardName || !isIsoDate(chartDate) || rowNumber === null) return response.status(400).json({ message: 'بيانات الردهة والتاريخ والصف مطلوبة' })
-  if (!isKnownWard(floor, wardName)) return response.status(400).json({ message: 'الردهة غير معروفة' })
-  if (!canAccessLocation(request.session.user, floor, wardName)) return response.status(403).json({ message: 'لا تملك صلاحية لهذه الردهة' })
-  const chartId = await resolveChartId(floor, wardName, chartDate, readSlot(request.body.slot))
+  if (rowNumber === null) return response.status(400).json({ message: 'الصف مطلوب' })
+  const chartId = await resolveChartId(floor, wardName, chartDate, slot)
   // Nothing saved for this day yet, so there is no pill data to keep in step.
   if (!chartId) return response.json({ ok: true })
   const client = await pool.connect()
@@ -369,14 +359,10 @@ router.post('/chart/collapse-row', requireAuth, async (request, response) => {
 // quantity summed across every patient, plus the same total spelled out in Arabic. Read-only
 // and fully derived — nothing is stored.
 router.get('/order', requireAuth, async (request, response) => {
-  const floor = request.query.floor ? clampInt(request.query.floor, 2, 10) : null
-  const wardName = cleanText(request.query.ward, 120).trim()
-  const chartDate = request.query.date
-  if (request.query.floor && (floor === null || !ALLOWED_FLOORS.includes(floor))) return response.status(400).json({ message: 'الطابق غير مسموح' })
-  if (!wardName || !isIsoDate(chartDate)) return response.status(400).json({ message: 'بيانات الردهة والتاريخ مطلوبة' })
-  if (!isKnownWard(floor, wardName)) return response.status(400).json({ message: 'الردهة غير معروفة' })
-  if (!canAccessLocation(request.session.user, floor, wardName)) return response.status(403).json({ message: 'لا تملك صلاحية لهذه الردهة' })
-  const chartId = await resolveChartId(floor, wardName, chartDate, readSlot(request.query.slot))
+  const location = readLocation(request.query, request.session.user)
+  if (location.status) return response.status(location.status).json({ message: location.message })
+  const { floor, wardName, chartDate, slot } = location
+  const chartId = await resolveChartId(floor, wardName, chartDate, slot)
   // Thursday means a 2-day supply (Friday is the ward's day off) — the chart itself shows a
   // second "المجموع المضاعف" total alongside the normal one on Thursday; the requisition
   // mirrors that with a doubled quantity alongside the normal one, not in place of it.
