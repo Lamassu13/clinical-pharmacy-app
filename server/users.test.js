@@ -69,3 +69,15 @@ test('DELETE /api/users/:id: two admins deleting each other at the same time nev
   const statuses = [resultA.status, resultB.status].sort()
   assert.deepEqual(statuses, [200, 400])
 })
+
+test('DELETE /api/users/:id: a user who marked a chart complete, uploaded a form or made an extra pill form can still be deleted', async () => {
+  const { client: acting } = await loginAs({ role: 'admin' })
+  const { client: target, id } = await loginAs({ role: 'user', floor: 3 })
+  assert.equal((await target.patch('/api/chart/complete', { floor: 3, ward: 'ردهة الخاص', date: '2026-02-10', completed: true })).status, 200)
+  assert.equal((await target.post('/api/extra-pills', { floor: 3, ward: 'ردهة الخاص' })).status, 201)
+  await pool.query("INSERT INTO treatment_forms (title, file_name, file_size, file_data, uploaded_by) VALUES ('t', 'f.pdf', 4, '\\x25504446', $1)", [id])
+
+  assert.equal((await acting.delete(`/api/users/${id}`)).status, 200)
+  const { rows } = await pool.query('SELECT id FROM users WHERE id = $1', [id])
+  assert.equal(rows.length, 0)
+})

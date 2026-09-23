@@ -340,14 +340,14 @@ router.post('/chart/collapse-row', requireAuth, async (request, response) => {
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
-    const entries = await client.query('SELECT patient_row_number, medicine_key, dose_time, usage_method, note FROM pill_entries WHERE chart_id = $1 AND patient_row_number > $2 ORDER BY patient_row_number', [chartId, rowNumber])
+    const entries = await client.query('SELECT patient_row_number, medicine_key, dose_time, usage_method, note, pill_qty, pill_name FROM pill_entries WHERE chart_id = $1 AND patient_row_number > $2 ORDER BY patient_row_number', [chartId, rowNumber])
     const rooms = await client.query('SELECT patient_row_number, room_number FROM pill_patient_meta WHERE chart_id = $1 AND patient_row_number > $2 ORDER BY patient_row_number', [chartId, rowNumber])
     await client.query('DELETE FROM pill_entries WHERE chart_id = $1 AND patient_row_number >= $2', [chartId, rowNumber])
     await client.query('DELETE FROM pill_patient_meta WHERE chart_id = $1 AND patient_row_number >= $2', [chartId, rowNumber])
     if (entries.rowCount) {
       await client.query(
-        'INSERT INTO pill_entries (chart_id, patient_row_number, medicine_key, dose_time, usage_method, note) SELECT $1, prn, mk, dt, um, nt FROM UNNEST($2::int[], $3::text[], $4::text[], $5::text[], $6::text[]) AS u(prn, mk, dt, um, nt)',
-        [chartId, entries.rows.map((row) => row.patient_row_number - 1), entries.rows.map((row) => row.medicine_key), entries.rows.map((row) => row.dose_time), entries.rows.map((row) => row.usage_method), entries.rows.map((row) => row.note)],
+        'INSERT INTO pill_entries (chart_id, patient_row_number, medicine_key, dose_time, usage_method, note, pill_qty, pill_name) SELECT $1, prn, mk, dt, um, nt, pq, pn FROM UNNEST($2::int[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::text[]) AS u(prn, mk, dt, um, nt, pq, pn)',
+        [chartId, entries.rows.map((row) => row.patient_row_number - 1), entries.rows.map((row) => row.medicine_key), entries.rows.map((row) => row.dose_time), entries.rows.map((row) => row.usage_method), entries.rows.map((row) => row.note), entries.rows.map((row) => row.pill_qty), entries.rows.map((row) => row.pill_name)],
       )
     }
     if (rooms.rowCount) {

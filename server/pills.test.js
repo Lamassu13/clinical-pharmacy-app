@@ -176,3 +176,17 @@ test('GET /api/pills: the CCU ward always shows English, even when the medicine 
   assert.equal(med?.name, 'Metronidazole 500mg tab')
   assert.equal(med?.arabicName, '', 'CCU never carries the Arabic label')
 })
+
+test('POST /api/chart/collapse-row: pill_qty and pill_name move up with the patient', async () => {
+  const client = await loginAs({ role: 'user', floor: FLOOR })
+  await client.put('/api/chart', chartBody())
+  await client.put('/api/pills', {
+    floor: FLOOR, ward: WARD, date: DATE,
+    entries: [{ patientRowNumber: 3, medicineKey: KEY, doseTime: '٨ صباحًا', pillQty: '5', pillName: 'أسبرين' }],
+    rooms: {},
+  })
+  assert.equal((await client.post('/api/chart/collapse-row', { floor: FLOOR, ward: WARD, date: DATE, rowNumber: 2 })).status, 200)
+
+  const { rows } = await pool.query('SELECT patient_row_number, dose_time, pill_qty, pill_name FROM pill_entries')
+  assert.deepEqual(rows, [{ patient_row_number: 2, dose_time: '٨ صباحًا', pill_qty: '5', pill_name: 'أسبرين' }])
+})
