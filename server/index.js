@@ -400,13 +400,17 @@ const setUserAccess = async (userId, location, assignedBy) => {
     await client.query('COMMIT')
   } catch (error) { await client.query('ROLLBACK'); throw error } finally { client.release() }
 }
+// A supervisor may place users and supervisors, but not an admin — doing so revokes the
+// admin's sessions, which would let a supervisor log the manager out at will.
+const canReassign = (actor, target) => actor.role === 'admin' || target.role !== 'admin'
 app.put('/api/access/by-username', requireManager, async (request, response) => {
   const location = resolveLocation(request.body)
   if (!location) return response.status(400).json({ message: 'الطابق أو الردهة غير مسموح' })
   // Email is stored lowercase (register normalizes it) but typed here in whatever case the
   // manager enters — same case-insensitivity fix as login, see auth.js.
-  const userResult = await query('SELECT id FROM users WHERE username = $1 OR LOWER(email) = LOWER($1)', [String(request.body.username || '').trim()])
+  const userResult = await query('SELECT id, role FROM users WHERE username = $1 OR LOWER(email) = LOWER($1)', [String(request.body.username || '').trim()])
   if (!userResult.rows[0]) return response.status(404).json({ message: 'المستخدم غير موجود' })
+  if (!canReassign(request.session.user, userResult.rows[0])) return response.status(403).json({ message: 'صلاحية المدير مطلوبة' })
   await setUserAccess(userResult.rows[0].id, location, request.session.user.id)
   await revokeUserSessions(pool, userResult.rows[0].id)
   response.json({ ok: true })
@@ -416,8 +420,9 @@ app.put('/api/access/:userId', requireManager, async (request, response) => {
   const userId = Number(request.params.userId)
   if (!location) return response.status(400).json({ message: 'الطابق أو الردهة غير مسموح' })
   if (!Number.isInteger(userId) || userId < 1) return response.status(400).json({ message: 'معرّف غير صحيح' })
-  const userResult = await query('SELECT id FROM users WHERE id = $1', [userId])
+  const userResult = await query('SELECT id, role FROM users WHERE id = $1', [userId])
   if (!userResult.rows[0]) return response.status(404).json({ message: 'المستخدم غير موجود' })
+  if (!canReassign(request.session.user, userResult.rows[0])) return response.status(403).json({ message: 'صلاحية المدير مطلوبة' })
   await setUserAccess(userId, location, request.session.user.id)
   await revokeUserSessions(pool, userId)
   response.json({ ok: true })

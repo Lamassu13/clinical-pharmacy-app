@@ -81,3 +81,14 @@ test('DELETE /api/users/:id: a user who marked a chart complete, uploaded a form
   const { rows } = await pool.query('SELECT id FROM users WHERE id = $1', [id])
   assert.equal(rows.length, 0)
 })
+
+test('PUT /api/access: a supervisor cannot reassign an admin, but an admin can', async () => {
+  const { client: supervisor } = await loginAs({ role: 'supervisor' })
+  const { client: admin } = await loginAs({ role: 'admin' })
+  const target = await createUser({ role: 'admin', floor: 2 })
+  assert.equal((await supervisor.put(`/api/access/${target.id}`, { floor: 5 })).status, 403)
+  assert.equal((await supervisor.put('/api/access/by-username', { username: target.username, floor: 5 })).status, 403)
+  const user = await createUser({ role: 'user', floor: 2 })
+  assert.equal((await supervisor.put(`/api/access/${user.id}`, { floor: 5 })).status, 200)
+  assert.equal((await admin.put(`/api/access/${target.id}`, { floor: 5 })).status, 200)
+})
