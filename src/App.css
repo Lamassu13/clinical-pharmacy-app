@@ -1796,11 +1796,6 @@ button.topbar-user:hover { color: var(--primary); }
   transform: translate(-50%, -50%) rotate(-90deg);
 }
 .cpt-name { justify-content: flex-start; padding-inline-start: 2px; font-weight: 700; border-inline-start-width: 0.6mm; }
-/* Name, then the patient ID directly after it — no gap between them. The ID never shrinks;
-   a name too long for what is left clips, as a long name always has. */
-.cpt-name--id { padding-inline-end: 2px; }
-.cpt-name-text { min-width: 0; overflow: hidden; white-space: nowrap; }
-.cpt-id { flex-shrink: 0; font-weight: 400; direction: ltr; }
 .cpt-qty { font-weight: 700; }
 .cpt-foot-corner { font-size: 8px; background: #e6f4ea; }
 .cpt-total { font-size: 8px; font-weight: 700; background: #e6f4ea; }

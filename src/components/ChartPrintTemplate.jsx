@@ -54,9 +54,11 @@ const ChartPrintTemplate = forwardRef(function ChartPrintTemplate({ selected, to
     {columnMedicines.map((name, columnIndex) => <div key={columnIndex} className="cpt-cell cpt-col-head"><span className="cpt-col-head-text">{name}</span></div>)}
 
     {patientNames.slice(0, visibleRows).map((name, rowIndex) => <Fragment key={rowIndex}>
-      {patientIds[rowIndex]
-        ? <div className="cpt-cell cpt-name cpt-name--id"><span className="cpt-name-text">{name}</span><span className="cpt-id">{patientIds[rowIndex]}</span></div>
-        : <div className="cpt-cell cpt-name">{name}</div>}
+      {/* One plain text node, as the name alone always was: html2canvas draws a word letter by
+          letter (breaking Arabic joining) whenever its measured box splits, which nested spans
+          and a mixed Arabic+digits "word" both provoke. The zero-width space keeps the name and
+          the ID separate words with no visible gap between them. */}
+      <div className="cpt-cell cpt-name">{patientIds[rowIndex] ? `${name}\u200B${patientIds[rowIndex]}` : name}</div>
       {quantities[rowIndex].map((quantity, columnIndex) => <div key={columnIndex} className="cpt-cell cpt-qty">{quantity || ''}</div>)}
     </Fragment>)}
 
