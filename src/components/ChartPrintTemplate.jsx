@@ -14,16 +14,14 @@ import { PATIENT_ROWS } from '../constants.js'
 // risked spilling onto a second physical page (see this session's history in
 // jaunty-marinating-koala.md). None of that applies here: this template always renders into
 // one fixed 297x210mm canvas by construction, so there's nothing to protect against — the
-// space inside a real 12.7mm margin on all four sides (minus the header) is simply divided
+// space inside a real 10mm margin on all four sides (minus the header) is simply divided
 // across the rows plus the totals — always 41 rows once more than 35 are filled, but capped
 // to a smaller 35-row compact form otherwise (see COMPACT_ROWS below), so a lightly-filled
 // ward prints with taller, more legible rows instead of 41 mostly-blank ones.
 const HEAD_MM = 28
 const NAME_COL_MM = 28
-// Widened only when a patient ID prints beside a name — without IDs the sheet is unchanged.
-const NAME_COL_WITH_ID_MM = 38
 const PAGE_HEIGHT_MM = 210
-const MARGIN_MM = 12.7
+const MARGIN_MM = 10
 // Below this many filled rows, print only a 35-row compact form (taller rows, totals on row
 // 36/37) instead of the full 41 — 35 is the largest compact size that can never truncate a
 // patient while staying strictly smaller than the full form; anything past it falls back to
@@ -38,10 +36,9 @@ const ChartPrintTemplate = forwardRef(function ChartPrintTemplate({ selected, to
   const lastFilledRow = patientNames.reduce((last, name, index) => (name.trim() || quantities[index]?.some(Boolean) ? index : last), -1)
   const visibleRows = lastFilledRow + 1 <= COMPACT_ROWS ? COMPACT_ROWS : PATIENT_ROWS
   const rowMM = (innerHeight - HEAD_MM) / (visibleRows + footRows)
-  const nameColMM = patientIds.slice(0, visibleRows).some(Boolean) ? NAME_COL_WITH_ID_MM : NAME_COL_MM
   const gridTemplateRows = `${HEAD_MM}mm repeat(${visibleRows}, ${rowMM}mm) repeat(${footRows}, ${rowMM}mm)`
 
-  return <div ref={ref} className="chart-print-template" style={{ gridTemplateRows, gridTemplateColumns: `${nameColMM}mm repeat(${columnMedicines.length}, 1fr)` }}>
+  return <div ref={ref} className="chart-print-template" style={{ gridTemplateRows, gridTemplateColumns: `${NAME_COL_MM}mm repeat(${columnMedicines.length}, 1fr)` }}>
     <div className="cpt-cell cpt-corner">
       <img src={hospitalLogo} alt="" />
       <span>مستشفى بغداد التعليمي</span>

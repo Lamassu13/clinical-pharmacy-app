@@ -1750,7 +1750,7 @@ button.topbar-user:hover { color: var(--primary); }
   width: 297mm;
   height: 210mm;
   box-sizing: border-box;
-  padding: 12.7mm;
+  padding: 10mm; /* keep in step with MARGIN_MM in ChartPrintTemplate.jsx */
   display: grid;
   direction: rtl;
   background: #fff;
