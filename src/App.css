@@ -986,6 +986,12 @@ button.topbar-user:hover { color: var(--primary); }
 .order-table { min-width: 520px; }
 .order-table th:first-child, .order-table td:first-child { width: 56px; min-width: 56px; text-align: center; }
 .order-table .order-qty { text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
+/* «متابعة الميروبينيم»: three fixed columns, then one narrow column per day of the month. */
+.meropenem-page { width: min(100% - var(--space-6), 1400px); }
+.meropenem-table th:first-child, .meropenem-table td:first-child { width: auto; min-width: 150px; padding: 6px 8px; }
+.meropenem-table .meropenem-id, .meropenem-table .meropenem-dose { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.meropenem-table .meropenem-day { min-width: 38px; padding: 4px 2px; text-align: center; font-variant-numeric: tabular-nums; }
+.meropenem-table td.meropenem-day { font-weight: 700; }
 .order-print-head { display: none; }
 
 /* flexible dropdown cell — the chosen text wraps and shows in full;
@@ -1736,6 +1742,26 @@ button.topbar-user:hover { color: var(--primary); }
   .order-table { min-width: 0; width: 100%; }
   .order-table th, .order-table td { border-color: #000; color: #000; font-size: 12px; }
   .order-table thead th { background: #fff; }
+}
+
+@media print {
+  /* Landscape: up to 31 day columns. Declared after the order block so page: meropenem wins
+     over the page: order this page also inherits through .order-page. */
+  @page meropenem { size: A4 landscape; margin: 10mm; }
+  .meropenem-page { page: meropenem; width: 100%; }
+  /* Fixed layout over the 277mm line: name 36mm, ID 17mm, dose 20mm, and the rest shared
+     equally by the day columns — 31 days get ~6.5mm each, room for "D31" and "31/10". */
+  .meropenem-table { min-width: 0; width: 100%; table-layout: fixed; }
+  .meropenem-table th, .meropenem-table td { border-color: #000; color: #000; font-size: 9px; padding: 2px 1px; }
+  .meropenem-table thead th { background: #fff; }
+  .meropenem-table thead .meropenem-day { font-size: 7px; padding: 2px 0; }
+  .meropenem-table .meropenem-day { min-width: 0; }
+  .meropenem-table th:nth-child(1) { width: 36mm; }
+  .meropenem-table th:nth-child(2) { width: 17mm; }
+  .meropenem-table th:nth-child(3) { width: 20mm; }
+  /* The pills form's print rule (.pill-table td:first-child { height: 100px }) must not reach here. */
+  .meropenem-table th:first-child, .meropenem-table td:first-child { min-width: 0; height: auto; padding: 2px 4px; }
+  .meropenem-table tr { break-inside: avoid; }
 }
 
 /* Chart export: a static, off-screen render captured with html2canvas (see exportChartPdf in

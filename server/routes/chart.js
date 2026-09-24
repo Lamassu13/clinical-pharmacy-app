@@ -7,6 +7,7 @@ import {
   normalizeMedicineKey, medicineKeySql,
 } from '../validation.js'
 import { numberToArabicWords } from '../arabic-number.js'
+import { buildMeropenemForm, windowStart, MEROPENEM_SQL_PATTERN } from '../meropenem.js'
 
 const router = express.Router()
 
@@ -398,6 +399,47 @@ router.get('/order', requireAuth, async (request, response) => {
       })),
     },
   })
+})
+
+// «استمارة متابعة الميروبينيم»: every patient on Meronem this month on this ward (main and extra
+// charts), with each day's course number. Read-only and fully derived — see ../meropenem.js.
+router.get('/meropenem', requireAuth, async (request, response) => {
+  const location = readLocation(request.query, request.session.user)
+  if (location.status) return response.status(location.status).json({ message: location.message })
+  const { floor, wardName, chartDate } = location
+  const from = windowStart(chartDate)
+  const params = [floor, wardName, from, chartDate]
+  const [cellRows, chartedRows] = await Promise.all([
+    query(
+      `SELECT dc.chart_date::text AS date, cp.patient_name AS name, cp.patient_id, COALESCE(m.name, cc.custom_name) AS medicine, cq.quantity
+       FROM daily_charts dc
+       JOIN wards w ON w.id = dc.ward_id
+       JOIN chart_patients cp ON cp.chart_id = dc.id
+       JOIN chart_quantities cq ON cq.chart_id = dc.id AND cq.row_number = cp.row_number
+       JOIN chart_columns cc ON cc.chart_id = dc.id AND cc.column_number = cq.column_number
+       LEFT JOIN medicines m ON m.id = cc.medicine_id
+       WHERE w.floor_number IS NOT DISTINCT FROM $1 AND w.name = $2 AND dc.chart_date BETWEEN $3::date AND $4::date
+         AND cq.quantity > 0 AND COALESCE(m.name, cc.custom_name) ~* $5
+         AND (btrim(cp.patient_name) <> '' OR cp.patient_id <> '')
+       ORDER BY dc.chart_date, cp.row_number`,
+      [...params, MEROPENEM_SQL_PATTERN],
+    ),
+    // Days the ward has a chart at all — a charted day without Meronem ends a course, a day with
+    // no chart (Friday) does not.
+    query(
+      `SELECT DISTINCT dc.chart_date::text AS date
+       FROM daily_charts dc
+       JOIN wards w ON w.id = dc.ward_id
+       WHERE w.floor_number IS NOT DISTINCT FROM $1 AND w.name = $2 AND dc.chart_date BETWEEN $3::date AND $4::date
+         AND EXISTS (SELECT 1 FROM chart_patients cp WHERE cp.chart_id = dc.id AND cp.patient_name <> '')`,
+      params,
+    ),
+  ])
+  response.json({ form: buildMeropenemForm({
+    date: chartDate,
+    cells: cellRows.rows.map((row) => ({ date: row.date, name: row.name, patientId: row.patient_id, medicine: row.medicine, quantity: row.quantity })),
+    chartedDates: chartedRows.rows.map((row) => row.date),
+  }) })
 })
 
 export { resolveChartId }

@@ -18,6 +18,7 @@ import ProfileScreen from './screens/ProfileScreen.jsx'
 import ReportsScreen from './screens/ReportsScreen.jsx'
 import PillsScreen from './screens/PillsScreen.jsx'
 import OrderScreen from './screens/OrderScreen.jsx'
+import MeropenemScreen from './screens/MeropenemScreen.jsx'
 import ExtraPillsScreen from './screens/ExtraPillsScreen.jsx'
 import FloorPickerScreen from './screens/FloorPickerScreen.jsx'
 import WardPickerScreen from './screens/WardPickerScreen.jsx'
@@ -209,6 +210,10 @@ function App() {
   const [orderData, setOrderData] = useState(null)
   const [orderLoading, setOrderLoading] = useState(false)
   const [orderError, setOrderError] = useState(false)
+  // «متابعة الميروبينيم» — read-only, derived from the ward's charts for the chosen date's month.
+  const [meropenemData, setMeropenemData] = useState(null)
+  const [meropenemLoading, setMeropenemLoading] = useState(false)
+  const [meropenemError, setMeropenemError] = useState(false)
   // استمارة الحبوب الإضافي (mode 'extra-pills') — a standalone, per-ward list of manually
   // created pill forms with no chart behind them at all.
   const [extraPillsForms, setExtraPillsForms] = useState([])
@@ -1092,6 +1097,7 @@ function App() {
     else if (adminView === 'reports') screen = 'التقارير'
     else if (selected?.mode === 'pills') screen = `الحبوب — ${ward}`
     else if (selected?.mode === 'order') screen = `الطلبية — ${ward}`
+    else if (selected?.mode === 'meropenem') screen = `متابعة الميروبينيم — ${ward}`
     else if (selected?.mode === 'extra-pills') screen = `استمارة الحبوب الإضافي — ${wardName}`
     else if (selected) screen = `الجارت — ${ward}`
     else if (floor) screen = `الطابق ${floor.number} — اختر الردهة`
@@ -1609,6 +1615,23 @@ function App() {
       .catch(() => { if (!cancelled) { setOrderError(true); setOrderLoading(false) } })
     return () => { cancelled = true }
   }, [selected, selectedDate, isExpired])
+  useEffect(() => {
+    if (!selected || selected.mode !== 'meropenem') return undefined
+    let cancelled = false
+    setMeropenemLoading(true)
+    setMeropenemError(false)
+    const params = new URLSearchParams({ floor: selected.floor || '', ward: selected.ward, date: selectedDate })
+    fetch(`${apiUrl}/meropenem?${params}`, { credentials: 'include' })
+      .then((response) => { isExpired(response); return response.ok ? response.json() : null })
+      .then((result) => {
+        if (cancelled) return
+        if (result) { setMeropenemData(result.form); setMeropenemError(false) }
+        else { setMeropenemData(null); setMeropenemError(true) }
+        setMeropenemLoading(false)
+      })
+      .catch(() => { if (!cancelled) { setMeropenemError(true); setMeropenemLoading(false) } })
+    return () => { cancelled = true }
+  }, [selected, selectedDate, isExpired])
 
   // استمارة الحبوب الإضافي: one standing list per ward — no date scoping, since these aren't a
   // daily/reset artifact like the chart or the real pills form. `applyExtraPillsQueue` layers
@@ -1944,6 +1967,7 @@ function App() {
   // express it — a hidden last patient would leave the break on the one before it.
   const printingRows = (pillsData?.patients || []).filter((patient) => printScope === 'all' || pillSelection.has(patient.rowNumber)).map((patient) => patient.rowNumber)
   const lastPrintingRow = printingRows[printingRows.length - 1]
+  if (selected && selected.mode === 'meropenem') return <MeropenemScreen header={appHeader} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={meropenemLoading} data={meropenemData} loadError={meropenemError} onPrint={() => window.print()} />
   if (selected && selected.mode === 'order') return <OrderScreen header={appHeader} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={orderLoading} data={orderData} loadError={orderError} onPrint={() => window.print()} />
   if (selected && selected.mode === 'extra-pills') return <ExtraPillsScreen header={appHeader} floorLabel={wardLabel} today={today} editTime={editTime} onBack={() => setSelected(null)} loading={extraPillsLoading} loadError={extraPillsError} forms={extraPillsForms} busy={extraPillsBusy} actionError={extraPillsActionError} onCreate={createExtraPillForm} onSave={saveExtraPillForm} onRemove={deleteExtraPillForm} confirmModal={confirmModal} />
   if (selected && selected.mode === 'pills') return <PillsScreen header={appHeader} wardLabel={wardLabel} roomLabel={/\bccu\b/i.test(selected.ward || '') ? 'رقم السرير' : 'رقم الغرفة'} today={today} editTime={editTime} onBack={() => { flushPills(); setSelected(null) }} selectedDate={selectedDate} onChangeDate={(nextDate) => { flushPills(); setSelectedDate(nextDate) }} pillsLoading={pillsLoading} pillsData={pillsData} pillsSaveStatus={pillsSaveStatus} pillsLoadError={pillsLoadError} pillEntries={pillEntries} setPillEntries={setPillEntries} pillRooms={pillRooms} setPillRooms={setPillRooms} pillSelection={pillSelection} onTogglePatient={togglePillPatient} printScope={printScope} lastPrintingRow={lastPrintingRow} onPrint={startPillsPrint} confirmModal={confirmModal} pillsClashNote={pillsClashNote} onDismissPillsClashNote={() => setPillsClashNote(null)} />
