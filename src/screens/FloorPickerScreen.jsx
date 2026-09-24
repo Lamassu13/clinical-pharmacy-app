@@ -9,7 +9,6 @@ export default function FloorPickerScreen({
   today, floors = [], specialWards = [], resumeDraft, onResume,
   onPickFloor, onOpen, dashboard, dashboardLoading, dashboardError, onRetryDashboard,
   announcements, isManager,
-  medicinesPeriod, setMedicinesPeriod,
   announcementDraft, setAnnouncementDraft, announcementError, announcementBusy,
   onPostAnnouncement, onEditAnnouncement, onDeleteAnnouncement,
 }) {
@@ -75,8 +74,6 @@ export default function FloorPickerScreen({
 
     <div className="dashboard-secondary">
       <DashboardWidgets
-        topMedicines={dashboard?.topMedicines ?? []}
-        medicinesPeriod={medicinesPeriod} setMedicinesPeriod={setMedicinesPeriod}
         loading={dashboardLoading} error={dashboardError} onRetry={onRetryDashboard}
         announcements={announcements} isManager={isManager}
         announcementDraft={announcementDraft} setAnnouncementDraft={setAnnouncementDraft}

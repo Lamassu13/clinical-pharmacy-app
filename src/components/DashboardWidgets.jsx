@@ -10,10 +10,8 @@ import { ChevronStart, StatusCheck, StalledIcon } from './WardGlyph.jsx'
 // the heading — a count, a track, the not-started wards named as chips, and a real all-done
 // state — instead of a third of a card buried among peers.
 //
-// DashboardWidgets is the secondary tier everyone sees below the grid: today's top medicines
-// and the manager's notices. It carries its own loading and error states so a slow or failed
+// DashboardWidgets is the secondary tier everyone sees below the grid: the manager's notices. It carries its own loading and error states so a slow or failed
 // GET /api/dashboard never renders as a real "nothing happened today".
-const PERIOD_LABELS = { today: 'اليوم', week: 'أسبوع', month: 'شهر' }
 
 // `message` defaults to the generic notice; the announcements widget overrides it below, since
 // it renders right after WardStatusBand on the manager's floor/ward hub — two widgets keyed off
@@ -105,89 +103,6 @@ export function WardStatusBand({ startedCount, totalCount, attention = [], onOpe
   )
 }
 
-// Shared يومي/أسبوعي/شهري control for the two analytics widgets.
-function PeriodToggle({ period, setPeriod, label }) {
-  return (
-    <div className="top-medicines-periods" role="group" aria-label={label}>
-      {['today', 'week', 'month'].map((option) => (
-        <button
-          key={option}
-          type="button"
-          className={period === option ? 'active' : undefined}
-          aria-pressed={period === option}
-          onClick={() => setPeriod(option)}
-        >{PERIOD_LABELS[option]}</button>
-      ))}
-    </div>
-  )
-}
-
-// The most-dispensed-medicines bar list. Collapsible on the shared landing page (non-manager);
-// rendered open on إدارة الطوابق, where it is primary content.
-export function TopMedicinesWidget({ topMedicines, period, setPeriod, isManager, open, loading, error, onRetry }) {
-  const maxQty = topMedicines.length ? Math.max(...topMedicines.map((item) => item.quantity)) : 1
-  return (
-    <details className="dashboard-widget dashboard-widget--collapsible" open={open || undefined}>
-      <summary className="dashboard-widget-head">
-        <span className="dashboard-widget-icon" aria-hidden="true">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="8.5" width="18" height="7" rx="3.5" transform="rotate(-45 12 12)" fill="currentColor" fillOpacity="0.14" stroke="none"></rect><rect x="3" y="8.5" width="18" height="7" rx="3.5" transform="rotate(-45 12 12)"></rect><line x1="12" y1="8.5" x2="12" y2="15.5" transform="rotate(-45 12 12)"></line></svg>
-        </span>
-        <strong>الأدوية الأكثر صرفًا</strong>
-      </summary>
-      {isManager && <PeriodToggle period={period} setPeriod={setPeriod} label="مدة احتساب الأدوية" />}
-      {loading ? <SkeletonRows /> : error ? <DashboardError onRetry={onRetry} /> : topMedicines.length === 0 ? (
-        <p className="dashboard-widget-empty">لا توجد كميات مسجّلة في هذه المدة.</p>
-      ) : (
-        <div className="top-medicines-list">
-          {topMedicines.map((item) => (
-            <div className="top-medicines-row" key={item.name}>
-              <span className="top-medicines-name" lang="en" title={item.name}>{item.name}</span>
-              <div className="top-medicines-bar-track"><div className="top-medicines-bar-fill" style={{ width: `${Math.round((item.quantity / maxQty) * 100)}%` }} /></div>
-              <strong className="top-medicines-qty">{item.quantity}</strong>
-            </div>
-          ))}
-        </div>
-      )}
-    </details>
-  )
-}
-
-// Patients summed across every ward of a numbered floor, over this widget's own period.
-export function PatientsByFloorWidget({ patientsByFloor, totalPatients, period, setPeriod, loading, error, onRetry }) {
-  const byFloor = new Map((patientsByFloor || []).map((row) => [row.floor, row.count]))
-  const rows = floors.map((item) => ({ floor: item.number, count: byFloor.get(item.number) || 0 }))
-  const maxCount = Math.max(1, ...rows.map((row) => row.count))
-  return (
-    <div className="dashboard-widget">
-      <div className="dashboard-widget-head">
-        <span className="dashboard-widget-icon" aria-hidden="true">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="7" r="3" fill="currentColor" fillOpacity="0.14" stroke="none"></circle><circle cx="9" cy="7" r="3"></circle><path d="M3.5 19c0-3 2.4-5 5.5-5s5.5 2 5.5 5"></path><path d="M16.5 5.5a2.5 2.5 0 1 1 0 5"></path><path d="M15.5 14.2c2.7.2 4.5 2.3 4.5 4.8"></path></svg>
-        </span>
-        <strong>عدد المرضى لكل طابق</strong>
-      </div>
-      {!loading && !error && (
-        <p className="dashboard-widget-total">
-          إجمالي عدد المرضى (الفعلي، غير مكرر): <strong>{totalPatients ?? 0}</strong>
-        </p>
-      )}
-      <PeriodToggle period={period} setPeriod={setPeriod} label="مدة احتساب المرضى" />
-      {loading ? <SkeletonRows /> : error ? <DashboardError onRetry={onRetry} /> : rows.every((row) => row.count === 0) ? (
-        <p className="dashboard-widget-empty">لا يوجد مرضى مسجّلون في هذه المدة.</p>
-      ) : (
-        <div className="top-medicines-list">
-          {rows.map((row) => (
-            <div className="top-medicines-row" key={row.floor}>
-              <span className="top-medicines-name">الطابق {row.floor}</span>
-              <div className="top-medicines-bar-track"><div className="top-medicines-bar-fill" style={{ width: `${Math.round((row.count / maxCount) * 100)}%` }} /></div>
-              <strong className="top-medicines-qty">{row.count}</strong>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
 // Fixed 7-day (weekly) lookback for the trend chart — a trend wants a stable window, not one
 // that resizes with the other widgets' day/week/month toggle.
 const TREND_DAYS = 7
@@ -253,8 +168,7 @@ function FloorTrendChart({ label, series, maxCount }) {
 }
 
 // عدد المرضى الكلي لكل طابق، إضافةً إلى الردهات الخاصة (العناية المركزة) التي لا تتبع طابقًا
-// مرقّمًا — يومًا بيوم. PatientsByFloorWidget أعلاه يجيب "كم، خلال مدة يختارها المدير"؛ هذا
-// يجيب "هل الاتجاه صاعد أم هابط"، وهو ما لا يظهره رقم تراكمي واحد.
+// مرقّمًا — يومًا بيوم، ليجيب "هل الاتجاه صاعد أم هابط"، وهو ما لا يظهره رقم تراكمي واحد.
 export function PatientsDailyTrendWidget({ dailyPatientsByFloor, open, loading, error, onRetry }) {
   const dates = lastDates(TREND_DAYS)
   const byKeyDate = new Map((dailyPatientsByFloor || []).map((row) => [`${row.floor ?? row.ward}|${row.date}`, row.count]))
@@ -341,7 +255,7 @@ export function PatientsRangeTableWidget({ patientsByFloorRange, rangeFrom, setR
 }
 
 export default function DashboardWidgets({
-  topMedicines, medicinesPeriod, setMedicinesPeriod, loading, error, onRetry,
+  loading, error, onRetry,
   announcements, isManager, announcementDraft, setAnnouncementDraft, announcementError, announcementBusy,
   onPostAnnouncement, onEditAnnouncement, onDeleteAnnouncement,
 }) {
@@ -351,13 +265,7 @@ export default function DashboardWidgets({
   const [savedId, setSavedId] = useState(null)
 
   return (
-    <div className={`dashboard-widgets${isManager ? ' dashboard-widgets--single' : ''}`}>
-      {!isManager && (
-        <TopMedicinesWidget
-          topMedicines={topMedicines} period={medicinesPeriod} setPeriod={setMedicinesPeriod}
-          isManager={isManager} loading={loading} error={error} onRetry={onRetry}
-        />
-      )}
+    <div className="dashboard-widgets dashboard-widgets--single">
 
       <div className="dashboard-widget">
         <div className="dashboard-widget-head">

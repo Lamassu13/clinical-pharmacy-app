@@ -1,5 +1,5 @@
 import { floors, specialWards, roleLabels } from '../constants.js'
-import { TopMedicinesWidget, PatientsByFloorWidget, PatientsDailyTrendWidget, PatientsRangeTableWidget, WardStatusBand } from '../components/DashboardWidgets.jsx'
+import { PatientsDailyTrendWidget, PatientsRangeTableWidget, WardStatusBand } from '../components/DashboardWidgets.jsx'
 import { ChevronStart } from '../components/WardGlyph.jsx'
 import { wardAttention } from '../helpers.js'
 
@@ -51,7 +51,6 @@ export default function AdminDashboardScreen({
   adminHeader, isAdmin, onNavigate, onOpenWard,
   registrations, allUsers, adminMedicines, treatmentForms,
   dashboard, dashboardLoading, dashboardError, onRetryDashboard,
-  medicinesPeriod, setMedicinesPeriod, patientsPeriod, setPatientsPeriod,
   rangeFrom, setRangeFrom, rangeTo, setRangeTo,
   pendingFloor, setPendingFloor, busy, onApprove, onReject,
   registrationsError, adminSuccess, confirmModal,
@@ -112,21 +111,7 @@ export default function AdminDashboardScreen({
     )}
 
     <h2 className="admin-subheading">التحليلات</h2>
-    <div className="dashboard-widgets">
-      <TopMedicinesWidget
-        topMedicines={dashboard?.topMedicines ?? []}
-        period={medicinesPeriod} setPeriod={setMedicinesPeriod} isManager open
-        loading={dashboardLoading} error={dashboardError} onRetry={onRetryDashboard}
-      />
-      <PatientsByFloorWidget
-        patientsByFloor={dashboard?.patientsByFloor ?? []}
-        totalPatients={dashboard?.totalPatients ?? 0}
-        period={patientsPeriod} setPeriod={setPatientsPeriod}
-        loading={dashboardLoading} error={dashboardError} onRetry={onRetryDashboard}
-      />
-    </div>
-    {/* Trend and range widgets are closed by default, like the medicines widget on the shared
-        hub — reference content, not the reason this screen exists, so neither adds scroll cost
+    {/* Trend and range widgets are closed by default — reference content, not the reason this screen exists, so neither adds scroll cost
         for a manager who only opened it to check ward status or approve a request. */}
     <PatientsDailyTrendWidget
       dailyPatientsByFloor={dashboard?.dailyPatientsByFloor ?? []}

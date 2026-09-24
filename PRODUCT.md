@@ -37,7 +37,7 @@ Built around the specific artifact and ritual of this teaching-hospital pharmacy
 - **Daily medication chart** per ward/date/slot: patient rows, medication columns (from a shared registry or a typed custom name), per-cell quantities, dose totals with unit / syringe / vial–amp accounting, print to A4/PDF.
 - **"الجارت الإضافي":** a second same-day chart for a ward, done after the main one.
 - **Pill form ("الحبوب")** per ward/date: dose time, usage method, and note chosen from fixed Arabic option lists; syringe totals; editable medicine-name and pill-quantity working columns that are screen-only (kept off the chart and the print); paginates at 7 medicines per printed page; CCU pill-form medicine names are shown in English only.
-- **Dashboard:** started-wards status (counted per ward, not per floor), top dispensed medicines (today / week / month), announcements (post / edit / delete for managers).
+- **Dashboard:** started-wards status (counted per ward, not per floor), announcements (post / edit / delete for managers).
 - **Admin:** user accounts + roles + floor/ward assignment; medicine registry (ships with a starter set); floor/ward configuration; registration requests.
 - Session-expiry handling; light / dark theme.
 - Fixed option lists (wards, dose times, usage methods) are duplicated in server-side validation and must stay in sync (`src/constants.js` ↔ `server/validation.js` / `server/index.js`).
