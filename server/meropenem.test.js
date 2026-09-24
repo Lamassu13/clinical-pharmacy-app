@@ -20,7 +20,24 @@ const loginAs = async (options) => {
   return client
 }
 
-const cell = (date, name, quantity = 3, extra = {}) => ({ date, name, patientId: '', medicine: 'Meronem 1000gm Vial', quantity, ...extra })
+const A = { floor: 5, ward: 'ردهة رجال' }
+const B = { floor: 8, ward: 'الردهة الخامسة' }
+// Scenario → the three inputs. chartDays: [[iso, ward, [{ name, id?, qty? }]]] — qty > 0 means
+// Meronem that day (Meronem 1000gm Vial), 0/absent means on the chart without it.
+const scenario = (chartDays) => {
+  const cells = [], presence = [], charted = []
+  chartDays.forEach(([date, where, rows]) => {
+    charted.push({ date, ...where })
+    rows.forEach((row) => {
+      const base = { date, ...where, name: row.name, patientId: row.id || '' }
+      presence.push(base)
+      if (row.qty) cells.push({ ...base, medicine: row.medicine || 'Meronem 1000gm Vial', quantity: row.qty })
+    })
+  })
+  return { cells, presence, charted }
+}
+const form = (date, where, chartDays) => buildMeropenemForm({ date, ...where, ...scenario(chartDays) }).patients
+const ali = (qty = 3, extra = {}) => ({ name: 'علي', id: '123', qty, ...extra })
 
 test('doseText: the catalogue\'s "gm" means mg, and a quantity divisible by 3 reads as a per-dose amount × 3', () => {
   assert.equal(doseText('Meronem 1000gm Vial', 3), '1g × 3')
@@ -31,53 +48,58 @@ test('doseText: the catalogue\'s "gm" means mg, and a quantity divisible by 3 re
   assert.equal(doseText('Meropenem 1g vial', 3), '1g × 3')
 })
 
-test('buildMeropenemForm: consecutive days count D1, D2, D3 with the dose from the chart', () => {
-  const form = buildMeropenemForm({
-    date: '2026-09-23',
-    cells: [cell('2026-09-21', 'علي'), cell('2026-09-22', 'علي'), cell('2026-09-23', 'علي')],
-    chartedDates: ['2026-09-21', '2026-09-22', '2026-09-23'],
-  })
-  assert.deepEqual(form.dates, ['2026-09-21', '2026-09-22', '2026-09-23'])
-  assert.deepEqual(form.patients, [{ name: 'علي', patientId: '', dose: '1g × 3', days: { '2026-09-21': 1, '2026-09-22': 2, '2026-09-23': 3 } }])
+test('meropenem: consecutive days count D1…D3 and the patient is active', () => {
+  const [row] = form('2026-09-23', A, [['2026-09-21', A, [ali()]], ['2026-09-22', A, [ali()]], ['2026-09-23', A, [ali()]]])
+  assert.deepEqual(row, { name: 'علي', patientId: '123', dose: '1g × 3', days: { '2026-09-21': 1, '2026-09-22': 2, '2026-09-23': 3 }, missed: [], status: { kind: 'active' } })
 })
 
-test('buildMeropenemForm: a Friday with no chart keeps counting; a charted day without Meronem restarts at D1', () => {
-  const form = buildMeropenemForm({
-    date: '2026-09-29',
-    cells: [cell('2026-09-24', 'علي'), cell('2026-09-26', 'علي'), cell('2026-09-29', 'علي')],
-    // 25th Friday: no chart. 27th/28th: charted, but علي has no Meronem → course ends.
-    chartedDates: ['2026-09-24', '2026-09-26', '2026-09-27', '2026-09-28', '2026-09-29'],
-  })
-  assert.deepEqual(form.patients[0].days, { '2026-09-24': 1, '2026-09-25': 2, '2026-09-26': 3, '2026-09-29': 1 })
+test('meropenem: a Friday with no chart keeps counting; still active when today is not charted yet', () => {
+  // 24 Thu, 25 Fri (no chart), 26 Sat; asked on 27 before anyone charted it.
+  const [row] = form('2026-09-27', A, [['2026-09-24', A, [ali()]], ['2026-09-26', A, [ali()]]])
+  assert.deepEqual(row.days, { '2026-09-24': 1, '2026-09-25': 2, '2026-09-26': 3 })
+  assert.deepEqual(row.status, { kind: 'active' })
 })
 
-test('buildMeropenemForm: a course started last month keeps its real D-number on the 1st', () => {
-  const form = buildMeropenemForm({
-    date: '2026-10-01',
-    cells: [cell('2026-09-29', 'علي'), cell('2026-09-30', 'علي'), cell('2026-10-01', 'علي')],
-    chartedDates: ['2026-09-29', '2026-09-30', '2026-10-01'],
-  })
-  assert.deepEqual(form.dates, ['2026-10-01'])
-  assert.deepEqual(form.patients[0].days, { '2026-10-01': 3 })
+test('meropenem: one charted day without it is forgiven and flagged; two restart at D1', () => {
+  const [forgiven] = form('2026-09-23', A, [['2026-09-21', A, [ali()]], ['2026-09-22', A, [ali(0)]], ['2026-09-23', A, [ali()]]])
+  assert.deepEqual(forgiven.days, { '2026-09-21': 1, '2026-09-22': 2, '2026-09-23': 3 })
+  assert.deepEqual(forgiven.missed, ['2026-09-22'])
+  const [restarted] = form('2026-09-24', A, [['2026-09-21', A, [ali()]], ['2026-09-22', A, [ali(0)]], ['2026-09-23', A, [ali(0)]], ['2026-09-24', A, [ali()]]])
+  assert.deepEqual(restarted.days, { '2026-09-21': 1, '2026-09-24': 1 })
+  assert.deepEqual(restarted.missed, [])
 })
 
-test('buildMeropenemForm: a name-only day and a day with the ID are one patient; the latest dose shows', () => {
-  const form = buildMeropenemForm({
-    date: '2026-09-22',
-    cells: [
-      cell('2026-09-21', 'علي حسين'),
-      cell('2026-09-22', 'علي  حسين', 2, { patientId: '555', medicine: 'Meronem 500gm Vial' }),
-      cell('2026-09-22', 'علي  حسين', 1, { patientId: '555' }),
-    ],
-    chartedDates: ['2026-09-21', '2026-09-22'],
-  })
-  assert.equal(form.patients.length, 1)
-  assert.deepEqual(form.patients[0], { name: 'علي حسين', patientId: '555', dose: '500mg × 2 + 1g × 1', days: { '2026-09-21': 1, '2026-09-22': 2 } })
+test('meropenem: stopped (still on the ward without it) vs left (gone from the chart)', () => {
+  const [stopped] = form('2026-09-22', A, [['2026-09-21', A, [ali()]], ['2026-09-22', A, [ali(0)]]])
+  assert.deepEqual(stopped.status, { kind: 'stopped' })
+  const [left] = form('2026-09-22', A, [['2026-09-21', A, [ali(), { name: 'حسن' }]], ['2026-09-22', A, [{ name: 'حسن' }]]])
+  assert.deepEqual(left.status, { kind: 'left' })
 })
 
-test('buildMeropenemForm: a course that ended last month is not listed this month', () => {
-  const form = buildMeropenemForm({ date: '2026-10-05', cells: [cell('2026-09-20', 'علي')], chartedDates: ['2026-09-20', '2026-10-05'] })
-  assert.deepEqual(form.patients, [])
+test('meropenem: a transfer by ID reads «نُقل إلى» on the old ward and keeps counting on the new one', () => {
+  const days = [['2026-09-21', A, [ali()]], ['2026-09-22', A, [ali()]], ['2026-09-23', A, [{ name: 'حسن' }]], ['2026-09-23', B, [ali()]]]
+  const [old] = form('2026-09-23', A, days)
+  assert.deepEqual(old.status, { kind: 'transferred', to: 'الطابق 8 — الردهة الخامسة' })
+  const [arrived] = form('2026-09-23', B, days)
+  assert.deepEqual(arrived.days, { '2026-09-23': 3 })
+  assert.deepEqual(arrived.status, { kind: 'active' })
+})
+
+test('meropenem: a name-only day and a day with the ID are one patient; the latest dose shows', () => {
+  const rows = form('2026-09-22', A, [
+    ['2026-09-21', A, [{ name: 'علي حسين', qty: 3 }]],
+    ['2026-09-22', A, [{ name: 'علي  حسين', id: '555', qty: 6 }]],
+  ])
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0].patientId, '555')
+  assert.equal(rows[0].dose, '2g × 3')
+  assert.deepEqual(rows[0].days, { '2026-09-21': 1, '2026-09-22': 2 })
+})
+
+test('meropenem: a course started last month keeps its D-number; one that ended last month is not listed', () => {
+  const [running] = form('2026-10-01', A, [['2026-09-29', A, [ali()]], ['2026-09-30', A, [ali()]], ['2026-10-01', A, [ali()]]])
+  assert.deepEqual(running.days, { '2026-10-01': 3 })
+  assert.deepEqual(form('2026-10-05', A, [['2026-09-20', A, [ali()]], ['2026-10-05', A, [{ name: 'حسن' }]]]), [])
 })
 
 // Direct chart seed: patients = [{ row, name, id? }], meronem on column 1 for the listed rows.
@@ -102,7 +124,7 @@ test('GET /api/meropenem: builds the form from the ward\'s saved charts, and ref
   const client = await loginAs({ role: 'user', floor: FLOOR })
   const res = await client.get(`/api/meropenem?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=2026-09-26`)
   assert.equal(res.status, 200)
-  assert.deepEqual(res.body.form.patients, [{ name: 'علي', patientId: '123', dose: '1g × 3', days: { '2026-09-24': 1, '2026-09-25': 2, '2026-09-26': 3 } }])
+  assert.deepEqual(res.body.form.patients, [{ name: 'علي', patientId: '123', dose: '1g × 3', days: { '2026-09-24': 1, '2026-09-25': 2, '2026-09-26': 3 }, missed: [], status: { kind: 'active' } }])
 
   const outsider = await loginAs({ role: 'user', floor: 6 })
   assert.equal((await outsider.get(`/api/meropenem?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=2026-09-26`)).status, 403)

@@ -32,68 +32,114 @@ export const doseText = (medicine, quantity) => {
   return quantity % 3 === 0 ? `${formatMg(mg * quantity / 3)} × 3` : `${formatMg(mg)} × ${quantity}`
 }
 
-// cells: [{ date, name, patientId, medicine, quantity }] — Meronem cells with quantity > 0, over
-// the lookback window. chartedDates: every date in the window this ward has a chart with at least
-// one named patient. Returns { dates, patients } for the month of `date`, up to `date`.
-export const buildMeropenemForm = ({ date, cells, chartedDates }) => {
-  const charted = new Set(chartedDates)
-  // A name typed without an ID on one day and with it on another is still one patient.
-  const idByName = new Map()
-  cells.forEach((cell) => { if (cell.patientId) idByName.set(nameKey(cell.name), cell.patientId) })
-  const keyOf = (cell) => {
-    const id = cell.patientId || idByName.get(nameKey(cell.name))
-    return id ? `id:${id}` : `name:${nameKey(cell.name)}`
+const wardKeyOf = (floor, ward) => `${floor ?? ''}|${ward}`
+const wardLabelOf = (floor, ward) => (floor ? `الطابق ${floor} — ${ward}` : ward)
+
+// cells:    [{ date, floor, ward, name, patientId, medicine, quantity }] — Meronem cells with a
+//           quantity, hospital-wide (a patient may have been dosed on another ward first).
+// presence: [{ date, floor, ward, name, patientId }] — named chart rows on this ward, plus rows
+//           anywhere carrying an ID seen in `cells`.
+// charted:  [{ date, floor, ward }] — the days each ward has a chart with a named patient.
+// All over the lookback window. Returns this ward's rows for the month of `date`, up to `date`.
+export const buildMeropenemForm = ({ date, floor, ward, cells, presence, charted }) => {
+  const here = wardKeyOf(floor, ward)
+  const chartedByWard = new Map()
+  charted.forEach((row) => {
+    const key = wardKeyOf(row.floor, row.ward)
+    if (!chartedByWard.has(key)) chartedByWard.set(key, new Set())
+    chartedByWard.get(key).add(row.date)
+  })
+  const isCharted = (wardKey, iso) => chartedByWard.get(wardKey)?.has(iso) ?? false
+
+  // Patient key: the ID; else the ID the same name carries on the same ward (typed on one day,
+  // added the next); else the name, which only ever matches on that one ward.
+  const idByWardName = new Map()
+  ;[...cells, ...presence].forEach((row) => {
+    if (row.patientId) idByWardName.set(`${wardKeyOf(row.floor, row.ward)}|${nameKey(row.name)}`, row.patientId)
+  })
+  const keyOf = (row) => {
+    const wardKey = wardKeyOf(row.floor, row.ward)
+    const id = row.patientId || idByWardName.get(`${wardKey}|${nameKey(row.name)}`)
+    return id ? `id:${id}` : `name:${wardKey}|${nameKey(row.name)}`
   }
 
-  const byPatient = new Map() // key -> { name, patientId, doses: Map(date -> [strength × qty]) }
+  const patients = new Map() // key -> { name, patientId, doses: Map(date -> [{ wardKey, text }]), seen: Map(date -> Set(wardKey)) }
+  const patientOf = (key) => {
+    if (!patients.has(key)) patients.set(key, { name: '', patientId: '', doses: new Map(), seen: new Map() })
+    return patients.get(key)
+  }
   cells.forEach((cell) => {
-    const key = keyOf(cell)
-    if (!byPatient.has(key)) byPatient.set(key, { name: '', patientId: '', doses: new Map() })
-    const patient = byPatient.get(key)
-    // Latest name / ID wins — cells arrive date-ordered.
+    const patient = patientOf(keyOf(cell))
+    // Rows arrive date-ordered, so the latest name / ID wins.
     if (nameKey(cell.name)) patient.name = nameKey(cell.name)
     if (cell.patientId) patient.patientId = cell.patientId
     if (!patient.doses.has(cell.date)) patient.doses.set(cell.date, [])
-    patient.doses.get(cell.date).push(doseText(cell.medicine, cell.quantity))
+    patient.doses.get(cell.date).push({ wardKey: wardKeyOf(cell.floor, cell.ward), text: doseText(cell.medicine, cell.quantity) })
+  })
+  presence.forEach((row) => {
+    const patient = patients.get(keyOf(row))
+    if (!patient) return // never on Meronem — not this form's business
+    if (!patient.seen.has(row.date)) patient.seen.set(row.date, new Set())
+    patient.seen.get(row.date).add(wardKeyOf(row.floor, row.ward))
   })
 
   const first = monthStart(date)
-  const dates = []
-  for (let day = toDay(first); day <= toDay(date); day += 1) dates.push(toIso(day))
+  const hereCharted = [...(chartedByWard.get(here) || [])].filter((iso) => iso <= date).sort()
+  const latestCharted = hereCharted[hereCharted.length - 1]
+  const wardLabels = new Map(presence.map((row) => [wardKeyOf(row.floor, row.ward), wardLabelOf(row.floor, row.ward)]))
 
-  const patients = []
-  byPatient.forEach((patient) => {
-    const onDays = [...patient.doses.keys()].sort()
-    // Walk day by day from the first Meronem date. A charted day without Meronem ends the
-    // course; a day with no chart at all (Friday) keeps counting.
-    const days = {}
+  const rows = []
+  patients.forEach((patient) => {
+    const doseDates = [...patient.doses.keys()].sort()
+    // Course walk, calendar day by calendar day. A dose day counts. An off-day — on some chart
+    // without Meronem, or absent while their ward charted — is held as pending; so is a day their
+    // ward has no chart at all (Friday). At the next dose: at most one off-day in between is a
+    // charting slip, forgiven and flagged; two or more mean the course ended, so restart at D1.
+    const days = new Map() // iso -> { n, wardKey, missed }
     let start = null
-    const last = toDay(onDays[onDays.length - 1])
-    for (let day = toDay(onDays[0]); day <= Math.min(last, toDay(date)); day += 1) {
+    let currentWard = null
+    let pending = []
+    for (let day = toDay(doseDates[0]); day <= toDay(doseDates[doseDates.length - 1]); day += 1) {
       const iso = toIso(day)
-      if (patient.doses.has(iso)) {
-        if (start === null) start = day
-        days[iso] = day - start + 1
-      } else if (charted.has(iso)) {
-        start = null
-      } else if (start !== null) {
-        days[iso] = day - start + 1
+      const doses = patient.doses.get(iso)
+      if (doses) {
+        const offDays = pending.filter((entry) => entry.off).length
+        if (start === null || offDays > 1) start = day
+        else pending.forEach((entry) => days.set(entry.iso, { n: entry.day - start + 1, wardKey: entry.wardKey, missed: entry.off }))
+        pending = []
+        currentWard = (doses.find((dose) => dose.wardKey === here) || doses[0]).wardKey
+        days.set(iso, { n: day - start + 1, wardKey: currentWard, missed: false })
+      } else {
+        const off = patient.seen.has(iso) || isCharted(currentWard, iso)
+        pending.push({ iso, day, wardKey: currentWard, off })
       }
     }
-    // Only days inside the month are shown (the walk already stops at the last dose).
-    const shown = Object.fromEntries(Object.entries(days).filter(([iso]) => iso >= first))
-    const monthDoseDays = onDays.filter((iso) => iso >= first && iso <= date)
-    if (!monthDoseDays.length) return
-    patients.push({
+
+    const hereDoseDates = doseDates.filter((iso) => iso >= first && patient.doses.get(iso).some((dose) => dose.wardKey === here))
+    if (!hereDoseDates.length) return
+    const lastHere = hereDoseDates[hereDoseDates.length - 1]
+    const shown = [...days].filter(([iso, entry]) => iso >= first && entry.wardKey === here)
+
+    let status = { kind: 'active' }
+    if (latestCharted && lastHere < latestCharted) {
+      const next = hereCharted.find((iso) => iso > lastHere)
+      const elsewhere = [...patient.seen].filter(([iso]) => iso > lastHere).sort(([a], [b]) => a.localeCompare(b))
+        .map(([, wards]) => [...wards].find((wardKey) => wardKey !== here)).find(Boolean)
+      if (patient.seen.get(next)?.has(here)) status = { kind: 'stopped' }
+      else if (patient.patientId && elsewhere) status = { kind: 'transferred', to: wardLabels.get(elsewhere) }
+      else status = { kind: 'left' }
+    }
+
+    rows.push({
       name: patient.name,
       patientId: patient.patientId,
-      dose: patient.doses.get(monthDoseDays[monthDoseDays.length - 1]).join(' + '),
-      days: shown,
-      firstDay: monthDoseDays[0],
+      dose: patient.doses.get(lastHere).filter((dose) => dose.wardKey === here).map((dose) => dose.text).join(' + '),
+      days: Object.fromEntries(shown.map(([iso, entry]) => [iso, entry.n])),
+      missed: shown.filter(([, entry]) => entry.missed).map(([iso]) => iso),
+      status,
+      firstDay: hereDoseDates[0],
     })
   })
-  patients.sort((a, b) => a.firstDay.localeCompare(b.firstDay) || a.name.localeCompare(b.name, 'ar'))
-  // Only the days some patient is actually on it — an empty date column is just noise.
-  const used = new Set(patients.flatMap((patient) => Object.keys(patient.days)))
-  return { dates: dates.filter((iso) => used.has(iso)), patients: patients.map(({ firstDay: _firstDay, ...rest }) => rest) }
+  rows.sort((a, b) => a.firstDay.localeCompare(b.firstDay) || a.name.localeCompare(b.name, 'ar'))
+  return { patients: rows.map(({ firstDay: _firstDay, ...rest }) => rest) }
 }

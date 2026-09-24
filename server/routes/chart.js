@@ -402,43 +402,59 @@ router.get('/order', requireAuth, async (request, response) => {
 })
 
 // «استمارة متابعة الميروبينيم»: every patient on Meronem this month on this ward (main and extra
-// charts), with each day's course number. Read-only and fully derived — see ../meropenem.js.
+// charts), each day's course number, and whether they are still on it. Read-only and fully
+// derived — see ../meropenem.js. Meronem cells are read hospital-wide so a patient transferred in
+// keeps counting from the ward they came from.
 router.get('/meropenem', requireAuth, async (request, response) => {
   const location = readLocation(request.query, request.session.user)
   if (location.status) return response.status(location.status).json({ message: location.message })
   const { floor, wardName, chartDate } = location
   const from = windowStart(chartDate)
-  const params = [floor, wardName, from, chartDate]
-  const [cellRows, chartedRows] = await Promise.all([
+  const cellRows = await query(
+    `SELECT dc.chart_date::text AS date, w.floor_number AS floor, w.name AS ward, cp.patient_name AS name, cp.patient_id,
+            COALESCE(m.name, cc.custom_name) AS medicine, cq.quantity
+     FROM daily_charts dc
+     JOIN wards w ON w.id = dc.ward_id
+     JOIN chart_patients cp ON cp.chart_id = dc.id
+     JOIN chart_quantities cq ON cq.chart_id = dc.id AND cq.row_number = cp.row_number
+     JOIN chart_columns cc ON cc.chart_id = dc.id AND cc.column_number = cq.column_number
+     LEFT JOIN medicines m ON m.id = cc.medicine_id
+     WHERE dc.chart_date BETWEEN $1::date AND $2::date
+       AND cq.quantity > 0 AND COALESCE(m.name, cc.custom_name) ~* $3
+       AND (btrim(cp.patient_name) <> '' OR cp.patient_id <> '')
+     ORDER BY dc.chart_date, cp.row_number`,
+    [from, chartDate, MEROPENEM_SQL_PATTERN],
+  )
+  const ids = [...new Set(cellRows.rows.map((row) => row.patient_id).filter(Boolean))]
+  const [presenceRows, chartedRows] = await Promise.all([
+    // Who is on a chart each day: everyone on this ward, plus anyone anywhere carrying an ID that
+    // had Meronem — "still here without it?" and "turned up on another ward?".
     query(
-      `SELECT dc.chart_date::text AS date, cp.patient_name AS name, cp.patient_id, COALESCE(m.name, cc.custom_name) AS medicine, cq.quantity
+      `SELECT dc.chart_date::text AS date, w.floor_number AS floor, w.name AS ward, cp.patient_name AS name, cp.patient_id
        FROM daily_charts dc
        JOIN wards w ON w.id = dc.ward_id
        JOIN chart_patients cp ON cp.chart_id = dc.id
-       JOIN chart_quantities cq ON cq.chart_id = dc.id AND cq.row_number = cp.row_number
-       JOIN chart_columns cc ON cc.chart_id = dc.id AND cc.column_number = cq.column_number
-       LEFT JOIN medicines m ON m.id = cc.medicine_id
-       WHERE w.floor_number IS NOT DISTINCT FROM $1 AND w.name = $2 AND dc.chart_date BETWEEN $3::date AND $4::date
-         AND cq.quantity > 0 AND COALESCE(m.name, cc.custom_name) ~* $5
+       WHERE dc.chart_date BETWEEN $1::date AND $2::date
          AND (btrim(cp.patient_name) <> '' OR cp.patient_id <> '')
-       ORDER BY dc.chart_date, cp.row_number`,
-      [...params, MEROPENEM_SQL_PATTERN],
+         AND ((w.floor_number IS NOT DISTINCT FROM $3 AND w.name = $4) OR cp.patient_id = ANY($5::text[]))`,
+      [from, chartDate, floor, wardName, ids],
     ),
-    // Days the ward has a chart at all — a charted day without Meronem ends a course, a day with
-    // no chart (Friday) does not.
+    // The days each ward has a chart at all — a day with no chart (Friday) never ends a course.
     query(
-      `SELECT DISTINCT dc.chart_date::text AS date
+      `SELECT DISTINCT dc.chart_date::text AS date, w.floor_number AS floor, w.name AS ward
        FROM daily_charts dc
        JOIN wards w ON w.id = dc.ward_id
-       WHERE w.floor_number IS NOT DISTINCT FROM $1 AND w.name = $2 AND dc.chart_date BETWEEN $3::date AND $4::date
+       WHERE dc.chart_date BETWEEN $1::date AND $2::date
          AND EXISTS (SELECT 1 FROM chart_patients cp WHERE cp.chart_id = dc.id AND cp.patient_name <> '')`,
-      params,
+      [from, chartDate],
     ),
   ])
+  const toRow = (row) => ({ date: row.date, floor: row.floor, ward: row.ward, name: row.name, patientId: row.patient_id })
   response.json({ form: buildMeropenemForm({
-    date: chartDate,
-    cells: cellRows.rows.map((row) => ({ date: row.date, name: row.name, patientId: row.patient_id, medicine: row.medicine, quantity: row.quantity })),
-    chartedDates: chartedRows.rows.map((row) => row.date),
+    date: chartDate, floor, ward: wardName,
+    cells: cellRows.rows.map((row) => ({ ...toRow(row), medicine: row.medicine, quantity: row.quantity })),
+    presence: presenceRows.rows.map(toRow),
+    charted: chartedRows.rows,
   }) })
 })
 

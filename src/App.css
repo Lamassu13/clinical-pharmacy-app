@@ -992,6 +992,9 @@ button.topbar-user:hover { color: var(--primary); }
 .meropenem-table .meropenem-id, .meropenem-table .meropenem-dose { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .meropenem-table .meropenem-day { min-width: 38px; padding: 4px 2px; text-align: center; font-variant-numeric: tabular-nums; }
 .meropenem-table td.meropenem-day { font-weight: 700; }
+.meropenem-table .meropenem-status { white-space: nowrap; font-size: var(--text-xs); color: var(--text-muted); }
+.meropenem-table .meropenem-status--active { color: var(--primary); font-weight: 700; }
+.meropenem-table td.meropenem-day--missed { color: var(--danger); }
 .order-print-head { display: none; }
 
 /* flexible dropdown cell — the chosen text wraps and shows in full;
@@ -1749,16 +1752,19 @@ button.topbar-user:hover { color: var(--primary); }
      over the page: order this page also inherits through .order-page. */
   @page meropenem { size: A4 landscape; margin: 10mm; }
   .meropenem-page { page: meropenem; width: 100%; }
-  /* Fixed layout over the 277mm line: name 36mm, ID 17mm, dose 20mm, and the rest shared
-     equally by the day columns — 31 days get ~6.5mm each, room for "D31" and "31/10". */
+  /* Fixed layout over the 277mm line: name 32mm, ID 16mm, dose 18mm, status 24mm, and the rest
+     shared equally by the day columns — 31 days get ~6mm each, room for "D31" and "31/10". */
   .meropenem-table { min-width: 0; width: 100%; table-layout: fixed; }
   .meropenem-table th, .meropenem-table td { border-color: #000; color: #000; font-size: 9px; padding: 2px 1px; }
   .meropenem-table thead th { background: #fff; }
   .meropenem-table thead .meropenem-day { font-size: 7px; padding: 2px 0; }
   .meropenem-table .meropenem-day { min-width: 0; }
-  .meropenem-table th:nth-child(1) { width: 36mm; }
-  .meropenem-table th:nth-child(2) { width: 17mm; }
-  .meropenem-table th:nth-child(3) { width: 20mm; }
+  .meropenem-table th:nth-child(1) { width: 32mm; }
+  .meropenem-table th:nth-child(2) { width: 16mm; }
+  .meropenem-table th:nth-child(3) { width: 18mm; }
+  .meropenem-table th:nth-child(4) { width: 24mm; }
+  .meropenem-table .meropenem-status { white-space: normal; font-size: 8px; }
+  .meropenem-table .meropenem-status, .meropenem-table td.meropenem-day--missed { color: #000; }
   /* The pills form's print rule (.pill-table td:first-child { height: 100px }) must not reach here. */
   .meropenem-table th:first-child, .meropenem-table td:first-child { min-width: 0; height: auto; padding: 2px 4px; }
   .meropenem-table tr { break-inside: avoid; }
