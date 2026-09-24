@@ -20,6 +20,8 @@ import { PATIENT_ROWS } from '../constants.js'
 // ward prints with taller, more legible rows instead of 41 mostly-blank ones.
 const HEAD_MM = 28
 const NAME_COL_MM = 28
+// Widened only when a patient ID prints beside a name — without IDs the sheet is unchanged.
+const NAME_COL_WITH_ID_MM = 38
 const PAGE_HEIGHT_MM = 210
 const MARGIN_MM = 12.7
 // Below this many filled rows, print only a 35-row compact form (taller rows, totals on row
@@ -28,7 +30,7 @@ const MARGIN_MM = 12.7
 // all 41 rows exactly as before.
 const COMPACT_ROWS = 35
 
-const ChartPrintTemplate = forwardRef(function ChartPrintTemplate({ selected, today, todayWeekday, isThursday, patientNames, columnMedicines, quantities, totals, doubledTotals }, ref) {
+const ChartPrintTemplate = forwardRef(function ChartPrintTemplate({ selected, today, todayWeekday, isThursday, patientNames, patientIds = [], columnMedicines, quantities, totals, doubledTotals }, ref) {
   const footRows = isThursday ? 2 : 1
   const innerHeight = PAGE_HEIGHT_MM - MARGIN_MM * 2
   // A row counts as filled if it has a patient name or any quantity — same rule the live
@@ -36,9 +38,10 @@ const ChartPrintTemplate = forwardRef(function ChartPrintTemplate({ selected, to
   const lastFilledRow = patientNames.reduce((last, name, index) => (name.trim() || quantities[index]?.some(Boolean) ? index : last), -1)
   const visibleRows = lastFilledRow + 1 <= COMPACT_ROWS ? COMPACT_ROWS : PATIENT_ROWS
   const rowMM = (innerHeight - HEAD_MM) / (visibleRows + footRows)
+  const nameColMM = patientIds.slice(0, visibleRows).some(Boolean) ? NAME_COL_WITH_ID_MM : NAME_COL_MM
   const gridTemplateRows = `${HEAD_MM}mm repeat(${visibleRows}, ${rowMM}mm) repeat(${footRows}, ${rowMM}mm)`
 
-  return <div ref={ref} className="chart-print-template" style={{ gridTemplateRows, gridTemplateColumns: `${NAME_COL_MM}mm repeat(${columnMedicines.length}, 1fr)` }}>
+  return <div ref={ref} className="chart-print-template" style={{ gridTemplateRows, gridTemplateColumns: `${nameColMM}mm repeat(${columnMedicines.length}, 1fr)` }}>
     <div className="cpt-cell cpt-corner">
       <img src={hospitalLogo} alt="" />
       <span>مستشفى بغداد التعليمي</span>
@@ -51,7 +54,9 @@ const ChartPrintTemplate = forwardRef(function ChartPrintTemplate({ selected, to
     {columnMedicines.map((name, columnIndex) => <div key={columnIndex} className="cpt-cell cpt-col-head"><span className="cpt-col-head-text">{name}</span></div>)}
 
     {patientNames.slice(0, visibleRows).map((name, rowIndex) => <Fragment key={rowIndex}>
-      <div className="cpt-cell cpt-name">{name}</div>
+      {patientIds[rowIndex]
+        ? <div className="cpt-cell cpt-name cpt-name--id"><span className="cpt-name-text">{name}</span><span className="cpt-id">{patientIds[rowIndex]}</span></div>
+        : <div className="cpt-cell cpt-name">{name}</div>}
       {quantities[rowIndex].map((quantity, columnIndex) => <div key={columnIndex} className="cpt-cell cpt-qty">{quantity || ''}</div>)}
     </Fragment>)}
 
