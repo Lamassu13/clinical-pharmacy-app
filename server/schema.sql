@@ -112,7 +112,7 @@ DO $$ BEGIN
   END IF;
 END $$;
 
--- Manual "chart complete" mark ("اكتملت الجارت") — pharmacist-set, not inferred from content
+-- Manual "chart complete" mark ("اكتمل الجارت") — pharmacist-set, not inferred from content
 -- (dashboard.startedWards already covers "has data"). completed_at NULL = not marked complete.
 -- Does not lock the chart; it stays editable and clears the moment a real edit follows
 -- (see PATCH /api/chart/complete and noteChartEdit in src/App.jsx).

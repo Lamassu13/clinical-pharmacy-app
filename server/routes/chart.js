@@ -173,7 +173,7 @@ router.get('/chart/lock', requireAuth, async (request, response) => {
   response.json(lockView(await readLock(target.wardId, target.chartDate, target.slot), request.session.user.id))
 })
 
-// Manual "اكتملت الجارت" mark — a pharmacist's own signal, not inferred from chart content.
+// Manual "اكتمل الجارت" mark — a pharmacist's own signal, not inferred from chart content.
 // Independent of PUT /chart's heavy patients/columns/quantities payload and its optimistic-
 // concurrency version check on purpose: this is a small, low-frequency toggle, and keeping it
 // out of that save path avoids touching the merge/conflict machinery it relies on.

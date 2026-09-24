@@ -16,8 +16,6 @@ export default function ChartScreen({
   onSetColumnMedicine, onCommitColumnMedicine, columnMedicineNotice, onDismissNotice, onApplySuggestion,
   onSetPatientName, onSetPatientId, onCheckPreviousDay, onUpdateQuantity, onCollapseRow, onAddColumn, canAddColumn,
   chartFrameRef, chartHeadRef, chartGridRef, chartDosesRef, chartFootRef,
-  showMedicineForm, onOpenMedicineForm, onCloseMedicineForm, onAddMedicine,
-  newMedicine, setNewMedicine, registrationsError,
 }) {
   const columnFocusValue = useRef('')
   const patientFocusEmpty = useRef(false)
@@ -78,9 +76,8 @@ export default function ChartScreen({
       <button className="back-button" onClick={onBack}>→ العودة للردهات</button>
       <div><h1>{wardLabel}</h1></div>
       <div className="toolbar-actions">
-        {isManager && !readOnly && <button className="secondary-button compact" onClick={onOpenMedicineForm}>+ علاج جديد</button>}
         {!readOnly && <button className="secondary-button compact" onClick={onAddColumn} disabled={!canAddColumn} title={canAddColumn ? undefined : `الحد الأقصى لعدد الأعمدة`}>+ عمود</button>}
-        {!readOnly && <button type="button" className="secondary-button compact" onClick={onToggleComplete}>{chartCompleted ? '✓ اكتملت — إلغاء' : 'اكتملت الجارت'}</button>}
+        {!readOnly && <button type="button" className="secondary-button compact" onClick={onToggleComplete}>{chartCompleted ? '✓ اكتمل — إلغاء' : 'اكتمل الجارت'}</button>}
         <button className="primary-button compact" onClick={onExportPdf} disabled={pdfBusy}>{pdfBusy ? 'جارٍ التحضير…' : 'طباعة A4 / PDF'}</button>
         <button className="secondary-button compact go-pills" onClick={onGoToPills}>استمارة الحبوب ←</button>
         <button className="secondary-button compact" onClick={onGoToOrder}>الطلبية ←</button>
@@ -90,7 +87,7 @@ export default function ChartScreen({
     <div className="chart-meta">
       {selected.slot === 'extra' && <span className="chart-slot-flag">جارت إضافي</span>}
       {lockState === 'editing' && <span className="chart-lock-mark">أنت تُحرّر</span>}
-      {chartCompleted && <span className="card-status card-status--done"><StatusCheck /> اكتملت{completedByName ? ` — ${completedByName}` : ''}</span>}
+      {chartCompleted && <span className="card-status card-status--done"><StatusCheck /> اكتمل{completedByName ? ` — ${completedByName}` : ''}</span>}
       {selected.floor && <span>الطابق: <b>{selected.floor}</b></span>}
       <span>الفرع: <b>{selected.ward}</b></span>
       <span>التاريخ: <b>{today}</b> — <b>{todayWeekday}</b></span>
@@ -210,11 +207,5 @@ export default function ChartScreen({
       <button type="button" className="text-button compact" onClick={onUndo}>تراجع</button>
     </div>}
 
-    {showMedicineForm && <div className="modal-backdrop" onClick={onCloseMedicineForm}><form className="medicine-modal" role="dialog" aria-modal="true" aria-labelledby="add-medicine-title" onSubmit={onAddMedicine} onClick={(event) => event.stopPropagation()} onKeyDown={(event) => {
-      if (event.key !== 'Tab') return
-      const f = event.currentTarget.querySelectorAll('button, input')
-      const edge = event.shiftKey ? f[0] : f[f.length - 1]
-      if (document.activeElement === edge) { event.preventDefault(); (event.shiftKey ? f[f.length - 1] : f[0]).focus() }
-    }}><button type="button" className="close-button" aria-label="إغلاق" onClick={onCloseMedicineForm}>×</button><p className="modal-kicker">قائمة الأدوية العامة</p><h2 id="add-medicine-title">إضافة علاج جديد</h2>{registrationsError && <p className="form-error" role="alert">{registrationsError}</p>}<label>اسم العلاج<input autoFocus value={newMedicine} onChange={(event) => setNewMedicine(event.target.value)} required /></label><button className="primary-button" type="submit">إضافة إلى القائمة</button></form></div>}
   </section>
 }
