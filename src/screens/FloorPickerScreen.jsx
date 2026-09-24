@@ -1,3 +1,4 @@
+import DashboardWidgets from '../components/DashboardWidgets.jsx'
 import { WardGlyph, ChevronStart, StatusCheck, CardStatus } from '../components/WardGlyph.jsx'
 import WardActions from '../components/WardActions.jsx'
 import { wardAttention } from '../helpers.js'
@@ -7,7 +8,8 @@ import { wardAttention } from '../helpers.js'
 export default function FloorPickerScreen({
   today, floors = [], specialWards = [], resumeDraft, onResume,
   onPickFloor, onOpen, dashboard, dashboardLoading, dashboardError, onRetryDashboard,
-  isManager,
+  announcements, isManager, announcementDraft, setAnnouncementDraft, announcementError, announcementBusy,
+  onPostAnnouncement, onEditAnnouncement, onDeleteAnnouncement,
 }) {
   // Count at ward granularity, not floor: a floor with one of three wards started is one
   // third done, and the two that haven't are exactly what the morning round is there to
@@ -37,6 +39,19 @@ export default function FloorPickerScreen({
       <div><h1>اختر الطابق أو الردهة</h1></div>
       <div className="date-chip"><span>اليوم</span><strong>{today}</strong></div>
     </div>
+
+    {/* A special-ward-only user never opens a floor page, where announcements otherwise live. */}
+    {floors.length === 0 && specialWards.length > 0 && (
+      <div className="dashboard-announcements">
+        <DashboardWidgets
+          loading={announcements === null} error={false}
+          announcements={announcements ?? []} isManager={isManager}
+          announcementDraft={announcementDraft} setAnnouncementDraft={setAnnouncementDraft}
+          announcementError={announcementError} announcementBusy={announcementBusy}
+          onPostAnnouncement={onPostAnnouncement} onEditAnnouncement={onEditAnnouncement} onDeleteAnnouncement={onDeleteAnnouncement}
+        />
+      </div>
+    )}
 
     {resumeDraft && (
       <button type="button" className="resume-draft-card" onClick={onResume}>
