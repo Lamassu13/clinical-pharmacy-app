@@ -166,7 +166,7 @@ app.put('/api/auth/me', requireAuth, async (request, response) => {
 })
 
 app.get('/api/medicines', requireAuth, async (_request, response) => {
-  const result = await query('SELECT id, name, arabic_name, is_supply FROM medicines ORDER BY name ASC')
+  const result = await query('SELECT id, name, arabic_name, is_supply, no_thursday_double FROM medicines ORDER BY name ASC')
   response.json({ medicines: result.rows })
 })
 // Admin-only: the medicines catalogue is shared, and PUT/DELETE on it are already
@@ -185,7 +185,7 @@ app.post('/api/medicines', requireManager, async (request, response) => {
   try {
     const existing = await findMedicineByName(name)
     if (existing.rows[0]) return response.status(409).json({ message: `"${existing.rows[0].name}" موجود في القائمة أصلًا`, medicine: existing.rows[0] })
-    const result = await query('INSERT INTO medicines (name, created_by, is_supply) VALUES ($1, $2, $1 ~* $3 AND $1 !~* $4) RETURNING id, name, arabic_name, is_supply', [name, request.session.user.id, SUPPLY_MATCH, SUPPLY_EXCEPT])
+    const result = await query('INSERT INTO medicines (name, created_by, is_supply) VALUES ($1, $2, $1 ~* $3 AND $1 !~* $4) RETURNING id, name, arabic_name, is_supply, no_thursday_double', [name, request.session.user.id, SUPPLY_MATCH, SUPPLY_EXCEPT])
     response.status(201).json({ medicine: result.rows[0] })
   } catch (error) {
     if (error.code === '23505') return response.status(409).json({ message: `"${name}" موجود في القائمة أصلًا` })
@@ -199,6 +199,7 @@ app.put('/api/medicines/:id', requireManager, async (request, response) => {
   const name = request.body.name === undefined ? null : cleanText(request.body.name, 200).trim()
   const arabicName = request.body.arabicName === undefined ? null : cleanText(request.body.arabicName, 200).trim()
   const isSupply = typeof request.body.isSupply === 'boolean' ? request.body.isSupply : null
+  const noThursdayDouble = typeof request.body.noThursdayDouble === 'boolean' ? request.body.noThursdayDouble : null
   if (name !== null && !name) return response.status(400).json({ message: 'اسم العلاج مطلوب' })
   const client = await pool.connect()
   try {
@@ -209,7 +210,7 @@ app.put('/api/medicines/:id', requireManager, async (request, response) => {
     }
     const existing = await client.query('SELECT name FROM medicines WHERE id = $1', [id])
     if (!existing.rows[0]) { await client.query('ROLLBACK'); return response.status(404).json({ message: 'الدواء غير موجود' }) }
-    const result = await client.query('UPDATE medicines SET name = COALESCE($2, name), arabic_name = COALESCE($3, arabic_name), is_supply = COALESCE($4, is_supply) WHERE id = $1 RETURNING id, name, arabic_name, is_supply', [id, name, arabicName, isSupply])
+    const result = await client.query('UPDATE medicines SET name = COALESCE($2, name), arabic_name = COALESCE($3, arabic_name), is_supply = COALESCE($4, is_supply), no_thursday_double = COALESCE($5, no_thursday_double) WHERE id = $1 RETURNING id, name, arabic_name, is_supply, no_thursday_double', [id, name, arabicName, isSupply, noThursdayDouble])
     // pill_entries are keyed by the medicine's *normalized name text* (see GET/PUT /api/pills'
     // keyByColumn), not this row's id — a rename changes that key even though chart_columns
     // still links to this same id, so every dose time/usage note/quantity already entered

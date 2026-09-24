@@ -86,6 +86,10 @@ ALTER TABLE medicines ADD COLUMN IF NOT EXISTS arabic_name TEXT;
 -- reports' medicines-per-patient (polypharmacy) count. Seeded once from SUPPLY_MATCH by
 -- server/migrate.js when the column is first added; the admin screen owns it after that.
 ALTER TABLE medicines ADD COLUMN IF NOT EXISTS is_supply BOOLEAN NOT NULL DEFAULT FALSE;
+-- Thursday orders two days' supply (Friday is the ward's day off), except for a medicine
+-- ticked here: its «المجموع المضاعف» on the chart and its doubled line on الطلبية repeat the
+-- normal total instead.
+ALTER TABLE medicines ADD COLUMN IF NOT EXISTS no_thursday_double BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE chart_columns ADD COLUMN IF NOT EXISTS custom_name TEXT;
 
 -- Optimistic-concurrency counter. PUT /api/chart replaces the whole chart (delete + reinsert

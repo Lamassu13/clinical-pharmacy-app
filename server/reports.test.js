@@ -5,7 +5,7 @@ import { pool } from './db.js'
 import { startServer, resetDatabase, createUser, ApiClient } from './test-helpers.js'
 
 const WARD = 'ردهة رجال'
-const MEDS = ['Aspirin 100mg Tab', 'Panadol 500mg Tab', 'Lasix 40mg Tab', 'Plavix 75mg tab', 'Brufen 200mg Tab']
+const MEDS = ['Aspirin 100mg Tab', 'Panadol 500mg Tab', 'Lasix 40mg Tab', 'Plavix 75mg tab', 'Brufen 200mg Tab', 'Risek 20mg cap', 'Heparin', 'Digoxin 250mcg Tab', 'Losartan 50mg Tab', 'Inderal 40mg Tab']
 const SUPPLIES = ['IV set', 'N/S 500ml']
 
 let server, baseUrl
@@ -39,7 +39,7 @@ const saveChart = async (client, floor, date, patients) => {
 test('GET /api/reports: census, admissions/discharges, stays, polypharmacy, consumption and coverage', async () => {
   const admin = await loginAs({ role: 'admin' })
   const ali = { name: 'علي', meds: { 'Aspirin 100mg Tab': 2 } }
-  // Five real medicines plus two supplies: polypharmacy counts 5, not 7.
+  // Ten real medicines plus two supplies: polypharmacy counts 10, not 12.
   const omar = { name: 'عمر', meds: { ...Object.fromEntries(MEDS.map((name) => [name, 1])), 'IV set': 1, 'N/S 500ml': 1 } }
   await saveChart(admin, 5, '2026-04-30', [ali]) // previous period
   await saveChart(admin, 5, '2026-05-01', [ali, omar])
@@ -61,11 +61,13 @@ test('GET /api/reports: census, admissions/discharges, stays, polypharmacy, cons
   assert.equal(ward.chartedDays, 4)
   assert.equal(ward.completedDays, 1)
   assert.deepEqual(ward.missedDates, ['2026-05-04'])
-  assert.deepEqual(body.polypharmacy.map((row) => [row.patient, row.maxMedicines]), [['عمر', 5]])
+  assert.deepEqual(body.polypharmacy.map((row) => [row.patient, row.maxMedicines]), [['عمر', 10]])
 
   const aspirin = body.consumption.find((line) => line.name === 'Aspirin 100mg Tab')
   assert.deepEqual([aspirin.quantity, aspirin.previous, aspirin.change], [10, 2, 400], "Ali 2×4 days + Omar 1×2 days, vs 2")
   assert.equal(body.consumption.find((line) => line.name === 'IV set').isSupply, true)
+  // Medicine types include supplies: 10 medicines + IV set + N/S; the previous period had Aspirin only.
+  assert.deepEqual([body.summary.medicineTypes, body.summary.previousMedicineTypes], [12, 1])
   // Other floor-5 wards had no charts at all.
   assert.equal(body.wards.find((row) => row.ward === 'ردهة النساء').missedDates.length, 5)
 })
@@ -97,7 +99,8 @@ test('medicines is_supply: defaults from the name on add, and the admin can togg
   assert.equal(cannula.body.medicine.is_supply, true)
   const clexane = await admin.post('/api/medicines', { name: 'Clexane prefilled syringe 4000 IU' })
   assert.equal(clexane.body.medicine.is_supply, false)
-  const toggled = await admin.put(`/api/medicines/${clexane.body.medicine.id}`, { isSupply: true })
+  const toggled = await admin.put(`/api/medicines/${clexane.body.medicine.id}`, { isSupply: true, noThursdayDouble: true })
   assert.equal(toggled.body.medicine.is_supply, true)
+  assert.equal(toggled.body.medicine.no_thursday_double, true)
   assert.equal(toggled.body.medicine.name, 'Clexane prefilled syringe 4000 IU')
 })

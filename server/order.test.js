@@ -130,3 +130,21 @@ test('numberToArabicWords: spells the quantities a requisition needs', () => {
   ]
   for (const [n, want] of cases) assert.equal(numberToArabicWords(n), want, `${n}`)
 })
+
+test('GET /api/order: on Thursday a medicine ticked «لا يُضاعف يوم الخميس» repeats its normal quantity', async () => {
+  const wardId = await makeWard()
+  const seeder = await createUser({ role: 'admin' })
+  const flagged = (await pool.query("INSERT INTO medicines (name, no_thursday_double) VALUES ('Heparin', TRUE) RETURNING id")).rows[0].id
+  const normal = (await pool.query("INSERT INTO medicines (name) VALUES ('Aspirin 100mg Tab') RETURNING id")).rows[0].id
+  await seedChart({
+    wardId, createdBy: seeder.id, date: THURSDAY,
+    columns: [{ n: 1, medicineId: flagged }, { n: 2, medicineId: normal }],
+    cells: [{ row: 1, col: 1, qty: 4 }, { row: 1, col: 2, qty: 3 }],
+  })
+  const client = await loginAs({ role: 'user', floor: FLOOR })
+  const { body } = await client.get(`/api/order?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=${THURSDAY}`)
+  const byName = Object.fromEntries(body.order.items.map((item) => [item.name, item]))
+  assert.deepEqual([byName.Heparin.quantity, byName.Heparin.doubledQuantity], [4, 4])
+  assert.equal(byName.Heparin.doubledQuantityWords, numberToArabicWords(4))
+  assert.deepEqual([byName['Aspirin 100mg Tab'].quantity, byName['Aspirin 100mg Tab'].doubledQuantity], [3, 6])
+})

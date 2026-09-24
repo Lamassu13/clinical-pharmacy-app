@@ -134,7 +134,7 @@ function ReportDocument({ report, stale }) {
       <dl className="report-figures">
         <div><dt>أيام المرضى</dt><dd>{summary.patientDays}</dd><Delta now={summary.patientDays} before={summary.previousPatientDays} /></div>
         <div><dt>مرضى فعليون (غير مكرر)</dt><dd>{summary.distinctPatients}</dd><Delta now={summary.distinctPatients} before={summary.previousDistinctPatients} /></div>
-        <div><dt>الجرعات (دون المستلزمات)</dt><dd>{summary.doses}</dd><Delta now={summary.doses} before={summary.previousDoses} /></div>
+        <div><dt>أنواع الأدوية (مع المستلزمات)</dt><dd>{summary.medicineTypes}</dd><Delta now={summary.medicineTypes} before={summary.previousMedicineTypes} /></div>
         <div><dt>دخول / خروج</dt><dd>{summary.admissions} / {summary.discharges}</dd></div>
         <div><dt>متوسط مدة البقاء</dt><dd>{orDash(summary.averageStay)} <small>يوم</small></dd></div>
         <div><dt>متوسط الأدوية لكل مريض</dt><dd>{orDash(summary.averageMedicines)}</dd></div>

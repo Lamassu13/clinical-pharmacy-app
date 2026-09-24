@@ -11,7 +11,7 @@ export default function ChartScreen({
   chartSaveStatus, loadError, copyError, chartReady, lastChartSaveAt, onRetryLoad, onRetrySave, lockState, lockHolder,
   chartCompleted, completedByName, onToggleComplete,
   chartClashNote, onDismissClashNote, droppedCells, undo, onUndo,
-  medicines, patientNames, columnMedicines, quantities, totals, isThursday,
+  medicines, patientNames, columnMedicines, quantities, totals, doubledTotals, isThursday,
   activeRow, activeColumn, labelBelow, setActiveRow, setActiveColumn, setLabelBelow,
   onSetColumnMedicine, onCommitColumnMedicine, columnMedicineNotice, onDismissNotice, onApplySuggestion,
   onSetPatientName, onCheckPreviousDay, onUpdateQuantity, onCollapseRow, onAddColumn, canAddColumn,
@@ -176,7 +176,7 @@ export default function ChartScreen({
       </div>
       <div className="chart-foot">
         <div className="chart-foot-corner"><span>المجموع</span>{isThursday && <span>المجموع المضاعف</span>}</div>
-        <div className="chart-foot-scroll" ref={chartFootRef}><table className="chart-table" role="presentation"><tfoot><tr>{totals.map((total, index) => <td key={index}>{total || ''}</td>)}</tr>{isThursday && <tr className="doubled-row">{totals.map((total, index) => <td key={index}>{total ? total * 2 : ''}</td>)}</tr>}</tfoot></table></div>
+        <div className="chart-foot-scroll" ref={chartFootRef}><table className="chart-table" role="presentation"><tfoot><tr>{totals.map((total, index) => <td key={index}>{total || ''}</td>)}</tr>{isThursday && <tr className="doubled-row">{doubledTotals.map((total, index) => <td key={index}>{total || ''}</td>)}</tr>}</tfoot></table></div>
       </div>
     </div>
 

@@ -28,7 +28,7 @@ const MARGIN_MM = 12.7
 // all 41 rows exactly as before.
 const COMPACT_ROWS = 35
 
-const ChartPrintTemplate = forwardRef(function ChartPrintTemplate({ selected, today, todayWeekday, isThursday, patientNames, columnMedicines, quantities, totals }, ref) {
+const ChartPrintTemplate = forwardRef(function ChartPrintTemplate({ selected, today, todayWeekday, isThursday, patientNames, columnMedicines, quantities, totals, doubledTotals }, ref) {
   const footRows = isThursday ? 2 : 1
   const innerHeight = PAGE_HEIGHT_MM - MARGIN_MM * 2
   // A row counts as filled if it has a patient name or any quantity — same rule the live
@@ -59,7 +59,7 @@ const ChartPrintTemplate = forwardRef(function ChartPrintTemplate({ selected, to
     {totals.map((total, columnIndex) => <div key={`t-${columnIndex}`} className="cpt-cell cpt-qty cpt-total">{total || ''}</div>)}
     {isThursday && <>
       <div className="cpt-cell cpt-corner cpt-foot-corner">المجموع المضاعف</div>
-      {totals.map((total, columnIndex) => <div key={`t2-${columnIndex}`} className="cpt-cell cpt-qty cpt-total">{total ? total * 2 : ''}</div>)}
+      {doubledTotals.map((total, columnIndex) => <div key={`t2-${columnIndex}`} className="cpt-cell cpt-qty cpt-total">{total || ''}</div>)}
     </>}
   </div>
 })

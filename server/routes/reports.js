@@ -8,7 +8,7 @@ const router = express.Router()
 // التقارير: per-floor figures over a manager-chosen range. On demand only (no polling), and the
 // range is capped like the dashboard's range table so one request can't read years of charts.
 export const MAX_REPORT_DAYS = 120
-const POLYPHARMACY_MIN = 5
+const POLYPHARMACY_MIN = 10
 const LONG_STAY_DAYS = 7
 
 const DAY_MS = 86400000
@@ -253,8 +253,6 @@ router.get('/reports', requireManager, async (request, response) => {
 
   const sum = (field) => wards.reduce((total, row) => total + row[field], 0)
   const patientDays = sum('patientDays')
-  const doses = [...dosesByWard.values()].reduce((a, b) => a + b, 0)
-  const previousDoses = consumption.filter((line) => !line.isSupply).reduce((total, line) => total + line.previous, 0)
   const polypharmacyPatients = [...polypharmacy.values()].sort((a, b) => b.maxMedicines - a.maxMedicines || a.patient.localeCompare(b.patient, 'ar'))
 
   response.json({
@@ -267,7 +265,9 @@ router.get('/reports', requireManager, async (request, response) => {
       averageStay: stayCount ? Math.round((staySum / stayCount) * 10) / 10 : null,
       averageMedicines: patientDays ? Math.round((medicineSum / patientDays) * 10) / 10 : null,
       polypharmacyPatients: polypharmacyPatients.length,
-      doses, previousDoses,
+      // Distinct medicines used, supplies and fluids included — the breadth of what the unit dispensed.
+      medicineTypes: consumption.filter((line) => line.quantity > 0).length,
+      previousMedicineTypes: consumption.filter((line) => line.previous > 0).length,
       chartedDays: sum('chartedDays'), possibleChartDays: wards.length * days,
       completedDays: sum('completedDays'),
       extraChartDays: sum('extraChartDays'), extraPillForms: sum('extraPillForms'),

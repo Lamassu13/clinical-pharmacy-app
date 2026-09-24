@@ -369,7 +369,8 @@ router.get('/order', requireAuth, async (request, response) => {
   const isThursday = new Date(`${chartDate}T12:00:00`).getDay() === 4
   if (!chartId) return response.json({ order: { items: [], isThursday } })
   const rows = await query(
-    `SELECT COALESCE(m.name, cc.custom_name) AS name, SUM(cq.quantity)::int AS quantity
+    `SELECT COALESCE(m.name, cc.custom_name) AS name, SUM(cq.quantity)::int AS quantity,
+            bool_or(COALESCE(m.no_thursday_double, FALSE)) AS no_double
      FROM chart_columns cc
      JOIN chart_quantities cq ON cq.chart_id = cc.chart_id AND cq.column_number = cc.column_number
      LEFT JOIN medicines m ON m.id = cc.medicine_id
@@ -386,7 +387,8 @@ router.get('/order', requireAuth, async (request, response) => {
         name: row.name,
         quantity: row.quantity,
         quantityWords: numberToArabicWords(row.quantity),
-        ...(isThursday ? { doubledQuantity: row.quantity * 2, doubledQuantityWords: numberToArabicWords(row.quantity * 2) } : {}),
+        // A medicine ticked «لا يُضاعف يوم الخميس» repeats its normal quantity.
+        ...(isThursday ? { doubledQuantity: row.quantity * (row.no_double ? 1 : 2), doubledQuantityWords: numberToArabicWords(row.quantity * (row.no_double ? 1 : 2)) } : {}),
       })),
     },
   })
