@@ -15,6 +15,7 @@ import AdminMedicinesScreen from './screens/AdminMedicinesScreen.jsx'
 import AdminFloorsScreen from './screens/AdminFloorsScreen.jsx'
 import TreatmentFormsScreen from './screens/TreatmentFormsScreen.jsx'
 import ProfileScreen from './screens/ProfileScreen.jsx'
+import ReportsScreen from './screens/ReportsScreen.jsx'
 import PillsScreen from './screens/PillsScreen.jsx'
 import OrderScreen from './screens/OrderScreen.jsx'
 import ExtraPillsScreen from './screens/ExtraPillsScreen.jsx'
@@ -525,10 +526,10 @@ function App() {
       setAdminMedicines(result.medicines)
     } catch { /* keep the current list on network error */ }
   }, [])
-  const saveMedicine = useCallback(async (id, name, arabicName) => {
+  const saveMedicine = useCallback(async (id, name, arabicName, isSupply) => {
     setRegistrationsError(''); setAdminSuccess(''); setBusy(true)
     try {
-      const response = await fetch(`${apiUrl}/medicines/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ name, arabicName }) })
+      const response = await fetch(`${apiUrl}/medicines/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ name, arabicName, isSupply }) })
       const result = await response.json()
       if (!response.ok) throw new Error(result.message || 'تعذر تحديث الدواء')
       setAdminMedicines((current) => current.map((item) => item.id === id ? result.medicine : item))
@@ -1065,6 +1066,7 @@ function App() {
     else if (adminView === 'requests') screen = 'طلبات الانضمام'
     else if (adminView === 'users') screen = 'جميع المستخدمين'
     else if (adminView === 'medicines') screen = 'إدارة الأدوية'
+    else if (adminView === 'reports') screen = 'التقارير'
     else if (selected?.mode === 'pills') screen = `الحبوب — ${ward}`
     else if (selected?.mode === 'order') screen = `الطلبية — ${ward}`
     else if (selected?.mode === 'extra-pills') screen = `استمارة الحبوب الإضافي — ${wardName}`
@@ -1892,6 +1894,8 @@ function App() {
   if (adminView === 'requests' && isAdmin) return <AdminRequestsScreen adminHeader={appHeader} registrations={registrations} registrationsError={registrationsError} adminSuccess={adminSuccess} pendingFloor={pendingFloor} setPendingFloor={setPendingFloor} busy={busy} onReload={loadRegistrations} onApprove={approveRegistration} onReject={rejectRegistration} confirmModal={confirmModal} />
 
   if (adminView === 'users' && isManager) return <AdminUsersScreen adminHeader={appHeader} allUsers={allUsers} currentUser={currentUser} isAdmin={isAdmin} registrationsError={registrationsError} adminSuccess={adminSuccess} busy={busy} onReload={loadUsers} onChangeRole={changeUserRole} onAssignLocation={assignLocationToUser} onDeleteUser={deleteUser} confirmModal={confirmModal} />
+
+  if (adminView === 'reports' && isManager) return <ReportsScreen adminHeader={appHeader} isExpired={isExpired} />
 
   if (adminView === 'floors' && isManager) return <AdminFloorsScreen adminHeader={appHeader} purgeFrom={purgeFrom} setPurgeFrom={setPurgeFrom} purgeTo={purgeTo} setPurgeTo={setPurgeTo} purgeAll={purgeAll} setPurgeAll={setPurgeAll} purgeTargets={purgeTargets} onToggleTarget={togglePurgeTarget} busy={busy} registrationsError={registrationsError} adminSuccess={adminSuccess} onPurge={purgeCharts} confirmModal={confirmModal} />
 

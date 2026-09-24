@@ -82,6 +82,10 @@ CREATE TABLE IF NOT EXISTS chart_quantities (
 );
 
 ALTER TABLE medicines ADD COLUMN IF NOT EXISTS arabic_name TEXT;
+-- A consumable rather than a drug (IV set, cannula, syringe, IV fluid…) — left out of the
+-- reports' medicines-per-patient (polypharmacy) count. Seeded once from SUPPLY_MATCH by
+-- server/migrate.js when the column is first added; the admin screen owns it after that.
+ALTER TABLE medicines ADD COLUMN IF NOT EXISTS is_supply BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE chart_columns ADD COLUMN IF NOT EXISTS custom_name TEXT;
 
 -- Optimistic-concurrency counter. PUT /api/chart replaces the whole chart (delete + reinsert

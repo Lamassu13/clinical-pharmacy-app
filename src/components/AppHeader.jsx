@@ -11,6 +11,7 @@ const ADMIN_SECTIONS = [
   { view: 'requests', label: 'طلبات الانضمام', adminOnly: true },
   { view: 'medicines', label: 'إدارة الأدوية' },
   { view: 'floors', label: 'إدارة الطوابق' },
+  { view: 'reports', label: 'التقارير' },
   { view: 'users', label: 'جميع المستخدمين' },
 ]
 

@@ -13,11 +13,12 @@ import { authenticateUser, requireAdmin, requireAuth, requireManager } from './a
 import {
   ALLOWED_FLOORS, MAX_PATIENT_ROWS, SPECIAL_WARDS, PILL_FORM,
   DOSE_TIMES, USAGE_METHODS, NOTE_OPTIONS, clampInt, isIsoDate, cleanText,
-  normalizeMedicineKey, medicineKeySql,
+  normalizeMedicineKey, medicineKeySql, SUPPLY_MATCH, SUPPLY_EXCEPT,
 } from './validation.js'
 import chartRoutes, { resolveChartId, readLocation } from './routes/chart.js'
 import treatmentFormsRoutes from './routes/treatment-forms.js'
 import extraPillsRoutes from './routes/extra-pills.js'
+import reportsRoutes from './routes/reports.js'
 
 const app = express()
 const port = Number(process.env.PORT || 3001)
@@ -165,7 +166,7 @@ app.put('/api/auth/me', requireAuth, async (request, response) => {
 })
 
 app.get('/api/medicines', requireAuth, async (_request, response) => {
-  const result = await query('SELECT id, name, arabic_name FROM medicines ORDER BY name ASC')
+  const result = await query('SELECT id, name, arabic_name, is_supply FROM medicines ORDER BY name ASC')
   response.json({ medicines: result.rows })
 })
 // Admin-only: the medicines catalogue is shared, and PUT/DELETE on it are already
@@ -184,7 +185,7 @@ app.post('/api/medicines', requireManager, async (request, response) => {
   try {
     const existing = await findMedicineByName(name)
     if (existing.rows[0]) return response.status(409).json({ message: `"${existing.rows[0].name}" موجود في القائمة أصلًا`, medicine: existing.rows[0] })
-    const result = await query('INSERT INTO medicines (name, created_by) VALUES ($1, $2) RETURNING id, name, arabic_name', [name, request.session.user.id])
+    const result = await query('INSERT INTO medicines (name, created_by, is_supply) VALUES ($1, $2, $1 ~* $3 AND $1 !~* $4) RETURNING id, name, arabic_name, is_supply', [name, request.session.user.id, SUPPLY_MATCH, SUPPLY_EXCEPT])
     response.status(201).json({ medicine: result.rows[0] })
   } catch (error) {
     if (error.code === '23505') return response.status(409).json({ message: `"${name}" موجود في القائمة أصلًا` })
@@ -197,6 +198,7 @@ app.put('/api/medicines/:id', requireManager, async (request, response) => {
   if (!Number.isInteger(id) || id < 1) return response.status(400).json({ message: 'معرّف غير صحيح' })
   const name = request.body.name === undefined ? null : cleanText(request.body.name, 200).trim()
   const arabicName = request.body.arabicName === undefined ? null : cleanText(request.body.arabicName, 200).trim()
+  const isSupply = typeof request.body.isSupply === 'boolean' ? request.body.isSupply : null
   if (name !== null && !name) return response.status(400).json({ message: 'اسم العلاج مطلوب' })
   const client = await pool.connect()
   try {
@@ -207,7 +209,7 @@ app.put('/api/medicines/:id', requireManager, async (request, response) => {
     }
     const existing = await client.query('SELECT name FROM medicines WHERE id = $1', [id])
     if (!existing.rows[0]) { await client.query('ROLLBACK'); return response.status(404).json({ message: 'الدواء غير موجود' }) }
-    const result = await client.query('UPDATE medicines SET name = COALESCE($2, name), arabic_name = COALESCE($3, arabic_name) WHERE id = $1 RETURNING id, name, arabic_name', [id, name, arabicName])
+    const result = await client.query('UPDATE medicines SET name = COALESCE($2, name), arabic_name = COALESCE($3, arabic_name), is_supply = COALESCE($4, is_supply) WHERE id = $1 RETURNING id, name, arabic_name, is_supply', [id, name, arabicName, isSupply])
     // pill_entries are keyed by the medicine's *normalized name text* (see GET/PUT /api/pills'
     // keyByColumn), not this row's id — a rename changes that key even though chart_columns
     // still links to this same id, so every dose time/usage note/quantity already entered
@@ -631,6 +633,7 @@ app.delete('/api/announcements/:id', requireManager, async (request, response) =
 app.use('/api', chartRoutes)
 app.use('/api', treatmentFormsRoutes)
 app.use('/api', extraPillsRoutes)
+app.use('/api', reportsRoutes)
 
 app.get('/api/pills', requireAuth, async (request, response) => {
   const location = readLocation(request.query, request.session.user)
