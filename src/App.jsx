@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { roleLabels, PATIENT_ROWS, CHART_COLUMNS, MAX_CHART_COLUMNS, apiUrl, floors, specialWards } from './constants.js'
-import { mergeChartSnapshots, diffMergeOutcome, mergeKeyedSnapshots, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, blankExtraPillForm, parseChartRows, toEnglishDigits, medicineKey, patientNameKey, nearestMedicine, UNIT_ONE, isSyringe, VIAL_AMP, SYRINGE_EXCLUDE, isoDate, isDraftStale, locationBody, pillEntryList } from './helpers.js'
+import { mergeChartSnapshots, diffMergeOutcome, addOfflineRows, mergeKeyedSnapshots, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, blankExtraPillForm, parseChartRows, toEnglishDigits, medicineKey, patientNameKey, nearestMedicine, UNIT_ONE, isSyringe, VIAL_AMP, SYRINGE_EXCLUDE, isoDate, isDraftStale, locationBody, pillEntryList } from './helpers.js'
 import ConfirmDialog from './components/ConfirmDialog.jsx'
 import CopyChartDialog from './components/CopyChartDialog.jsx'
 import AppHeader from './components/AppHeader.jsx'
@@ -97,6 +97,13 @@ function App() {
   // re-run the loader effect below.
   const [dashboardError, setDashboardError] = useState(false)
   const [dashboardReloadKey, setDashboardReloadKey] = useState(0)
+  // The chart (wardKey) opened blank because the iPad was offline and had never downloaded it —
+  // see the load effect. Cleared by the first real load or save once the connection is back.
+  const [offlineChartKey, setOfflineChartKey] = useState(null)
+  // Read by the draft mirror, which must not re-run (and re-write a just-cleared draft) when only
+  // this flag changes.
+  const offlineChartKeyRef = useRef(null)
+  useEffect(() => { offlineChartKeyRef.current = offlineChartKey }, [offlineChartKey])
   const retryDashboard = useCallback(() => { setDashboardData(null); setDashboardError(false); setDashboardReloadKey((key) => key + 1) }, [])
   // null until the first load finishes, so the widget shows a skeleton rather than "no announcements".
   const [announcements, setAnnouncements] = useState(null)
@@ -955,6 +962,18 @@ function App() {
     const result = await response.json()
     const fresh = parseChartRows(result.chart)
     const mine = { patientNames, patientIds, columnMedicines, quantities }
+    // Opened blank offline: this grid's rows are not the server's rows — add them, don't overlay.
+    if (offlineChartKey === wardKey(selected, date)) {
+      const { merged, unplaced } = addOfflineRows(fresh, mine)
+      setPatientNames(merged.patientNames); setPatientIds(merged.patientIds); setColumnMedicines(merged.columnMedicines); setQuantities(merged.quantities)
+      setDroppedCells({})
+      chartVersionRef.current = result.chart ? result.chart.version : 0
+      lastSyncedChartRef.current = fresh
+      setChartCompleted(!!result.chart?.completedAt)
+      setCompletedByName(result.chart?.completedByName ?? null)
+      setChartClashNote(`أُضيف ما كُتب دون اتصال إلى جارت الخادم كمرضى جدد${unplaced ? ` — ${unplaced} مريض لم يتّسع له الجارت، راجعه` : ''}. راجِع الجارت.`)
+      return
+    }
     const merged = mergeChartSnapshots(lastSyncedChartRef.current, mine, fresh)
     const { adopted, dropped, droppedOther } = diffMergeOutcome(merged, mine, fresh)
     setPatientNames(merged.patientNames)
@@ -974,7 +993,7 @@ function App() {
       if (droppedOther) parts.push(`${droppedOther} من أسماء المرضى/الأدوية اختلفت أيضًا وأُبقيت قيمتك — راجعها يدويًا`)
       setChartClashNote(`${parts.join(' · ')}. راجِعها${adopted.length ? `: ${adopted.slice(0, 4).join('، ')}${adopted.length > 4 ? '…' : ''}` : ''}.`)
     }
-  }, [columnMedicines, patientIds, patientNames, quantities, selected])
+  }, [columnMedicines, offlineChartKey, patientIds, patientNames, quantities, selected])
   // Fire an immediate save (survives navigation / tab close) — only once the grid is loaded,
   // so we never overwrite unknown server state with a blank grid.
   const flushChart = useCallback(() => {
@@ -1269,7 +1288,33 @@ function App() {
     const load = async () => {
       try {
         const params = new URLSearchParams({ floor: selected.floor || '', ward: selected.ward, slot: selected.slot || 'main', date: selectedDate })
-        const response = await fetch(`${apiUrl}/chart?${params}`, { credentials: 'include' })
+        let response
+        try {
+          response = await fetch(`${apiUrl}/chart?${params}`, { credentials: 'include' })
+        } catch (networkError) {
+          // No signal and this iPad never downloaded this chart (the service worker only serves
+          // charts it has seen), so there is nothing to show. Rather than locking the pharmacist
+          // out until the network returns, open it blank — or from this device's own unsaved
+          // draft — and let them work. The base is blank (or the draft's own base), version 0:
+          // once online, the save 409s against any chart that exists by then and
+          // mergeAfterConflict keeps what was typed here and takes everything else from the
+          // server, exactly like any other conflict.
+          if (cancelled || navigator.onLine) throw networkError
+          const blank = parseChartRows(null)
+          let draft = null
+          try { draft = JSON.parse(localStorage.getItem(draftKey) || 'null') } catch { /* corrupt — start blank */ }
+          const base = draft ? { ...draft.base, patientIds: draft.base.patientIds ?? blank.patientIds } : blank
+          const next = draft ? mergeChartSnapshots(base, draft.current, base) : blank
+          setPatientNames(next.patientNames); setPatientIds(next.patientIds); setQuantities(next.quantities); setColumnMedicines(next.columnMedicines)
+          chartVersionRef.current = 0
+          lastSyncedChartRef.current = base
+          setOfflineChartKey(chartKey)
+          setChartClashNote('لا يوجد اتصال، ولم يُفتح هذا الجارت على هذا الجهاز من قبل — فُتح فارغًا. ما تكتبه يُحفظ على الجهاز ويُدمج مع جارت الخادم تلقائيًا عند عودة الاتصال.')
+          setLoadError(false)
+          setLoadedChartKey(chartKey)
+          setChartLoading(false)
+          return
+        }
         // Raise the sign-in card, then keep retrying: a load overwrites nothing that was
         // typed (the grid is still empty when the very first load is the one that fails),
         // so once they are signed back in the next attempt simply succeeds.
@@ -1288,7 +1333,9 @@ function App() {
           const raw = localStorage.getItem(draftKey)
           if (raw) draft = JSON.parse(raw)
         } catch { /* storage unavailable or the draft was corrupt — fall back to the server state */ }
-        const next = draft ? mergeChartSnapshots(draft.base, draft.current, fresh) : fresh
+        // A draft typed on a chart opened blank offline is added row by row, never overlaid.
+        const offlineAdd = draft?.offline ? addOfflineRows(fresh, draft.current) : null
+        const next = offlineAdd ? offlineAdd.merged : draft ? mergeChartSnapshots(draft.base, draft.current, fresh) : fresh
         setPatientNames(next.patientNames); setPatientIds(next.patientIds); setQuantities(next.quantities); setColumnMedicines(next.columnMedicines)
         chartVersionRef.current = result.chart ? result.chart.version : 0
         setChartCompleted(!!result.chart?.completedAt)
@@ -1296,7 +1343,10 @@ function App() {
         // Always the server snapshot, not `next`: a recovered draft is still unsaved until the
         // next PUT actually succeeds, so it must still read as "pending" if that save 409s.
         lastSyncedChartRef.current = fresh
-        if (draft) {
+        if (offlineAdd) {
+          // Kept in localStorage until the merged grid is saved (the mirror rewrites it meanwhile).
+          setChartClashNote(`أُضيف ما كُتب دون اتصال إلى جارت الخادم كمرضى جدد${offlineAdd.unplaced ? ` — ${offlineAdd.unplaced} مريض لم يتّسع له الجارت، راجعه` : ''}. راجِع الجارت.`)
+        } else if (draft) {
           try { localStorage.removeItem(draftKey) } catch { /* best effort */ }
           // Same reporting as a live save conflict (mergeAfterConflict) — a recovered draft is
           // exactly that, just discovered on load instead of on a 409, and was previously
@@ -1317,6 +1367,7 @@ function App() {
         const lock = result.lock || {}
         if (lock.held && lock.mine) setLockState('editing')
         else if (lock.held) { setLockState('readonly'); setLockHolder(lock.holder || null) }
+        setOfflineChartKey(null)
         setLoadError(false)
         setLoadedChartKey(chartKey)
         setChartLoading(false)
@@ -1330,6 +1381,20 @@ function App() {
     load()
     return () => { cancelled = true; clearTimeout(retryTimer) }
   }, [selected, selectedDate, isExpired, chartLoadNonce])
+  // Back online on a chart that was opened blank offline: if nothing was typed, load the real
+  // one now. If something was, leave it — the pending autosave sends it and merges with the
+  // server's copy (see the offline branch above), which is what clears offlineChartKey.
+  useEffect(() => {
+    if (!isOnline || !offlineChartKey || !selected || wardKey(selected, selectedDate) !== offlineChartKey) return
+    const synced = lastSyncedChartRef.current
+    const dirty = JSON.stringify(patientNames) !== JSON.stringify(synced.patientNames)
+      || JSON.stringify(patientIds) !== JSON.stringify(synced.patientIds)
+      || JSON.stringify(columnMedicines) !== JSON.stringify(synced.columnMedicines)
+      || JSON.stringify(quantities) !== JSON.stringify(synced.quantities)
+    if (dirty) return
+    setOfflineChartKey(null)
+    setChartLoadNonce((n) => n + 1)
+  }, [isOnline, offlineChartKey, selected, selectedDate, patientNames, patientIds, columnMedicines, quantities])
   // Mirrors the live grid to localStorage so a killed tab (not just a backgrounded one —
   // pagehide/visibilitychange below cover that) doesn't lose whatever hadn't reached the
   // server yet. `base` is the last state this tab knows was actually saved, so the load
@@ -1341,7 +1406,7 @@ function App() {
       // `meta` lets the picker's resume card name the ward/date without parsing the key
       // (which contains dashes from the ISO date). The load effect ignores it.
       const meta = { floor: selected.floor ?? null, ward: selected.ward, date: selectedDate, slot: selected.slot || 'main' }
-      localStorage.setItem(`cpa-chart-draft:${chartKey}`, JSON.stringify({ meta, base: lastSyncedChartRef.current, current: { patientNames, patientIds, columnMedicines, quantities } }))
+      localStorage.setItem(`cpa-chart-draft:${chartKey}`, JSON.stringify({ meta, base: lastSyncedChartRef.current, current: { patientNames, patientIds, columnMedicines, quantities }, offline: offlineChartKeyRef.current === chartKey }))
     } catch { /* storage unavailable or full — the network autosave is still the source of truth */ }
     return undefined
   }, [columnMedicines, loadedChartKey, patientIds, patientNames, quantities, selected, selectedDate])
@@ -1422,6 +1487,7 @@ function App() {
         const result = await response.json()
         chartVersionRef.current = result.version
         lastSyncedChartRef.current = { patientNames, patientIds, columnMedicines, quantities }
+        setOfflineChartKey(null)
         // Everything the localStorage mirror was protecting has now actually reached the
         // server — an empty draft is indistinguishable from no draft, so just drop it.
         try { localStorage.removeItem(`cpa-chart-draft:${chartKey}`) } catch { /* best effort */ }

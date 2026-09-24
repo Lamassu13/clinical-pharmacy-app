@@ -17,7 +17,10 @@ const APP_SHELL = ['/', '/index.html', '/favicon.png']
 // it's explicitly cleared on logout (see App.jsx's logout()) and on a real 401, so it can't
 // leak across a login switch on the same device.
 const API_CACHE = 'cpa-api-v1'
-const CACHEABLE_API_PATHS = ['/api/chart', '/api/pills', '/api/extra-pills']
+// /api/medicines too: the shared catalogue (identical for every user, nothing personal in it). A
+// chart column only accepts a catalogue name, so without it a chart opened offline could take no
+// medicines at all.
+const CACHEABLE_API_PATHS = ['/api/chart', '/api/pills', '/api/extra-pills', '/api/medicines']
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(SHELL_CACHE).then((cache) => cache.addAll(APP_SHELL)))

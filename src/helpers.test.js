@@ -82,3 +82,26 @@ test('mergeChartSnapshots/diffMergeOutcome: patient IDs merge per row, and a pre
   assert.deepEqual(oldDraft.patientIds, ['', '22'])
   assert.deepEqual(oldDraft.patientNames, ['x', 'b'])
 })
+
+test('addOfflineRows: a patient typed offline in row 1 is added beside the server\'s row 1, never over it', async () => {
+  const { addOfflineRows } = await import('./helpers.js')
+  const grid = (names, ids, meds, qty) => ({ patientNames: names, patientIds: ids, columnMedicines: meds, quantities: qty })
+  const fresh = grid(['Server Patient', '', ''], ['111', '', ''], ['Panadol 500mg Tab', ''], [['2', ''], ['', ''], ['', '']])
+  // Offline: row 1 is a different patient, with Panadol in column 2 and a new medicine in column 1.
+  const offline = grid(['Offline Patient', '', ''], ['222', '', ''], ['Flagyl 500mg Tab', 'panadol  500mg tab'], [['1', '4'], ['', ''], ['', '']])
+  const { merged, unplaced } = addOfflineRows(fresh, offline)
+  assert.equal(unplaced, 0)
+  assert.deepEqual(merged.patientNames, ['Server Patient', 'Offline Patient', ''])
+  assert.deepEqual(merged.patientIds, ['111', '222', ''])
+  assert.deepEqual(merged.columnMedicines, ['Panadol 500mg Tab', 'Flagyl 500mg Tab'])
+  assert.deepEqual(merged.quantities, [['2', ''], ['4', '1'], ['', '']])
+})
+
+test('addOfflineRows: the same patient (by ID) typed offline lands on their existing row; a full grid reports what did not fit', async () => {
+  const { addOfflineRows } = await import('./helpers.js')
+  const grid = (names, ids, meds, qty) => ({ patientNames: names, patientIds: ids, columnMedicines: meds, quantities: qty })
+  const fresh = grid(['A', 'B'], ['1', '2'], ['X'], [['1'], ['1']])
+  const { merged, unplaced } = addOfflineRows(fresh, grid(['B', 'C'], ['2', '3'], ['X'], [['5'], ['1']]))
+  assert.deepEqual(merged.quantities, [['1'], ['5']])
+  assert.equal(unplaced, 1)
+})

@@ -1,6 +1,6 @@
 // Pure helpers with no React and no I/O, so they can be read — and reasoned about — without
 // the component around them.
-import { floors, specialWards, PATIENT_ROWS, CHART_COLUMNS } from './constants.js'
+import { floors, specialWards, PATIENT_ROWS, CHART_COLUMNS, MAX_CHART_COLUMNS } from './constants.js'
 
 // Shared by the two places a chart snapshot from elsewhere (the server, after a save
 // conflict; or localStorage, after a killed tab) has to be combined with what is on screen:
@@ -13,6 +13,56 @@ export const mergeChartSnapshots = (base, current, fresh) => ({
   columnMedicines: fresh.columnMedicines.map((value, index) => (current.columnMedicines[index] !== base.columnMedicines[index] ? current.columnMedicines[index] : value)),
   quantities: fresh.quantities.map((row, rowIndex) => row.map((value, columnIndex) => (current.quantities[rowIndex][columnIndex] !== base.quantities[rowIndex]?.[columnIndex] ? current.quantities[rowIndex][columnIndex] : value))),
 })
+
+// A chart opened blank offline (App.jsx load effect) knew nothing about the server's rows, so its
+// row 1 is not the server's row 1 — a cell-by-cell merge would pin the offline patient's name on
+// top of another patient's doses. Instead, each patient typed offline is ADDED to the server's
+// chart: onto the same patient's row if the server already has them (same ID, else same name),
+// otherwise into the first empty row; each dose goes under the column carrying that medicine
+// (first blank column, or a new one, if none does). A value typed offline wins its own cell.
+// Returns the merged snapshot and how many offline patients could not fit (grid full).
+export const addOfflineRows = (fresh, offline) => {
+  const merged = {
+    patientNames: [...fresh.patientNames],
+    patientIds: [...fresh.patientIds],
+    columnMedicines: [...fresh.columnMedicines],
+    quantities: fresh.quantities.map((row) => [...row]),
+  }
+  const rowEmpty = (index) => !merged.patientNames[index]?.trim() && !merged.patientIds[index] && !merged.quantities[index].some(Boolean)
+  const columnFor = (medicine) => {
+    const key = medicineKey(medicine)
+    let index = merged.columnMedicines.findIndex((name) => medicineKey(name) === key)
+    if (index !== -1) return index
+    index = merged.columnMedicines.findIndex((name, column) => !name.trim() && merged.quantities.every((row) => !row[column]))
+    if (index === -1) {
+      if (merged.columnMedicines.length >= MAX_CHART_COLUMNS) return -1
+      index = merged.columnMedicines.length
+      merged.columnMedicines.push('')
+      merged.quantities.forEach((row) => row.push(''))
+    }
+    merged.columnMedicines[index] = medicine
+    return index
+  }
+  // Header-only columns typed offline (a medicine with no dose yet) still get a column.
+  offline.columnMedicines.forEach((medicine) => { if (medicine.trim()) columnFor(medicine) })
+  let unplaced = 0
+  offline.patientNames.forEach((name, row) => {
+    const id = offline.patientIds?.[row] || ''
+    const doses = offline.columnMedicines.map((medicine, column) => ({ medicine, qty: offline.quantities[row]?.[column] })).filter((dose) => dose.medicine.trim() && dose.qty)
+    if (!name.trim() && !id && !doses.length) return
+    let target = id ? merged.patientIds.findIndex((value) => value === id) : -1
+    if (target === -1 && name.trim()) target = merged.patientNames.findIndex((value) => patientNameKey(value) === patientNameKey(name))
+    if (target === -1) target = merged.patientNames.findIndex((_, index) => rowEmpty(index))
+    if (target === -1) { unplaced += 1; return }
+    if (name.trim()) merged.patientNames[target] = name
+    if (id) merged.patientIds[target] = id
+    doses.forEach(({ medicine, qty }) => {
+      const column = columnFor(medicine)
+      if (column !== -1) merged.quantities[target][column] = qty
+    })
+  })
+  return { merged, unplaced }
+}
 
 // Reports what a merge (mergeChartSnapshots above) actually did, relative to `mine` (this
 // tab's pre-merge state) and `fresh` (the other side's state) — so neither call site can
