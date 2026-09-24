@@ -40,8 +40,9 @@ export default function FloorPickerScreen({
       <div className="date-chip"><span>اليوم</span><strong>{today}</strong></div>
     </div>
 
-    {/* A special-ward-only user never opens a floor page, where announcements otherwise live. */}
-    {floors.length === 0 && specialWards.length > 0 && (
+    {/* Managers get announcements here; so does a special-ward-only user, who never opens a
+        floor page, where everyone else sees them. */}
+    {(isManager || (floors.length === 0 && specialWards.length > 0)) && (
       <div className="dashboard-announcements">
         <DashboardWidgets
           loading={announcements === null} error={false}

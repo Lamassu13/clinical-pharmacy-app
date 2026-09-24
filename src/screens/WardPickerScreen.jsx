@@ -24,7 +24,7 @@ export default function WardPickerScreen({
         {today && <div className="date-chip"><span>اليوم</span><strong>{today}</strong></div>}
       </div>
     </div>
-    <div className="dashboard-announcements">
+    {!isManager && <div className="dashboard-announcements">
       <DashboardWidgets
         loading={announcements === null} error={false}
         announcements={announcements ?? []} isManager={isManager}
@@ -32,7 +32,7 @@ export default function WardPickerScreen({
         announcementError={announcementError} announcementBusy={announcementBusy}
         onPostAnnouncement={onPostAnnouncement} onEditAnnouncement={onEditAnnouncement} onDeleteAnnouncement={onDeleteAnnouncement}
       />
-    </div>
+    </div>}
     <div className="location-grid">{floor.wards.map((ward) => {
       const started = startedWards.has(ward)
       return <div className="location-card" key={ward}>

@@ -1176,8 +1176,8 @@ function App() {
     return () => { cancelled = true }
   }, [isLoggedIn, floor, selected, adminView, isExpired, isManager, rangeFrom, rangeTo, dashboardReloadKey])
 
-  // Announcements live on a single floor's page (WardPickerScreen) and, for a special-ward-only
-  // user, on the floors list — loaded each time either opens.
+  // Announcements: a manager's (and a special-ward-only user's) on the floors list, everyone
+  // else's on a single floor's page — loaded each time either opens.
   useEffect(() => {
     if (!isLoggedIn || selected || adminView) return undefined
     let cancelled = false
