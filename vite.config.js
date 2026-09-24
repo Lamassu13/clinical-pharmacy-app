@@ -5,6 +5,10 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   plugins: [react()],
   build: {
+    // The ward devices are mixed — older iPads (iPadOS 14/15) and Android tablets included — so
+    // don't take Vite's default (Safari 16.4 / Chrome 111): lower the syntax to what they run.
+    target: ['es2020', 'safari14', 'chrome87', 'firefox78', 'edge88'],
+    cssTarget: ['safari14', 'chrome87', 'firefox78', 'edge88'],
     rolldownOptions: {
       // jsPDF's .html() helper (which this app never calls — export renders a
       // pre-built canvas via addImage instead) lazily import()s these three as optional
