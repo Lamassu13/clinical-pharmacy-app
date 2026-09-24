@@ -14,14 +14,22 @@ const nameKey = (value) => String(value ?? '').trim().replace(/\s+/g, ' ')
 export const monthStart = (iso) => `${iso.slice(0, 8)}01`
 export const windowStart = (iso) => toIso(toDay(monthStart(iso)) - LOOKBACK_DAYS)
 
-// "Meronem 1000gm Vial" → "1g", "Meronem 500gm Vial" → "500mg". The catalogue writes gm where it
-// means mg, so the number decides: ≥ 1000 is grams.
-export const strengthOf = (medicine) => {
+// Vial strength in mg: "Meronem 1000gm Vial" → 1000, "Meronem 500gm Vial" → 500. The catalogue
+// writes gm where it means mg, so only a small number with a plain "g" ("1g") is read as grams.
+export const strengthMg = (medicine) => {
   const match = String(medicine).match(/(\d+(?:\.\d+)?)\s*(mg|gm|g)\b/i)
-  if (!match) return ''
+  if (!match) return 0
   const value = Number(match[1])
-  if (match[2].toLowerCase() === 'g' && value < 10) return `${value}g`
-  return value >= 1000 ? `${value / 1000}g` : `${value}mg`
+  return match[2].toLowerCase() === 'g' && value < 10 ? value * 1000 : value
+}
+const formatMg = (mg) => (mg >= 1000 ? `${mg / 1000}g` : `${mg}mg`)
+
+// Meropenem is given three times a day, so a quantity that divides by 3 reads as a per-dose
+// amount: 1g vial × 6 → "2g × 3", 500mg × 3 → "500mg × 3". Anything else stays as vials × count.
+export const doseText = (medicine, quantity) => {
+  const mg = strengthMg(medicine)
+  if (!mg) return `× ${quantity}`
+  return quantity % 3 === 0 ? `${formatMg(mg * quantity / 3)} × 3` : `${formatMg(mg)} × ${quantity}`
 }
 
 // cells: [{ date, name, patientId, medicine, quantity }] — Meronem cells with quantity > 0, over
@@ -46,8 +54,7 @@ export const buildMeropenemForm = ({ date, cells, chartedDates }) => {
     if (nameKey(cell.name)) patient.name = nameKey(cell.name)
     if (cell.patientId) patient.patientId = cell.patientId
     if (!patient.doses.has(cell.date)) patient.doses.set(cell.date, [])
-    const strength = strengthOf(cell.medicine)
-    patient.doses.get(cell.date).push(strength ? `${strength} × ${cell.quantity}` : `× ${cell.quantity}`)
+    patient.doses.get(cell.date).push(doseText(cell.medicine, cell.quantity))
   })
 
   const first = monthStart(date)
@@ -86,5 +93,7 @@ export const buildMeropenemForm = ({ date, cells, chartedDates }) => {
     })
   })
   patients.sort((a, b) => a.firstDay.localeCompare(b.firstDay) || a.name.localeCompare(b.name, 'ar'))
-  return { dates, patients: patients.map(({ firstDay: _firstDay, ...rest }) => rest) }
+  // Only the days some patient is actually on it — an empty date column is just noise.
+  const used = new Set(patients.flatMap((patient) => Object.keys(patient.days)))
+  return { dates: dates.filter((iso) => used.has(iso)), patients: patients.map(({ firstDay: _firstDay, ...rest }) => rest) }
 }

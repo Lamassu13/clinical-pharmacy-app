@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import app from './index.js'
 import { pool } from './db.js'
 import { startServer, resetDatabase, createUser, ApiClient } from './test-helpers.js'
-import { buildMeropenemForm, strengthOf } from './meropenem.js'
+import { buildMeropenemForm, doseText } from './meropenem.js'
 
 const FLOOR = 5
 const WARD = 'ردهة رجال'
@@ -22,10 +22,13 @@ const loginAs = async (options) => {
 
 const cell = (date, name, quantity = 3, extra = {}) => ({ date, name, patientId: '', medicine: 'Meronem 1000gm Vial', quantity, ...extra })
 
-test('strengthOf: the catalogue\'s "gm" means mg — 1000 reads as 1g, 500 as 500mg', () => {
-  assert.equal(strengthOf('Meronem 1000gm Vial'), '1g')
-  assert.equal(strengthOf('Meronem 500gm Vial'), '500mg')
-  assert.equal(strengthOf('Meropenem 1g vial'), '1g')
+test('doseText: the catalogue\'s "gm" means mg, and a quantity divisible by 3 reads as a per-dose amount × 3', () => {
+  assert.equal(doseText('Meronem 1000gm Vial', 3), '1g × 3')
+  assert.equal(doseText('Meronem 1000gm Vial', 6), '2g × 3')
+  assert.equal(doseText('Meronem 500gm Vial', 3), '500mg × 3')
+  assert.equal(doseText('Meronem 500gm Vial', 6), '1g × 3')
+  assert.equal(doseText('Meronem 1000gm Vial', 2), '1g × 2')
+  assert.equal(doseText('Meropenem 1g vial', 3), '1g × 3')
 })
 
 test('buildMeropenemForm: consecutive days count D1, D2, D3 with the dose from the chart', () => {
@@ -34,7 +37,7 @@ test('buildMeropenemForm: consecutive days count D1, D2, D3 with the dose from t
     cells: [cell('2026-09-21', 'علي'), cell('2026-09-22', 'علي'), cell('2026-09-23', 'علي')],
     chartedDates: ['2026-09-21', '2026-09-22', '2026-09-23'],
   })
-  assert.equal(form.dates.length, 23)
+  assert.deepEqual(form.dates, ['2026-09-21', '2026-09-22', '2026-09-23'])
   assert.deepEqual(form.patients, [{ name: 'علي', patientId: '', dose: '1g × 3', days: { '2026-09-21': 1, '2026-09-22': 2, '2026-09-23': 3 } }])
 })
 
