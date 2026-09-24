@@ -113,7 +113,7 @@ router.get('/chart', requireAuth, async (request, response) => {
   if (!chartResult.rows[0]) return response.json({ chart: null, lock })
   const chartId = chartResult.rows[0].id
   const [patients, columns, quantities, chartRow] = await Promise.all([
-    query('SELECT row_number, patient_name FROM chart_patients WHERE chart_id = $1 ORDER BY row_number', [chartId]),
+    query('SELECT row_number, patient_name, patient_id FROM chart_patients WHERE chart_id = $1 ORDER BY row_number', [chartId]),
     query('SELECT cc.column_number, cc.medicine_id, COALESCE(m.name, cc.custom_name) AS medicine_name FROM chart_columns cc LEFT JOIN medicines m ON m.id = cc.medicine_id WHERE cc.chart_id = $1 ORDER BY cc.column_number', [chartId]),
     query('SELECT row_number, column_number, quantity FROM chart_quantities WHERE chart_id = $1', [chartId]),
     query('SELECT dc.version, dc.completed_at, dc.completed_by, u.full_name AS completed_by_name FROM daily_charts dc LEFT JOIN users u ON u.id = dc.completed_by WHERE dc.id = $1', [chartId]),
@@ -203,7 +203,12 @@ router.put('/chart', requireAuth, async (request, response) => {
   const { floor, wardName, chartDate, slot } = location
 
   const patients = (Array.isArray(request.body.patients) ? request.body.patients : [])
-    .map((patient) => ({ rowNumber: clampInt(patient?.rowNumber, 1, MAX_PATIENT_ROWS), name: cleanText(patient?.name, 200) }))
+    .map((patient) => ({
+      rowNumber: clampInt(patient?.rowNumber, 1, MAX_PATIENT_ROWS),
+      name: cleanText(patient?.name, 200),
+      // An integer ID, kept as its digits (a leading zero is part of a hospital number).
+      patientId: String(patient?.patientId ?? '').replace(/\D/g, '').slice(0, 20),
+    }))
     .filter((patient) => patient.rowNumber !== null)
   const columns = (Array.isArray(request.body.columns) ? request.body.columns : [])
     .map((column) => ({ columnNumber: clampInt(column?.columnNumber, 1, MAX_CHART_COLUMNS), medicineName: cleanText(column?.medicineName, 200).trim() }))
@@ -258,9 +263,10 @@ router.put('/chart', requireAuth, async (request, response) => {
     // 36x51 chart is ~8 round-trips instead of ~2000, so the pooled connection
     // is held for milliseconds. De-dupe on the natural keys first so a single
     // repeated key in the payload can't abort the whole save.
-    const patientByRow = new Map(patients.map((patient) => [patient.rowNumber, patient.name]))
+    const patientByRow = new Map(patients.map((patient) => [patient.rowNumber, patient]))
     if (patientByRow.size) {
-      await client.query('INSERT INTO chart_patients (chart_id, row_number, patient_name) SELECT $1, rn, name FROM UNNEST($2::int[], $3::text[]) AS u(rn, name)', [chartId, [...patientByRow.keys()], [...patientByRow.values()]])
+      const rows = [...patientByRow.values()]
+      await client.query('INSERT INTO chart_patients (chart_id, row_number, patient_name, patient_id) SELECT $1, rn, name, pid FROM UNNEST($2::int[], $3::text[], $4::text[]) AS u(rn, name, pid)', [chartId, rows.map((row) => row.rowNumber), rows.map((row) => row.name), rows.map((row) => row.patientId)])
     }
 
     // A column may only name a medicine that already exists in the shared catalogue, matched

@@ -8,6 +8,8 @@ import { floors, specialWards, PATIENT_ROWS, CHART_COLUMNS } from './constants.j
 // server actually has) is an edit made here and wins; everything else adopts `fresh`.
 export const mergeChartSnapshots = (base, current, fresh) => ({
   patientNames: fresh.patientNames.map((value, index) => (current.patientNames[index] !== base.patientNames[index] ? current.patientNames[index] : value)),
+  // `?? ''`: a draft saved before patient IDs existed carries no patientIds at all.
+  patientIds: fresh.patientIds.map((value, index) => ((current.patientIds?.[index] ?? '') !== (base.patientIds?.[index] ?? '') ? (current.patientIds?.[index] ?? '') : value)),
   columnMedicines: fresh.columnMedicines.map((value, index) => (current.columnMedicines[index] !== base.columnMedicines[index] ? current.columnMedicines[index] : value)),
   quantities: fresh.quantities.map((row, rowIndex) => row.map((value, columnIndex) => (current.quantities[rowIndex][columnIndex] !== base.quantities[rowIndex]?.[columnIndex] ? current.quantities[rowIndex][columnIndex] : value))),
 })
@@ -30,6 +32,12 @@ export const diffMergeOutcome = (merged, mine, fresh) => {
     const mineValue = mine.patientNames[row] ?? ''
     const freshValue = fresh.patientNames[row] ?? ''
     if (value !== mineValue) adopted.push(`اسم المريض صف ${row + 1}`)
+    else if (freshValue !== mineValue && freshValue !== '') droppedOther += 1
+  })
+  merged.patientIds.forEach((value, row) => {
+    const mineValue = mine.patientIds?.[row] ?? ''
+    const freshValue = fresh.patientIds[row] ?? ''
+    if (value !== mineValue) adopted.push(`رقم المريض صف ${row + 1}`)
     else if (freshValue !== mineValue && freshValue !== '') droppedOther += 1
   })
   merged.columnMedicines.forEach((value, col) => {
@@ -129,14 +137,15 @@ export const applyExtraPillsQueue = (forms, queue) => {
 export const parseChartRows = (chart) => {
   const columnCount = chart ? Math.max(CHART_COLUMNS, ...chart.columns.map((c) => c.column_number), ...chart.quantities.map((q) => q.column_number)) : CHART_COLUMNS
   const patientNames = Array(PATIENT_ROWS).fill('')
+  const patientIds = Array(PATIENT_ROWS).fill('')
   const quantities = Array.from({ length: PATIENT_ROWS }, () => Array(columnCount).fill(''))
   const columnMedicines = Array(columnCount).fill('')
   if (chart) {
-    chart.patients.forEach((patient) => { patientNames[patient.row_number - 1] = patient.patient_name })
+    chart.patients.forEach((patient) => { patientNames[patient.row_number - 1] = patient.patient_name; patientIds[patient.row_number - 1] = patient.patient_id ?? '' })
     chart.quantities.forEach((quantity) => { quantities[quantity.row_number - 1][quantity.column_number - 1] = String(quantity.quantity) })
     chart.columns.forEach((column) => { columnMedicines[column.column_number - 1] = column.medicine_name || '' })
   }
-  return { patientNames, columnMedicines, quantities }
+  return { patientNames, patientIds, columnMedicines, quantities }
 }
 
 export const toEnglishDigits = (value) => value.replace(/[٠-٩]/g, (digit) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(digit))).replace(/[۰-۹]/g, (digit) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(digit)))

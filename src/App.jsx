@@ -135,6 +135,8 @@ function App() {
   const [labelBelow, setLabelBelow] = useState(false)
   const [newMedicine, setNewMedicine] = useState('')
   const [patientNames, setPatientNames] = useState(() => Array.from({ length: PATIENT_ROWS }, () => ''))
+  // One per row, beside patientNames: the patient's ID (digits only). Screen-only — never printed.
+  const [patientIds, setPatientIds] = useState(() => Array.from({ length: PATIENT_ROWS }, () => ''))
   const [quantities, setQuantities] = useState(() => Array.from({ length: PATIENT_ROWS }, () => Array(CHART_COLUMNS).fill('')))
   // The chart is three strips: a header, the scrolling body, and the totals. Only the
   // doses half of the body scrolls sideways; the other two are pushed to match it.
@@ -181,7 +183,7 @@ function App() {
   // the fresher server value, instead of one whole-chart snapshot silently winning over
   // the other on a shared iPad.
   const chartVersionRef = useRef(0)
-  const lastSyncedChartRef = useRef({ patientNames: [], columnMedicines: [], quantities: [] })
+  const lastSyncedChartRef = useRef({ patientNames: [], patientIds: [], columnMedicines: [], quantities: [] })
   // Per-session edit lock (chart_locks server-side). One holder at a time:
   //   'idle'      — free chart, this tab hasn't claimed it; grid editable, no banner (the normal solo open)
   //   'editing'   — this tab holds the lock; heartbeating; grid editable
@@ -705,7 +707,7 @@ function App() {
           setLockState('readonly')
           setLockHolder(result.holder || null)
           const synced = lastSyncedChartRef.current
-          setPatientNames(synced.patientNames); setColumnMedicines(synced.columnMedicines); setQuantities(synced.quantities)
+          setPatientNames(synced.patientNames); setPatientIds(synced.patientIds); setColumnMedicines(synced.columnMedicines); setQuantities(synced.quantities)
         }
       })
       .catch(() => setLockState('editing'))
@@ -799,6 +801,12 @@ function App() {
       return next
     }))
   }, [noteChartEdit, patientNames, specialColumns])
+  // Digits only (Arabic-Indic typed on the iPad keyboard become Latin), capped to what the server keeps.
+  const setPatientId = useCallback((rowIndex, value) => {
+    const cleaned = toEnglishDigits(value).replace(/\D/g, '').slice(0, 20)
+    if (patientIds[rowIndex] !== cleaned) noteChartEdit()
+    setPatientIds((current) => current.map((id, index) => index === rowIndex ? cleaned : id))
+  }, [noteChartEdit, patientIds])
   // Carries a previous day's (medicine, quantity) pairs into this row: an existing column with
   // that medicine just gets the quantity, a new one is appended with it. Built as one coherent
   // snapshot (same style as setColumnMedicine's own nextMedicines above) rather than functional
@@ -837,14 +845,16 @@ function App() {
     setColumnMedicines(nextColumns)
     setQuantities(nextQuantities)
   }, [columnMedicines, quantities, medicines, noteChartEdit])
-  // Fires on a patient-name field's empty -> named transition, on blur (wired from
-  // ChartScreen). If the same name already appears in this ward's chart from the previous
-  // calendar day, offers to carry that patient's medicines and quantities forward. Purely a
-  // convenience: any failure (no chart yesterday, no match, network error) just means no
-  // popup — never surfaces an error, since nothing the pharmacist did actually failed.
-  const checkPreviousDayPatient = useCallback(async (rowIndex, rawValue) => {
+  // Fires on a patient-name or patient-ID field's empty -> filled transition, on blur (wired
+  // from ChartScreen). If the same name (or the same ID) already appears in this ward's chart
+  // from the previous calendar day, offers to carry that patient forward: medicines and
+  // quantities, plus whichever of name / ID this row is still missing. Purely a convenience:
+  // any failure (no chart yesterday, no match, network error) just means no popup — never
+  // surfaces an error, since nothing the pharmacist did actually failed.
+  const checkPreviousDayPatient = useCallback(async (rowIndex, rawValue, field = 'name') => {
     if (!selected || selected.mode !== 'chart' || lockState === 'readonly') return
-    const trimmed = rawValue.trim()
+    const keyOf = field === 'id' ? (value) => String(value ?? '').trim() : patientNameKey
+    const trimmed = keyOf(rawValue)
     if (!trimmed) return
     const prevDate = isoDate(new Date(`${selectedDate}T12:00:00`).getTime() - 86400000)
     let prevChart
@@ -855,20 +865,29 @@ function App() {
     } catch { return }
     if (!prevChart) return
     const prevRows = parseChartRows(prevChart)
-    const matchRow = prevRows.patientNames.findIndex((name) => patientNameKey(name) === patientNameKey(trimmed))
+    const matchRow = (field === 'id' ? prevRows.patientIds : prevRows.patientNames).findIndex((value) => keyOf(value) === trimmed)
     if (matchRow === -1) return
+    const prevName = prevRows.patientNames[matchRow].trim()
+    const prevId = prevRows.patientIds[matchRow]
     const prevDoses = prevRows.columnMedicines
       .map((med, columnIndex) => ({ med: med.trim(), qty: prevRows.quantities[matchRow][columnIndex] }))
       .filter((entry) => entry.med && Number(entry.qty) > 0)
-    if (!prevDoses.length) return
+    // An ID match is worth offering for the name alone; a name match only for its doses.
+    if (!prevDoses.length && !(field === 'id' && prevName)) return
     // The row may have changed while the fetch was in flight (renamed, cleared) — re-check
     // before opening the dialog, and again after it resolves since a background conflict merge
     // isn't blocked by the (foreground-blocking) confirm modal.
-    if (patientNameKey(patientNames[rowIndex] || '') !== trimmed) return
-    if (!(await askConfirm(`«${trimmed}» موجود في جارت الأمس — هل تريد نسخ أدويته وكمياته؟`))) return
-    if (patientNameKey(patientNames[rowIndex] || '') !== trimmed) return
-    applyPreviousDayDoses(rowIndex, prevDoses)
-  }, [selected, selectedDate, lockState, patientNames, askConfirm, applyPreviousDayDoses])
+    const current = () => keyOf((field === 'id' ? patientIds : patientNames)[rowIndex] || '')
+    if (current() !== trimmed) return
+    const who = field === 'id' ? `رقم المريض ${trimmed}${prevName ? ` («${prevName}»)` : ''}` : `«${trimmed}»`
+    if (!(await askConfirm(`${who} موجود في جارت الأمس — هل تريد نسخ بياناته (الاسم والرقم والأدوية والكميات)؟`))) return
+    if (current() !== trimmed) return
+    if (prevDoses.length) applyPreviousDayDoses(rowIndex, prevDoses)
+    else noteChartEdit()
+    // Only fill what the row is missing — never overwrite a name or ID the pharmacist typed.
+    if (prevName) setPatientNames((names) => names.map((name, index) => (index === rowIndex && !name.trim() ? prevName : name)))
+    if (prevId) setPatientIds((ids) => ids.map((id, index) => (index === rowIndex && !id ? prevId : id)))
+  }, [selected, selectedDate, lockState, patientNames, patientIds, askConfirm, applyPreviousDayDoses, noteChartEdit])
   // Remove a patient row and pull every following row up one, keeping the grid at PATIENT_ROWS.
   // Triggered only by the explicit ✕ on the active row, gated by a confirm, and reversible for
   // 10s via the undo toast (grid only — see the ponytail note on the server call below).
@@ -877,10 +896,12 @@ function App() {
     if (!(await askConfirm(`حذف صف «${label}»؟ ستُحذف كل جرعاته وستنتقل الصفوف التالية صفًّا واحدًا للأعلى.`, { danger: true }))) return
     noteChartEdit()
     const prevNames = patientNames
+    const prevIds = patientIds
     const prevQuantities = quantities
     setPatientNames((current) => { const next = current.filter((_, index) => index !== rowIndex); next.push(''); return next })
+    setPatientIds((current) => { const next = current.filter((_, index) => index !== rowIndex); next.push(''); return next })
     setQuantities((current) => { const next = current.filter((_, index) => index !== rowIndex); next.push(Array(current[0]?.length ?? CHART_COLUMNS).fill('')); return next })
-    offerUndo(`حُذف صف «${label}»`, () => { noteChartEdit(); setPatientNames(prevNames); setQuantities(prevQuantities) })
+    offerUndo(`حُذف صف «${label}»`, () => { noteChartEdit(); setPatientNames(prevNames); setPatientIds(prevIds); setQuantities(prevQuantities) })
     // The ✕ that was just clicked has unmounted; without this focus falls to <body> right
     // after a destructive confirm. Land on the name of whoever moved up into this row.
     requestAnimationFrame(() => chartGridRef.current?.querySelector(`.chart-names tr[data-row="${rowIndex}"] input`)?.focus())
@@ -896,7 +917,7 @@ function App() {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
       body: JSON.stringify({ floor: selected.floor, ward: selected.ward, date: selectedDate, slot: selected.slot || 'main', rowNumber: rowIndex + 1 }),
     }).catch(() => undefined)
-  }, [askConfirm, patientNames, quantities, selected, selectedDate, offerUndo, noteChartEdit])
+  }, [askConfirm, patientNames, patientIds, quantities, selected, selectedDate, offerUndo, noteChartEdit])
   // "+ عمود": grows the grid by one blank column, on demand — no schema/print change needed,
   // ChartPrintTemplate already sizes itself from columnMedicines' actual length. Capped well
   // under MAX_CHART_COLUMNS so the button disables itself instead of silently doing nothing
@@ -913,11 +934,11 @@ function App() {
     ward: selected?.ward,
     slot: selected?.slot ?? 'main',
     date,
-    patients: patientNames.map((name, index) => ({ rowNumber: index + 1, name })),
+    patients: patientNames.map((name, index) => ({ rowNumber: index + 1, name, patientId: patientIds[index] || '' })),
     columns: columnMedicines.map((medicineName, index) => ({ columnNumber: index + 1, medicineName })),
     quantities: quantities.flatMap((row, rowIndex) => row.map((quantity, columnIndex) => quantity ? ({ rowNumber: rowIndex + 1, columnNumber: columnIndex + 1, quantity: Number(quantity) }) : [])),
     expectedVersion: chartVersionRef.current,
-  }), [columnMedicines, patientNames, quantities, selected])
+  }), [columnMedicines, patientIds, patientNames, quantities, selected])
   // Called on a 409 from PUT /api/chart. With per-session locking this is rare — it only
   // happens when this tab's lock went stale (missed heartbeats) and another device took over
   // while this tab still had unsaved edits. Re-fetch, merge field-by-field (mine wins where I
@@ -930,10 +951,11 @@ function App() {
     if (!response.ok) return
     const result = await response.json()
     const fresh = parseChartRows(result.chart)
-    const mine = { patientNames, columnMedicines, quantities }
+    const mine = { patientNames, patientIds, columnMedicines, quantities }
     const merged = mergeChartSnapshots(lastSyncedChartRef.current, mine, fresh)
     const { adopted, dropped, droppedOther } = diffMergeOutcome(merged, mine, fresh)
     setPatientNames(merged.patientNames)
+    setPatientIds(merged.patientIds)
     setColumnMedicines(merged.columnMedicines)
     setQuantities(merged.quantities)
     setDroppedCells(dropped)
@@ -949,7 +971,7 @@ function App() {
       if (droppedOther) parts.push(`${droppedOther} من أسماء المرضى/الأدوية اختلفت أيضًا وأُبقيت قيمتك — راجعها يدويًا`)
       setChartClashNote(`${parts.join(' · ')}. راجِعها${adopted.length ? `: ${adopted.slice(0, 4).join('، ')}${adopted.length > 4 ? '…' : ''}` : ''}.`)
     }
-  }, [columnMedicines, patientNames, quantities, selected])
+  }, [columnMedicines, patientIds, patientNames, quantities, selected])
   // Fire an immediate save (survives navigation / tab close) — only once the grid is loaded,
   // so we never overwrite unknown server state with a blank grid.
   const flushChart = useCallback(() => {
@@ -969,11 +991,11 @@ function App() {
         // for no reason — and the leftover draft below would otherwise survive to clobber a
         // genuinely newer save from elsewhere the next time this exact chart is opened.
         chartVersionRef.current = result.version
-        lastSyncedChartRef.current = { patientNames, columnMedicines, quantities }
+        lastSyncedChartRef.current = { patientNames, patientIds, columnMedicines, quantities }
         try { localStorage.removeItem(`cpa-chart-draft:${chartKey}`) } catch { /* best effort */ }
       })
       .catch(() => { /* the debounced autosave or next visit will retry */ })
-  }, [buildChartBody, columnMedicines, isLoggedIn, loadedChartKey, lockState, patientNames, quantities, selected, selectedDate])
+  }, [buildChartBody, columnMedicines, isLoggedIn, loadedChartKey, lockState, patientIds, patientNames, quantities, selected, selectedDate])
   // The pharmacist's own toggle — server-authoritative, so another open tab/device picks up
   // the change on its next GET /chart. Deliberately not gated on readOnly here; ChartScreen
   // only renders the button when !readOnly, same as its other write actions.
@@ -1263,7 +1285,7 @@ function App() {
           if (raw) draft = JSON.parse(raw)
         } catch { /* storage unavailable or the draft was corrupt — fall back to the server state */ }
         const next = draft ? mergeChartSnapshots(draft.base, draft.current, fresh) : fresh
-        setPatientNames(next.patientNames); setQuantities(next.quantities); setColumnMedicines(next.columnMedicines)
+        setPatientNames(next.patientNames); setPatientIds(next.patientIds); setQuantities(next.quantities); setColumnMedicines(next.columnMedicines)
         chartVersionRef.current = result.chart ? result.chart.version : 0
         setChartCompleted(!!result.chart?.completedAt)
         setCompletedByName(result.chart?.completedByName ?? null)
@@ -1315,10 +1337,10 @@ function App() {
       // `meta` lets the picker's resume card name the ward/date without parsing the key
       // (which contains dashes from the ISO date). The load effect ignores it.
       const meta = { floor: selected.floor ?? null, ward: selected.ward, date: selectedDate, slot: selected.slot || 'main' }
-      localStorage.setItem(`cpa-chart-draft:${chartKey}`, JSON.stringify({ meta, base: lastSyncedChartRef.current, current: { patientNames, columnMedicines, quantities } }))
+      localStorage.setItem(`cpa-chart-draft:${chartKey}`, JSON.stringify({ meta, base: lastSyncedChartRef.current, current: { patientNames, patientIds, columnMedicines, quantities } }))
     } catch { /* storage unavailable or full — the network autosave is still the source of truth */ }
     return undefined
-  }, [columnMedicines, loadedChartKey, patientNames, quantities, selected, selectedDate])
+  }, [columnMedicines, loadedChartKey, patientIds, patientNames, quantities, selected, selectedDate])
 
   // An unsynced chart draft left by a killed tab, surfaced on the picker as a one-tap "resume".
   // Recomputed when navigation lands back on the picker; a draft is cleared by the load effect
@@ -1369,6 +1391,7 @@ function App() {
     // the effect also re-runs on navigation-shaped dep changes that carry no real edit.
     const synced = lastSyncedChartRef.current
     const dirty = JSON.stringify(patientNames) !== JSON.stringify(synced.patientNames)
+      || JSON.stringify(patientIds) !== JSON.stringify(synced.patientIds)
       || JSON.stringify(columnMedicines) !== JSON.stringify(synced.columnMedicines)
       || JSON.stringify(quantities) !== JSON.stringify(synced.quantities)
     // Nothing changed since the last confirmed save (the effect also re-runs on navigation-
@@ -1394,7 +1417,7 @@ function App() {
         if (!response.ok) throw new Error('save failed')
         const result = await response.json()
         chartVersionRef.current = result.version
-        lastSyncedChartRef.current = { patientNames, columnMedicines, quantities }
+        lastSyncedChartRef.current = { patientNames, patientIds, columnMedicines, quantities }
         // Everything the localStorage mirror was protecting has now actually reached the
         // server — an empty draft is indistinguishable from no draft, so just drop it.
         try { localStorage.removeItem(`cpa-chart-draft:${chartKey}`) } catch { /* best effort */ }
@@ -1409,7 +1432,7 @@ function App() {
     // 4s error backoff still pending and reschedules the save on the normal debounce.
     const timer = setTimeout(save, 1200)
     return () => { clearTimeout(timer); clearTimeout(retryTimer) }
-  }, [buildChartBody, chartLoading, chartSaveNonce, columnMedicines, isExpired, isLoggedIn, loadedChartKey, lockState, mergeAfterConflict, patientNames, quantities, selected, selectedDate, sessionExpired])
+  }, [buildChartBody, chartLoading, chartSaveNonce, columnMedicines, isExpired, isLoggedIn, loadedChartKey, lockState, mergeAfterConflict, patientIds, patientNames, quantities, selected, selectedDate, sessionExpired])
 
   // Heartbeat while this tab holds the edit lock (or held it and is trying to keep it). A
   // failed PATCH means it was taken after going stale — keep editing, show the soft 'stale'
@@ -1437,7 +1460,7 @@ function App() {
       .then((result) => {
         if (cancelled || !result) return
         const fresh = parseChartRows(result.chart)
-        setPatientNames(fresh.patientNames); setColumnMedicines(fresh.columnMedicines); setQuantities(fresh.quantities)
+        setPatientNames(fresh.patientNames); setPatientIds(fresh.patientIds); setColumnMedicines(fresh.columnMedicines); setQuantities(fresh.quantities)
         lastSyncedChartRef.current = fresh
         chartVersionRef.current = result.chart ? result.chart.version : 0
         setChartCompleted(!!result.chart?.completedAt)
@@ -1774,7 +1797,7 @@ function App() {
       const base = buildChartBody(nextDate)
       const body = {
         ...base,
-        patients: choice === 'medicines' ? base.patients.map((patient) => ({ ...patient, name: '' })) : base.patients,
+        patients: choice === 'medicines' ? base.patients.map((patient) => ({ ...patient, name: '', patientId: '' })) : base.patients,
         quantities: choice === 'medicines' ? [] : base.quantities,
         expectedVersion: targetResult.chart ? targetResult.chart.version : 0,
       }
@@ -1934,7 +1957,7 @@ function App() {
   if (selected && selected.mode === 'extra-pills') return <ExtraPillsScreen header={appHeader} floorLabel={wardLabel} today={today} editTime={editTime} onBack={() => setSelected(null)} loading={extraPillsLoading} loadError={extraPillsError} forms={extraPillsForms} busy={extraPillsBusy} actionError={extraPillsActionError} onCreate={createExtraPillForm} onSave={saveExtraPillForm} onRemove={deleteExtraPillForm} confirmModal={confirmModal} />
   if (selected && selected.mode === 'pills') return <PillsScreen header={appHeader} wardLabel={wardLabel} roomLabel={/\bccu\b/i.test(selected.ward || '') ? 'رقم السرير' : 'رقم الغرفة'} today={today} editTime={editTime} onBack={() => { flushPills(); setSelected(null) }} selectedDate={selectedDate} onChangeDate={(nextDate) => { flushPills(); setSelectedDate(nextDate) }} pillsLoading={pillsLoading} pillsData={pillsData} pillsSaveStatus={pillsSaveStatus} pillsLoadError={pillsLoadError} pillEntries={pillEntries} setPillEntries={setPillEntries} pillRooms={pillRooms} setPillRooms={setPillRooms} pillSelection={pillSelection} onTogglePatient={togglePillPatient} printScope={printScope} lastPrintingRow={lastPrintingRow} onPrint={startPillsPrint} confirmModal={confirmModal} pillsClashNote={pillsClashNote} onDismissPillsClashNote={() => setPillsClashNote(null)} />
 
-  return <main className="app-shell">{appHeader}{!selected && !floor ? <FloorPickerScreen today={today} floors={visibleFloors} specialWards={visibleSpecialWards} resumeDraft={resumeDraft} onResume={resumeFromDraft} onPickFloor={setFloor} onOpen={setSelected} dashboard={dashboardData} dashboardLoading={dashboardData === null && !dashboardError} dashboardError={dashboardError} onRetryDashboard={retryDashboard} announcements={announcements} isManager={isManager} announcementDraft={announcementDraft} setAnnouncementDraft={setAnnouncementDraft} announcementError={announcementError} announcementBusy={announcementBusy} onPostAnnouncement={postAnnouncement} onEditAnnouncement={editAnnouncement} onDeleteAnnouncement={deleteAnnouncement} /> : !selected ? <WardPickerScreen floor={floor} today={today} dashboard={dashboardData} dashboardError={dashboardError} onBack={() => setFloor(null)} onOpen={setSelected} announcements={announcements} isManager={isManager} announcementDraft={announcementDraft} setAnnouncementDraft={setAnnouncementDraft} announcementError={announcementError} announcementBusy={announcementBusy} onPostAnnouncement={postAnnouncement} onEditAnnouncement={editAnnouncement} onDeleteAnnouncement={deleteAnnouncement} /> :<ChartScreen selected={selected} wardLabel={wardLabel} today={today} todayWeekday={todayWeekday} isManager={isManager} onBack={() => { flushChart(); setSelected(null) }} onGoToPills={() => { flushChart(); setSelected({ ...selected, mode: 'pills' }) }} onGoToOrder={() => { flushChart(); setSelected({ ...selected, mode: 'order' }) }} onExportPdf={exportChartPdf} pdfBusy={pdfBusy} pdfExportError={pdfExportError} dateIsToday={dateIsToday} selectedDate={selectedDate} onChangeDate={changeDate} onCopyToNextDay={copyToNextDay} chartSaveStatus={chartSaveStatus} loadError={loadError} copyError={copyError} chartReady={chartReady} lastChartSaveAt={lastChartSaveAt} chartCompleted={chartCompleted} completedByName={completedByName} onToggleComplete={toggleChartComplete} onRetryLoad={() => setChartLoadNonce((n) => n + 1)} onRetrySave={() => setChartSaveNonce((n) => n + 1)} lockState={lockState} lockHolder={lockHolder} chartClashNote={chartClashNote} onDismissClashNote={() => { setChartClashNote(null); setDroppedCells({}) }} droppedCells={droppedCells} undo={undo} onUndo={takeUndo} medicines={medicines} patientNames={patientNames} columnMedicines={columnMedicines} quantities={quantities} totals={totals} doubledTotals={doubledTotals} isThursday={isThursday} activeRow={activeRow} activeColumn={activeColumn} labelBelow={labelBelow} setActiveRow={setActiveRow} setActiveColumn={setActiveColumn} setLabelBelow={setLabelBelow} onSetColumnMedicine={setColumnMedicine} onCommitColumnMedicine={commitColumnMedicine} columnMedicineNotice={columnMedicineNotice} onDismissNotice={() => setColumnMedicineNotice(null)} onApplySuggestion={applyMedicineSuggestion} onSetPatientName={setPatientName} onCheckPreviousDay={checkPreviousDayPatient} onUpdateQuantity={updateQuantity} onCollapseRow={collapseRow} onAddColumn={addColumn} canAddColumn={canAddColumn} chartFrameRef={chartFrameRef} chartHeadRef={chartHeadRef} chartGridRef={chartGridRef} chartDosesRef={chartDosesRef} chartFootRef={chartFootRef} showMedicineForm={showMedicineForm} onOpenMedicineForm={() => { setRegistrationsError(''); setShowMedicineForm(true) }} onCloseMedicineForm={() => setShowMedicineForm(false)} onAddMedicine={addMedicine} newMedicine={newMedicine} setNewMedicine={setNewMedicine} registrationsError={registrationsError} />}{selected?.mode === 'chart' && chartReady && <ChartPrintTemplate ref={printTemplateRef} selected={selected} today={today} todayWeekday={todayWeekday} isThursday={isThursday} patientNames={patientNames} columnMedicines={columnMedicines} quantities={quantities} totals={totals} doubledTotals={doubledTotals} />}{confirmModal}{copyChoiceModal}</main>
+  return <main className="app-shell">{appHeader}{!selected && !floor ? <FloorPickerScreen today={today} floors={visibleFloors} specialWards={visibleSpecialWards} resumeDraft={resumeDraft} onResume={resumeFromDraft} onPickFloor={setFloor} onOpen={setSelected} dashboard={dashboardData} dashboardLoading={dashboardData === null && !dashboardError} dashboardError={dashboardError} onRetryDashboard={retryDashboard} announcements={announcements} isManager={isManager} announcementDraft={announcementDraft} setAnnouncementDraft={setAnnouncementDraft} announcementError={announcementError} announcementBusy={announcementBusy} onPostAnnouncement={postAnnouncement} onEditAnnouncement={editAnnouncement} onDeleteAnnouncement={deleteAnnouncement} /> : !selected ? <WardPickerScreen floor={floor} today={today} dashboard={dashboardData} dashboardError={dashboardError} onBack={() => setFloor(null)} onOpen={setSelected} announcements={announcements} isManager={isManager} announcementDraft={announcementDraft} setAnnouncementDraft={setAnnouncementDraft} announcementError={announcementError} announcementBusy={announcementBusy} onPostAnnouncement={postAnnouncement} onEditAnnouncement={editAnnouncement} onDeleteAnnouncement={deleteAnnouncement} /> :<ChartScreen selected={selected} wardLabel={wardLabel} today={today} todayWeekday={todayWeekday} isManager={isManager} onBack={() => { flushChart(); setSelected(null) }} onGoToPills={() => { flushChart(); setSelected({ ...selected, mode: 'pills' }) }} onGoToOrder={() => { flushChart(); setSelected({ ...selected, mode: 'order' }) }} onExportPdf={exportChartPdf} pdfBusy={pdfBusy} pdfExportError={pdfExportError} dateIsToday={dateIsToday} selectedDate={selectedDate} onChangeDate={changeDate} onCopyToNextDay={copyToNextDay} chartSaveStatus={chartSaveStatus} loadError={loadError} copyError={copyError} chartReady={chartReady} lastChartSaveAt={lastChartSaveAt} chartCompleted={chartCompleted} completedByName={completedByName} onToggleComplete={toggleChartComplete} onRetryLoad={() => setChartLoadNonce((n) => n + 1)} onRetrySave={() => setChartSaveNonce((n) => n + 1)} lockState={lockState} lockHolder={lockHolder} chartClashNote={chartClashNote} onDismissClashNote={() => { setChartClashNote(null); setDroppedCells({}) }} droppedCells={droppedCells} undo={undo} onUndo={takeUndo} medicines={medicines} patientNames={patientNames} patientIds={patientIds} columnMedicines={columnMedicines} quantities={quantities} totals={totals} doubledTotals={doubledTotals} isThursday={isThursday} activeRow={activeRow} activeColumn={activeColumn} labelBelow={labelBelow} setActiveRow={setActiveRow} setActiveColumn={setActiveColumn} setLabelBelow={setLabelBelow} onSetColumnMedicine={setColumnMedicine} onCommitColumnMedicine={commitColumnMedicine} columnMedicineNotice={columnMedicineNotice} onDismissNotice={() => setColumnMedicineNotice(null)} onApplySuggestion={applyMedicineSuggestion} onSetPatientName={setPatientName} onSetPatientId={setPatientId} onCheckPreviousDay={checkPreviousDayPatient} onUpdateQuantity={updateQuantity} onCollapseRow={collapseRow} onAddColumn={addColumn} canAddColumn={canAddColumn} chartFrameRef={chartFrameRef} chartHeadRef={chartHeadRef} chartGridRef={chartGridRef} chartDosesRef={chartDosesRef} chartFootRef={chartFootRef} showMedicineForm={showMedicineForm} onOpenMedicineForm={() => { setRegistrationsError(''); setShowMedicineForm(true) }} onCloseMedicineForm={() => setShowMedicineForm(false)} onAddMedicine={addMedicine} newMedicine={newMedicine} setNewMedicine={setNewMedicine} registrationsError={registrationsError} />}{selected?.mode === 'chart' && chartReady && <ChartPrintTemplate ref={printTemplateRef} selected={selected} today={today} todayWeekday={todayWeekday} isThursday={isThursday} patientNames={patientNames} columnMedicines={columnMedicines} quantities={quantities} totals={totals} doubledTotals={doubledTotals} />}{confirmModal}{copyChoiceModal}</main>
 }
 
 export default App

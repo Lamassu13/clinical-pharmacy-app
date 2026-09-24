@@ -1390,6 +1390,17 @@ button.topbar-user:hover { color: var(--primary); }
 .patient-cell input { width: 100%; height: 37px; padding: 5px; border: 0; text-align: start; font-variant-numeric: tabular-nums; }
 .patient-cell input::placeholder { color: transparent; }
 .chart-table td input { width: 100%; height: 37px; padding: 0; border: 0; text-align: center; font-variant-numeric: tabular-nums; }
+/* Each patient row is two lines on screen: the name, then the patient ID under it. Screen-only
+   so none of it reaches the frozen @media print block — paper keeps its 2.8mm single-line rows
+   and the ID input is display: none there. The dose cells grow with the row so the names
+   table and the doses table stay aligned. */
+@media screen {
+  .chart-table tbody th, .chart-table tbody td { height: 54px; }
+  .chart-table tbody td input { height: 53px; }
+  .patient-cell input { height: 31px; }
+  .patient-cell input.patient-id { height: 22px; padding: 0 5px 4px; font-size: 10px; color: var(--text-muted); text-align: right; }
+  .patient-cell input.patient-id::placeholder { color: var(--text-muted); opacity: .5; }
+}
 /* The cell fields are transparent so the row / column / active-cell wash painted on the
    <td> shows through instead of being masked by an opaque field. */
 .chart-table td input, .chart-table .patient-cell input { background: transparent; }
@@ -1640,7 +1651,7 @@ button.topbar-user:hover { color: var(--primary); }
 	@page { size: A4 landscape; margin: 5mm; }
 	.app-shell { min-height: 0; }
 	/* Only the chart itself prints — everything that frames it on screen comes off. */
-	.topbar, .chart-toolbar, .chart-meta, .chart-lock-banner, .chart-recover-line, .chart-clash-note, .modal-backdrop, .active-patient-bar, .cell-medicine, .chart-frame-loading, .row-delete { display: none !important; }
+	.topbar, .chart-toolbar, .chart-meta, .chart-lock-banner, .chart-recover-line, .chart-clash-note, .modal-backdrop, .active-patient-bar, .cell-medicine, .chart-frame-loading, .row-delete, .patient-id { display: none !important; }
 	/* A guaranteed white border: @page margin is honoured unevenly across devices (iPad
 	   Safari / AirPrint drops it), so the page carries its own physical padding too. */
 	.chart-page { width: 100%; padding: 4mm; box-sizing: border-box; }

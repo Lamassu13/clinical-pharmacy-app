@@ -68,3 +68,17 @@ test('isDraftStale is false only when the draft date matches today', () => {
   assert.equal(isDraftStale({ date: '2026-09-14' }, '2026-09-22'), true)
   assert.equal(isDraftStale({}, '2026-09-22'), true)
 })
+
+test('mergeChartSnapshots/diffMergeOutcome: patient IDs merge per row, and a pre-ID draft (no patientIds) still merges', async () => {
+  const { mergeChartSnapshots, diffMergeOutcome } = await import('./helpers.js')
+  const grid = (names, ids) => ({ patientNames: names, ...(ids && { patientIds: ids }), columnMedicines: [''], quantities: names.map(() => ['']) })
+  const base = grid(['a', 'b'], ['', ''])
+  const mine = grid(['a', 'b'], ['11', ''])
+  const fresh = grid(['a', 'b'], ['', '22'])
+  const merged = mergeChartSnapshots(base, mine, fresh)
+  assert.deepEqual(merged.patientIds, ['11', '22'])
+  assert.deepEqual(diffMergeOutcome(merged, mine, fresh).adopted, ['رقم المريض صف 2'])
+  const oldDraft = mergeChartSnapshots(grid(['a', 'b']), grid(['x', 'b']), fresh)
+  assert.deepEqual(oldDraft.patientIds, ['', '22'])
+  assert.deepEqual(oldDraft.patientNames, ['x', 'b'])
+})

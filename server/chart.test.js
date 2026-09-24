@@ -55,6 +55,13 @@ const buildChartBody = (overrides = {}) => ({
   ...overrides,
 })
 
+test('PUT /api/chart: a patient ID round-trips as digits only, and a missing one saves blank', async () => {
+  const client = await loginAs({ role: 'user', floor: FLOOR })
+  await client.put('/api/chart', buildChartBody({ patients: [{ rowNumber: 1, name: 'With ID', patientId: '00 12-34x' }, { rowNumber: 2, name: 'No ID' }] }))
+  const fetched = await client.get(`/api/chart?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=${DATE}`)
+  assert.deepEqual(fetched.body.chart.patients.map((patient) => patient.patient_id), ['001234', ''])
+})
+
 test('PUT /api/chart: a first save creates the chart at version 1 and round-trips through GET', async () => {
   const client = await loginAs({ role: 'user', floor: FLOOR })
   const saved = await client.put('/api/chart', buildChartBody())

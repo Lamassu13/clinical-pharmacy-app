@@ -11,10 +11,10 @@ export default function ChartScreen({
   chartSaveStatus, loadError, copyError, chartReady, lastChartSaveAt, onRetryLoad, onRetrySave, lockState, lockHolder,
   chartCompleted, completedByName, onToggleComplete,
   chartClashNote, onDismissClashNote, droppedCells, undo, onUndo,
-  medicines, patientNames, columnMedicines, quantities, totals, doubledTotals, isThursday,
+  medicines, patientNames, patientIds, columnMedicines, quantities, totals, doubledTotals, isThursday,
   activeRow, activeColumn, labelBelow, setActiveRow, setActiveColumn, setLabelBelow,
   onSetColumnMedicine, onCommitColumnMedicine, columnMedicineNotice, onDismissNotice, onApplySuggestion,
-  onSetPatientName, onCheckPreviousDay, onUpdateQuantity, onCollapseRow, onAddColumn, canAddColumn,
+  onSetPatientName, onSetPatientId, onCheckPreviousDay, onUpdateQuantity, onCollapseRow, onAddColumn, canAddColumn,
   chartFrameRef, chartHeadRef, chartGridRef, chartDosesRef, chartFootRef,
   showMedicineForm, onOpenMedicineForm, onCloseMedicineForm, onAddMedicine,
   newMedicine, setNewMedicine, registrationsError,
@@ -169,6 +169,12 @@ export default function ChartScreen({
               onFocus={(event) => { patientFocusEmpty.current = !event.target.value.trim() }}
               onBlur={(event) => { if (patientFocusEmpty.current && event.target.value.trim()) onCheckPreviousDay(rowIndex, event.target.value) }}
               placeholder={`مريض ${rowIndex + 1}`} aria-label={`اسم المريض، صف ${rowIndex + 1}`} />
+            {/* Screen-only: listed under .patient-id in the print block's display: none rule. */}
+            <input className="patient-id" value={patientIds[rowIndex] || ''} onChange={(event) => onSetPatientId(rowIndex, event.target.value)}
+              inputMode="numeric" pattern="[0-9]*" dir="ltr"
+              onFocus={(event) => { patientFocusEmpty.current = !event.target.value.trim() }}
+              onBlur={(event) => { if (patientFocusEmpty.current && event.target.value.trim()) onCheckPreviousDay(rowIndex, event.target.value, 'id') }}
+              placeholder="رقم المريض" aria-label={`رقم المريض، صف ${rowIndex + 1}`} />
             {activeRow === rowIndex && name.trim() && <button type="button" className="row-delete" aria-label={`حذف صف ${rowIndex + 1}`} title="حذف الصف" onPointerDown={(event) => event.preventDefault()} onMouseDown={(event) => event.preventDefault()} onClick={() => onCollapseRow(rowIndex)}>✕</button>}
           </th>
         </tr>)}</tbody></table></div>

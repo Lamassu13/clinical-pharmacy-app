@@ -286,3 +286,7 @@ CREATE INDEX IF NOT EXISTS treatment_forms_title_idx ON treatment_forms (title);
 -- Partial indexes let it skip straight to the rows that matter.
 CREATE INDEX IF NOT EXISTS chart_patients_named_idx ON chart_patients (chart_id) WHERE patient_name <> '';
 CREATE INDEX IF NOT EXISTS chart_quantities_positive_idx ON chart_quantities (chart_id) WHERE quantity > 0;
+
+-- The patient ID printed under each name on the chart screen (digits only, '' when unknown).
+-- Screen-only: nothing that prints reads it.
+ALTER TABLE chart_patients ADD COLUMN IF NOT EXISTS patient_id TEXT NOT NULL DEFAULT '';
