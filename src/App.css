@@ -1304,7 +1304,7 @@ button.topbar-user:hover { color: var(--primary); }
 .chart-head, .chart-foot { display: flex; direction: rtl; padding-inline-end: var(--chart-gutter, 0px); }
 .chart-head { border-bottom: 2px solid var(--border-strong); }
 .chart-foot { border-top: 2px solid var(--border-strong); }
-.chart-head-corner, .chart-foot-corner { flex: 0 0 155px; border-left: 2px solid var(--border-strong); }
+.chart-head-corner, .chart-foot-corner { flex: 0 0 210px; border-left: 2px solid var(--border-strong); }
 /* Draggable like the body is — the header is where you go looking for a distant medicine,
    so it has to scroll under your finger too. Their scrollbars are hidden: the doses half
    already shows one, and three stacked bars would be noise and would eat into the header's
@@ -1346,19 +1346,19 @@ button.topbar-user:hover { color: var(--primary); }
   overflow-y: auto;
   overflow-x: hidden;
 }
-.chart-names { flex: 0 0 155px; }
+.chart-names { flex: 0 0 210px; }
 .chart-doses { flex: 1 1 auto; overflow-x: auto; }
 .chart-table { border-collapse: separate; border-spacing: 0; direction: rtl; font-size: 11px; }
-.chart-names .chart-table { width: 155px; min-width: 155px; }
+.chart-names .chart-table { width: 210px; min-width: 210px; }
 /* the exact sum of the 51 declared medicine columns */
 .chart-doses .chart-table, .chart-head-scroll .chart-table, .chart-foot-scroll .chart-table { min-width: 2601px; }
 .chart-table th, .chart-table td { width: 51px; min-width: 51px; height: 38px; border-left: 1px solid var(--chart-grid); border-bottom: 1px solid var(--chart-grid); padding: 0; text-align: center; }
 .chart-table thead th { height: 128px; background: var(--chart-head-bg); vertical-align: bottom; border-bottom: 0; }
 .chart-table .patient-cell {
   position: relative;
-  width: 155px;
-  min-width: 155px;
-  max-width: 155px;
+  width: 210px;
+  min-width: 210px;
+  max-width: 210px;
   background: var(--surface);
   border-left: 2px solid var(--border-strong);
 }
@@ -1390,16 +1390,17 @@ button.topbar-user:hover { color: var(--primary); }
 .patient-cell input { width: 100%; height: 37px; padding: 5px; border: 0; text-align: start; font-variant-numeric: tabular-nums; }
 .patient-cell input::placeholder { color: transparent; }
 .chart-table td input { width: 100%; height: 37px; padding: 0; border: 0; text-align: center; font-variant-numeric: tabular-nums; }
-/* Each patient row is two lines on screen: the name, then the patient ID under it. Screen-only
-   so none of it reaches the frozen @media print block — paper keeps its 2.8mm single-line rows
-   and the ID input is display: none there. The dose cells grow with the row so the names
-   table and the doses table stay aligned. */
+/* Name and patient ID share one line, as on the printed sheet. The wrapper is display:
+   contents outside the screen, so print lays out the exact boxes it always did (the name input
+   straight in the cell); the ID input is in the print block's display: none list. The row-
+   delete ✕ moves off the ID onto the tail of the name. */
+.patient-fields { display: contents; }
 @media screen {
-  .chart-table tbody th, .chart-table tbody td { height: 54px; }
-  .chart-table tbody td input { height: 53px; }
-  .patient-cell input { height: 31px; }
-  .patient-cell input.patient-id { height: 22px; padding: 0 5px 4px; font-size: 10px; color: var(--text-muted); text-align: right; }
+  .patient-fields { display: flex; }
+  .patient-fields input:first-child { flex: 1 1 auto; min-width: 0; }
+  .patient-cell input.patient-id { flex: 0 0 76px; width: 76px; padding: 5px 6px; border-inline-start: 1px dashed var(--chart-grid); color: var(--text-muted); text-align: left; }
   .patient-cell input.patient-id::placeholder { color: var(--text-muted); opacity: .5; }
+  .patient-cell .row-delete { inset-inline-end: 80px; }
 }
 /* The cell fields are transparent so the row / column / active-cell wash painted on the
    <td> shows through instead of being masked by an opaque field. */

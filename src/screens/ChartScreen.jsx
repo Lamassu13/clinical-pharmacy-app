@@ -165,16 +165,19 @@ export default function ChartScreen({
         }}>
         <div className="chart-names"><table className="chart-table" role="presentation"><tbody>{patientNames.map((name, rowIndex) => <tr key={rowIndex} data-row={rowIndex} className={[activeRow === rowIndex && 'active-row', rowIndex >= printRowCount && 'print-hide-row'].filter(Boolean).join(' ') || undefined}>
           <th className="patient-cell">
-            <input value={name} onChange={(event) => onSetPatientName(rowIndex, event.target.value)}
-              onFocus={(event) => { patientFocusEmpty.current = !event.target.value.trim() }}
-              onBlur={(event) => { if (patientFocusEmpty.current && event.target.value.trim()) onCheckPreviousDay(rowIndex, event.target.value) }}
-              placeholder={`مريض ${rowIndex + 1}`} aria-label={`اسم المريض، صف ${rowIndex + 1}`} />
-            {/* Screen-only: listed under .patient-id in the print block's display: none rule. */}
-            <input className="patient-id" value={patientIds[rowIndex] || ''} onChange={(event) => onSetPatientId(rowIndex, event.target.value)}
-              inputMode="numeric" pattern="[0-9]*" dir="ltr"
-              onFocus={(event) => { patientFocusEmpty.current = !event.target.value.trim() }}
-              onBlur={(event) => { if (patientFocusEmpty.current && event.target.value.trim()) onCheckPreviousDay(rowIndex, event.target.value, 'id') }}
-              placeholder="رقم المريض" aria-label={`رقم المريض، صف ${rowIndex + 1}`} />
+            {/* Name and ID side by side, as on the printed sheet. The ID is screen-only here:
+                .patient-id is in the print block's display: none list. */}
+            <div className="patient-fields">
+              <input value={name} onChange={(event) => onSetPatientName(rowIndex, event.target.value)}
+                onFocus={(event) => { patientFocusEmpty.current = !event.target.value.trim() }}
+                onBlur={(event) => { if (patientFocusEmpty.current && event.target.value.trim()) onCheckPreviousDay(rowIndex, event.target.value) }}
+                placeholder={`مريض ${rowIndex + 1}`} aria-label={`اسم المريض، صف ${rowIndex + 1}`} />
+              <input className="patient-id" value={patientIds[rowIndex] || ''} onChange={(event) => onSetPatientId(rowIndex, event.target.value)}
+                inputMode="numeric" pattern="[0-9]*" dir="ltr"
+                onFocus={(event) => { patientFocusEmpty.current = !event.target.value.trim() }}
+                onBlur={(event) => { if (patientFocusEmpty.current && event.target.value.trim()) onCheckPreviousDay(rowIndex, event.target.value, 'id') }}
+                placeholder="رقم المريض" aria-label={`رقم المريض، صف ${rowIndex + 1}`} />
+            </div>
             {activeRow === rowIndex && name.trim() && <button type="button" className="row-delete" aria-label={`حذف صف ${rowIndex + 1}`} title="حذف الصف" onPointerDown={(event) => event.preventDefault()} onMouseDown={(event) => event.preventDefault()} onClick={() => onCollapseRow(rowIndex)}>✕</button>}
           </th>
         </tr>)}</tbody></table></div>
