@@ -482,8 +482,8 @@ button.topbar-user:hover { color: var(--primary); }
 /* ============================================================
    Dashboard widgets — ward status, top medicines, announcements
    ============================================================ */
-/* Announcements — directly under the heading, above the picker grid. */
-.dashboard-announcements { margin-bottom: var(--space-6); }
+/* Announcements — below the picker grid, and quieter than it. */
+.dashboard-announcements { margin-top: var(--space-8); }
 .dashboard-widgets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); }
 /* Manager landing page: only the announcements widget is left here (medicines moved to
    إدارة الطوابق), so it shouldn't sit in a half-width column with a gap beside it. */

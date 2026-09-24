@@ -40,20 +40,6 @@ export default function FloorPickerScreen({
       <div className="date-chip"><span>اليوم</span><strong>{today}</strong></div>
     </div>
 
-    {/* Managers get announcements here; so does a special-ward-only user, who never opens a
-        floor page, where everyone else sees them. */}
-    {(isManager || (floors.length === 0 && specialWards.length > 0)) && (
-      <div className="dashboard-announcements">
-        <DashboardWidgets
-          loading={announcements === null} error={false}
-          announcements={announcements ?? []} isManager={isManager}
-          announcementDraft={announcementDraft} setAnnouncementDraft={setAnnouncementDraft}
-          announcementError={announcementError} announcementBusy={announcementBusy}
-          onPostAnnouncement={onPostAnnouncement} onEditAnnouncement={onEditAnnouncement} onDeleteAnnouncement={onDeleteAnnouncement}
-        />
-      </div>
-    )}
-
     {resumeDraft && (
       <button type="button" className="resume-draft-card" onClick={onResume}>
         <span className="resume-draft-label">لديك تعديلات لم تُحفظ</span>
@@ -85,5 +71,18 @@ export default function FloorPickerScreen({
       })}
     </div>
 
+    {/* Managers get announcements here; so does a special-ward-only user, who never opens a
+        floor page, where everyone else sees them. */}
+    {(isManager || (floors.length === 0 && specialWards.length > 0)) && (
+      <div className="dashboard-announcements">
+        <DashboardWidgets
+          loading={announcements === null} error={false}
+          announcements={announcements ?? []} isManager={isManager}
+          announcementDraft={announcementDraft} setAnnouncementDraft={setAnnouncementDraft}
+          announcementError={announcementError} announcementBusy={announcementBusy}
+          onPostAnnouncement={onPostAnnouncement} onEditAnnouncement={onEditAnnouncement} onDeleteAnnouncement={onDeleteAnnouncement}
+        />
+      </div>
+    )}
   </section>
 }

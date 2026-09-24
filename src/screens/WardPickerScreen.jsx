@@ -24,15 +24,6 @@ export default function WardPickerScreen({
         {today && <div className="date-chip"><span>اليوم</span><strong>{today}</strong></div>}
       </div>
     </div>
-    {!isManager && <div className="dashboard-announcements">
-      <DashboardWidgets
-        loading={announcements === null} error={false}
-        announcements={announcements ?? []} isManager={isManager}
-        announcementDraft={announcementDraft} setAnnouncementDraft={setAnnouncementDraft}
-        announcementError={announcementError} announcementBusy={announcementBusy}
-        onPostAnnouncement={onPostAnnouncement} onEditAnnouncement={onEditAnnouncement} onDeleteAnnouncement={onDeleteAnnouncement}
-      />
-    </div>}
     <div className="location-grid">{floor.wards.map((ward) => {
       const started = startedWards.has(ward)
       return <div className="location-card" key={ward}>
@@ -42,5 +33,14 @@ export default function WardPickerScreen({
         <WardActions floor={floor.number} ward={ward} started={started} onOpen={onOpen} />
       </div>
     })}</div>
+    {!isManager && <div className="dashboard-announcements">
+      <DashboardWidgets
+        loading={announcements === null} error={false}
+        announcements={announcements ?? []} isManager={isManager}
+        announcementDraft={announcementDraft} setAnnouncementDraft={setAnnouncementDraft}
+        announcementError={announcementError} announcementBusy={announcementBusy}
+        onPostAnnouncement={onPostAnnouncement} onEditAnnouncement={onEditAnnouncement} onDeleteAnnouncement={onDeleteAnnouncement}
+      />
+    </div>}
   </section>
 }
