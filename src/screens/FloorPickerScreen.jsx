@@ -41,6 +41,16 @@ export default function FloorPickerScreen({
       <div className="date-chip"><span>اليوم</span><strong>{today}</strong></div>
     </div>
 
+    <div className="dashboard-announcements">
+      <DashboardWidgets
+        loading={dashboardLoading} error={dashboardError} onRetry={onRetryDashboard}
+        announcements={announcements} isManager={isManager}
+        announcementDraft={announcementDraft} setAnnouncementDraft={setAnnouncementDraft}
+        announcementError={announcementError} announcementBusy={announcementBusy}
+        onPostAnnouncement={onPostAnnouncement} onEditAnnouncement={onEditAnnouncement} onDeleteAnnouncement={onDeleteAnnouncement}
+      />
+    </div>
+
     {resumeDraft && (
       <button type="button" className="resume-draft-card" onClick={onResume}>
         <span className="resume-draft-label">لديك تعديلات لم تُحفظ</span>
@@ -72,14 +82,5 @@ export default function FloorPickerScreen({
       })}
     </div>
 
-    <div className="dashboard-secondary">
-      <DashboardWidgets
-        loading={dashboardLoading} error={dashboardError} onRetry={onRetryDashboard}
-        announcements={announcements} isManager={isManager}
-        announcementDraft={announcementDraft} setAnnouncementDraft={setAnnouncementDraft}
-        announcementError={announcementError} announcementBusy={announcementBusy}
-        onPostAnnouncement={onPostAnnouncement} onEditAnnouncement={onEditAnnouncement} onDeleteAnnouncement={onDeleteAnnouncement}
-      />
-    </div>
   </section>
 }
