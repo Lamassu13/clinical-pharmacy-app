@@ -24,12 +24,12 @@ const loginAs = async (options) => {
   return client
 }
 
-// patients: [{ name, meds: { 'Aspirin 100mg Tab': 2, ... } }]
+// patients: [{ name, id?, meds: { 'Aspirin 100mg Tab': 2, ... } }]
 const saveChart = async (client, floor, date, patients) => {
   const columns = [...new Set(patients.flatMap((patient) => Object.keys(patient.meds)))]
   const response = await client.put('/api/chart', {
     floor, ward: WARD, date, expectedVersion: 0,
-    patients: patients.map((patient, index) => ({ rowNumber: index + 1, name: patient.name })),
+    patients: patients.map((patient, index) => ({ rowNumber: index + 1, name: patient.name, patientId: patient.id || '' })),
     columns: columns.map((medicineName, index) => ({ columnNumber: index + 1, medicineName })),
     quantities: patients.flatMap((patient, row) => Object.entries(patient.meds).map(([name, quantity]) => ({ rowNumber: row + 1, columnNumber: columns.indexOf(name) + 1, quantity }))),
   })
@@ -103,4 +103,19 @@ test('medicines is_supply: defaults from the name on add, and the admin can togg
   assert.equal(toggled.body.medicine.is_supply, true)
   assert.equal(toggled.body.medicine.no_thursday_double, true)
   assert.equal(toggled.body.medicine.name, 'Clexane prefilled syringe 4000 IU')
+})
+
+test('GET /api/reports: a patient is one patient by ID (رقم الطبلة), else by name', async () => {
+  const admin = await loginAs({ role: 'admin' })
+  const meds = { 'Aspirin 100mg Tab': 1 }
+  // Two different patients who share a name (different IDs), and one patient typed by name on
+  // day 1 and given an ID on day 2.
+  await saveChart(admin, 5, '2026-06-01', [{ name: 'علي', id: '100', meds }, { name: 'علي', id: '200', meds }, { name: 'زينب', meds }])
+  await saveChart(admin, 5, '2026-06-02', [{ name: 'علي', id: '100', meds }, { name: 'علي', id: '200', meds }, { name: 'زينب', id: '300', meds }])
+
+  const { body } = await admin.get(`/api/reports?scope=5&from=2026-06-01&to=2026-06-02`)
+  const ward = body.wards.find((row) => row.ward === WARD)
+  assert.equal(ward.distinctPatients, 3, 'علي/100, علي/200 and زينب (name-only on day 1, ID 300 on day 2)')
+  assert.equal(ward.admissions, 0, 'Zeinab getting her ID on day 2 is not a new admission')
+  assert.equal(ward.discharges, 0)
 })

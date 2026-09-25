@@ -1929,6 +1929,7 @@ button.topbar-user:hover { color: var(--primary); }
 .report-section { margin-top: var(--space-7); }
 .report-section h2 { margin: 0 0 var(--space-2); color: var(--heading); font-size: var(--text-lg); }
 .report-note { max-width: 75ch; margin: 0 0 var(--space-3); color: var(--text-muted); font-size: var(--text-sm); }
+.report-patient-id { color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .report-empty { margin: 0; padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: var(--surface-alt); color: var(--text-muted); font-size: var(--text-sm); }
 .report-table .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .report-weekday, .report-missed { color: var(--text-muted); font-size: var(--text-xs); }

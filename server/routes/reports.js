@@ -56,7 +56,7 @@ router.get('/reports', requireManager, async (request, response) => {
     // One row per patient per ward per day, main and extra charts merged, with how many distinct
     // non-supply medicines they had a quantity of that day.
     query(
-      `SELECT w.floor_number AS floor, w.name AS ward, dc.chart_date::text AS date, ${PATIENT_SQL} AS patient,
+      `SELECT w.floor_number AS floor, w.name AS ward, dc.chart_date::text AS date, ${PATIENT_SQL} AS patient, cp.patient_id,
               COUNT(DISTINCT CASE WHEN cq.quantity > 0 AND NOT ${SUPPLY_SQL} THEN lower(COALESCE(m.name, cc.custom_name)) END)::int AS medicines
        FROM chart_patients cp
        JOIN daily_charts dc ON dc.id = cp.chart_id
@@ -64,8 +64,9 @@ router.get('/reports', requireManager, async (request, response) => {
        LEFT JOIN chart_quantities cq ON cq.chart_id = cp.chart_id AND cq.row_number = cp.row_number
        LEFT JOIN chart_columns cc ON cc.chart_id = cq.chart_id AND cc.column_number = cq.column_number
        LEFT JOIN medicines m ON m.id = cc.medicine_id
-       WHERE ${PATIENT_SQL} <> '' AND dc.chart_date BETWEEN $1::date AND $2::date AND ${scope.sql}
-       GROUP BY 1, 2, 3, 4`,
+       WHERE (${PATIENT_SQL} <> '' OR cp.patient_id <> '') AND dc.chart_date BETWEEN $1::date AND $2::date AND ${scope.sql}
+       GROUP BY 1, 2, 3, 4, 5
+       ORDER BY 3`,
       params,
     ),
     query(
@@ -107,15 +108,33 @@ router.get('/reports', requireManager, async (request, response) => {
   const inRange = (date) => date >= from && date <= to
   const rangeDates = Array.from({ length: days }, (_, i) => toIso(toDay(from) + i))
 
-  // wardKey -> date -> Map(patient -> medicines)
+  // Who is one patient: the patient ID (رقم الطبلة) when the row has one; else the ID the same
+  // name carries on another day on the same ward (typed on day 1, the ID added on day 2); else
+  // the name. Two patients sharing a name but with different IDs are two patients.
+  const idByWardName = new Map()
+  patientRows.rows.forEach((row) => {
+    if (row.patient_id && row.patient) idByWardName.set(`${wardKey(row.floor, row.ward)}|${row.patient}`, row.patient_id)
+  })
+  const labels = new Map() // patient key -> { name, patientId } for the tables; rows are date-ordered, so the latest wins
+  const patientKeyOf = (row) => {
+    const id = row.patient_id || idByWardName.get(`${wardKey(row.floor, row.ward)}|${row.patient}`) || ''
+    const key = id ? `id:${id}` : `name:${row.patient}`
+    labels.set(key, { name: row.patient || labels.get(key)?.name || '', patientId: id })
+    return key
+  }
+  // wardKey -> date -> Map(patient key -> medicines)
   const byWard = new Map()
   patientRows.rows.forEach((row) => {
     const key = wardKey(row.floor, row.ward)
     if (!byWard.has(key)) byWard.set(key, new Map())
     const dates = byWard.get(key)
     if (!dates.has(row.date)) dates.set(row.date, new Map())
-    dates.get(row.date).set(row.patient, row.medicines)
+    const patients = dates.get(row.date)
+    const patient = patientKeyOf(row)
+    // The same patient on the main and extra chart, one row with the ID and one without: keep the larger count.
+    patients.set(patient, Math.max(patients.get(patient) || 0, row.medicines))
   })
+  const labelOf = (patient) => ({ patient: labels.get(patient)?.name || labels.get(patient)?.patientId || '', patientId: labels.get(patient)?.patientId || '' })
   const charted = new Map() // wardKey -> Set(date), main chart started
   const completed = new Map()
   const extraCharted = new Map()
@@ -158,7 +177,7 @@ router.get('/reports', requireManager, async (request, response) => {
           if (medicines < POLYPHARMACY_MIN) return
           const entryKey = `${key}|${patient}`
           const current = polypharmacy.get(entryKey)
-          if (!current || medicines > current.maxMedicines) polypharmacy.set(entryKey, { floor, ward, patient, maxMedicines: medicines, date })
+          if (!current || medicines > current.maxMedicines) polypharmacy.set(entryKey, { floor, ward, ...labelOf(patient), maxMedicines: medicines, date })
         })
       } else if (date >= previousFrom && date <= previousTo) {
         previousPatientDays += patients.size
@@ -201,7 +220,7 @@ router.get('/reports', requireManager, async (request, response) => {
         // Only stays that overlap the report range count.
         if (day >= toDay(from)) {
           wardStays += 1; wardStaySum += length
-          if (day === toDay(to) && length >= LONG_STAY_DAYS) longStays.push({ floor, ward, patient, days: length, since: toIso(start) })
+          if (day === toDay(to) && length >= LONG_STAY_DAYS) longStays.push({ floor, ward, ...labelOf(patient), days: length, since: toIso(start) })
         }
         start = next
       })

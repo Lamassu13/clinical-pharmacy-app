@@ -186,8 +186,8 @@ function ReportDocument({ report, stale }) {
         {report.longStays.length === 0 ? <Empty>لا يوجد مريض بقي {thresholds.longStay} أيام متتالية حتى آخر يوم من المدة.</Empty> : (
           <div className="table-frame"><table className="requests-table report-table">
             <thead><tr><th>المريض</th><th>الردهة</th><th>الأيام</th><th>منذ</th></tr></thead>
-            <tbody>{report.longStays.map((row) => <tr key={`${row.floor}|${row.ward}|${row.patient}`}>
-              <td>{row.patient}</td><td>{wardName(row, scopedToFloor)}</td><td className="num">{row.days}</td><td>{formatDate(row.since)}</td>
+            <tbody>{report.longStays.map((row) => <tr key={`${row.floor}|${row.ward}|${row.patientId}|${row.patient}`}>
+              <td>{row.patient}{row.patientId && <span className="report-patient-id"> · {row.patientId}</span>}</td><td>{wardName(row, scopedToFloor)}</td><td className="num">{row.days}</td><td>{formatDate(row.since)}</td>
             </tr>)}</tbody>
           </table></div>
         )}
@@ -197,8 +197,8 @@ function ReportDocument({ report, stale }) {
         {report.polypharmacy.length === 0 ? <Empty>لا يوجد مريض أخذ {thresholds.polypharmacy} أدوية أو أكثر في يوم واحد.</Empty> : (
           <div className="table-frame"><table className="requests-table report-table">
             <thead><tr><th>المريض</th><th>الردهة</th><th>أعلى عدد أدوية</th><th>في يوم</th></tr></thead>
-            <tbody>{report.polypharmacy.map((row) => <tr key={`${row.floor}|${row.ward}|${row.patient}`}>
-              <td>{row.patient}</td><td>{wardName(row, scopedToFloor)}</td><td className="num">{row.maxMedicines}</td><td>{formatDate(row.date)}</td>
+            <tbody>{report.polypharmacy.map((row) => <tr key={`${row.floor}|${row.ward}|${row.patientId}|${row.patient}`}>
+              <td>{row.patient}{row.patientId && <span className="report-patient-id"> · {row.patientId}</span>}</td><td>{wardName(row, scopedToFloor)}</td><td className="num">{row.maxMedicines}</td><td>{formatDate(row.date)}</td>
             </tr>)}</tbody>
           </table></div>
         )}
