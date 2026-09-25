@@ -24,20 +24,26 @@ Built around the specific artifact and ritual of this teaching-hospital pharmacy
 ## Operating Context
 
 - **Device / scene:** shared tablet used on the ward during the early-morning dose round. Gloved hand, glare, haste are the normal conditions, not edge cases.
+- **Devices are mixed and not all new:** iPads (including older ones on iPadOS 14/15), Android tablets, and phones. Everything must work on all of them — the build targets Safari 14 / Chrome 87, and newer CSS such as `:has()` may only enhance, never be required.
 - **Building:** 8 numbered floors (2–6, 8, 9, 10 — there is no floor 1 or 7), each with 2–3 sub-wards ("أروقة فرعية"), plus 3 independent special wards ("ردهة مستقلة"): dialysis (الديلزة), ICU (العناية المركزة), neonatal (الخدج). ~26 wards total.
 - **Assignment:** one pharmacist ↔ one floor (or one set of special wards); the hub hides every card outside their assignment. Managers see the whole unit.
 - **Core flow:** log in → floor/ward hub → pick floor → pick ward → open its "جارت" (main slot or "الجارت الإضافي" second slot) or its pill form ("الحبوب").
 - **Charts:** per ward / date / slot, weekday-keyed, autosaved, versioned with conflict resolution; a chart can be copied forward to the next day.
 - **Output:** a printed A4 sheet. Print layout is a fixed, separately-maintained concern.
 - **Manager surface:** a "which wards have started today" status view (ward-granularity) plus the announcements feed.
-- **Infrastructure:** React + Vite SPA, Express + external Postgres (Neon), deployed on Render, installable PWA. Requires an authenticated session; there is no offline or standalone mode.
+- **Infrastructure:** React + Vite SPA, Express + external Postgres (Neon), deployed on Render, installable PWA. Requires an authenticated session.
+- **Offline:** ward signal drops. The app opens offline as the last signed-in user, and charts, pill forms and «استمارة الحبوب الإضافي» keep working: edits are saved on the device and sent automatically when the signal returns. A chart this device never downloaded opens blank offline; on reconnect its patients are *added* to the server's chart (matched by patient ID, else name, else the first empty row), never overlaid on it. «الطلبية», «متابعة الميروبينيم», reports and the dashboard need a connection.
 
 ## Capabilities and Constraints
 
-- **Daily medication chart** per ward/date/slot: patient rows, medication columns (from a shared registry or a typed custom name), per-cell quantities, dose totals with unit / syringe / vial–amp accounting, print to A4/PDF.
+- **Daily medication chart** per ward/date/slot: patient rows, medication columns (only names from the shared medicine registry), per-cell quantities, dose totals with unit / syringe / vial–amp accounting, print to A4/PDF.
+- **Patient ID ("رقم الطبلة")** beside each patient name, digits only. Typing a name or an ID that was on yesterday's chart offers to copy that patient forward (name, ID, medicines, quantities). It prints beside the name on the A4/PDF chart.
+- **«متابعة الميروبينيم» (Meropenem follow-up)** per ward: read-only, built from the charts — every patient on Meronem, their dose (from the vial strength × daily quantity, read as three doses a day, e.g. «2g × 3»), and one column per day with the course day (D1, D2 …). A Friday with no chart keeps counting; one missed charted day is forgiven and marked «؟»; a transfer (same patient ID on another ward) carries the count over. A status column shows مستمر / أُوقف / غادر / نُقل إلى; finished patients are hidden behind «إظهار المنتهين». Prints on one A4 landscape page. It finds the medicine by the words «Meronem» / «Meropenem» and the strength in its registry name.
+- **«الطلبية» (requisition):** per ward/day, each medicine's total from the main chart, in numbers and Arabic words, doubled on Thursday unless the medicine is marked «لا يُضاعف يوم الخميس».
+- **«التقارير» (reports):** per-floor reports over a date range for managers, printable to A4.
 - **"الجارت الإضافي":** a second same-day chart for a ward, done after the main one.
 - **Pill form ("الحبوب")** per ward/date: dose time, usage method, and note chosen from fixed Arabic option lists; syringe totals; editable medicine-name and pill-quantity working columns that are screen-only (kept off the chart and the print); paginates at 7 medicines per printed page; CCU pill-form medicine names are shown in English only.
-- **Dashboard:** started-wards status (counted per ward, not per floor), announcements (post / edit / delete for managers).
+- **Dashboard:** started-wards status (counted per ward, not per floor). Announcements (post / edit / delete for managers) sit at the bottom of the floor list for managers and special-ward-only pharmacists, and at the bottom of a single floor's page for floor pharmacists.
 - **Admin:** user accounts + roles + floor/ward assignment; medicine registry (ships with a starter set); floor/ward configuration; registration requests.
 - Session-expiry handling; light / dark theme.
 - Fixed option lists (wards, dose times, usage methods) are duplicated in server-side validation and must stay in sync (`src/constants.js` ↔ `server/validation.js` / `server/index.js`).
