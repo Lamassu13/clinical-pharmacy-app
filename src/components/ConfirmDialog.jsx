@@ -20,9 +20,10 @@ export default function ConfirmDialog({ dialog, onResolve }) {
         if (document.activeElement === edge) { event.preventDefault(); (event.shiftKey ? f[f.length - 1] : f[0]).focus() }
       }}>
       <p id="confirm-dialog-message">{dialog.message}</p>
+      {dialog.detail && <p className="confirm-dialog-detail">{dialog.detail}</p>}
       <div className="modal-actions">
         <button type="button" className="secondary-button" autoFocus onClick={() => onResolve(false)}>إلغاء</button>
-        <button type="button" className={dialog.danger ? 'danger-button' : 'primary-button'} onClick={() => onResolve(true)}>تأكيد</button>
+        <button type="button" className={dialog.danger ? 'danger-button' : 'primary-button'} onClick={() => onResolve(true)}>{dialog.confirmLabel || 'تأكيد'}</button>
       </div>
     </div>
   </div>

@@ -126,7 +126,7 @@ function App() {
   const [confirmDialog, setConfirmDialog] = useState(null)
   // opener: the control that raised the dialog, so focus can return to it on close instead of
   // falling to <body>. danger: turns the confirm button danger-styled for irreversible actions.
-  const askConfirm = useCallback((message, { danger = false } = {}) => new Promise((resolve) => setConfirmDialog({ message, danger, opener: document.activeElement, resolve })), [])
+  const askConfirm = useCallback((message, { danger = false, confirmLabel, detail } = {}) => new Promise((resolve) => setConfirmDialog({ message, danger, confirmLabel, detail, opener: document.activeElement, resolve })), [])
   const resolveConfirm = useCallback((value) => { setConfirmDialog((current) => { current?.resolve(value); current?.opener?.focus?.(); return null }) }, [])
   // "نسخ إلى اليوم التالي" needs a real three-way choice (cancel / copy everything / copy only
   // the medicine list), not askConfirm's yes/no — resolves to 'all' | 'medicines' | null.
@@ -254,6 +254,12 @@ function App() {
     window.print()
   }, [])
   const [adminMedicines, setAdminMedicines] = useState([])
+  // 'loading' until the catalogue first arrives, 'error' if that first load failed — the
+  // medicines screen shows its own loading / retry state instead of an empty table and «0».
+  const [medicinesStatus, setMedicinesStatus] = useState('loading')
+  // The one medicine open in the medicines screen's editor (null = none). Lives here so a
+  // freshly added medicine can open straight into it.
+  const [editingMedicineId, setEditingMedicineId] = useState(null)
   const [medicineFilter, setMedicineFilter] = useState('')
   // استمارات العلاج — every member reads this list; only a manager gets the write handlers below.
   const [treatmentForms, setTreatmentForms] = useState([])
@@ -535,33 +541,42 @@ function App() {
     try {
       const response = await fetch(`${apiUrl}/medicines`, { credentials: 'include' })
       const result = await response.json()
-      if (!response.ok || !Array.isArray(result.medicines)) return
+      if (!response.ok || !Array.isArray(result.medicines)) throw new Error()
       // Replace, never merge: the catalogue is the only source of truth, so a deleted or
       // renamed medicine has to leave this list too.
       setMedicines(result.medicines.map((item) => item.name).sort((a, b) => a.localeCompare(b)))
       setAdminMedicines(result.medicines)
-    } catch { /* keep the current list on network error */ }
+      setMedicinesStatus('ready')
+    } catch {
+      // Keep the current list on a network error; only a list that never loaded is an error.
+      setMedicinesStatus((status) => (status === 'ready' ? status : 'error'))
+    }
   }, [])
-  const saveMedicine = useCallback(async (id, name, arabicName, isSupply, noThursdayDouble) => {
+  // Resolves true once the server accepted the change, so the editor knows to close. A rename
+  // is confirmed first: charts link a column to this row by id, so the new name shows on every
+  // chart that used it, past ones included.
+  const saveMedicine = useCallback(async (item, { name, arabicName, isSupply, noThursdayDouble }) => {
+    if (name !== item.name && !(await askConfirm(`تغيير اسم «${item.name}» إلى «${name}»؟`, { confirmLabel: 'تغيير الاسم', detail: 'يظهر الاسم الجديد على كل الجارتات التي تستخدم هذا الدواء، بما فيها السابقة.' }))) return false
     setRegistrationsError(''); setAdminSuccess(''); setBusy(true)
     try {
-      const response = await fetch(`${apiUrl}/medicines/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ name, arabicName, isSupply, noThursdayDouble }) })
+      const response = await fetch(`${apiUrl}/medicines/${item.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ name, arabicName, isSupply, noThursdayDouble }) })
       const result = await response.json()
       if (!response.ok) throw new Error(result.message || 'تعذر تحديث الدواء')
-      setAdminMedicines((current) => current.map((item) => item.id === id ? result.medicine : item))
-      setAdminSuccess(`تم حفظ "${result.medicine?.name || name}"`)
-    } catch (error) { setRegistrationsError(error.message || 'تعذر الاتصال بالخادم') } finally { setBusy(false) }
-  }, [])
+      setAdminMedicines((current) => current.map((entry) => entry.id === item.id ? result.medicine : entry))
+      return true
+    } catch (error) { setRegistrationsError(error.message || 'تعذر الاتصال بالخادم'); return false } finally { setBusy(false) }
+  }, [askConfirm])
   const removeMedicine = useCallback(async (id, name) => {
-    if (!(await askConfirm(`حذف الدواء "${name}" من القائمة؟`, { danger: true }))) return
+    if (!(await askConfirm(`حذف «${name}» من قائمة الأدوية؟`, { danger: true, confirmLabel: 'حذف', detail: 'يبقى الاسم على الجارتات السابقة، ويختفي من قائمة الاختيار للجارتات الجديدة.' }))) return false
     setRegistrationsError(''); setAdminSuccess(''); setBusy(true)
     try {
       const response = await fetch(`${apiUrl}/medicines/${id}`, { method: 'DELETE', credentials: 'include' })
       const result = await response.json()
       if (!response.ok) throw new Error(result.message || 'تعذر حذف الدواء')
       setAdminMedicines((current) => (current ?? []).filter((item) => item.id !== id))
-      setAdminSuccess(`تم حذف "${name}"`)
-    } catch (error) { setRegistrationsError(error.message || 'تعذر الاتصال بالخادم') } finally { setBusy(false) }
+      setAdminSuccess(`تم حذف «${name}»`)
+      return true
+    } catch (error) { setRegistrationsError(error.message || 'تعذر الاتصال بالخادم'); return false } finally { setBusy(false) }
   }, [askConfirm])
   const loadTreatmentForms = useCallback(async () => {
     setTreatmentFormsLoading(true); setTreatmentFormsError(false)
@@ -651,9 +666,10 @@ function App() {
     const timer = setTimeout(() => setAdminSuccess(''), 4000)
     return () => clearTimeout(timer)
   }, [adminSuccess])
-  const addMedicine = async (event) => {
-    event.preventDefault()
-    const medicine = newMedicine.trim()
+  // From the add form (event) or the no-match row's «إضافة» (name).
+  const addMedicine = async (event, name) => {
+    event?.preventDefault()
+    const medicine = (name ?? newMedicine).trim()
     if (!medicine) return
     setRegistrationsError(''); setAdminSuccess(''); setBusy(true)
     try {
@@ -669,7 +685,14 @@ function App() {
       // Only reflect it locally once the server has actually accepted it.
       setMedicines((current) => [...new Set([...current, medicine])].sort((a, b) => a.localeCompare(b)))
       setNewMedicine('')
-      setAdminSuccess(`تمت إضافة "${medicine}"`)
+      setAdminSuccess(`تمت إضافة «${medicine}» — أكمِل بياناته أدناه`)
+      // Land on the new row with its editor open: it starts with no Arabic name and default
+      // flags, which is exactly what the admin is likely to set next.
+      if (result.medicine) {
+        setAdminMedicines((current) => [...current.filter((item) => item.id !== result.medicine.id), result.medicine].sort((a, b) => a.name.localeCompare(b.name)))
+        setMedicineFilter(result.medicine.name)
+        setEditingMedicineId(result.medicine.id)
+      }
       if (adminView === 'medicines') loadMedicines()
     } catch (error) {
       setRegistrationsError(error.message || 'تعذر الاتصال بالخادم')
@@ -2014,7 +2037,7 @@ function App() {
   // the number of rows in the database; the filter only narrows what the table draws.
   const medicineSearch = medicineFilter.trim().toLowerCase()
   const visibleMedicines = adminMedicines.filter((item) => !medicineSearch || `${item.name} ${item.arabic_name || ''}`.toLowerCase().includes(medicineSearch))
-  if (adminView === 'medicines' && isManager) return <AdminMedicinesScreen adminHeader={appHeader} adminMedicines={adminMedicines} visibleMedicines={visibleMedicines} medicineSearch={medicineSearch} medicineFilter={medicineFilter} setMedicineFilter={setMedicineFilter} newMedicine={newMedicine} setNewMedicine={setNewMedicine} registrationsError={registrationsError} adminSuccess={adminSuccess} busy={busy} onAddMedicine={addMedicine} onSaveMedicine={saveMedicine} onRemoveMedicine={removeMedicine} confirmModal={confirmModal} />
+  if (adminView === 'medicines' && isManager) return <AdminMedicinesScreen adminHeader={appHeader} adminMedicines={adminMedicines} visibleMedicines={visibleMedicines} medicinesStatus={medicinesStatus} onRetryMedicines={loadMedicines} editingMedicineId={editingMedicineId} setEditingMedicineId={setEditingMedicineId} askConfirm={askConfirm} medicineFilter={medicineFilter} setMedicineFilter={setMedicineFilter} newMedicine={newMedicine} setNewMedicine={setNewMedicine} registrationsError={registrationsError} adminSuccess={adminSuccess} busy={busy} onAddMedicine={addMedicine} onSaveMedicine={saveMedicine} onRemoveMedicine={removeMedicine} confirmModal={confirmModal} />
   const formSearch = treatmentFormFilter.trim().toLowerCase()
   const visibleTreatmentForms = treatmentForms.filter((item) => !formSearch || item.title.toLowerCase().includes(formSearch))
   // No isManager guard here, unlike the other admin screens — every member reads this list;

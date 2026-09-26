@@ -31,7 +31,7 @@ export default function PatientSearch({ floor = null, date, onOpen, isExpired })
   }, [term, floor, date, isExpired])
 
   return <div className="patient-search">
-    <label className="patient-search-field">
+    <label className="search-field">
       <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="6.5" fill="currentColor" fillOpacity=".14" /><path d="m20 20-4.2-4.2" /></svg>
       <input
         type="search" value={q} onChange={(event) => setQ(event.target.value)}
