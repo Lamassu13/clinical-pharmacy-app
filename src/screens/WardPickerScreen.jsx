@@ -1,12 +1,13 @@
 import { WardGlyph, CardStatus } from '../components/WardGlyph.jsx'
 import WardActions from '../components/WardActions.jsx'
 import DashboardWidgets from '../components/DashboardWidgets.jsx'
+import PatientSearch from '../components/PatientSearch.jsx'
 
 // The sub-wards of one floor. Mirrors FloorPickerScreen's header and card shape so moving
 // from the floor grid into a floor doesn't feel like a different screen. The floor number
 // is in the heading, so the cards don't repeat it — each carries the ward glyph instead.
 export default function WardPickerScreen({
-  floor, today, dashboard, dashboardError, onBack, onOpen,
+  floor, today, selectedDate, isExpired, dashboard, dashboardError, onBack, onOpen,
   announcements, isManager, announcementDraft, setAnnouncementDraft, announcementError, announcementBusy,
   onPostAnnouncement, onEditAnnouncement, onDeleteAnnouncement,
 }) {
@@ -24,6 +25,7 @@ export default function WardPickerScreen({
         {today && <div className="date-chip"><span>اليوم</span><strong>{today}</strong></div>}
       </div>
     </div>
+    <PatientSearch floor={floor.number} date={selectedDate} onOpen={onOpen} isExpired={isExpired} />
     <div className="location-grid">{floor.wards.map((ward) => {
       const started = startedWards.has(ward)
       return <div className="location-card" key={ward}>

@@ -458,5 +458,44 @@ router.get('/meropenem', requireAuth, async (request, response) => {
   }) })
 })
 
+// Patient search for one day: a pharmacist scans their floor's main and extra charts; a manager
+// may leave `floor` out to scan the whole unit (every floor and special ward). Digits search the
+// ID «رقم الطبلة» by prefix, anything else the name by substring.
+router.get('/patients/search', requireAuth, async (request, response) => {
+  const user = request.session.user
+  const isManager = user.role === 'admin' || user.role === 'supervisor'
+  const floor = request.query.floor ? clampInt(request.query.floor, 2, 10) : null
+  const date = request.query.date
+  const q = cleanText(request.query.q, 60).trim()
+  if (request.query.floor && (floor === null || !ALLOWED_FLOORS.includes(floor))) return response.status(400).json({ message: 'الطابق غير مسموح' })
+  if (!isIsoDate(date)) return response.status(400).json({ message: 'التاريخ مطلوب' })
+  if (floor === null ? !isManager : !canAccessLocation(user, floor, null)) return response.status(403).json({ message: 'لا تملك صلاحية لهذا الطابق' })
+  if (q.length < 2) return response.json({ patients: [] })
+  const byId = /^\d+$/.test(q)
+  const pattern = byId ? `${q}%` : `%${q.replace(/[\\%_]/g, '\\$&')}%`
+  const result = await query(
+    `SELECT w.floor_number AS floor, w.name AS ward, dc.slot, cp.row_number, cp.patient_name AS name, cp.patient_id,
+            COALESCE(json_agg(json_build_object('name', COALESCE(m.name, cc.custom_name), 'quantity', cq.quantity) ORDER BY cc.column_number)
+              FILTER (WHERE cq.quantity > 0 AND COALESCE(m.name, cc.custom_name) <> ''), '[]') AS medicines
+     FROM daily_charts dc
+     JOIN wards w ON w.id = dc.ward_id
+     JOIN chart_patients cp ON cp.chart_id = dc.id
+     LEFT JOIN chart_quantities cq ON cq.chart_id = dc.id AND cq.row_number = cp.row_number
+     LEFT JOIN chart_columns cc ON cc.chart_id = dc.id AND cc.column_number = cq.column_number
+     LEFT JOIN medicines m ON m.id = cc.medicine_id
+     WHERE dc.chart_date = $1::date
+       AND ($2::int IS NULL OR w.floor_number = $2)
+       AND ${byId ? 'cp.patient_id LIKE $3' : 'cp.patient_name ILIKE $3'}
+     GROUP BY w.floor_number, w.name, dc.slot, cp.row_number, cp.patient_name, cp.patient_id
+     ORDER BY w.floor_number NULLS LAST, w.name, dc.slot = 'extra', cp.row_number
+     LIMIT 30`,
+    [date, floor, pattern],
+  )
+  response.json({ patients: result.rows.map((row) => ({
+    floor: row.floor, ward: row.ward, slot: row.slot, rowNumber: row.row_number,
+    name: row.name, patientId: row.patient_id, medicines: row.medicines,
+  })) })
+})
+
 export { resolveChartId }
 export default router

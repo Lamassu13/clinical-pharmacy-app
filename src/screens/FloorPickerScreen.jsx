@@ -1,12 +1,13 @@
 import DashboardWidgets from '../components/DashboardWidgets.jsx'
 import { WardGlyph, ChevronStart, StatusCheck, CardStatus } from '../components/WardGlyph.jsx'
 import WardActions from '../components/WardActions.jsx'
+import PatientSearch from '../components/PatientSearch.jsx'
 import { wardAttention } from '../helpers.js'
 
 // The floor/special-ward grid. `floors` / `specialWards` arrive already narrowed to what this
 // user may see (their assignment, or the whole unit for a manager) — no post-paint DOM hiding.
 export default function FloorPickerScreen({
-  today, floors = [], specialWards = [], resumeDraft, onResume,
+  today, selectedDate, isExpired, floors = [], specialWards = [], resumeDraft, onResume,
   onPickFloor, onOpen, dashboard, dashboardLoading, dashboardError, onRetryDashboard,
   announcements, isManager, announcementDraft, setAnnouncementDraft, announcementError, announcementBusy,
   onPostAnnouncement, onEditAnnouncement, onDeleteAnnouncement,
@@ -47,6 +48,8 @@ export default function FloorPickerScreen({
         <span className="resume-draft-go">المتابعة ←</span>
       </button>
     )}
+
+    {isManager && <PatientSearch date={selectedDate} onOpen={onOpen} isExpired={isExpired} />}
 
     {nothingAssigned && (
       <div className="empty-state"><strong>لم يُسند إليك طابق أو ردهة بعد</strong><span>راجِع مسؤول وحدة الصيدلة السريرية لتعيين موقعك، ثم أعِد تسجيل الدخول.</span></div>
