@@ -80,7 +80,7 @@ export function WardStatusBand({ startedCount, totalCount, attention = [], onOpe
         <span className="ward-status-band-label">حالة الجارت الآن</span>
         <span className="ward-status-band-summary">
           {!clear && <><strong>{attention.length}</strong> تحتاج متابعة<span className="ward-status-band-sep">·</span></>}
-          {startedCount} من {totalCount} بدأت
+          <b className="ward-status-band-started">{startedCount}</b> من {totalCount} بدأت
         </span>
       </div>
 
@@ -90,7 +90,7 @@ export function WardStatusBand({ startedCount, totalCount, attention = [], onOpe
         <ul className="ward-status-band-list">
           {inline.map(row)}
           {folded.length > 0 && (
-            <li>
+            <li className="ward-status-band-more-item">
               <details className="ward-status-band-more">
                 <summary>و {folded.length} ردهة أخرى</summary>
                 <ul className="ward-status-band-list">{folded.map(row)}</ul>

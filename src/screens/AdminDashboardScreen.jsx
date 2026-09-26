@@ -39,10 +39,14 @@ function FormsIcon() {
     <path d="M14 3.5V7.5h4" /><path d="M9 12h6M9 15.5h6" />
   </svg>
 }
-function StatCard({ icon, value, label, onClick }) {
-  return <button type="button" className="location-card location-card--link" onClick={onClick}>
+function StatCard({ icon, value, label, detail, onClick }) {
+  return <button type="button" className="location-card location-card--link stat-card" onClick={onClick}>
     <span className="floor-number">{icon}</span>
-    <span className="location-card-body"><strong>{value}</strong><small>{label}</small></span>
+    <span className="location-card-body">
+      <strong className="stat-card-value">{value}</strong>
+      <small className="stat-card-label">{label}</small>
+      {detail && <small className="stat-card-detail">{detail}</small>}
+    </span>
     <span className="arrow" aria-hidden="true"><ChevronStart /></span>
   </button>
 }
@@ -80,7 +84,7 @@ export default function AdminDashboardScreen({
       {isAdmin && (
         <StatCard icon={<RequestsIcon />} value={registrations.length} label="طلبات بانتظار الموافقة" onClick={() => onNavigate('requests')} />
       )}
-      <StatCard icon={<UsersIcon />} value={allUsers.length} label={<span title={roleBreakdown}>{`المستخدمون — ${roleBreakdown}`}</span>} onClick={() => onNavigate('users')} />
+      <StatCard icon={<UsersIcon />} value={allUsers.length} label="المستخدمون" detail={roleBreakdown} onClick={() => onNavigate('users')} />
       <StatCard icon={<MedicineIcon />} value={adminMedicines.length} label="الأدوية في القائمة" onClick={() => onNavigate('medicines')} />
       <StatCard icon={<FormsIcon />} value={treatmentForms.length} label="استمارات العلاج" onClick={() => onNavigate('forms')} />
     </div>
@@ -88,12 +92,12 @@ export default function AdminDashboardScreen({
     {isAdmin && recentRequests.length > 0 && (
       <>
         <h2 className="admin-subheading">أحدث طلبات الانضمام</h2>
-        <div className="table-frame"><table className="requests-table">
+        <div className="table-frame"><table className="requests-table requests-table--stack">
           <thead><tr><th>الاسم الكامل</th><th>الهاتف</th><th>الطابق / الردهة</th><th>إجراء</th></tr></thead>
           <tbody>{recentRequests.map((item) => <tr key={item.id}>
-            <td>{item.full_name}</td>
-            <td>{item.phone}</td>
-            <td><select value={pendingFloor[item.id] || ''} onChange={(event) => setPendingFloor((current) => ({ ...current, [item.id]: event.target.value }))}>
+            <td className="requests-name">{item.full_name}</td>
+            <td data-label="الهاتف">{item.phone}</td>
+            <td data-label="الطابق / الردهة"><select value={pendingFloor[item.id] || ''} onChange={(event) => setPendingFloor((current) => ({ ...current, [item.id]: event.target.value }))}>
               <option value="">اختر</option>
               <optgroup label="الطوابق">{floors.map((floorOption) => <option key={floorOption.number} value={floorOption.number}>الطابق {floorOption.number}</option>)}</optgroup>
               <optgroup label="ردهات خاصة">{specialWards.map((ward) => <option key={ward} value={ward}>{ward}</option>)}</optgroup>
