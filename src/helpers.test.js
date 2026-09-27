@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mergeKeyedSnapshots, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, EXTRA_PILL_SLOTS, isDraftStale, mergePreviousDayDoses, medicineMatches } from './helpers.js'
+import { mergeKeyedSnapshots, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, EXTRA_PILL_SLOTS, isDraftStale, mergePreviousDayDoses, medicineMatches, pillSheetPlan, yesterdaySchedules, scheduleFor } from './helpers.js'
 
 test('mergeKeyedSnapshots keeps a local edit and adopts an unrelated server change', () => {
   const base = { a: '1', b: '2' }
@@ -124,4 +124,30 @@ test('medicineMatches lists prefix matches before contains, capped', () => {
   assert.deepEqual(medicineMatches('mer', catalogue), ['Meronem 1000gm Vial', 'Meronem 500mg Vial', 'Ameronem X'])
   assert.deepEqual(medicineMatches('  ', catalogue), [])
   assert.equal(medicineMatches('e', catalogue, 2).length, 2)
+})
+
+test('pillSheetPlan: spare rows never push the signature onto an empty sheet', () => {
+  const meds = (n) => Array.from({ length: n }, (_, i) => i)
+  const shape = (plan) => [plan.pages.map((page) => page.length), plan.extraCount]
+  assert.deepEqual(shape(pillSheetPlan(meds(3))), [[3], 2])
+  assert.deepEqual(shape(pillSheetPlan(meds(6))), [[6], 1]) // was 6 + 2 -> orphan sheet
+  assert.deepEqual(shape(pillSheetPlan(meds(7))), [[7], 0])
+  assert.deepEqual(shape(pillSheetPlan(meds(7), { requestedExtras: 1 })), [[7, 0], 1]) // asked for: own sheet
+  assert.deepEqual(shape(pillSheetPlan(meds(6), { filledExtraReach: 2 })), [[6, 0], 2]) // filled rows are never dropped
+  assert.deepEqual(shape(pillSheetPlan(meds(9))), [[7, 2], 2])
+})
+
+test('yesterdaySchedules matches a patient by ID first, then by name', () => {
+  const yesterday = yesterdaySchedules({
+    patients: [{ rowNumber: 3, name: 'زهراء  كاظم', patientId: '777' }, { rowNumber: 4, name: 'مريم', patientId: '' }],
+    entries: [
+      { patientRowNumber: 3, medicineKey: 'amaryl 2mg tab', doseTime: 'صباحًا', usageMethod: '', note: '' },
+      { patientRowNumber: 3, medicineKey: 'extra-row-1', doseTime: 'x', usageMethod: '', note: '' },
+      { patientRowNumber: 4, medicineKey: 'aspirin 100mg tab', doseTime: '', usageMethod: 'بعد الطعام', note: '' },
+    ],
+  })
+  assert.deepEqual(Object.keys(scheduleFor(yesterday, { name: 'اسم آخر', patientId: '777' })), ['amaryl 2mg tab'])
+  assert.equal(scheduleFor(yesterday, { name: 'مريم', patientId: '' })['aspirin 100mg tab'].usageMethod, 'بعد الطعام')
+  assert.equal(scheduleFor(yesterday, { name: 'غير موجود', patientId: '' }), null)
+  assert.equal(yesterdaySchedules(null), null)
 })

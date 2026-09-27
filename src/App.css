@@ -1189,7 +1189,8 @@ button.topbar-user:hover { color: var(--primary); }
 /* Screen-only trims: the pill form on screen is an editing surface, not the A4 sheet. The
    @media print block stays the source of truth for paper and is untouched. */
 @media screen {
-  .pills-pick-note { display: block; margin: calc(-1 * var(--space-3)) 0 var(--space-5); color: var(--text-muted); font-size: var(--text-sm); line-height: 1.6; }
+  .pills-pick-note { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-1) var(--space-4); margin: calc(-1 * var(--space-3)) 0 var(--space-5); color: var(--text-muted); font-size: var(--text-sm); line-height: 1.6; }
+  .pills-pick-actions { display: flex; gap: var(--space-2); }
   .pills-pick-note-active { color: var(--text); }
   .pills-pick-note-active strong { color: var(--heading); }
 
@@ -1202,12 +1203,33 @@ button.topbar-user:hover { color: var(--primary); }
   /* The three dropdown columns get a real field affordance and a 44px-ish target instead
      of reading as plain text; the empty state shows a muted prompt (blank on paper). */
   .pill-table td:nth-child(n+3) { padding: 3px; }
-  .pill-select-value { min-height: 30px; padding: 7px 9px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); }
+  .pill-select-value { min-height: 44px; padding: 9px; display: flex; align-items: center; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); }
   .pill-select[data-empty] .pill-select-value::before { content: 'اختر'; color: var(--text-muted); }
   .pill-select:focus-within .pill-select-value { border-color: var(--primary); }
 
-  /* Preview which patients a "print selected" run will include. */
-  .pill-form-unpicked { opacity: .5; }
+  /* Preview which patients a "print selected" run will include: a dashed frame and a muted
+     name — not a faded card, which read as disabled and dropped its text below AA. */
+  .pill-form-unpicked { border-style: dashed; border-color: var(--border-strong); box-shadow: none; }
+  .pill-form-unpicked .pill-form-patient strong { color: var(--text-muted); }
+
+  /* Print controls stay in reach while working down a long ward. */
+  .pills-toolbar { position: sticky; top: 0; z-index: 6; padding-block: var(--space-3); background: var(--bg); border-bottom: 1px solid var(--border); }
+
+  /* Column widths are fixed on screen so a long usage method or note can no longer squeeze
+     «العلاج» until the drug name is cut off. Paper keeps its own widths (print block). */
+  .pill-table { table-layout: fixed; }
+  .pill-table th:first-child, .pill-table td:first-child { width: 96px; min-width: 0; }
+  .pill-table th:nth-child(2) { width: 26%; }
+  .pill-table th.pill-qty-cell { width: 80px; }
+  .pill-table th:nth-child(4) { width: 17%; }
+  .pill-table th:nth-child(5) { width: 20%; }
+  .pill-repeat { white-space: normal; text-align: center; line-height: 1.3; }
+
+  /* Gloved-hand targets: every control on the form is at least 44px. */
+  .pill-name-cell input, .pill-qty-cell input, .pill-room input, .pills-date input { min-height: 44px; }
+  .pill-pick { min-height: 44px; padding: 0 var(--space-3); }
+  .pill-pick input { width: 22px; height: 22px; }
+  .pill-row-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: var(--space-2); padding: var(--space-1) 0; }
 }
 
 /* ============================================================
@@ -1771,7 +1793,9 @@ button.topbar-user:hover { color: var(--primary); }
   .pill-room input, .pills-date input,
   .medicine-add-row input, .medicine-filter, .medicine-editor input,
   .login-form input, .medicine-modal input,
-  .pill-table select { font-size: 16px; }
+  .pill-table select, .pill-name-cell input, .pill-qty-cell input { font-size: 16px; }
+  /* The phone scrolls the table inside its card; give «العلاج» room rather than a sliver. */
+  .pill-table { min-width: 640px; }
   .pill-room input { width: 110px; }
 }
 

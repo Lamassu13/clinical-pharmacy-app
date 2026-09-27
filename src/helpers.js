@@ -275,6 +275,47 @@ export const medicineMatches = (query, catalogue, limit = 6) => {
   return [...starts, ...contains].slice(0, limit)
 }
 
+// A day's pill form reduced to what carries over: each patient's per-medicine schedule (dose
+// time, usage method, note), reachable by patient ID or by name. Quantities and edited names
+// are left behind — they belong to that day. Returns null for no form.
+export const yesterdaySchedules = (pills) => {
+  if (!pills?.patients?.length) return null
+  const byRow = {}
+  ;(pills.entries || []).forEach((entry) => {
+    if (!entry.doseTime && !entry.usageMethod && !entry.note) return
+    if (String(entry.medicineKey).startsWith('extra-row-')) return
+    byRow[entry.patientRowNumber] = byRow[entry.patientRowNumber] || {}
+    byRow[entry.patientRowNumber][entry.medicineKey] = { doseTime: entry.doseTime || '', usageMethod: entry.usageMethod || '', note: entry.note || '' }
+  })
+  const byId = {}, byName = {}
+  pills.patients.forEach((patient) => {
+    const schedule = byRow[patient.rowNumber]
+    if (!schedule) return
+    if (patient.patientId) byId[patient.patientId] = schedule
+    byName[patientNameKey(patient.name)] = schedule
+  })
+  return { byId, byName }
+}
+export const scheduleFor = (yesterday, patient) => (yesterday
+  ? (patient.patientId && yesterday.byId[patient.patientId]) || yesterday.byName[patientNameKey(patient.name)] || null
+  : null)
+
+// How one patient's pill form splits into printed sheets. A sheet holds 7 rows, and the spare
+// hand-write rows count toward that: by default only as many blank ones as still fit on the
+// last sheet (up to 2), so a patient on 6–7 medicines no longer spills a second sheet holding
+// nothing but the signature. Spare rows someone filled in, or asked for with «+ سطر إضافي»,
+// always show — on a sheet of their own (same header, same patient) when they don't fit.
+export const PILL_ROWS_PER_SHEET = 7
+export const pillSheetPlan = (meds, { filledExtraReach = 0, requestedExtras = 0 } = {}) => {
+  const pages = []
+  for (let i = 0; i < meds.length; i += PILL_ROWS_PER_SHEET) pages.push(meds.slice(i, i + PILL_ROWS_PER_SHEET))
+  if (!pages.length) pages.push([])
+  const room = PILL_ROWS_PER_SHEET - pages[pages.length - 1].length
+  const extraCount = Math.max(Math.min(2, room), filledExtraReach, requestedExtras)
+  if (pages[pages.length - 1].length + extraCount > PILL_ROWS_PER_SHEET) pages.push([])
+  return { pages, extraCount }
+}
+
 export const nearestMedicine = (query, catalogue) => {
   const q = medicineKey(query)
   if (q.length < 3) return ''

@@ -647,7 +647,7 @@ app.get('/api/pills', requireAuth, async (request, response) => {
   // medicine the pharmacist could plainly see in the chart never appeared on the pill form.
   const [columns, patients, quantities, entries, rooms] = await Promise.all([
     query('SELECT cc.column_number, cc.custom_name, m.name, m.arabic_name FROM chart_columns cc LEFT JOIN medicines m ON m.id = cc.medicine_id WHERE cc.chart_id = $1', [chartId]),
-    query("SELECT row_number, patient_name FROM chart_patients WHERE chart_id = $1 AND patient_name <> '' ORDER BY row_number", [chartId]),
+    query("SELECT row_number, patient_name, patient_id FROM chart_patients WHERE chart_id = $1 AND patient_name <> '' ORDER BY row_number", [chartId]),
     query('SELECT row_number, column_number, quantity FROM chart_quantities WHERE chart_id = $1 AND quantity > 0', [chartId]),
     query('SELECT patient_row_number, medicine_key, dose_time, usage_method, note, pill_qty, pill_name FROM pill_entries WHERE chart_id = $1', [chartId]),
     query('SELECT patient_row_number, room_number FROM pill_patient_meta WHERE chart_id = $1', [chartId]),
@@ -697,7 +697,7 @@ app.get('/api/pills', requireAuth, async (request, response) => {
     if (!medicineInfo.has(key)) medicineInfo.set(key, { key, name: column.name, arabicName: column.arabicName })
   })
   const result = {
-    patients: patients.rows.filter((patient) => matrix[patient.row_number]).map((patient) => ({ rowNumber: patient.row_number, name: patient.patient_name })),
+    patients: patients.rows.filter((patient) => matrix[patient.row_number]).map((patient) => ({ rowNumber: patient.row_number, name: patient.patient_name, patientId: patient.patient_id || '' })),
     medicines: [...usedKeys].map((key) => medicineInfo.get(key)).filter(Boolean).sort((a, b) => (a.arabicName || a.name).localeCompare(b.arabicName || b.name, 'ar')),
     matrix,
     quantityByCell,
