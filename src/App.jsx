@@ -855,6 +855,10 @@ function App() {
   const [previousDayOffer, setPreviousDayOffer] = useState(null)
   const offerChartKey = selected ? `${selected.floor ?? ''}|${selected.ward}|${selected.slot || 'main'}|${selectedDate}` : ''
   const currentPreviousDayOffer = previousDayOffer?.chartKey === offerChartKey ? previousDayOffer : null
+  // Each row is asked about a given patient from yesterday once, whatever the answer. Without
+  // this the copy's own side effect re-triggered it: the ID box was empty when the pharmacist
+  // tapped into it, the copy filled it, and editing it then read as "an ID just typed in".
+  const askedOffersRef = useRef(new Set())
   // Fires on a patient-name or patient-ID field's empty -> filled transition, on blur (wired
   // from ChartScreen). If the same name (or the same ID) already appears in this ward's chart
   // from the previous calendar day, offers to carry that patient forward: medicines and
@@ -886,6 +890,9 @@ function App() {
     if (!prevDoses.length && !(field === 'id' && prevName)) return
     const latest = latestChartRef.current
     if (keyOf((field === 'id' ? latest.patientIds : latest.patientNames)[rowIndex] || '') !== trimmed) return
+    const askedKey = `${selected.floor ?? ''}|${selected.ward}|${selected.slot || 'main'}|${selectedDate}|${rowIndex}|${matchRow}`
+    if (askedOffersRef.current.has(askedKey)) return
+    askedOffersRef.current.add(askedKey)
     const who = field === 'id' ? `رقم المريض ${trimmed}${prevName ? ` («${prevName}»)` : ''}` : `«${trimmed}»`
     setPreviousDayOffer({ chartKey: `${selected.floor ?? ''}|${selected.ward}|${selected.slot || 'main'}|${selectedDate}`, rowIndex, field, trimmed, who, prevName, prevId, prevDoses })
   }, [selected, selectedDate, lockState])
