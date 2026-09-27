@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mergeKeyedSnapshots, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, EXTRA_PILL_SLOTS, isDraftStale, mergePreviousDayDoses, medicineMatches, pillSheetPlan, yesterdaySchedules, scheduleFor, applyTemplateColumns } from './helpers.js'
+import { mergeKeyedSnapshots, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, EXTRA_PILL_SLOTS, isDraftStale, mergePreviousDayDoses, medicineMatches, pillSheetPlan, yesterdaySchedules, scheduleFor, applyTemplateColumns, catalogueMatches } from './helpers.js'
 
 test('mergeKeyedSnapshots keeps a local edit and adopts an unrelated server change', () => {
   const base = { a: '1', b: '2' }
@@ -160,4 +160,22 @@ test('applyTemplateColumns lays a template onto a dose-free chart', () => {
   assert.equal(result.dropped, 1)
   assert.deepEqual(result.quantities.map((row) => row.slice(0, 3)), [['', '1', ''], ['', '', ''], ['', '1', '']]) // giving set seeded for named rows only
   assert.equal(applyTemplateColumns(['IV Set'], catalogue, [], 60).columns.length, 60) // keeps a wider chart's width
+})
+
+test('catalogueMatches finds a medicine by its English or Arabic name', () => {
+  const catalogue = [
+    { name: 'Amoxil 500mg Cap', arabic_name: 'أموكسيل ٥٠٠ ملغ' },
+    { name: 'Aspirin 100mg Tab', arabic_name: 'أسبرين' },
+    { name: 'Paracetamol 1g bottle', arabic_name: 'باراسيتامول' },
+    { name: 'Lasix 40mg Tab', arabic_name: '' },
+    { name: 'Tramadol Tab', arabic_name: 'ترامادول الصيدلة' },
+  ]
+  const names = (query, limit) => catalogueMatches(query, catalogue, limit).map((entry) => entry.name)
+  assert.deepEqual(names('amox'), ['Amoxil 500mg Cap'])
+  assert.deepEqual(names('أموك'), ['Amoxil 500mg Cap'])
+  assert.deepEqual(names('اموكسيل'), ['Amoxil 500mg Cap']) // hamza folded
+  assert.deepEqual(names('ا'), ['Amoxil 500mg Cap', 'Aspirin 100mg Tab', 'Paracetamol 1g bottle', 'Tramadol Tab']) // prefix before contains
+  assert.deepEqual(names('صيدله'), ['Tramadol Tab']) // ta marbuta folded
+  assert.deepEqual(names('tab', 2), ['Aspirin 100mg Tab', 'Lasix 40mg Tab'])
+  assert.deepEqual(names('  '), [])
 })

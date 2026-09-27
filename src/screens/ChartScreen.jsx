@@ -25,10 +25,11 @@ export default function ChartScreen({
   const [suggestFor, setSuggestFor] = useState(null)
   const [suggestHighlight, setSuggestHighlight] = useState(0)
   const suggestOptions = suggestFor ? medicineMatches(columnMedicines[suggestFor.column] || '', medicines)
-    .filter((name) => name !== columnMedicines[suggestFor.column]) : []
+    .filter((name) => name !== columnMedicines[suggestFor.column])
+    .map((name) => ({ key: name, primary: name })) : []
   // Put the pick into state and render it before the blur, so the blur's commit sees the full
   // name rather than the half-typed text still in the DOM.
-  const pickSuggestion = (name) => {
+  const pickSuggestion = ({ primary: name }) => {
     const { column, input } = suggestFor
     flushSync(() => onApplySuggestion(column, name))
     input.blur()

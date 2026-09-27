@@ -259,6 +259,29 @@ export const mergePreviousDayDoses = (columns, quantities, rowIndex, prevDoses, 
   return { columns: nextColumns, quantities: nextQuantities }
 }
 
+// Arabic spelling variants a pharmacist types interchangeably — hamza seats, ta marbuta, alif
+// maqsura, tatweel and harakat — folded away so «اموكسيل» finds «أموكسيل».
+const foldArabic = (value) => medicineKey(value)
+  .replace(/[\u064B-\u0652\u0640]/g, '')
+  .replace(/[أإآ]/g, 'ا')
+  .replace(/ة/g, 'ه')
+  .replace(/ى/g, 'ي')
+
+// Catalogue entries ({ name, arabic_name }) matching what is typed, in English or Arabic: names
+// starting with it first, then names containing it, capped at `limit`. The pill form's spare
+// «علاج إضافي» rows, where a pharmacist may write either language.
+export const catalogueMatches = (query, catalogue, limit = 6) => {
+  const key = foldArabic(query)
+  if (!key) return []
+  const starts = [], contains = []
+  catalogue.forEach((entry) => {
+    const keys = [foldArabic(entry.name), foldArabic(entry.arabic_name || '')].filter(Boolean)
+    if (keys.some((candidate) => candidate.startsWith(key))) starts.push(entry)
+    else if (keys.some((candidate) => candidate.includes(key))) contains.push(entry)
+  })
+  return [...starts, ...contains].slice(0, limit)
+}
+
 // Catalogue names matching what is typed in a column header: names starting with it first, then
 // names containing it, alphabetical within each, capped at `limit`. Case/space/digit-insensitive
 // via medicineKey. The chart header's own suggestion list — iPad's native <datalist> (QuickType

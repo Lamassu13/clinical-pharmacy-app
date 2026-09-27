@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import hospitalLogo from '../assets/hospital-logo.png'
 import PillSelect from '../components/PillSelect.jsx'
+import MedicineSuggest from '../components/MedicineSuggest.jsx'
 import { usageMethods, noteOptions, doseTimeGroups } from '../constants.js'
-import { pillSheetPlan, scheduleFor } from '../helpers.js'
+import { pillSheetPlan, scheduleFor, catalogueMatches } from '../helpers.js'
 
 // Spare rows per patient for a medicine the chart doesn't carry — the ruled hand-write rows the
 // form always had — with a screen-only button to add more on demand. Editable on screen (kept as
@@ -13,11 +14,12 @@ const extraRowsFor = (count) => Array.from({ length: count }, (_, i) => ({ key: 
 const hasEntryData = (entry) => Boolean(entry && (entry.pillName || entry.pillQty || entry.doseTime || entry.usageMethod || entry.note))
 const hasSchedule = (entry) => Boolean(entry && (entry.doseTime || entry.usageMethod || entry.note))
 const BLANK_ENTRY = { doseTime: '', usageMethod: '', note: '', pillQty: null, pillName: '' }
+const BLANK_EXTRA = { doseTime: '', usageMethod: '', note: '', pillQty: '', pillName: '' }
 
 export default function PillsScreen({
   header, wardLabel, roomLabel, today, editTime, onBack,
   selectedDate, onChangeDate, pillsLoading, pillsData, pillsSaveStatus, pillsLoadError,
-  pillEntries, setPillEntries, pillRooms, setPillRooms, pillSelection, onTogglePatient, onSetPillSelection, pillsYesterday, isOnline,
+  pillEntries, setPillEntries, pillRooms, setPillRooms, pillSelection, onTogglePatient, onSetPillSelection, pillsYesterday, isOnline, catalogue = [], englishOnly = false,
   printScope, lastPrintingRow, onPrint, confirmModal, pillsClashNote, onDismissPillsClashNote,
 }) {
   // How many extra rows a patient's form shows beyond the default two: the higher of (a) this
@@ -26,6 +28,35 @@ export default function PillsScreen({
   // is what keeps a typed 3rd/4th row from silently disappearing behind the "+" button on the
   // next visit just because nobody clicked it again yet.
   const [extraRowCounts, setExtraRowCounts] = useState({})
+  // The spare «علاج إضافي» field being typed in: { entryKey, articleKey, input, frameRef, scrollerRef }.
+  // It suggests catalogue medicines by English or Arabic name; a pick writes the name this form
+  // already shows for chart medicines — the Arabic one when there is one, English on CCU.
+  const [suggestFor, setSuggestFor] = useState(null)
+  const [suggestHighlight, setSuggestHighlight] = useState(0)
+  const suggestTyped = suggestFor ? (pillEntries[suggestFor.entryKey]?.pillName || '') : ''
+  const suggestOptions = suggestFor ? catalogueMatches(suggestTyped, catalogue).map((entry) => {
+    const arabic = englishOnly ? '' : (entry.arabic_name || '').trim()
+    return { key: entry.name, primary: arabic || entry.name, secondary: arabic ? entry.name : '' }
+  }).filter((option) => option.primary !== suggestTyped.trim()) : []
+  const pickSuggestion = (option) => {
+    const { entryKey, input } = suggestFor
+    setPillEntries((current) => ({ ...current, [entryKey]: { ...(current[entryKey] || BLANK_EXTRA), pillName: option.primary } }))
+    input.blur()
+  }
+  const suggestKeyDown = (event) => {
+    if (!suggestOptions.length) return
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      const step = event.key === 'ArrowDown' ? 1 : -1
+      setSuggestHighlight((current) => (current + step + suggestOptions.length) % suggestOptions.length)
+    } else if (event.key === 'Enter') {
+      event.preventDefault()
+      pickSuggestion(suggestOptions[Math.min(suggestHighlight, suggestOptions.length - 1)])
+    } else if (event.key === 'Escape') {
+      event.preventDefault()
+      setSuggestFor(null)
+    }
+  }
   const filledExtraReach = (rowNumber) => {
     let reach = 0
     for (let i = 1; i <= EXTRA_ROW_SCAN; i += 1) if (hasEntryData(pillEntries[`${rowNumber}:extra-row-${i}`])) reach = i
@@ -120,6 +151,8 @@ export default function PillsScreen({
           return <article
             className={`pill-form${willPrint ? '' : ' not-printing'}${unpicked ? ' pill-form-unpicked' : ''}${patient.rowNumber === lastPrintingRow && lastPage ? ' print-last' : ''}`}
             key={`${patient.rowNumber}-${pageIndex}`}>
+            {suggestFor?.articleKey === `${patient.rowNumber}-${pageIndex}` && <MedicineSuggest input={suggestFor.input} frameRef={suggestFor.frameRef} scrollerRef={suggestFor.scrollerRef}
+              options={suggestOptions} highlight={suggestHighlight} onPick={pickSuggestion} />}
             <div className="pill-form-head">
               <label className="pill-pick"><input type="checkbox" checked={pillSelection.has(patient.rowNumber)} onChange={() => onTogglePatient(patient.rowNumber)} /><span>تحديد للطباعة</span></label>
               <div className="pill-form-patient"><strong>{patient.name}</strong><span>{today}</span></div>
@@ -165,11 +198,23 @@ export default function PillsScreen({
                   </tr>
                 })}{lastPage && extraRowsFor(extraCount).map((extra) => {
                   const key = `${patient.rowNumber}:${extra.key}`
-                  const entry = pillEntries[key] || { doseTime: '', usageMethod: '', note: '', pillQty: '', pillName: '' }
+                  const entry = pillEntries[key] || BLANK_EXTRA
+                  const suggesting = suggestFor?.entryKey === key && suggestOptions.length > 0
                   return <tr className="pill-extra-row" key={extra.key}>
                     <td className="pill-lead-cell"></td>
                     <td className="pill-name-cell">
-                      <input dir="auto" aria-label={`${extra.label} — العلاج`} placeholder="علاج إضافي" value={entry.pillName} onChange={(event) => setPillEntries((current) => ({ ...current, [key]: { ...entry, pillName: event.target.value } }))} />
+                      <input dir="auto" aria-label={`${extra.label} — العلاج`} placeholder="علاج إضافي" value={entry.pillName}
+                        autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
+                        role="combobox" aria-autocomplete="list" aria-expanded={suggesting} aria-controls="medicine-suggest"
+                        aria-activedescendant={suggesting ? `medicine-suggest-${suggestHighlight}` : undefined}
+                        onChange={(event) => { setPillEntries((current) => ({ ...current, [key]: { ...entry, pillName: event.target.value } })); setSuggestHighlight(0) }}
+                        onFocus={(event) => {
+                          const input = event.target
+                          setSuggestHighlight(0)
+                          setSuggestFor({ entryKey: key, articleKey: `${patient.rowNumber}-${pageIndex}`, input, frameRef: { current: input.closest('.pill-form') }, scrollerRef: { current: input.closest('.pill-table-scroll') } })
+                        }}
+                        onBlur={() => setSuggestFor(null)}
+                        onKeyDown={suggestKeyDown} />
                       {/* Printed via this span (see ExtraPillsScreen's medicine field for why):
                           an empty field should print truly blank, no hint text. */}
                       <span className="pill-name-cell-print">{entry.pillName}</span>
