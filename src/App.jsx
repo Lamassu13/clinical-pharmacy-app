@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { roleLabels, PATIENT_ROWS, CHART_COLUMNS, MAX_CHART_COLUMNS, apiUrl, floors, specialWards } from './constants.js'
-import { mergeChartSnapshots, diffMergeOutcome, addOfflineRows, mergeKeyedSnapshots, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, blankExtraPillForm, parseChartRows, toEnglishDigits, medicineKey, patientNameKey, nearestMedicine, UNIT_ONE, isSyringe, VIAL_AMP, SYRINGE_EXCLUDE, isoDate, isDraftStale, locationBody, pillEntryList } from './helpers.js'
+import { mergePreviousDayDoses, mergeChartSnapshots, diffMergeOutcome, addOfflineRows, mergeKeyedSnapshots, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, blankExtraPillForm, parseChartRows, toEnglishDigits, medicineKey, patientNameKey, nearestMedicine, UNIT_ONE, isSyringe, VIAL_AMP, SYRINGE_EXCLUDE, isoDate, isDraftStale, locationBody, pillEntryList } from './helpers.js'
 import ConfirmDialog from './components/ConfirmDialog.jsx'
 import CopyChartDialog from './components/CopyChartDialog.jsx'
 import AppHeader from './components/AppHeader.jsx'
@@ -840,49 +840,23 @@ function App() {
     if (patientIds[rowIndex] !== cleaned) noteChartEdit()
     setPatientIds((current) => current.map((id, index) => index === rowIndex ? cleaned : id))
   }, [noteChartEdit, patientIds])
-  // Carries a previous day's (medicine, quantity) pairs into this row: an existing column with
-  // that medicine just gets the quantity, a new one is appended with it. Built as one coherent
-  // snapshot (same style as setColumnMedicine's own nextMedicines above) rather than functional
-  // updaters — the two arrays have to be computed together (a newly-appended column's index
-  // must match between them), so mixing a fresh functional `current` for one with a decision
-  // already made against the other would risk the two disagreeing.
-  const applyPreviousDayDoses = useCallback((rowIndex, prevDoses) => {
-    noteChartEdit()
-    const nextColumns = [...columnMedicines]
-    const plan = []
-    prevDoses.forEach(({ med, qty }) => {
-      const canonical = medicines.find((name) => medicineKey(name) === medicineKey(med))
-      if (!canonical) return // no longer in the catalogue — dropped, same as the server's own backstop would do
-      let columnIndex = nextColumns.findIndex((name) => medicineKey(name) === medicineKey(canonical))
-      if (columnIndex === -1) {
-        // No column already carries this medicine — reuse the first blank column (the chart
-        // starts 51 wide with plenty of those) before growing the grid at all.
-        columnIndex = nextColumns.findIndex((name) => !name.trim())
-        if (columnIndex === -1) {
-          if (nextColumns.length >= MAX_CHART_COLUMNS) return // at the column ceiling — dropped
-          columnIndex = nextColumns.length
-          nextColumns.push(canonical)
-        } else {
-          nextColumns[columnIndex] = canonical
-        }
-      }
-      plan.push({ columnIndex, qty })
-    })
-    const columnCount = nextColumns.length
-    const nextQuantities = quantities.map((row, index) => {
-      const widened = row.length < columnCount ? [...row, ...Array(columnCount - row.length).fill('')] : [...row]
-      if (index !== rowIndex) return widened
-      plan.forEach(({ columnIndex, qty }) => { widened[columnIndex] = String(qty) })
-      return widened
-    })
-    setColumnMedicines(nextColumns)
-    setQuantities(nextQuantities)
-  }, [columnMedicines, quantities, medicines, noteChartEdit])
+  // What the chart holds *now*. checkPreviousDayPatient is async (a fetch, then the pharmacist
+  // choosing to copy), and typing carries on meanwhile — anything it writes back has to be
+  // built from the latest headers/doses, not the render it started in, or it overwrites
+  // medicines typed after the patient's name.
+  const latestChartRef = useRef({ columnMedicines, quantities, patientNames, patientIds })
+  useEffect(() => { latestChartRef.current = { columnMedicines, quantities, patientNames, patientIds } })
+  // An offer to carry a patient forward from yesterday's chart, shown inline above the grid
+  // (never a modal: a dialog stole focus from a header being typed in and committed half a name).
+  // Tagged with the chart it was made for, so switching ward, slot or date simply stops showing it.
+  const [previousDayOffer, setPreviousDayOffer] = useState(null)
+  const offerChartKey = selected ? `${selected.floor ?? ''}|${selected.ward}|${selected.slot || 'main'}|${selectedDate}` : ''
+  const currentPreviousDayOffer = previousDayOffer?.chartKey === offerChartKey ? previousDayOffer : null
   // Fires on a patient-name or patient-ID field's empty -> filled transition, on blur (wired
   // from ChartScreen). If the same name (or the same ID) already appears in this ward's chart
   // from the previous calendar day, offers to carry that patient forward: medicines and
   // quantities, plus whichever of name / ID this row is still missing. Purely a convenience:
-  // any failure (no chart yesterday, no match, network error) just means no popup — never
+  // any failure (no chart yesterday, no match, network error) just means no offer — never
   // surfaces an error, since nothing the pharmacist did actually failed.
   const checkPreviousDayPatient = useCallback(async (rowIndex, rawValue, field = 'name') => {
     if (!selected || selected.mode !== 'chart' || lockState === 'readonly') return
@@ -907,20 +881,30 @@ function App() {
       .filter((entry) => entry.med && Number(entry.qty) > 0)
     // An ID match is worth offering for the name alone; a name match only for its doses.
     if (!prevDoses.length && !(field === 'id' && prevName)) return
-    // The row may have changed while the fetch was in flight (renamed, cleared) — re-check
-    // before opening the dialog, and again after it resolves since a background conflict merge
-    // isn't blocked by the (foreground-blocking) confirm modal.
-    const current = () => keyOf((field === 'id' ? patientIds : patientNames)[rowIndex] || '')
-    if (current() !== trimmed) return
+    const latest = latestChartRef.current
+    if (keyOf((field === 'id' ? latest.patientIds : latest.patientNames)[rowIndex] || '') !== trimmed) return
     const who = field === 'id' ? `رقم المريض ${trimmed}${prevName ? ` («${prevName}»)` : ''}` : `«${trimmed}»`
-    if (!(await askConfirm(`${who} موجود في جارت الأمس — هل تريد نسخ بياناته (الاسم والرقم والأدوية والكميات)؟`))) return
-    if (current() !== trimmed) return
-    if (prevDoses.length) applyPreviousDayDoses(rowIndex, prevDoses)
-    else noteChartEdit()
+    setPreviousDayOffer({ chartKey: `${selected.floor ?? ''}|${selected.ward}|${selected.slot || 'main'}|${selectedDate}`, rowIndex, field, trimmed, who, prevName, prevId, prevDoses })
+  }, [selected, selectedDate, lockState])
+  const acceptPreviousDayOffer = useCallback(() => {
+    const offer = currentPreviousDayOffer
+    setPreviousDayOffer(null)
+    if (!offer) return
+    const { rowIndex, field, trimmed, prevName, prevId, prevDoses } = offer
+    const latest = latestChartRef.current
+    const keyOf = field === 'id' ? (value) => String(value ?? '').trim() : patientNameKey
+    // The row was renamed or cleared since the offer appeared — it is someone else now.
+    if (keyOf((field === 'id' ? latest.patientIds : latest.patientNames)[rowIndex] || '') !== trimmed) return
+    noteChartEdit()
+    if (prevDoses.length) {
+      const merged = mergePreviousDayDoses(latest.columnMedicines, latest.quantities, rowIndex, prevDoses, medicines)
+      setColumnMedicines(merged.columns)
+      setQuantities(merged.quantities)
+    }
     // Only fill what the row is missing — never overwrite a name or ID the pharmacist typed.
     if (prevName) setPatientNames((names) => names.map((name, index) => (index === rowIndex && !name.trim() ? prevName : name)))
     if (prevId) setPatientIds((ids) => ids.map((id, index) => (index === rowIndex && !id ? prevId : id)))
-  }, [selected, selectedDate, lockState, patientNames, patientIds, askConfirm, applyPreviousDayDoses, noteChartEdit])
+  }, [currentPreviousDayOffer, medicines, noteChartEdit])
   // Remove a patient row and pull every following row up one, keeping the grid at PATIENT_ROWS.
   // Triggered only by the explicit ✕ on the active row, gated by a confirm, and reversible for
   // 10s via the undo toast (grid only — see the ponytail note on the server call below).
@@ -2061,7 +2045,7 @@ function App() {
   if (selected && selected.mode === 'extra-pills') return <ExtraPillsScreen header={appHeader} floorLabel={wardLabel} today={today} editTime={editTime} onBack={() => setSelected(null)} loading={extraPillsLoading} loadError={extraPillsError} forms={extraPillsForms} busy={extraPillsBusy} actionError={extraPillsActionError} onCreate={createExtraPillForm} onSave={saveExtraPillForm} onRemove={deleteExtraPillForm} confirmModal={confirmModal} />
   if (selected && selected.mode === 'pills') return <PillsScreen header={appHeader} wardLabel={wardLabel} roomLabel={/\bccu\b/i.test(selected.ward || '') ? 'رقم السرير' : 'رقم الغرفة'} today={today} editTime={editTime} onBack={() => { flushPills(); setSelected(null) }} selectedDate={selectedDate} onChangeDate={(nextDate) => { flushPills(); setSelectedDate(nextDate) }} pillsLoading={pillsLoading} pillsData={pillsData} pillsSaveStatus={pillsSaveStatus} pillsLoadError={pillsLoadError} pillEntries={pillEntries} setPillEntries={setPillEntries} pillRooms={pillRooms} setPillRooms={setPillRooms} pillSelection={pillSelection} onTogglePatient={togglePillPatient} printScope={printScope} lastPrintingRow={lastPrintingRow} onPrint={startPillsPrint} confirmModal={confirmModal} pillsClashNote={pillsClashNote} onDismissPillsClashNote={() => setPillsClashNote(null)} />
 
-  return <main className="app-shell">{appHeader}{!selected && !floor ? <FloorPickerScreen today={today} selectedDate={selectedDate} isExpired={isExpired} floors={visibleFloors} specialWards={visibleSpecialWards} resumeDraft={resumeDraft} onResume={resumeFromDraft} onPickFloor={setFloor} onOpen={setSelected} dashboard={dashboardData} dashboardLoading={dashboardData === null && !dashboardError} dashboardError={dashboardError} onRetryDashboard={retryDashboard} announcements={announcements} isManager={isManager} announcementDraft={announcementDraft} setAnnouncementDraft={setAnnouncementDraft} announcementError={announcementError} announcementBusy={announcementBusy} onPostAnnouncement={postAnnouncement} onEditAnnouncement={editAnnouncement} onDeleteAnnouncement={deleteAnnouncement} /> : !selected ? <WardPickerScreen floor={floor} today={today} selectedDate={selectedDate} isExpired={isExpired} dashboard={dashboardData} dashboardError={dashboardError} onBack={() => setFloor(null)} onOpen={setSelected} announcements={announcements} isManager={isManager} announcementDraft={announcementDraft} setAnnouncementDraft={setAnnouncementDraft} announcementError={announcementError} announcementBusy={announcementBusy} onPostAnnouncement={postAnnouncement} onEditAnnouncement={editAnnouncement} onDeleteAnnouncement={deleteAnnouncement} /> :<ChartScreen selected={selected} wardLabel={wardLabel} today={today} todayWeekday={todayWeekday} isManager={isManager} onBack={() => { flushChart(); setSelected(null) }} onGoToPills={() => { flushChart(); setSelected({ ...selected, mode: 'pills' }) }} onGoToOrder={() => { flushChart(); setSelected({ ...selected, mode: 'order' }) }} onExportPdf={exportChartPdf} pdfBusy={pdfBusy} pdfExportError={pdfExportError} dateIsToday={dateIsToday} selectedDate={selectedDate} onChangeDate={changeDate} onCopyToNextDay={copyToNextDay} chartSaveStatus={chartSaveStatus} loadError={loadError} copyError={copyError} chartReady={chartReady} lastChartSaveAt={lastChartSaveAt} chartCompleted={chartCompleted} completedByName={completedByName} onToggleComplete={toggleChartComplete} onRetryLoad={() => setChartLoadNonce((n) => n + 1)} onRetrySave={() => setChartSaveNonce((n) => n + 1)} lockState={lockState} lockHolder={lockHolder} chartClashNote={chartClashNote} onDismissClashNote={() => { setChartClashNote(null); setDroppedCells({}) }} droppedCells={droppedCells} undo={undo} onUndo={takeUndo} medicines={medicines} patientNames={patientNames} patientIds={patientIds} columnMedicines={columnMedicines} quantities={quantities} totals={totals} doubledTotals={doubledTotals} isThursday={isThursday} activeRow={activeRow} activeColumn={activeColumn} labelBelow={labelBelow} setActiveRow={setActiveRow} setActiveColumn={setActiveColumn} setLabelBelow={setLabelBelow} onSetColumnMedicine={setColumnMedicine} onCommitColumnMedicine={commitColumnMedicine} columnMedicineNotice={columnMedicineNotice} onDismissNotice={() => setColumnMedicineNotice(null)} onApplySuggestion={applyMedicineSuggestion} onSetPatientName={setPatientName} onSetPatientId={setPatientId} onCheckPreviousDay={checkPreviousDayPatient} onUpdateQuantity={updateQuantity} onCollapseRow={collapseRow} onAddColumn={addColumn} canAddColumn={canAddColumn} chartFrameRef={chartFrameRef} chartHeadRef={chartHeadRef} chartGridRef={chartGridRef} chartDosesRef={chartDosesRef} chartFootRef={chartFootRef} />}{selected?.mode === 'chart' && chartReady && <ChartPrintTemplate ref={printTemplateRef} selected={selected} today={today} todayWeekday={todayWeekday} isThursday={isThursday} patientNames={patientNames} patientIds={patientIds} columnMedicines={columnMedicines} quantities={quantities} totals={totals} doubledTotals={doubledTotals} />}{confirmModal}{copyChoiceModal}</main>
+  return <main className="app-shell">{appHeader}{!selected && !floor ? <FloorPickerScreen today={today} selectedDate={selectedDate} isExpired={isExpired} floors={visibleFloors} specialWards={visibleSpecialWards} resumeDraft={resumeDraft} onResume={resumeFromDraft} onPickFloor={setFloor} onOpen={setSelected} dashboard={dashboardData} dashboardLoading={dashboardData === null && !dashboardError} dashboardError={dashboardError} onRetryDashboard={retryDashboard} announcements={announcements} isManager={isManager} announcementDraft={announcementDraft} setAnnouncementDraft={setAnnouncementDraft} announcementError={announcementError} announcementBusy={announcementBusy} onPostAnnouncement={postAnnouncement} onEditAnnouncement={editAnnouncement} onDeleteAnnouncement={deleteAnnouncement} /> : !selected ? <WardPickerScreen floor={floor} today={today} selectedDate={selectedDate} isExpired={isExpired} dashboard={dashboardData} dashboardError={dashboardError} onBack={() => setFloor(null)} onOpen={setSelected} announcements={announcements} isManager={isManager} announcementDraft={announcementDraft} setAnnouncementDraft={setAnnouncementDraft} announcementError={announcementError} announcementBusy={announcementBusy} onPostAnnouncement={postAnnouncement} onEditAnnouncement={editAnnouncement} onDeleteAnnouncement={deleteAnnouncement} /> :<ChartScreen selected={selected} wardLabel={wardLabel} today={today} todayWeekday={todayWeekday} isManager={isManager} onBack={() => { flushChart(); setSelected(null) }} onGoToPills={() => { flushChart(); setSelected({ ...selected, mode: 'pills' }) }} onGoToOrder={() => { flushChart(); setSelected({ ...selected, mode: 'order' }) }} onExportPdf={exportChartPdf} pdfBusy={pdfBusy} pdfExportError={pdfExportError} dateIsToday={dateIsToday} selectedDate={selectedDate} onChangeDate={changeDate} onCopyToNextDay={copyToNextDay} chartSaveStatus={chartSaveStatus} loadError={loadError} copyError={copyError} chartReady={chartReady} lastChartSaveAt={lastChartSaveAt} chartCompleted={chartCompleted} completedByName={completedByName} onToggleComplete={toggleChartComplete} onRetryLoad={() => setChartLoadNonce((n) => n + 1)} onRetrySave={() => setChartSaveNonce((n) => n + 1)} lockState={lockState} lockHolder={lockHolder} chartClashNote={chartClashNote} onDismissClashNote={() => { setChartClashNote(null); setDroppedCells({}) }} droppedCells={droppedCells} undo={undo} onUndo={takeUndo} medicines={medicines} patientNames={patientNames} patientIds={patientIds} columnMedicines={columnMedicines} quantities={quantities} totals={totals} doubledTotals={doubledTotals} isThursday={isThursday} activeRow={activeRow} activeColumn={activeColumn} labelBelow={labelBelow} setActiveRow={setActiveRow} setActiveColumn={setActiveColumn} setLabelBelow={setLabelBelow} onSetColumnMedicine={setColumnMedicine} onCommitColumnMedicine={commitColumnMedicine} columnMedicineNotice={columnMedicineNotice} onDismissNotice={() => setColumnMedicineNotice(null)} onApplySuggestion={applyMedicineSuggestion} onSetPatientName={setPatientName} onSetPatientId={setPatientId} onCheckPreviousDay={checkPreviousDayPatient} previousDayOffer={currentPreviousDayOffer} onAcceptPreviousDay={acceptPreviousDayOffer} onDismissPreviousDay={() => setPreviousDayOffer(null)} onUpdateQuantity={updateQuantity} onCollapseRow={collapseRow} onAddColumn={addColumn} canAddColumn={canAddColumn} chartFrameRef={chartFrameRef} chartHeadRef={chartHeadRef} chartGridRef={chartGridRef} chartDosesRef={chartDosesRef} chartFootRef={chartFootRef} />}{selected?.mode === 'chart' && chartReady && <ChartPrintTemplate ref={printTemplateRef} selected={selected} today={today} todayWeekday={todayWeekday} isThursday={isThursday} patientNames={patientNames} patientIds={patientIds} columnMedicines={columnMedicines} quantities={quantities} totals={totals} doubledTotals={doubledTotals} />}{confirmModal}{copyChoiceModal}</main>
 }
 
 export default App

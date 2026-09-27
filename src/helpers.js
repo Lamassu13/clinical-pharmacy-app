@@ -227,6 +227,54 @@ const editDistance = (a, b) => {
 }
 // The one catalogue name that is a near-miss of `query`, or '' when zero or several qualify —
 // guessing between two real drug names is worse than offering nothing on a medication field.
+// Carries a previous day's (medicine, quantity) pairs into one row of the chart *as it is now*:
+// a column already holding that medicine just gets the quantity, a new one takes the first blank
+// column (growing the grid only when none is left, up to MAX_CHART_COLUMNS). Medicines no longer
+// in the catalogue are dropped. Returns new { columns, quantities }; the inputs are not touched,
+// and nothing else on the chart (other headers, other rows) changes.
+export const mergePreviousDayDoses = (columns, quantities, rowIndex, prevDoses, catalogue) => {
+  const nextColumns = [...columns]
+  const plan = []
+  prevDoses.forEach(({ med, qty }) => {
+    const canonical = catalogue.find((name) => medicineKey(name) === medicineKey(med))
+    if (!canonical) return
+    let columnIndex = nextColumns.findIndex((name) => medicineKey(name) === medicineKey(canonical))
+    if (columnIndex === -1) {
+      columnIndex = nextColumns.findIndex((name) => !name.trim())
+      if (columnIndex === -1) {
+        if (nextColumns.length >= MAX_CHART_COLUMNS) return
+        columnIndex = nextColumns.length
+        nextColumns.push(canonical)
+      } else {
+        nextColumns[columnIndex] = canonical
+      }
+    }
+    plan.push({ columnIndex, qty })
+  })
+  const nextQuantities = quantities.map((row, index) => {
+    const widened = row.length < nextColumns.length ? [...row, ...Array(nextColumns.length - row.length).fill('')] : [...row]
+    if (index === rowIndex) plan.forEach(({ columnIndex, qty }) => { widened[columnIndex] = String(qty) })
+    return widened
+  })
+  return { columns: nextColumns, quantities: nextQuantities }
+}
+
+// Catalogue names matching what is typed in a column header: names starting with it first, then
+// names containing it, alphabetical within each, capped at `limit`. Case/space/digit-insensitive
+// via medicineKey. The chart header's own suggestion list — iPad's native <datalist> (QuickType
+// bar) does not reliably put a tapped suggestion into a React-controlled input.
+export const medicineMatches = (query, catalogue, limit = 6) => {
+  const key = medicineKey(query)
+  if (!key) return []
+  const starts = [], contains = []
+  catalogue.forEach((name) => {
+    const nameKey = medicineKey(name)
+    if (nameKey.startsWith(key)) starts.push(name)
+    else if (nameKey.includes(key)) contains.push(name)
+  })
+  return [...starts, ...contains].slice(0, limit)
+}
+
 export const nearestMedicine = (query, catalogue) => {
   const q = medicineKey(query)
   if (q.length < 3) return ''

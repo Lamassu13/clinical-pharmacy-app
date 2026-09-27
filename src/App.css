@@ -1260,6 +1260,33 @@ button.topbar-user:hover { color: var(--primary); }
   cursor: pointer;
 }
 .chart-medicine-notice .notice-suggest:hover { background: #0000000f; }
+
+/* Yesterday's-chart offer: a to-do, not an error — tinted like the ward-band "pending"
+   pill, with its two actions on the end edge. Never takes focus (see ChartScreen). */
+.chart-offer {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-4);
+  margin: 0 0 var(--space-3); padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--green-200); border-radius: var(--radius-md); background: var(--green-50);
+  color: var(--heading); font-size: var(--text-sm); font-weight: 700; line-height: 1.5;
+}
+.chart-offer-actions { display: flex; gap: var(--space-2); }
+
+/* The column header's own suggestion list (replaces <datalist>, which on iPad only reached the
+   QuickType bar). Floats over the grid, anchored under the focused header cell. Screen-only by
+   nature: it exists only while a header input has focus. */
+.medicine-suggest {
+  position: absolute; z-index: 20; margin: 0; padding: var(--space-1); list-style: none;
+  max-height: min(60vh, 320px); overflow-y: auto;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-md);
+  background: var(--surface); box-shadow: var(--shadow-md);
+}
+.medicine-suggest button {
+  display: block; width: 100%; min-height: 44px; padding: var(--space-2) var(--space-3);
+  border: 0; border-radius: var(--radius-sm); background: transparent;
+  color: var(--text); font: inherit; font-size: var(--text-sm); font-weight: 700; text-align: left;
+  overflow-wrap: anywhere; cursor: pointer;
+}
+.medicine-suggest button:hover, .medicine-suggest [aria-selected="true"] button { background: var(--green-50); color: var(--primary-hover); }
 .chart-meta b { color: #eafaf0; font-weight: 700; }
 .chart-meta > span.date-controls { background: transparent; border: 0; padding: 0; }
 /* Base colours are a visible fallback only — every render site (.active-patient-bar,

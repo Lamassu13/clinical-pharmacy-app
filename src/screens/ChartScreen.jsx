@@ -1,7 +1,10 @@
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import hospitalLogo from '../assets/hospital-logo.png'
 import ChartDoseRow from '../components/ChartDoseRow.jsx'
 import { StatusCheck } from '../components/WardGlyph.jsx'
+import MedicineSuggest from '../components/MedicineSuggest.jsx'
+import { medicineMatches } from '../helpers.js'
 
 // Presentational only: every piece of chart state, and the autosave/lock/draft logic that
 // maintains it, stays in App so that swapping in the sign-in card when a session lapses does
@@ -14,10 +17,22 @@ export default function ChartScreen({
   medicines, patientNames, patientIds, columnMedicines, quantities, totals, doubledTotals, isThursday,
   activeRow, activeColumn, labelBelow, setActiveRow, setActiveColumn, setLabelBelow,
   onSetColumnMedicine, onCommitColumnMedicine, columnMedicineNotice, onDismissNotice, onApplySuggestion,
-  onSetPatientName, onSetPatientId, onCheckPreviousDay, onUpdateQuantity, onCollapseRow, onAddColumn, canAddColumn,
+  onSetPatientName, onSetPatientId, onCheckPreviousDay, previousDayOffer, onAcceptPreviousDay, onDismissPreviousDay, onUpdateQuantity, onCollapseRow, onAddColumn, canAddColumn,
   chartFrameRef, chartHeadRef, chartGridRef, chartDosesRef, chartFootRef,
 }) {
   const columnFocusValue = useRef('')
+  // The header cell being typed in ({ column, input }) and the highlighted suggestion.
+  const [suggestFor, setSuggestFor] = useState(null)
+  const [suggestHighlight, setSuggestHighlight] = useState(0)
+  const suggestOptions = suggestFor ? medicineMatches(columnMedicines[suggestFor.column] || '', medicines)
+    .filter((name) => name !== columnMedicines[suggestFor.column]) : []
+  // Put the pick into state and render it before the blur, so the blur's commit sees the full
+  // name rather than the half-typed text still in the DOM.
+  const pickSuggestion = (name) => {
+    const { column, input } = suggestFor
+    flushSync(() => onApplySuggestion(column, name))
+    input.blur()
+  }
   const patientFocusEmpty = useRef(false)
 
   // One line, four states — see chartSaveStatus in App. loadError overrides it because a
@@ -97,8 +112,6 @@ export default function ChartScreen({
       </span>
     </div>
 
-    <datalist id="medicine-options">{medicines.map((medicine) => <option key={medicine} value={medicine} />)}</datalist>
-
     {/* The only strip that stays put while the grid scrolls, so the status that matters at a
         hand-off — is it saved, is this today's chart — rides here, not in the scrolling meta row.
         Fixed height, and no other content flows into it: the recovery / clash lines render
@@ -125,9 +138,21 @@ export default function ChartScreen({
       <button type="button" className="notice-dismiss" aria-label="إخفاء التنبيه" onClick={onDismissNotice}>×</button>
     </p>}
 
+    {/* Yesterday's-chart offer. Inline and never focused, so typing in a header carries on
+        undisturbed; «نسخ» merges into whatever the chart holds at that moment. */}
+    {previousDayOffer && <p className="chart-offer" role="status">
+      <span>{previousDayOffer.who} موجود في جارت الأمس — نسخ بياناته إلى الصف {previousDayOffer.rowIndex + 1} (الاسم والرقم والأدوية والكميات)؟</span>
+      <span className="chart-offer-actions">
+        <button type="button" className="primary-button compact" onPointerDown={(event) => event.preventDefault()} onMouseDown={(event) => event.preventDefault()} onClick={onAcceptPreviousDay}>نسخ بياناته</button>
+        <button type="button" className="secondary-button compact" onPointerDown={(event) => event.preventDefault()} onMouseDown={(event) => event.preventDefault()} onClick={onDismissPreviousDay}>تجاهل</button>
+      </span>
+    </p>}
+
     {/* chart-frame-held draws a desaturating scrim over the grid while another device is
         editing — reads as "held" without dimming the dose numbers themselves (opacity did). */}
     <div className={frameClass} ref={chartFrameRef} style={{ '--print-row-height': `${printRowHeightMM}mm` }}>
+      {suggestFor && <MedicineSuggest input={suggestFor.input} frameRef={chartFrameRef} scrollerRef={chartHeadRef}
+        options={suggestOptions} highlight={suggestHighlight} onPick={pickSuggestion} />}
       {!chartReady && <div className="chart-frame-loading" role="status">
         {loadError
           ? <><span>تعذّر تحميل الجارت. تُعاد المحاولة تلقائيًا كل بضع ثوانٍ.</span><button type="button" className="secondary-button compact" onClick={onRetryLoad}>إعادة المحاولة الآن</button></>
@@ -140,7 +165,28 @@ export default function ChartScreen({
       )}
       <div className="chart-head" inert={(!chartReady || readOnly) || undefined}>
         <div className="chart-head-corner"><img className="patient-header-logo" src={hospitalLogo} alt="" /><span>مستشفى بغداد التعليمي</span><span>وحدة الصيدلة السريرية</span>{selected.floor && <span>الطابق {selected.floor}</span>}<span>{selected.ward}</span><span>{today}</span><span>{todayWeekday}</span></div>
-        <div className="chart-head-scroll" ref={chartHeadRef}><table className="chart-table" role="presentation"><thead><tr>{Array.from({ length: columnMedicines.length }, (_, index) => <th key={index} className={activeColumn === index ? 'col-active' : undefined}><input className="medicine-select" list="medicine-options" value={columnMedicines[index]} onChange={(event) => onSetColumnMedicine(index, event.target.value)} onFocus={(event) => { columnFocusValue.current = event.target.value; setActiveColumn(index) }} onBlur={(event) => onCommitColumnMedicine(index, event.target.value, columnFocusValue.current)} placeholder="دواء" title="اكتب أول حروف الدواء واختر من القائمة" aria-label={`اسم الدواء، عمود ${index + 1}`} /></th>)}</tr></thead></table></div>
+        <div className="chart-head-scroll" ref={chartHeadRef}><table className="chart-table" role="presentation"><thead><tr>{Array.from({ length: columnMedicines.length }, (_, index) => <th key={index} className={activeColumn === index ? 'col-active' : undefined}><input className="medicine-select" value={columnMedicines[index]}
+          autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
+          role="combobox" aria-autocomplete="list" aria-expanded={suggestFor?.column === index && suggestOptions.length > 0}
+          aria-controls="medicine-suggest" aria-activedescendant={suggestFor?.column === index && suggestOptions.length ? `medicine-suggest-${suggestHighlight}` : undefined}
+          onChange={(event) => { onSetColumnMedicine(index, event.target.value); setSuggestHighlight(0) }}
+          onFocus={(event) => { columnFocusValue.current = event.target.value; setActiveColumn(index); setSuggestFor({ column: index, input: event.target }); setSuggestHighlight(0) }}
+          onBlur={(event) => { setSuggestFor(null); onCommitColumnMedicine(index, event.target.value, columnFocusValue.current) }}
+          onKeyDown={(event) => {
+            if (suggestFor?.column !== index || !suggestOptions.length) return
+            if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+              event.preventDefault()
+              const step = event.key === 'ArrowDown' ? 1 : -1
+              setSuggestHighlight((current) => (current + step + suggestOptions.length) % suggestOptions.length)
+            } else if (event.key === 'Enter') {
+              event.preventDefault()
+              pickSuggestion(suggestOptions[Math.min(suggestHighlight, suggestOptions.length - 1)])
+            } else if (event.key === 'Escape') {
+              event.preventDefault()
+              setSuggestFor(null)
+            }
+          }}
+          placeholder="دواء" title="اكتب أول حروف الدواء واختر من القائمة" aria-label={`اسم الدواء، عمود ${index + 1}`} /></th>)}</tr></thead></table></div>
       </div>
       {/* inert while another device holds the lock — the poll keeps this view current. */}
       <div className="chart-grid" ref={chartGridRef} inert={(!chartReady || readOnly) || undefined}

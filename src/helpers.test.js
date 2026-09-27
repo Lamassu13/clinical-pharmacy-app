@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mergeKeyedSnapshots, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, EXTRA_PILL_SLOTS, isDraftStale } from './helpers.js'
+import { mergeKeyedSnapshots, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, EXTRA_PILL_SLOTS, isDraftStale, mergePreviousDayDoses, medicineMatches } from './helpers.js'
 
 test('mergeKeyedSnapshots keeps a local edit and adopts an unrelated server change', () => {
   const base = { a: '1', b: '2' }
@@ -104,4 +104,24 @@ test('addOfflineRows: the same patient (by ID) typed offline lands on their exis
   const { merged, unplaced } = addOfflineRows(fresh, grid(['B', 'C'], ['2', '3'], ['X'], [['5'], ['1']]))
   assert.deepEqual(merged.quantities, [['1'], ['5']])
   assert.equal(unplaced, 1)
+})
+
+test('mergePreviousDayDoses keeps headers typed meanwhile and fills blanks with yesterday\'s medicines', () => {
+  const catalogue = ['Amikacin 500mg Vial', 'Meronem 1000gm Vial', 'Paracetamol 1g bottle']
+  // Typed today after the offer appeared: column 1 = Amikacin, with a dose on row 1.
+  const columns = ['', 'Amikacin 500mg Vial', '', '']
+  const quantities = [['', '', '', ''], ['', '2', '', '']]
+  const prevDoses = [{ med: 'meronem 1000gm vial', qty: '3' }, { med: 'Amikacin 500mg Vial', qty: '1' }, { med: 'Gone From Catalogue', qty: '9' }]
+  const merged = mergePreviousDayDoses(columns, quantities, 0, prevDoses, catalogue)
+  assert.deepEqual(merged.columns, ['Meronem 1000gm Vial', 'Amikacin 500mg Vial', '', ''])
+  assert.deepEqual(merged.quantities[0], ['3', '1', '', ''])
+  assert.deepEqual(merged.quantities[1], ['', '2', '', '']) // the other row is untouched
+  assert.deepEqual(columns, ['', 'Amikacin 500mg Vial', '', '']) // inputs not mutated
+})
+
+test('medicineMatches lists prefix matches before contains, capped', () => {
+  const catalogue = ['Ameronem X', 'Meronem 1000gm Vial', 'Meronem 500mg Vial', 'Paracetamol']
+  assert.deepEqual(medicineMatches('mer', catalogue), ['Meronem 1000gm Vial', 'Meronem 500mg Vial', 'Ameronem X'])
+  assert.deepEqual(medicineMatches('  ', catalogue), [])
+  assert.equal(medicineMatches('e', catalogue, 2).length, 2)
 })
