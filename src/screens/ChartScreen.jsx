@@ -17,7 +17,7 @@ export default function ChartScreen({
   medicines, patientNames, patientIds, columnMedicines, quantities, totals, doubledTotals, isThursday,
   activeRow, activeColumn, labelBelow, setActiveRow, setActiveColumn, setLabelBelow,
   onSetColumnMedicine, onCommitColumnMedicine, columnMedicineNotice, onDismissNotice, onApplySuggestion,
-  onSetPatientName, onSetPatientId, onCheckPreviousDay, previousDayOffer, onAcceptPreviousDay, onDismissPreviousDay, onUpdateQuantity, onCollapseRow, onAddColumn, canAddColumn,
+  onSetPatientName, onSetPatientId, onCheckPreviousDay, onUpdateQuantity, onCollapseRow, onAddColumn, canAddColumn,
   chartFrameRef, chartHeadRef, chartGridRef, chartDosesRef, chartFootRef,
 }) {
   const columnFocusValue = useRef('')
@@ -136,16 +136,6 @@ export default function ChartScreen({
           : isManager ? 'أضِف الدواء أولًا من «إدارة الأدوية».' : 'اطلب من المشرف إضافته إلى القائمة.'}
       </span>
       <button type="button" className="notice-dismiss" aria-label="إخفاء التنبيه" onClick={onDismissNotice}>×</button>
-    </p>}
-
-    {/* Yesterday's-chart offer. Inline and never focused, so typing in a header carries on
-        undisturbed; «نسخ» merges into whatever the chart holds at that moment. */}
-    {previousDayOffer && <p className="chart-offer" role="status">
-      <span>{previousDayOffer.who} موجود في جارت الأمس — نسخ بياناته إلى الصف {previousDayOffer.rowIndex + 1} (الاسم والرقم والأدوية والكميات)؟</span>
-      <span className="chart-offer-actions">
-        <button type="button" className="primary-button compact" onPointerDown={(event) => event.preventDefault()} onMouseDown={(event) => event.preventDefault()} onClick={onAcceptPreviousDay}>نسخ بياناته</button>
-        <button type="button" className="secondary-button compact" onPointerDown={(event) => event.preventDefault()} onMouseDown={(event) => event.preventDefault()} onClick={onDismissPreviousDay}>تجاهل</button>
-      </span>
     </p>}
 
     {/* chart-frame-held draws a desaturating scrim over the grid while another device is
