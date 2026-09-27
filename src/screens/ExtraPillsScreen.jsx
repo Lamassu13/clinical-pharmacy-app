@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { flushSync } from 'react-dom'
 import hospitalLogo from '../assets/hospital-logo.png'
 import PillSelect from '../components/PillSelect.jsx'
+import MedicineSuggest from '../components/MedicineSuggest.jsx'
+import useCatalogueSuggest from '../components/useCatalogueSuggest.js'
 import { usageMethods, noteOptions, doseTimeGroups } from '../constants.js'
 
 // استمارة الحبوب الإضافي — the same .pill-form/.pill-table markup and print CSS as the real
@@ -10,7 +12,7 @@ import { usageMethods, noteOptions, doseTimeGroups } from '../constants.js'
 // paginated — 7 is this form's fixed size, not a per-page split of a longer chart-derived
 // list), and forms are explicit save/dirty like TreatmentFormRow rather than autosaved on
 // every keystroke — a deliberate simplification for a secondary, occasional-use tool.
-function ExtraPillFormCard({ form, floorLabel, today, editTime, selected, onToggleSelect, willPrint, printLast, onSave, onRemove, busy }) {
+function ExtraPillFormCard({ form, catalogue, floorLabel, today, editTime, selected, onToggleSelect, willPrint, printLast, onSave, onRemove, busy }) {
   const [patientName, setPatientName] = useState(form.patientName)
   const [roomNumber, setRoomNumber] = useState(form.roomNumber)
   const [entries, setEntries] = useState(form.entries)
@@ -20,9 +22,16 @@ function ExtraPillFormCard({ form, floorLabel, today, editTime, selected, onTogg
   const pendingSync = form.pending || (typeof form.id === 'string' && form.id.startsWith('temp-'))
 
   const setEntry = (slot, patch) => setEntries((current) => current.map((entry) => (entry.slot === slot ? { ...entry, ...patch } : entry)))
+  // Registry suggestions on every medicine field, English or Arabic (see useCatalogueSuggest).
+  const suggest = useCatalogueSuggest({
+    catalogue,
+    valueOf: (slot) => entries.find((entry) => entry.slot === slot)?.medicineName,
+    write: (slot, name) => setEntry(slot, { medicineName: name }),
+  })
   const save = () => onSave(form.id, { patientName: patientName.trim(), roomNumber: roomNumber.trim(), entries })
 
   return <article className={`pill-form${willPrint ? '' : ' not-printing'}${printLast ? ' print-last' : ''}`}>
+    {suggest.target && <MedicineSuggest {...suggest.listProps} />}
     <div className="pill-form-head">
       <label className="pill-pick"><input type="checkbox" checked={selected} onChange={() => onToggleSelect(form.id)} /><span>تحديد للطباعة</span></label>
       <div className="pill-form-patient">
@@ -55,7 +64,7 @@ function ExtraPillFormCard({ form, floorLabel, today, editTime, selected, onTogg
           return <tr key={entry.slot}>
             <td className="pill-lead-cell"></td>
             <td className="pill-name-cell">
-              <input aria-label={`العلاج — سطر ${entry.slot}`} placeholder="اسم العلاج" value={entry.medicineName} onChange={(event) => setEntry(entry.slot, { medicineName: event.target.value })} />
+              <input dir="auto" aria-label={`العلاج — سطر ${entry.slot}`} placeholder="اسم العلاج" value={entry.medicineName} {...suggest.bind(entry.slot, form.id)} onChange={(event) => setEntry(entry.slot, { medicineName: event.target.value })} />
               {/* Printed via this span, not the input itself: Safari drops an <input>'s
                   placeholder when printing, but a real typed value prints fine either way — an
                   empty field should print truly blank (no hint text), which an empty span
@@ -76,7 +85,7 @@ function ExtraPillFormCard({ form, floorLabel, today, editTime, selected, onTogg
 }
 
 export default function ExtraPillsScreen({
-  header, floorLabel, today, editTime, onBack,
+  header, floorLabel, today, editTime, onBack, catalogue = [],
   loading, loadError, forms, busy, actionError, onCreate, onSave, onRemove, confirmModal,
 }) {
   const [selection, setSelection] = useState(() => new Set())
@@ -120,7 +129,7 @@ export default function ExtraPillsScreen({
             // would flip true purely from the prop change, letting a "حفظ" tap overwrite the
             // fresher server data with this card's now-stale copy.
             key={`${form.id}:${form.patientName}:${form.roomNumber}:${JSON.stringify(form.entries)}`}
-            form={form} floorLabel={floorLabel} today={today} editTime={editTime}
+            form={form} catalogue={catalogue} floorLabel={floorLabel} today={today} editTime={editTime}
             selected={selection.has(form.id)} onToggleSelect={toggleSelect}
             willPrint={printScope === 'all' || selection.has(form.id)} printLast={form.id === lastPrintingId}
             onSave={onSave} onRemove={onRemove} busy={busy}

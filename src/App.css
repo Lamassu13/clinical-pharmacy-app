@@ -1798,6 +1798,8 @@ button.topbar-user:hover { color: var(--primary); }
      .active-patient-bar a full-width status would crush the patient/medicine line to nothing,
      so the bar wraps and grows instead. */
   .pills-toolbar .save-state { width: 100%; margin-inline-start: 0; }
+  /* On a phone the toolbar wraps to ~270px — pinned, it would cover a third of the screen. */
+  .pills-toolbar { position: static; }
   .active-patient-bar { height: auto; min-height: 38px; flex-wrap: wrap; padding: var(--space-2) var(--space-3); }
   .active-patient-bar .bar-focus { flex-basis: 100%; }
   /* iOS auto-zooms any focused control under 16px. The chart grid is exempt —
