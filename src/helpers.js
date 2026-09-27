@@ -339,6 +339,25 @@ export const VIAL_AMP = /\b(vial|vials|amp|amps|ampoule|ampoules)\b/
 // Syringe 5cc column's auto-total even though they match VIAL_AMP.
 export const SYRINGE_EXCLUDE = /flagyl|paracetamol|فلاجيل|باراسيتامول/
 
+// A saved «قالب أدوية» laid onto a chart that has no doses yet: its medicines become the columns,
+// in order, snapped to today's catalogue (any deleted since the save are dropped and counted),
+// padded to the chart's width. Quantities start blank except the per-patient supplies (UNIT_ONE:
+// giving set, cannula), which get «1» for every named patient — what picking that column by hand
+// seeds (setColumnMedicine).
+export const applyTemplateColumns = (templateMeds, catalogue, patientNames, columnCount = CHART_COLUMNS) => {
+  const snapped = templateMeds.map((med) => catalogue.find((name) => medicineKey(name) === medicineKey(med))).filter(Boolean)
+  const kept = [...new Set(snapped)].slice(0, MAX_CHART_COLUMNS)
+  const width = Math.min(MAX_CHART_COLUMNS, Math.max(CHART_COLUMNS, columnCount, kept.length))
+  const columns = [...kept, ...Array(width - kept.length).fill('')]
+  const unitColumns = columns.map((name, index) => (name && !isSyringe(name) && UNIT_ONE.test(medicineKey(name)) ? index : -1)).filter((index) => index >= 0)
+  const quantities = patientNames.map((name) => {
+    const row = Array(width).fill('')
+    if (name.trim()) unitColumns.forEach((index) => { row[index] = '1' })
+    return row
+  })
+  return { columns, quantities, dropped: templateMeds.length - snapped.length }
+}
+
 export const isoDate = (value) => {
   const date = new Date(value)
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`

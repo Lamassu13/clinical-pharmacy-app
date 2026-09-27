@@ -1689,6 +1689,24 @@ button.topbar-user:hover { color: var(--primary); }
 /* The consequence line under a confirm question — what stays, what changes. */
 .confirm-dialog-detail { margin: calc(-1 * var(--space-4)) 0 var(--space-6); color: var(--text-muted); font-size: var(--text-sm); line-height: 1.6; }
 .modal-actions { display: flex; justify-content: flex-end; gap: var(--space-3); }
+
+/* «قوالب الأدوية» dialog: the user's templates, then a save row. Wider than a confirm. */
+.templates-modal { width: min(100%, 560px); max-height: calc(100svh - 32px); overflow-y: auto; padding: var(--space-6); }
+.templates-modal h2 { margin: 0 0 var(--space-1); color: var(--heading); font-size: var(--text-lg); }
+.templates-hint { margin: 0 0 var(--space-4); color: var(--text-muted); font-size: var(--text-sm); line-height: 1.6; }
+.templates-note { margin: 0 0 var(--space-4); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); background: var(--warning-tint); color: var(--warning-text); font-size: var(--text-sm); font-weight: 700; }
+.templates-empty { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin: 0 0 var(--space-4); padding: var(--space-4); border: 1px dashed var(--border-strong); border-radius: var(--radius-md); color: var(--text-muted); font-size: var(--text-sm); }
+.templates-list { margin: 0 0 var(--space-4); padding: 0; list-style: none; border: 1px solid var(--border); border-radius: var(--radius-md); }
+.templates-list li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-3); padding: var(--space-3) var(--space-4); }
+.templates-list li + li { border-top: 1px solid var(--border); }
+.templates-item-text { flex: 1 1 220px; min-width: 0; }
+.templates-item-text strong { display: block; color: var(--heading); font-size: var(--text-base); }
+.templates-item-text small { display: block; color: var(--text-muted); font-size: var(--text-xs); overflow-wrap: anywhere; }
+.templates-item-actions { display: flex; gap: var(--space-2); }
+.templates-save { display: grid; gap: var(--space-2); margin-bottom: var(--space-5); padding-top: var(--space-4); border-top: 1px solid var(--border); }
+.templates-save label { color: var(--heading); font-size: var(--text-sm); font-weight: 700; }
+.templates-save-row { display: flex; gap: var(--space-2); }
+.templates-save-row input { flex: 1; min-width: 0; min-height: 44px; }
 /* CopyChartDialog's three buttons (vs. ConfirmDialog's two) wrap on the narrow shared-tablet
    width instead of overflowing the fixed 420px modal. */
 .modal-actions-copy { flex-wrap: wrap; }
@@ -1781,7 +1799,7 @@ button.topbar-user:hover { color: var(--primary); }
      its 51px columns depend on the small type and it scrolls on its own. */
   .requests-table input, .requests-table select,
   .pill-room input, .pills-date input,
-  .medicine-add-row input, .medicine-filter, .medicine-editor input,
+  .medicine-add-row input, .medicine-filter, .medicine-editor input, .templates-save-row input,
   .login-form input, .medicine-modal input,
   .pill-table select, .pill-name-cell input, .pill-qty-cell input { font-size: 16px; }
   /* The phone scrolls the table inside its card; give «العلاج» room rather than a sliver. */

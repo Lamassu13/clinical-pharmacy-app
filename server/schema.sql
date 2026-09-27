@@ -290,3 +290,15 @@ CREATE INDEX IF NOT EXISTS chart_quantities_positive_idx ON chart_quantities (ch
 -- The patient ID printed under each name on the chart screen (digits only, '' when unknown).
 -- Screen-only: nothing that prints reads it.
 ALTER TABLE chart_patients ADD COLUMN IF NOT EXISTS patient_id TEXT NOT NULL DEFAULT '';
+
+-- «قوالب الأدوية»: a pharmacist's own named sets of chart medicine columns, applied to any
+-- day's chart that has no doses yet. Personal (user_id), so deleting a user deletes theirs.
+-- `medicines` holds catalogue spellings in column order (snapped on save).
+CREATE TABLE IF NOT EXISTS medicine_templates (
+  id BIGSERIAL PRIMARY KEY,
+  user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  medicines TEXT[] NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (user_id, name)
+);

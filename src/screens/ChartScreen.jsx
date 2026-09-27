@@ -10,7 +10,7 @@ import { medicineMatches } from '../helpers.js'
 // maintains it, stays in App so that swapping in the sign-in card when a session lapses does
 // not unmount the half-typed chart.
 export default function ChartScreen({
-  selected, wardLabel, today, todayWeekday, isManager, dateIsToday, selectedDate, onChangeDate, onCopyToNextDay, onBack, onGoToPills, onGoToOrder, onExportPdf, pdfBusy, pdfExportError,
+  selected, wardLabel, today, todayWeekday, isManager, dateIsToday, selectedDate, onChangeDate, onCopyToNextDay, onOpenTemplates, isOnline, onBack, onGoToPills, onGoToOrder, onExportPdf, pdfBusy, pdfExportError,
   chartSaveStatus, loadError, copyError, chartReady, lastChartSaveAt, onRetryLoad, onRetrySave, lockState, lockHolder,
   chartCompleted, completedByName, onToggleComplete,
   chartClashNote, onDismissClashNote, droppedCells, undo, onUndo,
@@ -109,6 +109,7 @@ export default function ChartScreen({
       <span className="date-controls">
         <label>التاريخ <input type="date" aria-label="تاريخ الجارت" value={selectedDate} onChange={(event) => onChangeDate(event.target.value)} /></label>
         {!readOnly && <button type="button" onClick={onCopyToNextDay}>نسخ إلى اليوم التالي</button>}
+        {!readOnly && <button type="button" onClick={onOpenTemplates} disabled={!isOnline} title={isOnline ? undefined : 'القوالب تحتاج اتصالًا'}>القوالب</button>}
       </span>
     </div>
 
