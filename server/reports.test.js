@@ -105,17 +105,6 @@ test('medicines is_supply: defaults from the name on add, and the admin can togg
   assert.equal(toggled.body.medicine.name, 'Clexane prefilled syringe 4000 IU')
 })
 
-test('medicines ccu_only: off by default, the admin can set it, and GET returns it', async () => {
-  const admin = await loginAs({ role: 'admin' })
-  const added = await admin.post('/api/medicines', { name: 'Amiodarone 150mg Amp' })
-  assert.equal(added.body.medicine.ccu_only, false)
-  const toggled = await admin.put(`/api/medicines/${added.body.medicine.id}`, { ccuOnly: true })
-  assert.equal(toggled.body.medicine.ccu_only, true)
-  assert.equal(toggled.body.medicine.is_supply, false, 'other flags untouched')
-  const listed = (await admin.get('/api/medicines')).body.medicines.find((item) => item.id === added.body.medicine.id)
-  assert.equal(listed.ccu_only, true)
-})
-
 test('GET /api/reports: a patient is one patient by ID (رقم الطبلة), else by name', async () => {
   const admin = await loginAs({ role: 'admin' })
   const meds = { 'Aspirin 100mg Tab': 1 }

@@ -5,7 +5,6 @@ import { ChevronStart, StatusCheck } from './WardGlyph.jsx'
 const FLAG_HELP = {
   isSupply: 'لا يُحسب ضمن عدد الأدوية لكل مريض في التقارير.',
   noThursdayDouble: 'يُطلب يوم الخميس بالكمية العادية بدل الضعف، في «المجموع المضاعف» وفي «الطلبية».',
-  ccuOnly: 'يُقترح في ردهة CCU فقط، ولا يظهر في اقتراحات الردهات الأخرى.',
 }
 
 // One catalogue entry at rest: the name to scan for, its Arabic name when it has one, and a
@@ -19,7 +18,6 @@ export function MedicineItem({ item, saved, onEdit }) {
     <span className="medicine-item-flags">
       {item.is_supply && <span className="medicine-flag">مستلزم</span>}
       {item.no_thursday_double && <span className="medicine-flag">لا يُضاعف يوم الخميس</span>}
-      {item.ccu_only && <span className="medicine-flag">خاص بـ CCU</span>}
       {saved && <span className="medicine-saved" role="status"><StatusCheck /> تم الحفظ</span>}
     </span>
     <span className="medicine-item-go" aria-hidden="true"><ChevronStart /></span>
@@ -33,11 +31,9 @@ export default function MedicineEditor({ item, busy, error, onSave, onCancel, on
   const [arabicName, setArabicName] = useState(item.arabic_name || '')
   const [isSupply, setIsSupply] = useState(Boolean(item.is_supply))
   const [noThursdayDouble, setNoThursdayDouble] = useState(Boolean(item.no_thursday_double))
-  const [ccuOnly, setCcuOnly] = useState(Boolean(item.ccu_only))
   const ref = useRef(null)
   const dirty = name.trim() !== item.name || arabicName.trim() !== (item.arabic_name || '')
     || isSupply !== Boolean(item.is_supply) || noThursdayDouble !== Boolean(item.no_thursday_double)
-    || ccuOnly !== Boolean(item.ccu_only)
   const id = `medicine-${item.id}`
 
   useEffect(() => { onDirtyChange(dirty) }, [dirty, onDirtyChange])
@@ -46,7 +42,7 @@ export default function MedicineEditor({ item, busy, error, onSave, onCancel, on
   const submit = (event) => {
     event.preventDefault()
     if (!dirty || busy || !name.trim()) return
-    onSave({ name: name.trim(), arabicName: arabicName.trim(), isSupply, noThursdayDouble, ccuOnly })
+    onSave({ name: name.trim(), arabicName: arabicName.trim(), isSupply, noThursdayDouble })
   }
 
   return <form
@@ -70,10 +66,6 @@ export default function MedicineEditor({ item, busy, error, onSave, onCancel, on
       <label className="medicine-flag-option">
         <input type="checkbox" checked={noThursdayDouble} onChange={(event) => setNoThursdayDouble(event.target.checked)} />
         <span><strong>لا يُضاعف يوم الخميس</strong><small>{FLAG_HELP.noThursdayDouble}</small></span>
-      </label>
-      <label className="medicine-flag-option">
-        <input type="checkbox" checked={ccuOnly} onChange={(event) => setCcuOnly(event.target.checked)} />
-        <span><strong>خاص بردهة CCU</strong><small>{FLAG_HELP.ccuOnly}</small></span>
       </label>
     </fieldset>
     {error && <p className="form-error" role="alert">{error}</p>}
