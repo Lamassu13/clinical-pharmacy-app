@@ -90,6 +90,9 @@ ALTER TABLE medicines ADD COLUMN IF NOT EXISTS is_supply BOOLEAN NOT NULL DEFAUL
 -- ticked here: its «المجموع المضاعف» on the chart and its doubled line on الطلبية repeat the
 -- normal total instead.
 ALTER TABLE medicines ADD COLUMN IF NOT EXISTS no_thursday_double BOOLEAN NOT NULL DEFAULT FALSE;
+-- Used on ردهة CCU only: suggested there, left out of every other ward's suggestions. Typing
+-- the full name elsewhere still works — the chart accepts any catalogue name.
+ALTER TABLE medicines ADD COLUMN IF NOT EXISTS ccu_only BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE chart_columns ADD COLUMN IF NOT EXISTS custom_name TEXT;
 
 -- Optimistic-concurrency counter. PUT /api/chart replaces the whole chart (delete + reinsert

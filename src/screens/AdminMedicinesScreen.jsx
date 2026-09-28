@@ -8,6 +8,7 @@ const FLAG_FILTERS = [
   { key: 'all', label: 'الكل', test: () => true },
   { key: 'supply', label: 'مستلزمات', test: (item) => item.is_supply },
   { key: 'noDouble', label: 'لا يُضاعف يوم الخميس', test: (item) => item.no_thursday_double },
+  { key: 'ccu', label: 'خاص بـ CCU', test: (item) => item.ccu_only },
   { key: 'noArabic', label: 'بلا اسم عربي', test: (item) => !item.arabic_name },
 ]
 
