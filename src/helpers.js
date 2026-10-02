@@ -381,6 +381,38 @@ export const applyTemplateColumns = (templateMeds, catalogue, patientNames, colu
   return { columns, quantities, dropped: templateMeds.length - snapped.length }
 }
 
+// «التداخلات الدوائية»: for one chart (parseChartRows output), every named patient whose row holds
+// two medicines (quantity > 0, in different columns) that interact. `dbPairs` is the server's
+// reference-data answer ([{ a, b, level }], catalogue names, see GET /api/interactions); `rules`
+// is the small hand-written list in interactions.js, which also supplies the English note for a
+// pair it knows and still catches pairs when the reference table is empty. Computed on screen
+// from the day's chart; nothing is stored. Returns [{ rowNumber, name, patientId, pairs: [{ a, b,
+// severity, note }] }], most severe first within a patient.
+const SEVERITY_ORDER = { major: 0, moderate: 1, minor: 2 }
+export const interactionsForChart = ({ patientNames, patientIds, columnMedicines, quantities }, rules, dbPairs = []) => {
+  const keys = columnMedicines.map(medicineKey)
+  const dbLevel = new Map(dbPairs.map((pair) => [[medicineKey(pair.a), medicineKey(pair.b)].sort().join('|'), pair.level]))
+  const results = []
+  patientNames.forEach((name, rowIndex) => {
+    if (!name.trim() && !patientIds[rowIndex]) return
+    const given = keys.map((key, columnIndex) => (key && Number(quantities[rowIndex]?.[columnIndex]) > 0 ? columnIndex : -1)).filter((index) => index >= 0)
+    const found = new Map()
+    given.forEach((first) => given.forEach((second) => {
+      if (first === second) return
+      const pairKey = [keys[first], keys[second]].sort().join('|')
+      const rule = rules.find((candidate) => candidate.a.test(keys[first]) && candidate.b.test(keys[second]))
+      const level = dbLevel.get(pairKey)
+      if (!rule && !level) return
+      const existing = found.get(pairKey)
+      if (existing && (existing.rule || !rule)) return
+      found.set(pairKey, { a: columnMedicines[first], b: columnMedicines[second], severity: level || rule.severity, note: rule?.note || '', rule: Boolean(rule) })
+    }))
+    const pairs = [...found.values()].map(({ rule: _rule, ...pair }) => pair).sort((x, y) => SEVERITY_ORDER[x.severity] - SEVERITY_ORDER[y.severity])
+    if (pairs.length) results.push({ rowNumber: rowIndex + 1, name: name.trim(), patientId: patientIds[rowIndex] || '', pairs })
+  })
+  return results
+}
+
 export const isoDate = (value) => {
   const date = new Date(value)
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mergeKeyedSnapshots, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, EXTRA_PILL_SLOTS, isDraftStale, mergePreviousDayDoses, medicineMatches, pillSheetPlan, yesterdaySchedules, scheduleFor, applyTemplateColumns, catalogueMatches } from './helpers.js'
+import { interactionsForChart, mergeKeyedSnapshots, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, EXTRA_PILL_SLOTS, isDraftStale, mergePreviousDayDoses, medicineMatches, pillSheetPlan, yesterdaySchedules, scheduleFor, applyTemplateColumns, catalogueMatches } from './helpers.js'
 
 test('mergeKeyedSnapshots keeps a local edit and adopts an unrelated server change', () => {
   const base = { a: '1', b: '2' }
@@ -178,4 +178,38 @@ test('catalogueMatches finds a medicine by its English or Arabic name', () => {
   assert.deepEqual(names('صيدله'), ['Tramadol Tab']) // ta marbuta folded
   assert.deepEqual(names('tab', 2), ['Aspirin 100mg Tab', 'Lasix 40mg Tab'])
   assert.deepEqual(names('  '), [])
+})
+
+test('interactionsForChart flags a named patient holding two interacting medicines', () => {
+  const rules = [{ a: /warfarin/, b: /aspirin/, severity: 'major', note: 'bleeding' }]
+  const chart = {
+    patientNames: ['علي', 'مريم', ''],
+    patientIds: ['', '', ''],
+    columnMedicines: ['Warfarin 5mg Tab', 'Aspirin 75mg Tab', ''],
+    quantities: [['1', '1', ''], ['1', '', ''], ['1', '1', '']],
+  }
+  const result = interactionsForChart(chart, rules)
+  assert.equal(result.length, 1) // مريم takes only one of the two; the unnamed row is skipped
+  assert.equal(result[0].name, 'علي')
+  assert.deepEqual(result[0].pairs, [{ a: 'Warfarin 5mg Tab', b: 'Aspirin 75mg Tab', severity: 'major', note: 'bleeding' }])
+})
+
+test('interactionsForChart adds reference-data pairs, keeps rule notes and ranks by severity', () => {
+  const rules = [{ a: /amikacin/, b: /furosemide|lasix/, severity: 'major', note: 'Additive nephrotoxicity' }]
+  const chart = {
+    patientNames: ['علي'], patientIds: [''],
+    columnMedicines: ['Amikacin 500mg Vial', 'Lasix 40mg Tab', 'Aspirin 100mg Tab', 'Zinc'],
+    quantities: [['1', '1', '1', '']],
+  }
+  const dbPairs = [
+    { a: 'Lasix 40mg Tab', b: 'Aspirin 100mg Tab', level: 'moderate' },
+    { a: 'Aspirin 100mg Tab', b: 'Amikacin 500mg Vial', level: 'minor' },
+    { a: 'Lasix 40mg Tab', b: 'Zinc', level: 'major' }, // Zinc has no dose: ignored
+  ]
+  const [patient] = interactionsForChart(chart, rules, dbPairs)
+  assert.deepEqual(patient.pairs.map((pair) => [pair.a, pair.b, pair.severity, pair.note]), [
+    ['Amikacin 500mg Vial', 'Lasix 40mg Tab', 'major', 'Additive nephrotoxicity'],
+    ['Lasix 40mg Tab', 'Aspirin 100mg Tab', 'moderate', ''],
+    ['Amikacin 500mg Vial', 'Aspirin 100mg Tab', 'minor', ''],
+  ])
 })

@@ -37,6 +37,7 @@ export default function WardActions({ floor, ward, started, onOpen }) {
           <button className="secondary-button compact" onClick={() => { ref.current.open = false; onOpen({ floor, ward, mode: 'pills' }) }}>الحبوب</button>
           <button className="secondary-button compact" onClick={() => { ref.current.open = false; onOpen({ floor, ward, mode: 'order', slot: 'main' }) }}>الطلبية</button>
           <button className="secondary-button compact" onClick={() => { ref.current.open = false; onOpen({ floor, ward, mode: 'meropenem' }) }}>متابعة الميروبينيم</button>
+          <button className="secondary-button compact" onClick={() => { ref.current.open = false; onOpen({ floor, ward, mode: 'interactions' }) }}>التداخلات الدوائية</button>
           {floor && EXTRA_PILLS_FLOORS.includes(floor) && (
             <button className="secondary-button compact" onClick={() => { ref.current.open = false; onOpen({ floor, ward, mode: 'extra-pills' }) }}>استمارة الحبوب الإضافي</button>
           )}

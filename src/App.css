@@ -1128,6 +1128,11 @@ button.topbar-user:hover { color: var(--primary); }
 .order-table .order-qty { text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
 /* «متابعة الميروبينيم»: three fixed columns, then one narrow column per day of the month. */
 .meropenem-page { width: min(100% - var(--space-6), 1400px); }
+.interactions-page { width: min(100% - var(--space-6), 1100px); }
+.interactions-table .interactions-id { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.interactions-table .interactions-severity { white-space: nowrap; font-weight: 700; }
+.interactions-table .interactions-severity--major { color: var(--danger); }
+.interactions-disclaimer { margin: var(--space-3) 0 0; font-size: var(--text-xs); color: var(--text-muted); }
 .meropenem-table th:first-child, .meropenem-table td:first-child { width: auto; min-width: 150px; padding: 6px 8px; }
 .meropenem-table .meropenem-id, .meropenem-table .meropenem-dose { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .meropenem-table .meropenem-day { min-width: 38px; padding: 4px 2px; text-align: center; font-variant-numeric: tabular-nums; }

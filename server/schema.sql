@@ -302,3 +302,13 @@ CREATE TABLE IF NOT EXISTS medicine_templates (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (user_id, name)
 );
+
+-- «التداخلات الدوائية»: drug-pair reference data from DDInter (CC BY-NC-SA 4.0), loaded by
+-- `node server/import-ddinter.js`. Holds no patient data. Generic names, lowercase, drug_a < drug_b.
+CREATE TABLE IF NOT EXISTS drug_interactions (
+  drug_a TEXT NOT NULL,
+  drug_b TEXT NOT NULL,
+  level TEXT NOT NULL,
+  PRIMARY KEY (drug_a, drug_b)
+);
+CREATE INDEX IF NOT EXISTS drug_interactions_b ON drug_interactions (drug_b);

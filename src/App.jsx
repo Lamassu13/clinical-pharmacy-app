@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { roleLabels, PATIENT_ROWS, CHART_COLUMNS, MAX_CHART_COLUMNS, apiUrl, floors, specialWards } from './constants.js'
-import { applyTemplateColumns, yesterdaySchedules, mergePreviousDayDoses, mergeChartSnapshots, diffMergeOutcome, addOfflineRows, mergeKeyedSnapshots, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, blankExtraPillForm, parseChartRows, toEnglishDigits, medicineKey, patientNameKey, nearestMedicine, UNIT_ONE, isSyringe, VIAL_AMP, SYRINGE_EXCLUDE, isoDate, isDraftStale, locationBody, pillEntryList } from './helpers.js'
+import { interactionsForChart, applyTemplateColumns,yesterdaySchedules, mergePreviousDayDoses, mergeChartSnapshots, diffMergeOutcome, addOfflineRows, mergeKeyedSnapshots, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, blankExtraPillForm, parseChartRows, toEnglishDigits, medicineKey, patientNameKey, nearestMedicine, UNIT_ONE, isSyringe, VIAL_AMP, SYRINGE_EXCLUDE, isoDate, isDraftStale, locationBody, pillEntryList } from './helpers.js'
 import ConfirmDialog from './components/ConfirmDialog.jsx'
 import CopyChartDialog from './components/CopyChartDialog.jsx'
 import TemplatesDialog from './components/TemplatesDialog.jsx'
@@ -20,6 +20,8 @@ import ReportsScreen from './screens/ReportsScreen.jsx'
 import PillsScreen from './screens/PillsScreen.jsx'
 import OrderScreen from './screens/OrderScreen.jsx'
 import MeropenemScreen from './screens/MeropenemScreen.jsx'
+import InteractionsScreen from './screens/InteractionsScreen.jsx'
+import { INTERACTION_RULES } from './interactions.js'
 import ExtraPillsScreen from './screens/ExtraPillsScreen.jsx'
 import FloorPickerScreen from './screens/FloorPickerScreen.jsx'
 import WardPickerScreen from './screens/WardPickerScreen.jsx'
@@ -225,6 +227,9 @@ function App() {
   const [meropenemData, setMeropenemData] = useState(null)
   const [meropenemLoading, setMeropenemLoading] = useState(false)
   const [meropenemError, setMeropenemError] = useState(false)
+  const [interactionsData, setInteractionsData] = useState(null)
+  const [interactionsLoading, setInteractionsLoading] = useState(false)
+  const [interactionsError, setInteractionsError] = useState(false)
   // استمارة الحبوب الإضافي (mode 'extra-pills') — a standalone, per-ward list of manually
   // created pill forms with no chart behind them at all.
   const [extraPillsForms, setExtraPillsForms] = useState([])
@@ -1164,6 +1169,7 @@ function App() {
     else if (selected?.mode === 'pills') screen = `الحبوب — ${ward}`
     else if (selected?.mode === 'order') screen = `الطلبية — ${ward}`
     else if (selected?.mode === 'meropenem') screen = `متابعة الميروبينيم — ${ward}`
+    else if (selected?.mode === 'interactions') screen = `التداخلات الدوائية — ${ward}`
     else if (selected?.mode === 'extra-pills') screen = `استمارة الحبوب الإضافي — ${wardName}`
     else if (selected) screen = `الجارت — ${ward}`
     else if (floor) screen = `الطابق ${floor.number} — اختر الردهة`
@@ -1752,6 +1758,34 @@ function App() {
       .catch(() => { if (!cancelled) { setMeropenemError(true); setMeropenemLoading(false) } })
     return () => { cancelled = true }
   }, [selected, selectedDate, isExpired])
+  // «التداخلات الدوائية»: the ward's main and extra charts for the day, checked in the browser
+  // against the bundled rule list — read-only, nothing is saved.
+  useEffect(() => {
+    if (!selected || selected.mode !== 'interactions') return undefined
+    let cancelled = false
+    setInteractionsLoading(true)
+    setInteractionsError(false)
+    const load = (slot) => fetch(`${apiUrl}/chart?${new URLSearchParams({ floor: selected.floor || '', ward: selected.ward, slot, date: selectedDate })}`, { credentials: 'include' })
+      .then((response) => { isExpired(response); if (!response.ok) throw new Error('load failed'); return response.json() })
+      .then((result) => ({ slot, rows: parseChartRows(result.chart) }))
+    Promise.all([load('main'), load('extra')])
+      .then(async (charts) => {
+        // One reference-data lookup for every medicine given to anyone on the ward. If it fails
+        // the hand-written rules still run, so the screen degrades rather than breaks.
+        const given = [...new Set(charts.flatMap(({ rows }) => rows.columnMedicines.filter((medicine, column) => medicine.trim() && rows.quantities.some((row) => Number(row[column]) > 0))))]
+        let dbPairs = []
+        if (given.length > 1) {
+          try {
+            const response = await fetch(`${apiUrl}/interactions?${new URLSearchParams(given.map((name) => ['name', name]))}`, { credentials: 'include' })
+            if (response.ok) dbPairs = (await response.json()).pairs || []
+          } catch { /* rules only */ }
+        }
+        return charts.map(({ slot, rows }) => ({ slot, patients: interactionsForChart(rows, INTERACTION_RULES, dbPairs) }))
+      })
+      .then((charts) => { if (!cancelled) { setInteractionsData(charts); setInteractionsLoading(false) } })
+      .catch(() => { if (!cancelled) { setInteractionsData(null); setInteractionsError(true); setInteractionsLoading(false) } })
+    return () => { cancelled = true }
+  }, [selected, selectedDate, isExpired])
 
   // استمارة الحبوب الإضافي: one standing list per ward — no date scoping, since these aren't a
   // daily/reset artifact like the chart or the real pills form. `applyExtraPillsQueue` layers
@@ -2142,6 +2176,7 @@ function App() {
   const printingRows = (pillsData?.patients || []).filter((patient) => printScope === 'all' || pillSelection.has(patient.rowNumber)).map((patient) => patient.rowNumber)
   const lastPrintingRow = printingRows[printingRows.length - 1]
   if (selected && selected.mode === 'meropenem') return <MeropenemScreen header={appHeader} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={meropenemLoading} data={meropenemData} loadError={meropenemError} onPrint={() => window.print()} />
+  if (selected && selected.mode === 'interactions') return <InteractionsScreen header={appHeader} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={interactionsLoading} data={interactionsData} loadError={interactionsError} onPrint={() => window.print()} />
   if (selected && selected.mode === 'order') return <OrderScreen header={appHeader} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={orderLoading} data={orderData} loadError={orderError} onPrint={() => window.print()} />
   if (selected && selected.mode === 'extra-pills') return <ExtraPillsScreen header={appHeader} catalogue={adminMedicines} floorLabel={wardLabel} today={today} editTime={editTime} onBack={() => setSelected(null)} loading={extraPillsLoading} loadError={extraPillsError} forms={extraPillsForms} busy={extraPillsBusy} actionError={extraPillsActionError} onCreate={createExtraPillForm} onSave={saveExtraPillForm} onRemove={deleteExtraPillForm} confirmModal={confirmModal} />
   if (selected && selected.mode === 'pills') return <PillsScreen header={appHeader} wardLabel={wardLabel} roomLabel={/\bccu\b/i.test(selected.ward || '') ? 'رقم السرير' : 'رقم الغرفة'} today={today} editTime={editTime} onBack={() => { flushPills(); setSelected(null) }} selectedDate={selectedDate} onChangeDate={(nextDate) => { flushPills(); setSelectedDate(nextDate) }} pillsLoading={pillsLoading} pillsData={pillsData} pillsSaveStatus={pillsSaveStatus} pillsLoadError={pillsLoadError} pillEntries={pillEntries} setPillEntries={setPillEntries} pillRooms={pillRooms} setPillRooms={setPillRooms} pillSelection={pillSelection} onTogglePatient={togglePillPatient} onSetPillSelection={setPillSelection} pillsYesterday={pillsYesterday} isOnline={isOnline} catalogue={adminMedicines} englishOnly={/\bccu\b/i.test(selected.ward || '')} printScope={printScope} lastPrintingRow={lastPrintingRow} onPrint={startPillsPrint} confirmModal={confirmModal} pillsClashNote={pillsClashNote} onDismissPillsClashNote={() => setPillsClashNote(null)} />

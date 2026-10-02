@@ -20,6 +20,7 @@ import treatmentFormsRoutes from './routes/treatment-forms.js'
 import extraPillsRoutes from './routes/extra-pills.js'
 import reportsRoutes from './routes/reports.js'
 import templatesRoutes from './routes/templates.js'
+import interactionsRoutes from './routes/interactions.js'
 
 const app = express()
 const port = Number(process.env.PORT || 3001)
@@ -637,6 +638,7 @@ app.use('/api', treatmentFormsRoutes)
 app.use('/api', extraPillsRoutes)
 app.use('/api', reportsRoutes)
 app.use('/api', templatesRoutes)
+app.use('/api', interactionsRoutes)
 
 app.get('/api/pills', requireAuth, async (request, response) => {
   const location = readLocation(request.query, request.session.user)
