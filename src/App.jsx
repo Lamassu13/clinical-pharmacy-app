@@ -1759,7 +1759,7 @@ function App() {
     return () => { cancelled = true }
   }, [selected, selectedDate, isExpired])
   // «التداخلات الدوائية»: the ward's main and extra charts for the day, checked in the browser
-  // against the bundled rule list — read-only, nothing is saved.
+  // against the DDInter reference pairs and the bundled rule list — read-only, nothing is saved.
   useEffect(() => {
     if (!selected || selected.mode !== 'interactions') return undefined
     let cancelled = false

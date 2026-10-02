@@ -2,7 +2,7 @@ import hospitalLogo from '../assets/hospital-logo.png'
 
 // «التداخلات الدوائية» — read-only and never stored: App.jsx fetches the ward's chart(s) for the
 // chosen day and interactionsForChart (helpers.js) checks each patient's medicines against the
-// bundled rule list (interactions.js). `data` is [{ slot, patients }], one entry per chart.
+// DDInter pairs from GET /api/interactions plus the bundled rule list (interactions.js) for notes. `data` is [{ slot, patients }], one entry per chart.
 export default function InteractionsScreen({ header, wardLabel, today, onBack, selectedDate, onChangeDate, loading, data, loadError, onPrint }) {
   const charts = data || []
   const total = charts.reduce((sum, chart) => sum + chart.patients.length, 0)

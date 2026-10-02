@@ -11,14 +11,16 @@ test.after(async () => { server.close(); await pool.end() })
 test.beforeEach(async () => {
   await resetDatabase()
   await pool.query('TRUNCATE drug_interactions')
-  await pool.query("INSERT INTO drug_interactions (drug_a, drug_b, level) VALUES ('amikacin', 'furosemide', 'major'), ('aspirin', 'furosemide', 'moderate'), ('amikacin', 'warfarin', 'major')")
+  await pool.query("INSERT INTO drug_interactions (drug_a, drug_b, level) VALUES ('amikacin', 'furosemide', 'major'), ('acetylsalicylic acid', 'furosemide', 'moderate'), ('amikacin', 'warfarin', 'major')")
 })
 
 test('genericName strips strengths and forms and maps brands', () => {
   assert.equal(genericName('Amikacin 500mg Vial'), 'amikacin')
   assert.equal(genericName('Lasix 40mg Tab'), 'furosemide')
   assert.equal(genericName('Meronem 1000gm Vial'), 'meropenem')
-  assert.equal(genericName('Aspirin 100mg Tab'), 'aspirin')
+  assert.equal(genericName('Aspirin 100mg Tab'), 'acetylsalicylic acid') // DDInter's spelling
+  assert.equal(genericName('Lactulose Syp'), 'lactulose')
+  assert.equal(genericName('Insulin soluble vial'), 'insulin human (regular)')
   assert.equal(genericName('  '), '')
 })
 
