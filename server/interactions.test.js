@@ -36,6 +36,13 @@ test('GET /api/interactions answers with interacting pairs among the given medic
     'Amikacin 500mg Vial|Lasix 20mg Amp|major', 'Amikacin 500mg Vial|Lasix 40mg Tab|major',
     'Aspirin 100mg Tab|Lasix 20mg Amp|moderate', 'Aspirin 100mg Tab|Lasix 40mg Tab|moderate',
   ].sort()) // warfarin was not asked about, so its pair is absent
+  assert.deepEqual(result.body.duplicates, [])
   assert.deepEqual((await client.get('/api/interactions?name=Aspirin')).body.pairs, [])
+  // Two PPIs are a duplicate; one PPI in two strengths is not.
+  const ppis = ['Risek 20mg cap', 'Omeprazole 40mg vial', 'Pantoprazole 40mg vial', 'Lasix 40mg Tab']
+  const dup = await client.get(`/api/interactions?${ppis.map((name) => `name=${encodeURIComponent(name)}`).join('&')}`)
+  assert.deepEqual(dup.body.duplicates.map((pair) => `${pair.a}|${pair.b}|${pair.className}`), [
+    'Risek 20mg cap|Pantoprazole 40mg vial|Proton pump inhibitors', 'Omeprazole 40mg vial|Pantoprazole 40mg vial|Proton pump inhibitors',
+  ])
   assert.equal((await new ApiClient(baseUrl).get('/api/interactions?name=a&name=b')).status, 401)
 })

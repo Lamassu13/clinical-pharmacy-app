@@ -1776,14 +1776,14 @@ function App() {
         // One reference-data lookup for every medicine given to anyone on the ward. If it fails
         // the hand-written rules still run, so the screen degrades rather than breaks.
         const given = [...new Set(charts.flatMap(({ rows }) => rows.columnMedicines.filter((medicine, column) => medicine.trim() && rows.quantities.some((row) => Number(row[column]) > 0))))]
-        let dbPairs = []
+        let dbPairs = [], duplicates = []
         if (given.length > 1) {
           try {
             const response = await fetch(`${apiUrl}/interactions?${new URLSearchParams(given.map((name) => ['name', name]))}`, { credentials: 'include' })
-            if (response.ok) dbPairs = (await response.json()).pairs || []
+            if (response.ok) ({ pairs: dbPairs = [], duplicates = [] } = await response.json())
           } catch { /* rules only */ }
         }
-        return charts.map(({ slot, rows }) => ({ slot, patients: interactionsForChart(rows, INTERACTION_RULES, dbPairs) }))
+        return charts.map(({ slot, rows }) => ({ slot, patients: interactionsForChart(rows, INTERACTION_RULES, dbPairs, duplicates) }))
       })
       .then((charts) => { if (!cancelled) { setInteractionsData(charts); setInteractionsLoading(false) } })
       .catch(() => { if (!cancelled) { setInteractionsData(null); setInteractionsError(true); setInteractionsLoading(false) } })

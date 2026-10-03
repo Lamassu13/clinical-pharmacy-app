@@ -213,3 +213,22 @@ test('interactionsForChart adds reference-data pairs, keeps rule notes and ranks
     ['Amikacin 500mg Vial', 'Aspirin 100mg Tab', 'minor', ''],
   ])
 })
+
+test('interactionsForChart lists duplicate therapy after moderate, and as the note on a pair that also interacts', () => {
+  const chart = {
+    patientNames: ['علي'], patientIds: [''],
+    columnMedicines: ['Risek 20mg cap', 'Pantoprazole 40mg vial', 'Brufen 400mg Tab', 'Voltarin 75mg Amp', 'Amikacin 500mg Vial', 'Lasix 40mg Tab'],
+    quantities: [['1', '1', '1', '1', '1', '1']],
+  }
+  const dbPairs = [{ a: 'Brufen 400mg Tab', b: 'Voltarin 75mg Amp', level: 'moderate' }, { a: 'Amikacin 500mg Vial', b: 'Lasix 40mg Tab', level: 'major' }]
+  const duplicates = [
+    { a: 'Risek 20mg cap', b: 'Pantoprazole 40mg vial', className: 'Proton pump inhibitors', note: '' },
+    { a: 'Brufen 400mg Tab', b: 'Voltarin 75mg Amp', className: 'NSAIDs', note: '' },
+  ]
+  const [patient] = interactionsForChart(chart, [], dbPairs, duplicates)
+  assert.deepEqual(patient.pairs.map((pair) => [pair.a, pair.severity, pair.note]), [
+    ['Amikacin 500mg Vial', 'major', ''],
+    ['Brufen 400mg Tab', 'moderate', 'Duplicate therapy: NSAIDs'],
+    ['Risek 20mg cap', 'duplicate', 'Duplicate therapy: Proton pump inhibitors'],
+  ])
+})

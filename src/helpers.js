@@ -387,11 +387,14 @@ export const applyTemplateColumns = (templateMeds, catalogue, patientNames, colu
 // is the small hand-written list in interactions.js, which also supplies the English note for a
 // pair it knows and still catches pairs when the reference table is empty. Computed on screen
 // from the day's chart; nothing is stored. Returns [{ rowNumber, name, patientId, pairs: [{ a, b,
-// severity, note }] }], most severe first within a patient.
-const SEVERITY_ORDER = { major: 0, moderate: 1, minor: 2 }
-export const interactionsForChart = ({ patientNames, patientIds, columnMedicines, quantities }, rules, dbPairs = []) => {
+// severity, note }] }], most severe first within a patient. `duplicates` (two drugs of one class,
+// from the same API call) add a 'duplicate' row, or the note on a pair that also interacts.
+const SEVERITY_ORDER = { major: 0, moderate: 1, duplicate: 2, minor: 3 }
+export const interactionsForChart = ({ patientNames, patientIds, columnMedicines, quantities }, rules, dbPairs = [], duplicates = []) => {
   const keys = columnMedicines.map(medicineKey)
-  const dbLevel = new Map(dbPairs.map((pair) => [[medicineKey(pair.a), medicineKey(pair.b)].sort().join('|'), pair.level]))
+  const keyOf = (pair) => [medicineKey(pair.a), medicineKey(pair.b)].sort().join('|')
+  const dbLevel = new Map(dbPairs.map((pair) => [keyOf(pair), pair.level]))
+  const duplicateNote = new Map(duplicates.map((pair) => [keyOf(pair), `Duplicate therapy: ${pair.className}${pair.note ? ` (${pair.note})` : ''}`]))
   const results = []
   patientNames.forEach((name, rowIndex) => {
     if (!name.trim() && !patientIds[rowIndex]) return
@@ -402,10 +405,11 @@ export const interactionsForChart = ({ patientNames, patientIds, columnMedicines
       const pairKey = [keys[first], keys[second]].sort().join('|')
       const rule = rules.find((candidate) => candidate.a.test(keys[first]) && candidate.b.test(keys[second]))
       const level = dbLevel.get(pairKey)
-      if (!rule && !level) return
+      const duplicate = duplicateNote.get(pairKey)
+      if (!rule && !level && !duplicate) return
       const existing = found.get(pairKey)
       if (existing && (existing.rule || !rule)) return
-      found.set(pairKey, { a: columnMedicines[first], b: columnMedicines[second], severity: level || rule.severity, note: rule?.note || '', rule: Boolean(rule) })
+      found.set(pairKey, { a: columnMedicines[first], b: columnMedicines[second], severity: level || rule?.severity || 'duplicate', note: rule?.note || duplicate || '', rule: Boolean(rule) })
     }))
     const pairs = [...found.values()].map(({ rule: _rule, ...pair }) => pair).sort((x, y) => SEVERITY_ORDER[x.severity] - SEVERITY_ORDER[y.severity])
     if (pairs.length) results.push({ rowNumber: rowIndex + 1, name: name.trim(), patientId: patientIds[rowIndex] || '', pairs })
