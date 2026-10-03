@@ -1,5 +1,6 @@
 import express from 'express'
 import { query } from '../db.js'
+import { dddLine } from '../ddd.js'
 import { requireManager } from '../auth.js'
 import { ALLOWED_FLOORS, FLOOR_WARDS, SPECIAL_WARDS, SUPPLY_MATCH, SUPPLY_EXCEPT, isIsoDate } from '../validation.js'
 
@@ -272,6 +273,25 @@ router.get('/reports', requireManager, async (request, response) => {
 
   const sum = (field) => wards.reduce((total, row) => total + row[field], 0)
   const patientDays = sum('patientDays')
+
+  // Antibiotic consumption in WHO DDDs per 100 patient-days (../ddd.js), with the AWaRe split.
+  // Lines whose DDDs can't be worked out from the name are listed, not guessed.
+  const antibioticLines = consumption.filter((line) => line.quantity > 0 && !line.isSupply)
+    .map((line) => ({ name: line.name, quantity: line.quantity, ...dddLine(line.name, line.quantity) }))
+    .filter((line) => line.atc)
+  const per100 = (ddds) => (patientDays ? Math.round((ddds / patientDays) * 1000) / 10 : null)
+  const counted = antibioticLines.filter((line) => line.ddds !== undefined)
+  const totalDdds = counted.reduce((total, line) => total + line.ddds, 0)
+  const antibiotics = {
+    lines: counted.map((line) => ({ ...line, amount: Math.round(line.amount * 100) / 100, ddds: Math.round(line.ddds * 10) / 10, dddPer100: per100(line.ddds) }))
+      .sort((a, b) => b.ddds - a.ddds || a.name.localeCompare(b.name)),
+    notCounted: antibioticLines.filter((line) => line.ddds === undefined).map(({ name, quantity, reason }) => ({ name, quantity, reason })),
+    totalDdds: Math.round(totalDdds * 10) / 10,
+    dddPer100: per100(totalDdds),
+    aware: Object.fromEntries(['Access', 'Watch', 'Reserve'].map((group) => [group,
+      totalDdds ? Math.round((counted.filter((line) => line.aware === group).reduce((total, line) => total + line.ddds, 0) / totalDdds) * 100) : null])),
+  }
+
   const polypharmacyPatients = [...polypharmacy.values()].sort((a, b) => b.maxMedicines - a.maxMedicines || a.patient.localeCompare(b.patient, 'ar'))
 
   response.json({
@@ -297,6 +317,7 @@ router.get('/reports', requireManager, async (request, response) => {
     longStays: longStays.sort((a, b) => b.days - a.days),
     polypharmacy: polypharmacyPatients,
     consumption,
+    antibiotics,
   })
 })
 

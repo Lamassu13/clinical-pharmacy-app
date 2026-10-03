@@ -31,6 +31,9 @@ export const BRAND_TO_GENERIC = {
   entersto: 'sacubitril', esomprazole: 'esomeprazole', 'insulin mixtard': 'insulin human (isophane)', isordil: 'isosorbide dinitrate',
   lacosmide: 'lacosamide', laxadyl: 'bisacodyl', olan: 'olanzapine', pantaprazole: 'pantoprazole', pulmicort: 'budesonide',
   tetrabenzine: 'tetrabenazine', thyroxine: 'levothyroxine', urso: 'ursodeoxycholic acid',
+  tienam: 'imipenem', invanz: 'ertapenem', fortum: 'ceftazidime', maxipime: 'cefepime', vancocin: 'vancomycin', targocid: 'teicoplanin',
+  tygacil: 'tigecycline', tavanic: 'levofloxacin', zinnat: 'cefuroxime', claforan: 'cefotaxime', zithromax: 'azithromycin',
+  klacid: 'clarithromycin', dalacin: 'clindamycin', vfend: 'voriconazole', cancidas: 'caspofungin', diflucan: 'fluconazole',
 }
 
 // Lowercase generic name for a catalogue medicine name, or '' when nothing is left of it.

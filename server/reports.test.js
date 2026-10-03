@@ -119,3 +119,25 @@ test('GET /api/reports: a patient is one patient by ID (رقم الطبلة), el
   assert.equal(ward.admissions, 0, 'Zeinab getting her ID on day 2 is not a new admission')
   assert.equal(ward.discharges, 0)
 })
+
+test('GET /api/reports: antibiotic DDD per 100 patient-days with the AWaRe split', async () => {
+  const admin = await loginAs({ role: 'admin' })
+  await pool.query('INSERT INTO medicines (name) SELECT unnest($1::text[])', [['Meronem 1000gm Vial', 'Flagyl 500mg tab', 'Amoxil 250mg/5ml Susp']])
+  const patients = [
+    { name: 'علي', meds: { 'Meronem 1000gm Vial': 3 } }, // 3 g a day = 1 DDD
+    { name: 'عمر', meds: { 'Flagyl 500mg tab': 4, 'Amoxil 250mg/5ml Susp': 1 } }, // 2 g oral = 1 DDD; suspension not counted
+    { name: 'سارة', meds: { 'Aspirin 100mg Tab': 1 } },
+    { name: 'هدى', meds: { 'Aspirin 100mg Tab': 1 } },
+  ]
+  await saveChart(admin, 5, '2026-05-01', patients)
+  await saveChart(admin, 5, '2026-05-02', patients)
+
+  const { body } = await admin.get('/api/reports?scope=5&from=2026-05-01&to=2026-05-02')
+  const { antibiotics } = body
+  assert.deepEqual(antibiotics.lines.map((line) => [line.name, line.atc, line.aware, line.ddds, line.dddPer100]), [
+    ['Flagyl 500mg tab', 'P01AB01', 'Access', 2, 25],
+    ['Meronem 1000gm Vial', 'J01DH02', 'Watch', 2, 25],
+  ]) // 8 patient-days
+  assert.deepEqual([antibiotics.totalDdds, antibiotics.dddPer100, antibiotics.aware], [4, 50, { Access: 50, Watch: 50, Reserve: 0 }])
+  assert.deepEqual(antibiotics.notCounted.map((line) => line.name), ['Amoxil 250mg/5ml Susp'])
+})
