@@ -1,0 +1,48 @@
+// «تعديل الجرعة الكلوية»: adult renal dose guidance by creatinine clearance (Cockcroft-Gault,
+// mL/min), keyed by genericName(). Each drug: `steps` = [[lowest CrCl, guidance], …] from high to
+// low (the first step whose CrCl the patient meets applies) and `hd` for intermittent haemodialysis.
+// Drafted from product labelling and standard renal dosing references (Sanford Guide, Lexicomp,
+// 2019 international colistin consensus) for the usual adult dose shown first.
+// REVIEW STATUS: draft — to be checked and signed off by the unit pharmacist before release.
+// Reviewed by: ____________  Date: ____________
+export const RENAL_DOSES = {
+  meropenem: { usual: '1 g q8h', steps: [[51, 'No change'], [26, '1 g q12h'], [10, '500 mg q12h'], [0, '500 mg q24h']], hd: '500 mg q24h, give after HD' },
+  imipenem: { usual: '500 mg q6h', steps: [[90, 'No change'], [60, '400 mg q6h'], [30, '300 mg q6h'], [15, '200 mg q6h'], [0, 'Not recommended unless HD within 48 h']], hd: '200 mg q6h (as CrCl 15–29), give after HD' },
+  ertapenem: { usual: '1 g q24h', steps: [[31, 'No change'], [0, '500 mg q24h']], hd: '500 mg q24h; if given < 6 h before HD, add 150 mg after HD' },
+  piperacillin: { usual: '4.5 g q6–8h', steps: [[41, 'No change'], [20, '3.375 g q6h (4.5 g q8h → 3.375 g q8h)'], [0, '2.25 g q6h (pneumonia) / 2.25 g q8h']], hd: '2.25 g q8–12h + 0.75 g after each HD' },
+  ceftazidime: { usual: '1–2 g q8h', steps: [[51, 'No change'], [31, '1 g q12h'], [16, '1 g q24h'], [6, '500 mg q24h'], [0, '500 mg q48h']], hd: '1 g load, then 1 g after each HD' },
+  cefepime: { usual: '2 g q8h', steps: [[61, 'No change'], [30, '2 g q12h'], [11, '2 g q24h'], [0, '1 g q24h']], hd: '1 g q24h, give after HD on HD days' },
+  ceftriaxone: { usual: '1–2 g q24h', steps: [[0, 'No change (max 2 g/day if hepatic impairment too)']], hd: 'No change' },
+  cefuroxime: { usual: '750 mg–1.5 g q8h IV', steps: [[21, 'No change'], [10, '750 mg q12h'], [0, '750 mg q24h']], hd: '750 mg q24h + extra dose after HD' },
+  cefazolin: { usual: '1–2 g q8h', steps: [[35, 'No change'], [11, '50% of dose q12h'], [0, '50% of dose q18–24h']], hd: '0.5–1 g q24h or 1–2 g after each HD' },
+  cephalexin: { usual: '500 mg q6h', steps: [[30, 'No change'], [15, '250 mg q8–12h'], [5, '250 mg q24h'], [0, '250 mg q48–60h']], hd: '250 mg q24h + 250 mg after HD' },
+  vancomycin: { usual: '15–20 mg/kg q8–12h', steps: [[50, '15–20 mg/kg q8–12h, by trough/AUC'], [20, '15–20 mg/kg q24h, by levels'], [0, '20–25 mg/kg load, then dose by levels']], hd: '20–25 mg/kg load, then 500–1000 mg after each HD by pre-HD level' },
+  teicoplanin: { usual: 'load 6–12 mg/kg q12h ×3, then q24h', steps: [[81, 'No change'], [30, 'From day 5: maintenance dose q48h (or half dose daily)'], [0, 'From day 5: maintenance dose q72h (or one third daily)']], hd: 'Load as usual; from day 5 maintenance dose q72h' },
+  colistimethate: { usual: '9 MU load, then 9 MU/day in 2–3 doses', steps: [[50, '8–9 MU/day in 2–3 doses (after 9 MU load)'], [30, '6.5–7.3 MU/day in 2–3 doses'], [10, '4.7–5.6 MU/day in 2 doses'], [0, '3.9–4.2 MU/day in 2 doses']], hd: '3.9 MU/day + 1.2–1.6 MU after each HD' },
+  linezolid: { usual: '600 mg q12h', steps: [[0, 'No change']], hd: 'No change; give after HD' },
+  tigecycline: { usual: '100 mg load, then 50 mg q12h', steps: [[0, 'No change']], hd: 'No change' },
+  amikacin: { usual: '15 mg/kg once daily', steps: [[60, '15 mg/kg q24h'], [40, '15 mg/kg q36h'], [20, '15 mg/kg q48h'], [0, 'Single dose, then redose by level']], hd: '5–7.5 mg/kg after each HD, by level' },
+  gentamicin: { usual: '5–7 mg/kg once daily', steps: [[60, '5–7 mg/kg q24h'], [40, '5–7 mg/kg q36h'], [20, '5–7 mg/kg q48h'], [0, 'Single dose, then redose by level']], hd: '1.5–2 mg/kg after each HD, by level' },
+  ciprofloxacin: { usual: '400 mg IV q8–12h / 500–750 mg PO q12h', steps: [[51, 'No change'], [30, 'PO 250–500 mg q12h; IV no change'], [0, 'IV 200–400 mg q18–24h / PO 250–500 mg q18h']], hd: 'PO 250–500 mg (IV 200–400 mg) q24h, after HD' },
+  levofloxacin: { usual: '750 mg q24h', steps: [[50, 'No change'], [20, '750 mg q48h (500 mg regimen: 500 mg once, then 250 mg q24h)'], [0, '750 mg once, then 500 mg q48h (500 mg regimen: 500 mg once, then 250 mg q48h)']], hd: '750 mg once, then 500 mg q48h' },
+  metronidazole: { usual: '500 mg q8h', steps: [[0, 'No change']], hd: 'No change; give after HD' },
+  'trimethoprim': { usual: 'co-trimoxazole by indication', steps: [[31, 'No change'], [15, '50% of dose'], [0, 'Not recommended']], hd: '50% of dose, give after HD' },
+  acyclovir: { usual: '5–10 mg/kg IV q8h', steps: [[51, 'No change'], [25, 'Same dose q12h'], [10, 'Same dose q24h'], [0, '50% of dose q24h']], hd: '50% of dose q24h, give after HD' },
+  fluconazole: { usual: '200–400 mg q24h', steps: [[51, 'No change'], [0, '50% of dose after the loading dose']], hd: 'Full dose after each HD' },
+  voriconazole: { usual: '4 mg/kg IV q12h / 200 mg PO q12h', steps: [[50, 'No change'], [0, 'Prefer oral: IV vehicle (SBECD) accumulates; oral no change']], hd: 'Prefer oral; oral no change' },
+  'amphotericin b': { usual: 'by formulation', steps: [[0, 'No dose change; nephrotoxic — monitor creatinine, K, Mg']], hd: 'No change' },
+  'amphotericin b (liposomal)': { usual: '3–5 mg/kg q24h', steps: [[0, 'No dose change; monitor creatinine, K, Mg']], hd: 'No change' },
+  enoxaparin: { usual: '40 mg q24h prophylaxis / 1 mg/kg q12h treatment', steps: [[30, 'No change'], [0, 'Prophylaxis 20–30 mg q24h; treatment 1 mg/kg q24h; consider anti-Xa']], hd: 'Avoid — prefer unfractionated heparin' },
+  rivaroxaban: { usual: '20 mg q24h (AF)', steps: [[51, 'No change'], [15, '15 mg q24h (AF)'], [0, 'Avoid']], hd: 'Avoid' },
+  metformin: { usual: '500–1000 mg q12h', steps: [[45, 'No change'], [30, 'Do not start; if already on it, max 1000 mg/day'], [0, 'Contraindicated — stop']], hd: 'Contraindicated' },
+  levetiracetam: { usual: '500–1500 mg q12h', steps: [[80, 'No change'], [50, '500–1000 mg q12h'], [30, '250–750 mg q12h'], [0, '250–500 mg q12h']], hd: '500–1000 mg q24h + 250–500 mg after HD' },
+  gabapentin: { usual: '900–3600 mg/day in 3 doses', steps: [[60, 'No change'], [30, '400–1400 mg/day in 2 doses'], [15, '200–700 mg once daily'], [0, '100–300 mg once daily']], hd: '100–300 mg daily + 125–350 mg after HD' },
+  pregabalin: { usual: '150–600 mg/day', steps: [[60, 'No change'], [30, '50% of daily dose'], [15, '25–50% of daily dose, once daily'], [0, '12.5–25% of daily dose, once daily']], hd: 'As CrCl < 15, + supplement after HD' },
+  digoxin: { usual: '0.125–0.25 mg q24h', steps: [[50, 'No change; target level 0.5–0.9 ng/mL'], [10, 'Reduce maintenance (e.g. 0.0625–0.125 mg q24h); dose by level'], [0, '0.0625 mg q24–48h; dose by level']], hd: '0.0625 mg q48h; dose by level (not removed by HD)' },
+  allopurinol: { usual: '100–300 mg q24h', steps: [[60, 'No change'], [30, 'Start 100 mg/day, titrate to urate'], [0, 'Start 50 mg/day, titrate to urate']], hd: 'Give after HD; start 100 mg after HD' },
+  spironolactone: { usual: '25–50 mg q24h', steps: [[50, 'No change'], [30, '25 mg q24–48h; check K'], [0, 'Avoid — hyperkalaemia']], hd: 'Avoid' },
+  famotidine: { usual: '20 mg q12h', steps: [[50, 'No change'], [0, '20 mg q24h (50% of dose)']], hd: '20 mg q24h, after HD' },
+  tramadol: { usual: '50–100 mg q4–6h', steps: [[30, 'No change'], [0, 'q12h, max 200 mg/day']], hd: '50–100 mg q12h, max 200 mg/day; give after HD' },
+  morphine: { usual: 'by indication', steps: [[50, 'No change'], [10, '50–75% of dose; active metabolites accumulate'], [0, '25–50% of dose or prefer fentanyl']], hd: 'Avoid repeated doses — prefer fentanyl' },
+}
+

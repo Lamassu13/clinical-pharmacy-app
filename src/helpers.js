@@ -417,6 +417,18 @@ export const interactionsForChart = ({ patientNames, patientIds, columnMedicines
   return results
 }
 
+// «تعديل الجرعة الكلوية»: Cockcroft-Gault creatinine clearance (mL/min) from age (years), weight
+// (kg, actual body weight), sex and serum creatinine (mg/dL; µmol/L ÷ 88.4). null until all are
+// valid. Computed in the browser only — the values are never sent or stored.
+export const SCR_UMOL_PER_MGDL = 88.4
+export const cockcroftGault = ({ age, weightKg, female, scrMgDl }) => {
+  if (!(age > 0 && weightKg > 0 && scrMgDl > 0)) return null
+  return Math.max(0, ((140 - age) * weightKg) / (72 * scrMgDl) * (female ? 0.85 : 1))
+}
+// A renal dose rule's guidance (server/renal-doses.js): the first step whose CrCl the patient
+// meets, or the HD line.
+export const renalGuidance = (rule, crcl, onHd) => (onHd ? rule.hd : (rule.steps.find(([min]) => crcl >= min) || rule.steps[rule.steps.length - 1])[1])
+
 export const isoDate = (value) => {
   const date = new Date(value)
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`

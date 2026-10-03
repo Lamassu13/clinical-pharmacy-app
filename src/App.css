@@ -1134,6 +1134,30 @@ button.topbar-user:hover { color: var(--primary); }
 .interactions-table .interactions-severity--major { color: var(--danger); }
 .interactions-table .interactions-severity--duplicate { color: var(--text-muted); }
 .interactions-disclaimer { margin: var(--space-3) 0 0; font-size: var(--text-xs); color: var(--text-muted); }
+.renal-page { width: min(100% - var(--space-6), 1100px); }
+.renal-form {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: var(--space-4);
+  align-items: end; margin: var(--space-5) 0 var(--space-4); padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--shadow-xs);
+}
+.renal-form input, .renal-form select { min-height: 44px; }
+.renal-form .renal-patient { grid-column: 1 / -1; }
+.renal-choice { margin: 0; padding: 0; border: 0; min-width: 0; }
+.renal-choice legend { margin-bottom: var(--space-2); padding: 0; color: var(--heading); font-size: var(--text-sm); font-weight: 700; }
+.renal-choice .filter-chips { flex-wrap: nowrap; }
+.renal-choice .filter-chip { flex: 1; justify-content: center; }
+.renal-hd { display: flex; align-items: center; gap: var(--space-2); min-height: 44px; cursor: pointer; }
+.renal-hd input { width: 20px; height: 20px; min-height: 0; flex-shrink: 0; accent-color: var(--primary); }
+.renal-result { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2) var(--space-4); margin: 0 0 var(--space-4); }
+.renal-result strong { color: var(--heading); font-size: var(--text-lg); font-variant-numeric: tabular-nums; }
+.renal-result span { color: var(--text-muted); font-size: var(--text-sm); }
+.renal-table { width: 100%; border-collapse: collapse; }
+.renal-table th, .renal-table td { border: 1px solid var(--border-strong); padding: var(--space-2) var(--space-3); text-align: start; font-size: var(--text-sm); vertical-align: top; overflow-wrap: anywhere; }
+.renal-table thead th { background: var(--green-100); color: var(--heading); font-weight: 700; }
+.renal-table .renal-usual { color: var(--text-muted); }
+.renal-table .renal-guidance { font-weight: 700; color: var(--text); }
+.renal-table .renal-guidance--same { font-weight: 400; color: var(--text-muted); }
+.renal-note { margin: var(--space-3) 0 0; font-size: var(--text-sm); color: var(--text-muted); }
 .meropenem-table th:first-child, .meropenem-table td:first-child { width: auto; min-width: 150px; padding: 6px 8px; }
 .meropenem-table .meropenem-id, .meropenem-table .meropenem-dose { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .meropenem-table .meropenem-day { min-width: 38px; padding: 4px 2px; text-align: center; font-variant-numeric: tabular-nums; }

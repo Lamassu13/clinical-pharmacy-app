@@ -46,3 +46,14 @@ test('GET /api/interactions answers with interacting pairs among the given medic
   ])
   assert.equal((await new ApiClient(baseUrl).get('/api/interactions?name=a&name=b')).status, 401)
 })
+
+test('GET /api/renal-doses returns the rule for each known medicine by name, nothing else', async () => {
+  const user = await createUser({ role: 'user', floor: 5 })
+  const client = new ApiClient(baseUrl)
+  assert.equal((await client.post('/api/auth/login', { username: user.username, password: user.password })).status, 200)
+  const res = await client.get(`/api/renal-doses?name=${encodeURIComponent('Meronem 1000gm Vial')}&name=${encodeURIComponent('Lasix 40mg Tab')}`)
+  assert.equal(res.status, 200)
+  assert.deepEqual(Object.keys(res.body.rules), ['Meronem 1000gm Vial'])
+  assert.equal(res.body.rules['Meronem 1000gm Vial'].generic, 'meropenem')
+  assert.equal((await new ApiClient(baseUrl).get('/api/renal-doses?name=a')).status, 401)
+})

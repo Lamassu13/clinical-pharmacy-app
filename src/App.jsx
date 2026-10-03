@@ -21,6 +21,7 @@ import PillsScreen from './screens/PillsScreen.jsx'
 import OrderScreen from './screens/OrderScreen.jsx'
 import MeropenemScreen from './screens/MeropenemScreen.jsx'
 import InteractionsScreen from './screens/InteractionsScreen.jsx'
+import RenalDoseScreen from './screens/RenalDoseScreen.jsx'
 import { INTERACTION_RULES } from './interactions.js'
 import ExtraPillsScreen from './screens/ExtraPillsScreen.jsx'
 import FloorPickerScreen from './screens/FloorPickerScreen.jsx'
@@ -230,6 +231,9 @@ function App() {
   const [interactionsData, setInteractionsData] = useState(null)
   const [interactionsLoading, setInteractionsLoading] = useState(false)
   const [interactionsError, setInteractionsError] = useState(false)
+  const [renalData, setRenalData] = useState(null)
+  const [renalLoading, setRenalLoading] = useState(false)
+  const [renalError, setRenalError] = useState(false)
   // استمارة الحبوب الإضافي (mode 'extra-pills') — a standalone, per-ward list of manually
   // created pill forms with no chart behind them at all.
   const [extraPillsForms, setExtraPillsForms] = useState([])
@@ -1170,6 +1174,7 @@ function App() {
     else if (selected?.mode === 'order') screen = `الطلبية — ${ward}`
     else if (selected?.mode === 'meropenem') screen = `متابعة الميروبينيم — ${ward}`
     else if (selected?.mode === 'antibiotics') screen = `متابعة المضادات الحيوية — ${ward}`
+    else if (selected?.mode === 'renal') screen = `تعديل الجرعة الكلوية — ${ward}`
     else if (selected?.mode === 'interactions') screen = `التداخلات الدوائية — ${ward}`
     else if (selected?.mode === 'extra-pills') screen = `استمارة الحبوب الإضافي — ${wardName}`
     else if (selected) screen = `الجارت — ${ward}`
@@ -1790,6 +1795,36 @@ function App() {
     return () => { cancelled = true }
   }, [selected, selectedDate, isExpired])
 
+  // «تعديل الجرعة الكلوية»: the day's patients (main and extra charts) with the medicines they were
+  // given, and the renal rules for those medicines. Labs are typed on the screen and never leave it.
+  useEffect(() => {
+    if (!selected || selected.mode !== 'renal') return undefined
+    let cancelled = false
+    setRenalLoading(true)
+    setRenalError(false)
+    const load = (slot) => fetch(`${apiUrl}/chart?${new URLSearchParams({ floor: selected.floor || '', ward: selected.ward, slot, date: selectedDate })}`, { credentials: 'include' })
+      .then((response) => { isExpired(response); if (!response.ok) throw new Error('load failed'); return response.json() })
+      .then((result) => ({ slot, rows: parseChartRows(result.chart) }))
+    Promise.all([load('main'), load('extra')])
+      .then(async (charts) => {
+        const patients = charts.flatMap(({ slot, rows }) => rows.patientNames.map((name, row) => ({
+          key: `${slot}|${row}`, name: name.trim(), patientId: rows.patientIds[row] || '', extra: slot === 'extra',
+          medicines: [...new Set(rows.columnMedicines.filter((medicine, column) => medicine.trim() && Number(rows.quantities[row]?.[column]) > 0))],
+        })).filter((patient) => (patient.name || patient.patientId) && patient.medicines.length))
+        const names = [...new Set(patients.flatMap((patient) => patient.medicines))]
+        let rules = {}
+        if (names.length) {
+          const response = await fetch(`${apiUrl}/renal-doses?${new URLSearchParams(names.map((name) => ['name', name]))}`, { credentials: 'include' })
+          if (!response.ok) throw new Error('rules failed')
+          rules = (await response.json()).rules
+        }
+        return { patients, rules }
+      })
+      .then((data) => { if (!cancelled) { setRenalData(data); setRenalLoading(false) } })
+      .catch(() => { if (!cancelled) { setRenalData(null); setRenalError(true); setRenalLoading(false) } })
+    return () => { cancelled = true }
+  }, [selected, selectedDate, isExpired])
+
   // استمارة الحبوب الإضافي: one standing list per ward — no date scoping, since these aren't a
   // daily/reset artifact like the chart or the real pills form. `applyExtraPillsQueue` layers
   // in whatever create/edit/delete didn't reach the server yet (see the callbacks below), so a
@@ -2178,6 +2213,7 @@ function App() {
   // express it — a hidden last patient would leave the break on the one before it.
   const printingRows = (pillsData?.patients || []).filter((patient) => printScope === 'all' || pillSelection.has(patient.rowNumber)).map((patient) => patient.rowNumber)
   const lastPrintingRow = printingRows[printingRows.length - 1]
+  if (selected && selected.mode === 'renal') return <RenalDoseScreen header={appHeader} wardLabel={wardLabel} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={renalLoading} data={renalData} loadError={renalError} />
   if (selected && selected.mode === 'antibiotics') return <MeropenemScreen header={appHeader} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={meropenemLoading} drugs={meropenemData?.drugs || []} loadError={meropenemError} onPrint={() => window.print()} />
   if (selected && selected.mode === 'meropenem') return <MeropenemScreen header={appHeader} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={meropenemLoading} data={meropenemData} loadError={meropenemError} onPrint={() => window.print()} />
   if (selected && selected.mode === 'interactions') return <InteractionsScreen header={appHeader} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={interactionsLoading} data={interactionsData} loadError={interactionsError} onPrint={() => window.print()} />

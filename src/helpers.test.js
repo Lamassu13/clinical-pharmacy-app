@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { interactionsForChart, mergeKeyedSnapshots, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, EXTRA_PILL_SLOTS, isDraftStale, mergePreviousDayDoses, medicineMatches, pillSheetPlan, yesterdaySchedules, scheduleFor, applyTemplateColumns, catalogueMatches } from './helpers.js'
+import { interactionsForChart, mergeKeyedSnapshots, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, EXTRA_PILL_SLOTS, isDraftStale, mergePreviousDayDoses, medicineMatches, pillSheetPlan, yesterdaySchedules, scheduleFor, applyTemplateColumns, catalogueMatches, cockcroftGault, renalGuidance, SCR_UMOL_PER_MGDL } from './helpers.js'
 
 test('mergeKeyedSnapshots keeps a local edit and adopts an unrelated server change', () => {
   const base = { a: '1', b: '2' }
@@ -231,4 +231,17 @@ test('interactionsForChart lists duplicate therapy after moderate, and as the no
     ['Brufen 400mg Tab', 'moderate', 'Duplicate therapy: NSAIDs'],
     ['Risek 20mg cap', 'duplicate', 'Duplicate therapy: Proton pump inhibitors'],
   ])
+})
+
+test('cockcroftGault: textbook case, female factor, and null on missing input', () => {
+  assert.equal(Math.round(cockcroftGault({ age: 60, weightKg: 72, female: false, scrMgDl: 1 })), 80)
+  assert.equal(Math.round(cockcroftGault({ age: 60, weightKg: 72, female: true, scrMgDl: 1 })), 68)
+  assert.equal(Math.round(cockcroftGault({ age: 60, weightKg: 72, female: false, scrMgDl: 176.8 / SCR_UMOL_PER_MGDL })), 40)
+  assert.equal(cockcroftGault({ age: 60, weightKg: 0, female: false, scrMgDl: 1 }), null)
+})
+
+test('renalGuidance picks the first step the CrCl meets, the lowest below all, and HD on dialysis', () => {
+  const rule = { steps: [[51, 'No change'], [26, '1 g q12h'], [10, '500 mg q12h'], [0, '500 mg q24h']], hd: 'after HD' }
+  assert.deepEqual([80, 51, 50.9, 26, 12, 3].map((crcl) => renalGuidance(rule, crcl, false)), ['No change', 'No change', '1 g q12h', '1 g q12h', '500 mg q12h', '500 mg q24h'])
+  assert.equal(renalGuidance(rule, 80, true), 'after HD')
 })
