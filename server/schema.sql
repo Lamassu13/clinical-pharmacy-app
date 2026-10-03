@@ -285,13 +285,13 @@ CREATE INDEX IF NOT EXISTS treatment_forms_title_idx ON treatment_forms (title);
 -- plain chart_id index still makes Postgres visit every blank row before discarding it.
 -- Partial indexes let it skip straight to the rows that matter.
 CREATE INDEX IF NOT EXISTS chart_patients_named_idx ON chart_patients (chart_id) WHERE patient_name <> '';
--- «كل التواريخ» patient search by «رقم الطبلة» prefix, across every date.
-CREATE INDEX IF NOT EXISTS chart_patients_patient_id_idx ON chart_patients (patient_id text_pattern_ops) WHERE patient_id <> '';
 CREATE INDEX IF NOT EXISTS chart_quantities_positive_idx ON chart_quantities (chart_id) WHERE quantity > 0;
 
 -- The patient ID printed under each name on the chart screen (digits only, '' when unknown).
 -- Screen-only: nothing that prints reads it.
 ALTER TABLE chart_patients ADD COLUMN IF NOT EXISTS patient_id TEXT NOT NULL DEFAULT '';
+-- «كل التواريخ» patient search by «رقم الطبلة» prefix, across every date.
+CREATE INDEX IF NOT EXISTS chart_patients_patient_id_idx ON chart_patients (patient_id text_pattern_ops) WHERE patient_id <> '';
 
 -- «قوالب الأدوية»: a pharmacist's own named sets of chart medicine columns, applied to any
 -- day's chart that has no doses yet. Personal (user_id), so deleting a user deletes theirs.
