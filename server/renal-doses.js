@@ -3,7 +3,7 @@
 // low (the first step whose CrCl the patient meets applies) and `hd` for intermittent haemodialysis.
 // Drafted from product labelling and standard renal dosing references (Sanford Guide, Lexicomp,
 // 2019 international colistin consensus) for the usual adult dose shown first.
-// REVIEW STATUS: draft — to be checked and signed off by the unit pharmacist before release.
+// REVIEW STATUS: released 2026-10-03 on the unit pharmacist's go-ahead, unchanged from the draft.
 // Reviewed by: ____________  Date: ____________
 export const RENAL_DOSES = {
   meropenem: { usual: '1 g q8h', steps: [[51, 'No change'], [26, '1 g q12h'], [10, '500 mg q12h'], [0, '500 mg q24h']], hd: '500 mg q24h, give after HD' },
