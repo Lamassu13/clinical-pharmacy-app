@@ -31,6 +31,20 @@ export default function MeropenemScreen({ header, wardLabel, today, onBack, sele
   const patients = showEnded ? all : all.filter((patient) => patient.status.kind === 'active')
   // Only the days some shown patient was on it — hidden patients leave no empty columns behind.
   const dates = [...new Set(patients.flatMap((patient) => Object.keys(patient.days)))].sort()
+  // Antibiotics: one block per patient (all their drugs together, the name cell spanning them),
+  // patients and their drugs in the order they started.
+  const started = (patient) => Object.keys(patient.days).sort()[0] || ''
+  const patientKey = (patient) => (patient.patientId ? `id:${patient.patientId}` : `name:${patient.name}`)
+  const blocks = new Map()
+  patients.forEach((patient) => {
+    const key = antibiotics ? patientKey(patient) : `${patientKey(patient)}|${blocks.size}`
+    if (!blocks.has(key)) blocks.set(key, [])
+    blocks.get(key).push(patient)
+  })
+  const rows = [...blocks.values()]
+    .map((block) => block.sort((a, b) => started(a).localeCompare(started(b)) || a.drug.localeCompare(b.drug)))
+    .sort((a, b) => (antibiotics ? started(a[0]).localeCompare(started(b[0])) || a[0].name.localeCompare(b[0].name, 'ar') : 0))
+    .flatMap((block) => block.map((patient, index) => ({ patient, span: index === 0 ? block.length : 0 })))
 
   return <main className="app-shell">
     {header}
@@ -68,9 +82,9 @@ export default function MeropenemScreen({ header, wardLabel, today, onBack, sele
                 <th scope="col">إسم المريض</th><th scope="col">رقم الطبلة</th>{antibiotics && <th scope="col">المضاد</th>}<th scope="col">الجرعة</th><th scope="col">الحالة</th>
                 {dates.map((iso) => <th scope="col" key={iso} className="meropenem-day">{dayMonth(iso)}</th>)}
               </tr></thead>
-              <tbody>{patients.map((patient) => <tr key={`${patient.drug || ''}|${patient.patientId}|${patient.name}`}>
-                <td>{patient.name}</td>
-                <td className="meropenem-id">{patient.patientId}</td>
+              <tbody>{rows.map(({ patient, span }) => <tr key={`${patient.drug || ''}|${patient.patientId}|${patient.name}`} className={antibiotics && span ? 'meropenem-patient-start' : undefined}>
+                {span > 0 && <td rowSpan={span}>{patient.name}</td>}
+                {span > 0 && <td rowSpan={span} className="meropenem-id">{patient.patientId}</td>}
                 {antibiotics && <td className="meropenem-dose" lang="en" dir="ltr">{patient.drug}</td>}
                 <td className="meropenem-dose" lang="en" dir="ltr">{patient.dose}</td>
                 <td className={`meropenem-status meropenem-status--${patient.status.kind}`}>{statusText(patient.status, antibiotics)}</td>
