@@ -825,15 +825,26 @@ button.topbar-user:hover { color: var(--primary); }
   z-index: 5;
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-  min-width: 180px;
-  padding: var(--space-2);
+  min-width: 232px;
+  padding: var(--space-1) var(--space-2);
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-md);
 }
-.ward-card-more-list .compact { width: 100%; }
+/* Two labelled groups of plain rows — daily forms, then clinical follow-up — split by a hairline. */
+.ward-menu-group { display: flex; flex-direction: column; padding: var(--space-2) 0; }
+.ward-menu-group + .ward-menu-group { border-top: 1px solid var(--border); }
+.ward-menu-label { margin: 0; padding: var(--space-1) var(--space-2) var(--space-1); color: var(--text-muted); font-size: var(--text-xs); font-weight: 700; }
+.ward-menu-item {
+  display: flex; align-items: center; gap: var(--space-3); width: 100%; min-height: 44px;
+  padding: 0 var(--space-2); border: 0; border-radius: var(--radius-sm); background: transparent;
+  color: var(--text); font: inherit; font-size: var(--text-sm); font-weight: 700; text-align: start; cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.ward-menu-item:hover { background: var(--green-50); color: var(--primary-hover); }
+.ward-menu-item:active { background: var(--green-100); }
+.ward-menu-icon { flex-shrink: 0; color: var(--primary-hover); }
 /* Raise the whole card while its fold is open, so the menu clears the positioned card after it. */
 .location-card:has(.ward-card-more[open]) { z-index: 6; }
 @media (max-width: 700px) {
