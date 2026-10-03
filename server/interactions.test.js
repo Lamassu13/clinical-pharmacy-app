@@ -11,7 +11,7 @@ test.after(async () => { server.close(); await pool.end() })
 test.beforeEach(async () => {
   await resetDatabase()
   await pool.query('TRUNCATE drug_interactions')
-  await pool.query("INSERT INTO drug_interactions (drug_a, drug_b, level) VALUES ('amikacin', 'furosemide', 'major'), ('acetylsalicylic acid', 'furosemide', 'moderate'), ('amikacin', 'warfarin', 'major')")
+  await pool.query("INSERT INTO drug_interactions (drug_a, drug_b, level) VALUES ('amikacin', 'furosemide', 'major'), ('acetylsalicylic acid', 'furosemide', 'moderate'), ('amikacin', 'warfarin', 'major'), ('acetylsalicylic acid', 'amikacin', 'minor')")
 })
 
 test('genericName strips strengths and forms and maps brands', () => {
@@ -35,7 +35,7 @@ test('GET /api/interactions answers with interacting pairs among the given medic
   assert.deepEqual(seen, [
     'Amikacin 500mg Vial|Lasix 20mg Amp|major', 'Amikacin 500mg Vial|Lasix 40mg Tab|major',
     'Aspirin 100mg Tab|Lasix 20mg Amp|moderate', 'Aspirin 100mg Tab|Lasix 40mg Tab|moderate',
-  ].sort()) // warfarin was not asked about, so its pair is absent
+  ].sort()) // warfarin was not asked about, so its pair is absent; aspirin + amikacin is minor, so left out
   assert.deepEqual(result.body.duplicates, [])
   assert.deepEqual((await client.get('/api/interactions?name=Aspirin')).body.pairs, [])
   // Two PPIs are a duplicate; one PPI in two strengths is not.

@@ -13,7 +13,8 @@ const MAX_NAMES = 120
 // «التداخلات الدوائية»: which of the given catalogue medicines interact with each other, from the
 // drug_interactions reference table (loaded by server/import-ddinter.js). Read-only — nothing
 // about the chart or its patients is stored. The client sends every medicine name on a ward's
-// chart once; the answer is each interacting pair of those names with its DDInter level, and
+// chart once; the answer is each interacting pair of those names with its DDInter level (major or
+// moderate — minor ones are left out as noise on the round), and
 // each duplicate-therapy pair (two drugs of one class, ../therapy-classes.js).
 router.get('/interactions', requireAuth, async (request, response) => {
   const raw = [].concat(request.query.name ?? [])
@@ -25,7 +26,7 @@ router.get('/interactions', requireAuth, async (request, response) => {
   })
   const generics = [...namesByGeneric.keys()]
   if (generics.length < 2) return response.json({ pairs: [], duplicates: [] })
-  const result = await query('SELECT drug_a, drug_b, level FROM drug_interactions WHERE drug_a = ANY($1::text[]) AND drug_b = ANY($1::text[])', [generics])
+  const result = await query("SELECT drug_a, drug_b, level FROM drug_interactions WHERE drug_a = ANY($1::text[]) AND drug_b = ANY($1::text[]) AND level <> 'minor'", [generics])
   const pairs = result.rows.flatMap((row) => namesByGeneric.get(row.drug_a).flatMap((a) => namesByGeneric.get(row.drug_b).map((b) => ({ a, b, level: row.level }))))
   response.json({ pairs, duplicates: duplicatePairs(names, genericName) })
 })
