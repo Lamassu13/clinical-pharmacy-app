@@ -1169,6 +1169,7 @@ function App() {
     else if (selected?.mode === 'pills') screen = `الحبوب — ${ward}`
     else if (selected?.mode === 'order') screen = `الطلبية — ${ward}`
     else if (selected?.mode === 'meropenem') screen = `متابعة الميروبينيم — ${ward}`
+    else if (selected?.mode === 'antibiotics') screen = `متابعة المضادات الحيوية — ${ward}`
     else if (selected?.mode === 'interactions') screen = `التداخلات الدوائية — ${ward}`
     else if (selected?.mode === 'extra-pills') screen = `استمارة الحبوب الإضافي — ${wardName}`
     else if (selected) screen = `الجارت — ${ward}`
@@ -1742,16 +1743,18 @@ function App() {
     return () => { cancelled = true }
   }, [selected, selectedDate, isExpired])
   useEffect(() => {
-    if (!selected || selected.mode !== 'meropenem') return undefined
+    // «متابعة المضادات الحيوية» is the same form for every followed antibiotic; it shares this state.
+    if (!selected || (selected.mode !== 'meropenem' && selected.mode !== 'antibiotics')) return undefined
     let cancelled = false
+    setMeropenemData(null)
     setMeropenemLoading(true)
     setMeropenemError(false)
     const params = new URLSearchParams({ floor: selected.floor || '', ward: selected.ward, date: selectedDate })
-    fetch(`${apiUrl}/meropenem?${params}`, { credentials: 'include' })
+    fetch(`${apiUrl}/${selected.mode}?${params}`, { credentials: 'include' })
       .then((response) => { isExpired(response); return response.ok ? response.json() : null })
       .then((result) => {
         if (cancelled) return
-        if (result) { setMeropenemData(result.form); setMeropenemError(false) }
+        if (result) { setMeropenemData(result.form || result); setMeropenemError(false) }
         else { setMeropenemData(null); setMeropenemError(true) }
         setMeropenemLoading(false)
       })
@@ -2175,6 +2178,7 @@ function App() {
   // express it — a hidden last patient would leave the break on the one before it.
   const printingRows = (pillsData?.patients || []).filter((patient) => printScope === 'all' || pillSelection.has(patient.rowNumber)).map((patient) => patient.rowNumber)
   const lastPrintingRow = printingRows[printingRows.length - 1]
+  if (selected && selected.mode === 'antibiotics') return <MeropenemScreen header={appHeader} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={meropenemLoading} drugs={meropenemData?.drugs || []} loadError={meropenemError} onPrint={() => window.print()} />
   if (selected && selected.mode === 'meropenem') return <MeropenemScreen header={appHeader} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={meropenemLoading} data={meropenemData} loadError={meropenemError} onPrint={() => window.print()} />
   if (selected && selected.mode === 'interactions') return <InteractionsScreen header={appHeader} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={interactionsLoading} data={interactionsData} loadError={interactionsError} onPrint={() => window.print()} />
   if (selected && selected.mode === 'order') return <OrderScreen header={appHeader} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={orderLoading} data={orderData} loadError={orderError} onPrint={() => window.print()} />

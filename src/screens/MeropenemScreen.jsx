@@ -6,17 +6,27 @@ import hospitalLogo from '../assets/hospital-logo.png'
 // and one column per day they were, holding the course day (D1, D2 …; «D4؟» marks a day the
 // chart skipped it but it carried on). Only patients still on it show until «إظهار المنتهين» is
 // on. Same frame as the requisition (OrderScreen).
+// With `drugs` (GET /api/antibiotics) it is «متابعة المضادات الحيوية»: every followed antibiotic,
+// Meropenem included, one row per patient per drug, a drug filter, and D7+/D14+ cells marked as
+// the usual stewardship review points.
+const REVIEW_DAY = 7
+const LONG_DAY = 14
 const dayMonth = (iso) => `${Number(iso.slice(8, 10))}/${Number(iso.slice(5, 7))}`
-const statusText = (status) => ({
+const statusText = (status, antibiotics) => ({
   active: 'مستمر',
-  stopped: 'أُوقف الميروبينيم',
+  stopped: antibiotics ? 'أُوقف العلاج' : 'أُوقف الميروبينيم',
   left: 'غادر الردهة',
   transferred: `نُقل إلى ${status.to || 'ردهة أخرى'}`,
 }[status.kind] || '')
 
-export default function MeropenemScreen({ header, wardLabel, today, onBack, selectedDate, onChangeDate, loading, data, loadError, onPrint }) {
+export default function MeropenemScreen({ header, wardLabel, today, onBack, selectedDate, onChangeDate, loading, data, loadError, onPrint, drugs }) {
   const [showEnded, setShowEnded] = useState(false)
-  const all = data?.patients || []
+  const [drugFilter, setDrugFilter] = useState('')
+  const antibiotics = Boolean(drugs)
+  const shownDrugs = (drugs || []).filter((drug) => !drugFilter || drug.key === drugFilter)
+  const all = antibiotics ? shownDrugs.flatMap((drug) => drug.patients.map((patient) => ({ ...patient, drug: drug.label }))) : data?.patients || []
+  const title = antibiotics ? 'Antibiotic follow up' : 'Meropenem follow up'
+  const drugName = antibiotics ? 'المضادات الحيوية' : 'الميروبينيم'
   const endedCount = all.filter((patient) => patient.status.kind !== 'active').length
   const patients = showEnded ? all : all.filter((patient) => patient.status.kind === 'active')
   // Only the days some shown patient was on it — hidden patients leave no empty columns behind.
@@ -28,8 +38,12 @@ export default function MeropenemScreen({ header, wardLabel, today, onBack, sele
     <section className="order-page meropenem-page">
       <div className="chart-toolbar order-toolbar">
         <button className="back-button" onClick={onBack}>→ العودة للردهات</button>
-        <div><p className="modal-kicker">استمارة متابعة الميروبينيم</p><h1 dir="ltr">Meropenem follow up : <bdi>{wardLabel}</bdi></h1></div>
+        <div><p className="modal-kicker">استمارة متابعة {drugName}</p><h1 dir="ltr">{title} : <bdi>{wardLabel}</bdi></h1></div>
         <div className="toolbar-actions">
+          {antibiotics && drugs.length > 1 && <label className="pills-date">المضاد <select value={drugFilter} onChange={(event) => setDrugFilter(event.target.value)}>
+            <option value="">الكل</option>
+            {drugs.map((drug) => <option key={drug.key} value={drug.key}>{drug.label}</option>)}
+          </select></label>}
           {endedCount > 0 && <button type="button" className="secondary-button compact" aria-pressed={showEnded} onClick={() => setShowEnded((on) => !on)}>{showEnded ? 'إخفاء المنتهين' : `إظهار المنتهين (${endedCount})`}</button>}
           <label className="pills-date">التاريخ <input type="date" value={selectedDate} onChange={(event) => onChangeDate(event.target.value)} /></label>
           <button className="primary-button compact" disabled={!patients.length} onClick={onPrint}>طباعة</button>
@@ -40,29 +54,31 @@ export default function MeropenemScreen({ header, wardLabel, today, onBack, sele
         <img className="hospital-logo" width="40" height="40" src={hospitalLogo} alt="" />
         <div>
           <strong>مستشفى بغداد التعليمي — وحدة الصيدلة السريرية</strong>
-          <span dir="ltr">Meropenem follow up : <bdi>{wardLabel}</bdi> — {today}</span>
+          <span dir="ltr">{title} : <bdi>{wardLabel}</bdi> — {today}</span>
         </div>
       </div>
 
       {loading ? <div className="empty-state"><span className="spinner" /><span>جارٍ تحميل الاستمارة…</span></div>
         : loadError ? <div className="empty-state"><strong>تعذّر تحميل الاستمارة</strong><span>حدّث الصفحة وحاول مجددًا.</span></div>
-        : !all.length ? <div className="empty-state"><strong>لا يوجد مرضى على الميروبينيم هذا الشهر</strong><span>تُملأ الاستمارة تلقائيًا من الجارت عند إضافة Meronem لأي مريض.</span></div>
-        : !patients.length ? <div className="empty-state"><strong>لا يوجد مريض على الميروبينيم حاليًا</strong><span>المرضى الذين انتهى علاجهم هذا الشهر: اضغط «إظهار المنتهين ({endedCount})».</span></div>
+        : !all.length ? <div className="empty-state"><strong>لا يوجد مرضى على {drugName} هذا الشهر</strong><span>تُملأ الاستمارة تلقائيًا من الجارت عند إضافة {antibiotics ? 'أحد المضادات المتابَعة' : 'Meronem'} لأي مريض.</span></div>
+        : !patients.length ? <div className="empty-state"><strong>لا يوجد مريض على {drugName} حاليًا</strong><span>المرضى الذين انتهى علاجهم هذا الشهر: اضغط «إظهار المنتهين ({endedCount})».</span></div>
         : <div className="order-table-scroll">
             <table className="pill-table meropenem-table">
               <thead><tr>
-                <th scope="col">إسم المريض</th><th scope="col">رقم الطبلة</th><th scope="col">الجرعة</th><th scope="col">الحالة</th>
+                <th scope="col">إسم المريض</th><th scope="col">رقم الطبلة</th>{antibiotics && <th scope="col">المضاد</th>}<th scope="col">الجرعة</th><th scope="col">الحالة</th>
                 {dates.map((iso) => <th scope="col" key={iso} className="meropenem-day">{dayMonth(iso)}</th>)}
               </tr></thead>
-              <tbody>{patients.map((patient) => <tr key={`${patient.patientId}|${patient.name}`}>
+              <tbody>{patients.map((patient) => <tr key={`${patient.drug || ''}|${patient.patientId}|${patient.name}`}>
                 <td>{patient.name}</td>
                 <td className="meropenem-id">{patient.patientId}</td>
+                {antibiotics && <td className="meropenem-dose" lang="en" dir="ltr">{patient.drug}</td>}
                 <td className="meropenem-dose" lang="en" dir="ltr">{patient.dose}</td>
-                <td className={`meropenem-status meropenem-status--${patient.status.kind}`}>{statusText(patient.status)}</td>
+                <td className={`meropenem-status meropenem-status--${patient.status.kind}`}>{statusText(patient.status, antibiotics)}</td>
                 {dates.map((iso) => {
                   const n = patient.days[iso]
                   const missed = patient.missed.includes(iso)
-                  return <td key={iso} className={`meropenem-day${missed ? ' meropenem-day--missed' : ''}`} title={missed ? 'غير مسجّل في الجارت هذا اليوم — تحقّق منه' : undefined}>{n ? `D${n}${missed ? '؟' : ''}` : ''}</td>
+                  const length = antibiotics && n >= LONG_DAY ? ' meropenem-day--long' : antibiotics && n >= REVIEW_DAY ? ' meropenem-day--review' : ''
+                  return <td key={iso} className={`meropenem-day${length}${missed ? ' meropenem-day--missed' : ''}`} title={missed ? 'غير مسجّل في الجارت هذا اليوم — تحقّق منه' : undefined}>{n ? `D${n}${missed ? '؟' : ''}` : ''}</td>
                 })}
               </tr>)}</tbody>
             </table>

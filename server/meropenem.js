@@ -2,6 +2,31 @@
 // the course / D-number rules can be tested without a database (see meropenem.test.js).
 
 export const MEROPENEM_SQL_PATTERN = '(meronem|meropenem)'
+
+// «متابعة المضادات الحيوية»: the restricted antibiotics/antifungals followed the same way as
+// Meropenem. pattern matches catalogue names (brands included, case-insensitive); perDay is the
+// usual number of doses a day, used only to print "1g × 2" instead of "500mg × 4". Add a line to
+// follow another drug.
+export const COURSE_DRUGS = [
+  { key: 'meropenem', label: 'Meropenem', pattern: 'meronem|meropenem', perDay: 3 },
+  { key: 'imipenem', label: 'Imipenem', pattern: 'imipenem|tienam', perDay: 4 },
+  { key: 'ertapenem', label: 'Ertapenem', pattern: 'ertapenem|invanz', perDay: 1 },
+  { key: 'piperacillin', label: 'Piperacillin/tazobactam', pattern: 'piperacillin|tazocin', perDay: 3 },
+  { key: 'ceftazidime', label: 'Ceftazidime', pattern: 'ceftazidime|fortum', perDay: 3 },
+  { key: 'cefepime', label: 'Cefepime', pattern: 'cefepime|maxipime', perDay: 2 },
+  { key: 'vancomycin', label: 'Vancomycin', pattern: 'vancomycin|vancocin', perDay: 2 },
+  { key: 'teicoplanin', label: 'Teicoplanin', pattern: 'teicoplanin|targocid', perDay: 1 },
+  { key: 'linezolid', label: 'Linezolid', pattern: 'linezolid|zyvox', perDay: 2 },
+  { key: 'colistin', label: 'Colistin', pattern: 'colistin|colomycin', perDay: 3 },
+  { key: 'tigecycline', label: 'Tigecycline', pattern: 'tigecycline|tygacil', perDay: 2 },
+  { key: 'amikacin', label: 'Amikacin', pattern: 'amikacin|amikin', perDay: 1 },
+  { key: 'levofloxacin', label: 'Levofloxacin', pattern: 'levofloxacin|tavanic', perDay: 1 },
+  { key: 'voriconazole', label: 'Voriconazole', pattern: 'voriconazole|vfend', perDay: 2 },
+  { key: 'amphotericin', label: 'Amphotericin B', pattern: 'amphotericin|ambisome|fungizone', perDay: 1 },
+  { key: 'caspofungin', label: 'Caspofungin', pattern: 'caspofungin|cancidas', perDay: 1 },
+]
+export const COURSE_SQL_PATTERN = COURSE_DRUGS.map((drug) => drug.pattern).join('|')
+export const courseDrugOf = (medicine) => COURSE_DRUGS.find((drug) => new RegExp(drug.pattern, 'i').test(medicine))
 // How far before the month's first day to look, so a course already running on the 1st keeps
 // its real D-number instead of restarting at D1.
 export const LOOKBACK_DAYS = 60
@@ -26,10 +51,11 @@ const formatMg = (mg) => (mg >= 1000 ? `${mg / 1000}g` : `${mg}mg`)
 
 // Meropenem is given three times a day, so a quantity that divides by 3 reads as a per-dose
 // amount: 1g vial × 6 → "2g × 3", 500mg × 3 → "500mg × 3". Anything else stays as vials × count.
-export const doseText = (medicine, quantity) => {
+// Other drugs pass their own doses-a-day.
+export const doseText = (medicine, quantity, perDay = 3) => {
   const mg = strengthMg(medicine)
   if (!mg) return `× ${quantity}`
-  return quantity % 3 === 0 ? `${formatMg(mg * quantity / 3)} × 3` : `${formatMg(mg)} × ${quantity}`
+  return quantity % perDay === 0 ? `${formatMg(mg * quantity / perDay)} × ${perDay}` : `${formatMg(mg)} × ${quantity}`
 }
 
 const wardKeyOf = (floor, ward) => `${floor ?? ''}|${ward}`
@@ -41,7 +67,7 @@ const wardLabelOf = (floor, ward) => (floor ? `الطابق ${floor} — ${ward}
 //           anywhere carrying an ID seen in `cells`.
 // charted:  [{ date, floor, ward }] — the days each ward has a chart with a named patient.
 // All over the lookback window. Returns this ward's rows for the month of `date`, up to `date`.
-export const buildMeropenemForm = ({ date, floor, ward, cells, presence, charted }) => {
+export const buildMeropenemForm = ({ date, floor, ward, cells, presence, charted, perDay = 3 }) => {
   const here = wardKeyOf(floor, ward)
   const chartedByWard = new Map()
   charted.forEach((row) => {
@@ -74,7 +100,7 @@ export const buildMeropenemForm = ({ date, floor, ward, cells, presence, charted
     if (nameKey(cell.name)) patient.name = nameKey(cell.name)
     if (cell.patientId) patient.patientId = cell.patientId
     if (!patient.doses.has(cell.date)) patient.doses.set(cell.date, [])
-    patient.doses.get(cell.date).push({ wardKey: wardKeyOf(cell.floor, cell.ward), text: doseText(cell.medicine, cell.quantity) })
+    patient.doses.get(cell.date).push({ wardKey: wardKeyOf(cell.floor, cell.ward), text: doseText(cell.medicine, cell.quantity, perDay) })
   })
   presence.forEach((row) => {
     const patient = patients.get(keyOf(row))

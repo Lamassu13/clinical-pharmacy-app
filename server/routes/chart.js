@@ -7,7 +7,7 @@ import {
   normalizeMedicineKey, medicineKeySql,
 } from '../validation.js'
 import { numberToArabicWords } from '../arabic-number.js'
-import { buildMeropenemForm, windowStart, MEROPENEM_SQL_PATTERN } from '../meropenem.js'
+import { buildMeropenemForm, windowStart, MEROPENEM_SQL_PATTERN, COURSE_DRUGS, COURSE_SQL_PATTERN, courseDrugOf } from '../meropenem.js'
 
 const router = express.Router()
 
@@ -401,14 +401,10 @@ router.get('/order', requireAuth, async (request, response) => {
   })
 })
 
-// «استمارة متابعة الميروبينيم»: every patient on Meronem this month on this ward (main and extra
-// charts), each day's course number, and whether they are still on it. Read-only and fully
-// derived — see ../meropenem.js. Meronem cells are read hospital-wide so a patient transferred in
-// keeps counting from the ward they came from.
-router.get('/meropenem', requireAuth, async (request, response) => {
-  const location = readLocation(request.query, request.session.user)
-  if (location.status) return response.status(location.status).json({ message: location.message })
-  const { floor, wardName, chartDate } = location
+// The saved-chart rows a course form is built from (see ../meropenem.js), for every medicine
+// matching `pattern`. Cells are read hospital-wide so a patient transferred in keeps counting
+// from the ward they came from.
+const loadCourseRows = async ({ floor, wardName, chartDate }, pattern) => {
   const from = windowStart(chartDate)
   const cellRows = await query(
     `SELECT dc.chart_date::text AS date, w.floor_number AS floor, w.name AS ward, cp.patient_name AS name, cp.patient_id,
@@ -423,12 +419,12 @@ router.get('/meropenem', requireAuth, async (request, response) => {
        AND cq.quantity > 0 AND COALESCE(m.name, cc.custom_name) ~* $3
        AND (btrim(cp.patient_name) <> '' OR cp.patient_id <> '')
      ORDER BY dc.chart_date, cp.row_number`,
-    [from, chartDate, MEROPENEM_SQL_PATTERN],
+    [from, chartDate, pattern],
   )
   const ids = [...new Set(cellRows.rows.map((row) => row.patient_id).filter(Boolean))]
   const [presenceRows, chartedRows] = await Promise.all([
     // Who is on a chart each day: everyone on this ward, plus anyone anywhere carrying an ID that
-    // had Meronem — "still here without it?" and "turned up on another ward?".
+    // had the drug — "still here without it?" and "turned up on another ward?".
     query(
       `SELECT dc.chart_date::text AS date, w.floor_number AS floor, w.name AS ward, cp.patient_name AS name, cp.patient_id
        FROM daily_charts dc
@@ -450,12 +446,33 @@ router.get('/meropenem', requireAuth, async (request, response) => {
     ),
   ])
   const toRow = (row) => ({ date: row.date, floor: row.floor, ward: row.ward, name: row.name, patientId: row.patient_id })
-  response.json({ form: buildMeropenemForm({
+  return {
     date: chartDate, floor, ward: wardName,
     cells: cellRows.rows.map((row) => ({ ...toRow(row), medicine: row.medicine, quantity: row.quantity })),
     presence: presenceRows.rows.map(toRow),
     charted: chartedRows.rows,
-  }) })
+  }
+}
+
+// «استمارة متابعة الميروبينيم»: every patient on Meronem this month on this ward (main and extra
+// charts), each day's course number, and whether they are still on it. Read-only and fully derived.
+router.get('/meropenem', requireAuth, async (request, response) => {
+  const location = readLocation(request.query, request.session.user)
+  if (location.status) return response.status(location.status).json({ message: location.message })
+  response.json({ form: buildMeropenemForm(await loadCourseRows(location, MEROPENEM_SQL_PATTERN)) })
+})
+
+// «متابعة المضادات الحيوية»: the same form for every drug in COURSE_DRUGS (Meropenem included),
+// one course per patient per drug. Read-only and fully derived.
+router.get('/antibiotics', requireAuth, async (request, response) => {
+  const location = readLocation(request.query, request.session.user)
+  if (location.status) return response.status(location.status).json({ message: location.message })
+  const rows = await loadCourseRows(location, COURSE_SQL_PATTERN)
+  const drugs = COURSE_DRUGS.map((drug) => {
+    const cells = rows.cells.filter((cell) => courseDrugOf(cell.medicine) === drug)
+    return cells.length ? { key: drug.key, label: drug.label, patients: buildMeropenemForm({ ...rows, cells, perDay: drug.perDay }).patients } : null
+  }).filter((drug) => drug?.patients.length)
+  response.json({ drugs })
 })
 
 // Patient search for one day: a pharmacist scans their floor's main and extra charts; a manager
