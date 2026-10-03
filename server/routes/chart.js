@@ -523,5 +523,43 @@ router.get('/patients/search', requireAuth, async (request, response) => {
   })) })
 })
 
+// Patient search across every saved date — managers only, from the floor list's «كل التواريخ».
+// One row per patient (by ID, else by name) with each ward stay's first and last charted date, so
+// an old patient is found without knowing the day. Read-only; most recently seen first.
+const HISTORY_LIMIT = 30
+router.get('/patients/history', requireAuth, async (request, response) => {
+  const user = request.session.user
+  if (user.role !== 'admin' && user.role !== 'supervisor') return response.status(403).json({ message: 'للمسؤولين فقط' })
+  const q = cleanText(request.query.q, 60).trim()
+  if (q.length < 2) return response.json({ patients: [] })
+  const byId = /^\d+$/.test(q)
+  const pattern = byId ? `${q}%` : `%${q.replace(/[\\%_]/g, '\\$&')}%`
+  const result = await query(
+    `SELECT CASE WHEN cp.patient_id <> '' THEN 'id:' || cp.patient_id ELSE 'name:' || btrim(cp.patient_name) END AS key,
+            (array_agg(cp.patient_name ORDER BY dc.chart_date DESC))[1] AS name, max(cp.patient_id) AS patient_id,
+            w.floor_number AS floor, w.name AS ward, dc.slot,
+            min(dc.chart_date)::text AS first, max(dc.chart_date)::text AS last, count(DISTINCT dc.chart_date)::int AS days
+     FROM chart_patients cp
+     JOIN daily_charts dc ON dc.id = cp.chart_id
+     JOIN wards w ON w.id = dc.ward_id
+     WHERE ${byId ? 'cp.patient_id LIKE $1' : "cp.patient_name ILIKE $1 AND btrim(cp.patient_name) <> ''"}
+     GROUP BY 1, w.floor_number, w.name, dc.slot`,
+    [pattern],
+  )
+  const patients = new Map()
+  result.rows.forEach((row) => {
+    const patient = patients.get(row.key) || { name: '', patientId: row.patient_id, first: row.first, last: '', days: 0, stays: [] }
+    if (row.last > patient.last) { patient.last = row.last; patient.name = row.name.trim() }
+    if (row.first < patient.first) patient.first = row.first
+    patient.days += row.days // a day on two wards counts twice — rare (a transfer day)
+    patient.stays.push({ floor: row.floor, ward: row.ward, slot: row.slot, first: row.first, last: row.last, days: row.days })
+    patients.set(row.key, patient)
+  })
+  response.json({ patients: [...patients.values()]
+    .map((patient) => ({ ...patient, stays: patient.stays.sort((a, b) => b.last.localeCompare(a.last)) }))
+    .sort((a, b) => b.last.localeCompare(a.last))
+    .slice(0, HISTORY_LIMIT) })
+})
+
 export { resolveChartId }
 export default router

@@ -476,6 +476,19 @@ button.topbar-user:hover { color: var(--primary); }
 .patient-search-meds--none { color: var(--text-muted); font-size: var(--text-xs); font-weight: 700; }
 .patient-search-med { padding: 3px 10px; border-radius: var(--radius-sm); background: var(--green-50); color: var(--primary-hover); font-size: var(--text-xs); font-weight: 700; }
 .patient-search-med b { font-variant-numeric: tabular-nums; }
+.patient-search-scope { margin-bottom: var(--space-3); }
+/* «كل التواريخ»: the card holds the stay buttons, so it is a container — flat, no lift. */
+.patient-search-history { cursor: default; }
+.patient-search-history:hover { transform: none; border-color: var(--border); box-shadow: var(--shadow-xs); }
+.patient-search-stays { display: flex; flex-direction: column; margin: 0; padding: var(--space-2) 0 0; list-style: none; border-top: 1px solid var(--border); }
+.patient-search-stay {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap;
+  width: 100%; min-height: 44px; padding: var(--space-1) var(--space-2); border: 0; border-radius: var(--radius-sm);
+  background: transparent; color: var(--primary-hover); font: inherit; font-size: var(--text-sm); font-weight: 700; text-align: start; cursor: pointer;
+  transition: background var(--dur-fast) var(--ease);
+}
+.patient-search-stay:hover { background: var(--green-50); }
+.patient-search-stay-dates { color: var(--text-muted); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
 /* An independent ward is a different kind of destination from a numbered floor — say so in
    words, not only with the darker glyph badge. */
 .card-kind {
