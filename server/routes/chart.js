@@ -7,7 +7,8 @@ import {
   normalizeMedicineKey, medicineKeySql,
 } from '../validation.js'
 import { numberToArabicWords } from '../arabic-number.js'
-import { buildMeropenemForm, windowStart, MEROPENEM_SQL_PATTERN, COURSE_DRUGS, COURSE_SQL_PATTERN, courseDrugOf } from '../meropenem.js'
+import { buildMeropenemForm, windowStart, MEROPENEM_SQL_PATTERN } from '../meropenem.js'
+import { antibioticOf } from '../ddd.js'
 
 const router = express.Router()
 
@@ -402,9 +403,9 @@ router.get('/order', requireAuth, async (request, response) => {
 })
 
 // The saved-chart rows a course form is built from (see ../meropenem.js), for every medicine
-// matching `pattern`. Cells are read hospital-wide so a patient transferred in keeps counting
+// matching `pattern` (a regex) or named in `names`. Cells are read hospital-wide so a patient transferred in keeps counting
 // from the ward they came from.
-const loadCourseRows = async ({ floor, wardName, chartDate }, pattern) => {
+const loadCourseRows = async ({ floor, wardName, chartDate }, { pattern, names }) => {
   const from = windowStart(chartDate)
   const cellRows = await query(
     `SELECT dc.chart_date::text AS date, w.floor_number AS floor, w.name AS ward, cp.patient_name AS name, cp.patient_id,
@@ -416,10 +417,10 @@ const loadCourseRows = async ({ floor, wardName, chartDate }, pattern) => {
      JOIN chart_columns cc ON cc.chart_id = dc.id AND cc.column_number = cq.column_number
      LEFT JOIN medicines m ON m.id = cc.medicine_id
      WHERE dc.chart_date BETWEEN $1::date AND $2::date
-       AND cq.quantity > 0 AND COALESCE(m.name, cc.custom_name) ~* $3
+       AND cq.quantity > 0 AND ${pattern ? 'COALESCE(m.name, cc.custom_name) ~* $3' : 'COALESCE(m.name, cc.custom_name) = ANY($3::text[])'}
        AND (btrim(cp.patient_name) <> '' OR cp.patient_id <> '')
      ORDER BY dc.chart_date, cp.row_number`,
-    [from, chartDate, pattern],
+    [from, chartDate, pattern || names],
   )
   const ids = [...new Set(cellRows.rows.map((row) => row.patient_id).filter(Boolean))]
   const [presenceRows, chartedRows] = await Promise.all([
@@ -459,19 +460,27 @@ const loadCourseRows = async ({ floor, wardName, chartDate }, pattern) => {
 router.get('/meropenem', requireAuth, async (request, response) => {
   const location = readLocation(request.query, request.session.user)
   if (location.status) return response.status(location.status).json({ message: location.message })
-  response.json({ form: buildMeropenemForm(await loadCourseRows(location, MEROPENEM_SQL_PATTERN)) })
+  response.json({ form: buildMeropenemForm(await loadCourseRows(location, { pattern: MEROPENEM_SQL_PATTERN })) })
 })
 
-// «متابعة المضادات الحيوية»: the same form for every drug in COURSE_DRUGS (Meropenem included),
-// one course per patient per drug. Read-only and fully derived.
+// «متابعة المضادات الحيوية»: the same form for every antibiotic and antifungal in ../ddd.js
+// (Meropenem included), matched by generic name so brands and misspellings count — one course per
+// patient per drug. Read-only and fully derived.
 router.get('/antibiotics', requireAuth, async (request, response) => {
   const location = readLocation(request.query, request.session.user)
   if (location.status) return response.status(location.status).json({ message: location.message })
-  const rows = await loadCourseRows(location, COURSE_SQL_PATTERN)
-  const drugs = COURSE_DRUGS.map((drug) => {
-    const cells = rows.cells.filter((cell) => courseDrugOf(cell.medicine) === drug)
-    return cells.length ? { key: drug.key, label: drug.label, patients: buildMeropenemForm({ ...rows, cells, perDay: drug.perDay }).patients } : null
-  }).filter((drug) => drug?.patients.length)
+  const names = (await query('SELECT name FROM medicines')).rows.map((row) => row.name).filter(antibioticOf)
+  const rows = await loadCourseRows(location, { names })
+  const byDrug = new Map()
+  rows.cells.forEach((cell) => {
+    const drug = antibioticOf(cell.medicine)
+    if (!byDrug.has(drug.key)) byDrug.set(drug.key, { ...drug, cells: [] })
+    byDrug.get(drug.key).cells.push(cell)
+  })
+  const drugs = [...byDrug.values()]
+    .map((drug) => ({ key: drug.key, label: drug.label, patients: buildMeropenemForm({ ...rows, cells: drug.cells, perDay: drug.perDay }).patients }))
+    .filter((drug) => drug.patients.length)
+    .sort((a, b) => a.label.localeCompare(b.label))
   response.json({ drugs })
 })
 

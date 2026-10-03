@@ -131,10 +131,11 @@ test('GET /api/meropenem: builds the form from the ward\'s saved charts, and ref
   assert.equal((await outsider.get(`/api/meropenem?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=2026-09-26`)).status, 403)
 })
 
-test('GET /api/antibiotics: one course per patient per followed drug, Meropenem included', async () => {
+test('GET /api/antibiotics: one course per patient per antibiotic — any antibiotic, by generic name — Meropenem included', async () => {
   const seeder = await createUser({ role: 'admin' })
   const medicineId = (await pool.query("INSERT INTO medicines (name) VALUES ('Meronem 1000gm Vial') RETURNING id")).rows[0].id
   const vancoId = (await pool.query("INSERT INTO medicines (name) VALUES ('Vancomycin 500mg Vial') RETURNING id")).rows[0].id
+  const ceftriaxoneId = (await pool.query("INSERT INTO medicines (name) VALUES ('Ceftrixone 1g inj') RETURNING id")).rows[0].id // catalogue misspelling
   const wardId = (await pool.query('INSERT INTO wards (floor_number, name, is_special) VALUES ($1, $2, false) RETURNING id', [FLOOR, WARD])).rows[0].id
   const patients = [{ row: 1, name: 'علي', id: '123' }]
   for (const date of ['2026-09-25', '2026-09-26']) {
@@ -142,12 +143,15 @@ test('GET /api/antibiotics: one course per patient per followed drug, Meropenem 
     const chartId = (await pool.query('SELECT id FROM daily_charts WHERE chart_date = $1', [date])).rows[0].id
     await pool.query('INSERT INTO chart_columns (chart_id, column_number, medicine_id) VALUES ($1, 2, $2)', [chartId, vancoId])
     if (date === '2026-09-26') await pool.query('INSERT INTO chart_quantities (chart_id, row_number, column_number, quantity) VALUES ($1, 1, 2, 4)', [chartId])
+    await pool.query('INSERT INTO chart_columns (chart_id, column_number, medicine_id) VALUES ($1, 3, $2)', [chartId, ceftriaxoneId])
+    await pool.query('INSERT INTO chart_quantities (chart_id, row_number, column_number, quantity) VALUES ($1, 1, 3, 2)', [chartId])
   }
 
   const client = await loginAs({ role: 'user', floor: FLOOR })
   const res = await client.get(`/api/antibiotics?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=2026-09-26`)
   assert.equal(res.status, 200)
   assert.deepEqual(res.body.drugs.map((drug) => [drug.label, drug.patients[0].dose, drug.patients[0].days]), [
+    ['Ceftriaxone', '2g × 1', { '2026-09-25': 1, '2026-09-26': 2 }],
     ['Meropenem', '1g × 3', { '2026-09-25': 1, '2026-09-26': 2 }],
     ['Vancomycin', '1g × 2', { '2026-09-26': 1 }],
   ])

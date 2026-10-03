@@ -3,30 +3,6 @@
 
 export const MEROPENEM_SQL_PATTERN = '(meronem|meropenem)'
 
-// «متابعة المضادات الحيوية»: the restricted antibiotics/antifungals followed the same way as
-// Meropenem. pattern matches catalogue names (brands included, case-insensitive); perDay is the
-// usual number of doses a day, used only to print "1g × 2" instead of "500mg × 4". Add a line to
-// follow another drug.
-export const COURSE_DRUGS = [
-  { key: 'meropenem', label: 'Meropenem', pattern: 'meronem|meropenem', perDay: 3 },
-  { key: 'imipenem', label: 'Imipenem', pattern: 'imipenem|tienam', perDay: 4 },
-  { key: 'ertapenem', label: 'Ertapenem', pattern: 'ertapenem|invanz', perDay: 1 },
-  { key: 'piperacillin', label: 'Piperacillin/tazobactam', pattern: 'piperacillin|tazocin', perDay: 3 },
-  { key: 'ceftazidime', label: 'Ceftazidime', pattern: 'ceftazidime|fortum', perDay: 3 },
-  { key: 'cefepime', label: 'Cefepime', pattern: 'cefepime|maxipime', perDay: 2 },
-  { key: 'vancomycin', label: 'Vancomycin', pattern: 'vancomycin|vancocin', perDay: 2 },
-  { key: 'teicoplanin', label: 'Teicoplanin', pattern: 'teicoplanin|targocid', perDay: 1 },
-  { key: 'linezolid', label: 'Linezolid', pattern: 'linezolid|zyvox', perDay: 2 },
-  { key: 'colistin', label: 'Colistin', pattern: 'colistin|colomycin', perDay: 3 },
-  { key: 'tigecycline', label: 'Tigecycline', pattern: 'tigecycline|tygacil', perDay: 2 },
-  { key: 'amikacin', label: 'Amikacin', pattern: 'amikacin|amikin', perDay: 1 },
-  { key: 'levofloxacin', label: 'Levofloxacin', pattern: 'levofloxacin|tavanic', perDay: 1 },
-  { key: 'voriconazole', label: 'Voriconazole', pattern: 'voriconazole|vfend', perDay: 2 },
-  { key: 'amphotericin', label: 'Amphotericin B', pattern: 'amphotericin|ambisome|fungizone', perDay: 1 },
-  { key: 'caspofungin', label: 'Caspofungin', pattern: 'caspofungin|cancidas', perDay: 1 },
-]
-export const COURSE_SQL_PATTERN = COURSE_DRUGS.map((drug) => drug.pattern).join('|')
-export const courseDrugOf = (medicine) => COURSE_DRUGS.find((drug) => new RegExp(drug.pattern, 'i').test(medicine))
 // How far before the month's first day to look, so a course already running on the 1st keeps
 // its real D-number instead of restarting at D1.
 export const LOOKBACK_DAYS = 60
@@ -51,11 +27,11 @@ const formatMg = (mg) => (mg >= 1000 ? `${mg / 1000}g` : `${mg}mg`)
 
 // Meropenem is given three times a day, so a quantity that divides by 3 reads as a per-dose
 // amount: 1g vial × 6 → "2g × 3", 500mg × 3 → "500mg × 3". Anything else stays as vials × count.
-// Other drugs pass their own doses-a-day.
+// Other drugs pass their own doses-a-day (../ddd.js); without one it stays as vials × count.
 export const doseText = (medicine, quantity, perDay = 3) => {
   const mg = strengthMg(medicine)
   if (!mg) return `× ${quantity}`
-  return quantity % perDay === 0 ? `${formatMg(mg * quantity / perDay)} × ${perDay}` : `${formatMg(mg)} × ${quantity}`
+  return perDay && quantity % perDay === 0 ? `${formatMg(mg * quantity / perDay)} × ${perDay}` : `${formatMg(mg)} × ${quantity}`
 }
 
 const wardKeyOf = (floor, ward) => `${floor ?? ''}|${ward}`
