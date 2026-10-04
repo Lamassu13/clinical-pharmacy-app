@@ -29,7 +29,7 @@ export default function TemplatesDialog({ open, templates, error, busy, canApply
           {templates.map((template) => <li key={template.id}>
             <span className="templates-item-text">
               <strong>{template.name}</strong>
-              <small><bdi dir="ltr">{template.medicines.slice(0, 4).join(' · ')}{template.medicines.length > 4 ? ' …' : ''}</bdi> ({template.medicines.length} دواء)</small>
+              <small><bdi dir="ltr">{template.medicines.filter(Boolean).slice(0, 4).join(' · ')}{template.medicines.filter(Boolean).length > 4 ? ' …' : ''}</bdi> ({template.medicines.filter(Boolean).length} دواء)</small>
             </span>
             <span className="templates-item-actions">
               <button type="button" className="primary-button compact" disabled={!canApply || busy} onClick={() => onApply(template)}>تطبيق</button>

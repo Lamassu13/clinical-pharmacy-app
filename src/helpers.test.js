@@ -155,10 +155,10 @@ test('yesterdaySchedules matches a patient by ID first, then by name', () => {
 test('applyTemplateColumns lays a template onto a dose-free chart', () => {
   const catalogue = ['Amoxil 500mg Cap', 'IV Set', 'Meronem 1000gm Vial']
   const result = applyTemplateColumns(['meronem 1000gm vial', 'Gone Since Saving', 'IV Set', 'Amoxil 500mg Cap'], catalogue, ['علي', '', 'مريم'], 51)
-  assert.deepEqual(result.columns.slice(0, 4), ['Meronem 1000gm Vial', 'IV Set', 'Amoxil 500mg Cap', ''])
+  assert.deepEqual(result.columns.slice(0, 4), ['Meronem 1000gm Vial', '', 'IV Set', 'Amoxil 500mg Cap'])
   assert.equal(result.columns.length, 51)
   assert.equal(result.dropped, 1)
-  assert.deepEqual(result.quantities.map((row) => row.slice(0, 3)), [['', '1', ''], ['', '', ''], ['', '1', '']]) // giving set seeded for named rows only
+  assert.deepEqual(result.quantities.map((row) => row.slice(0, 3)), [['', '', '1'], ['', '', ''], ['', '', '1']]) // giving set seeded for named rows only
   assert.equal(applyTemplateColumns(['IV Set'], catalogue, [], 60).columns.length, 60) // keeps a wider chart's width
 })
 

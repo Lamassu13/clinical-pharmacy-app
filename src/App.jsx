@@ -2060,7 +2060,7 @@ function App() {
       && !(await askConfirm(`استبدال القالب «${name}» بأدوية هذا الجارت؟`, { confirmLabel: 'استبدال' }))) return false
     setTemplatesBusy(true)
     try {
-      const response = await fetch(`${apiUrl}/templates`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ name, medicines: columnMedicines.filter((medicine) => medicine.trim()) }) })
+      const response = await fetch(`${apiUrl}/templates`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ name, medicines: columnMedicines }) })
       if (isExpired(response)) return
       if (!response.ok) throw new Error()
       await loadTemplates()

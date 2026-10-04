@@ -363,22 +363,27 @@ export const VIAL_AMP = /\b(vial|vials|amp|amps|ampoule|ampoules)\b/
 export const SYRINGE_EXCLUDE = /flagyl|paracetamol|فلاجيل|باراسيتامول/
 
 // A saved «قالب أدوية» laid onto a chart that has no doses yet: its medicines become the columns,
-// in order, snapped to today's catalogue (any deleted since the save are dropped and counted),
-// padded to the chart's width. Quantities start blank except the per-patient supplies (UNIT_ONE:
+// in order, empty columns kept where they were saved, snapped to today's catalogue (any deleted
+// since the save become empty columns and are counted), padded to the chart's width. Quantities start blank except the per-patient supplies (UNIT_ONE:
 // giving set, cannula), which get «1» for every named patient — what picking that column by hand
 // seeds (setColumnMedicine).
 export const applyTemplateColumns = (templateMeds, catalogue, patientNames, columnCount = CHART_COLUMNS) => {
-  const snapped = templateMeds.map((med) => catalogue.find((name) => medicineKey(name) === medicineKey(med))).filter(Boolean)
-  const kept = [...new Set(snapped)].slice(0, MAX_CHART_COLUMNS)
-  const width = Math.min(MAX_CHART_COLUMNS, Math.max(CHART_COLUMNS, columnCount, kept.length))
-  const columns = [...kept, ...Array(width - kept.length).fill('')]
+  const seen = new Set()
+  const snapped = templateMeds.map((med) => {
+    const name = med.trim() ? catalogue.find((entry) => medicineKey(entry) === medicineKey(med)) : ''
+    if (!name || seen.has(name)) return ''
+    seen.add(name)
+    return name
+  }).slice(0, MAX_CHART_COLUMNS)
+  const width = Math.min(MAX_CHART_COLUMNS, Math.max(CHART_COLUMNS, columnCount, snapped.length))
+  const columns = [...snapped, ...Array(width - snapped.length).fill('')]
   const unitColumns = columns.map((name, index) => (name && !isSyringe(name) && UNIT_ONE.test(medicineKey(name)) ? index : -1)).filter((index) => index >= 0)
   const quantities = patientNames.map((name) => {
     const row = Array(width).fill('')
     if (name.trim()) unitColumns.forEach((index) => { row[index] = '1' })
     return row
   })
-  return { columns, quantities, dropped: templateMeds.length - snapped.length }
+  return { columns, quantities, dropped: templateMeds.filter((med) => med.trim()).length - seen.size }
 }
 
 // «التداخلات الدوائية»: for one chart (parseChartRows output), every named patient whose row holds
