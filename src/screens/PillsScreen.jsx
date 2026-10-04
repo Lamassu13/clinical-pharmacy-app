@@ -5,6 +5,8 @@ import MedicineSuggest from '../components/MedicineSuggest.jsx'
 import useCatalogueSuggest from '../components/useCatalogueSuggest.js'
 import { usageMethods, noteOptions, doseTimeGroups } from '../constants.js'
 import { pillSheetPlan, scheduleFor } from '../helpers.js'
+import PillsPrintTemplate from '../components/PillsPrintTemplate.jsx'
+import usePdfSheets from '../usePdfSheets.js'
 
 // Spare rows per patient for a medicine the chart doesn't carry — the ruled hand-write rows the
 // form always had — with a screen-only button to add more on demand. Editable on screen (kept as
@@ -21,8 +23,9 @@ export default function PillsScreen({
   header, wardLabel, roomLabel, today, editTime, onBack,
   selectedDate, onChangeDate, pillsLoading, pillsData, pillsSaveStatus, pillsLoadError,
   pillEntries, setPillEntries, pillRooms, setPillRooms, pillSelection, onTogglePatient, onSetPillSelection, pillsYesterday, isOnline, catalogue = [], englishOnly = false,
-  printScope, lastPrintingRow, onPrint, confirmModal, pillsClashNote, onDismissPillsClashNote,
+  confirmModal, pillsClashNote, onDismissPillsClashNote,
 }) {
+  const pdf = usePdfSheets()
   // How many extra rows a patient's form shows beyond the default two: the higher of (a) this
   // tab's own click count, ephemeral and reset on reload, and (b) however far a *saved* extra
   // row actually reaches — reading pillEntries directly rather than trusting local state alone
@@ -72,6 +75,22 @@ export default function PillsScreen({
     return next
   })
 
+  // What «طباعة» draws: one sheet per form page, in the order and with the rows the screen shows
+  // (pillSheetPlan decides the split; the spare rows ride on a patient's last sheet).
+  const buildSheets = (patients) => patients.flatMap((patient) => {
+    const patientMeds = pillsData.medicines.filter((med) => (pillsData.matrix[patient.rowNumber] || []).includes(med.key))
+    const { pages, extraCount } = pillSheetPlan(patientMeds, { filledExtraReach: filledExtraReach(patient.rowNumber), requestedExtras: extraRowCounts[patient.rowNumber] || 0 })
+    const rowOf = (key, name) => { const entry = pillEntries[key] || BLANK_EXTRA; return { name, doseTime: entry.doseTime, usageMethod: entry.usageMethod, note: entry.note } }
+    return pages.map((pageMeds, pageIndex) => ({
+      key: `${patient.rowNumber}-${pageIndex}`, patientName: patient.name, today, room: pillRooms[patient.rowNumber] || '', roomLabel, wardLabel, editTime,
+      rows: [
+        ...pageMeds.map((med) => rowOf(`${patient.rowNumber}:${med.key}`, pillEntries[`${patient.rowNumber}:${med.key}`]?.pillName || med.arabicName || med.name)),
+        ...(pageIndex === pages.length - 1 ? extraRowsFor(extraCount).map((extra) => rowOf(`${patient.rowNumber}:${extra.key}`, pillEntries[`${patient.rowNumber}:${extra.key}`]?.pillName || '')) : []),
+      ],
+    }))
+  })
+  const printForms = (patients) => pdf.run(buildSheets(patients), `استمارة الحبوب ${wardLabel} ${selectedDate}`)
+
   const selectedNames = pillsData
     ? pillsData.patients.filter((patient) => pillSelection.has(patient.rowNumber)).map((patient) => patient.name)
     : []
@@ -86,10 +105,12 @@ export default function PillsScreen({
         <div className="toolbar-actions">
           <label className="pills-date">التاريخ <input type="date" value={selectedDate} onChange={(event) => onChangeDate(event.target.value)} /></label>
           <span className={saveClass} role={saveErrored ? 'alert' : undefined} aria-live={saveErrored ? undefined : 'polite'}>{saveText}</span>
-          <button className="primary-button compact" disabled={!patientsOnForm.length} onClick={() => onPrint('all')}>طباعة الكل</button>
-          <button className="secondary-button compact" disabled={pillSelection.size === 0} onClick={() => onPrint('selected')}>طباعة المحدّدين ({pillSelection.size})</button>
+          <button className="primary-button compact" disabled={!patientsOnForm.length || pdf.busy} onClick={() => printForms(patientsOnForm)}>{pdf.busy ? 'جارٍ إنشاء PDF…' : 'طباعة الكل'}</button>
+          <button className="secondary-button compact" disabled={pillSelection.size === 0 || pdf.busy} onClick={() => printForms(patientsOnForm.filter((patient) => pillSelection.has(patient.rowNumber)))}>طباعة المحدّدين ({pillSelection.size})</button>
         </div>
       </div>
+
+      {pdf.error && <p className="form-error" role="alert">{pdf.error}</p>}
 
       {/* Same warning-tinted banner chart uses for a recovered offline draft (.chart-clash-note) —
           reused as-is rather than duplicated, since it's plain "review this" styling, not
@@ -114,7 +135,6 @@ export default function PillsScreen({
         : pillsData.patients.length === 0 ? <div className="empty-state"><strong>لا حبوب لعرضها</strong><span>لا يوجد مريض لديه علاج أقراص أو كبسولات (Tab / Cap) في جارت هذا اليوم.</span></div>
         : pillsData.patients.flatMap((patient) => {
           const unpicked = pillSelection.size > 0 && !pillSelection.has(patient.rowNumber)
-          const willPrint = printScope === 'all' || pillSelection.has(patient.rowNumber)
           const patientMeds = pillsData.medicines.filter((med) => (pillsData.matrix[patient.rowNumber] || []).includes(med.key))
           // Sheets of 7 rows, spare rows included — see pillSheetPlan. Every sheet carries the
           // same header; the spare rows and the signature ride on the last one.
@@ -127,7 +147,7 @@ export default function PillsScreen({
           return pages.map((pageMeds, pageIndex) => {
           const lastPage = pageIndex === pages.length - 1
           return <article
-            className={`pill-form${willPrint ? '' : ' not-printing'}${unpicked ? ' pill-form-unpicked' : ''}${patient.rowNumber === lastPrintingRow && lastPage ? ' print-last' : ''}`}
+            className={`pill-form${unpicked ? ' pill-form-unpicked' : ''}`}
             key={`${patient.rowNumber}-${pageIndex}`}>
             {suggest.target?.cardKey === `${patient.rowNumber}-${pageIndex}` && <MedicineSuggest {...suggest.listProps} />}
             <div className="pill-form-head">
@@ -205,6 +225,6 @@ export default function PillsScreen({
           </article>
         })
         })}
-    </section>{confirmModal}
+    </section>{pdf.sheets && <PillsPrintTemplate ref={pdf.ref} sheets={pdf.sheets} />}{confirmModal}
   </main>
 }

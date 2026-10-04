@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { flushSync } from 'react-dom'
 import hospitalLogo from '../assets/hospital-logo.png'
 import PillSelect from '../components/PillSelect.jsx'
 import MedicineSuggest from '../components/MedicineSuggest.jsx'
 import useCatalogueSuggest from '../components/useCatalogueSuggest.js'
 import { usageMethods, noteOptions, doseTimeGroups } from '../constants.js'
+import PillsPrintTemplate from '../components/PillsPrintTemplate.jsx'
+import usePdfSheets from '../usePdfSheets.js'
 
 // استمارة الحبوب الإضافي — the same .pill-form/.pill-table markup and print CSS as the real
 // pills form (PillsScreen.jsx), but with no chart behind it at all: the patient name and
@@ -12,7 +13,7 @@ import { usageMethods, noteOptions, doseTimeGroups } from '../constants.js'
 // paginated — 7 is this form's fixed size, not a per-page split of a longer chart-derived
 // list), and forms are explicit save/dirty like TreatmentFormRow rather than autosaved on
 // every keystroke — a deliberate simplification for a secondary, occasional-use tool.
-function ExtraPillFormCard({ form, catalogue, floorLabel, today, editTime, selected, onToggleSelect, willPrint, printLast, onSave, onRemove, busy }) {
+function ExtraPillFormCard({ form, catalogue, floorLabel, today, editTime, selected, onToggleSelect, onSave, onRemove, busy }) {
   const [patientName, setPatientName] = useState(form.patientName)
   const [roomNumber, setRoomNumber] = useState(form.roomNumber)
   const [entries, setEntries] = useState(form.entries)
@@ -30,7 +31,7 @@ function ExtraPillFormCard({ form, catalogue, floorLabel, today, editTime, selec
   })
   const save = () => onSave(form.id, { patientName: patientName.trim(), roomNumber: roomNumber.trim(), entries })
 
-  return <article className={`pill-form${willPrint ? '' : ' not-printing'}${printLast ? ' print-last' : ''}`}>
+  return <article className="pill-form">
     {suggest.target && <MedicineSuggest {...suggest.listProps} />}
     <div className="pill-form-head">
       <label className="pill-pick"><input type="checkbox" checked={selected} onChange={() => onToggleSelect(form.id)} /><span>تحديد للطباعة</span></label>
@@ -89,19 +90,13 @@ export default function ExtraPillsScreen({
   loading, loadError, forms, busy, actionError, onCreate, onSave, onRemove, confirmModal,
 }) {
   const [selection, setSelection] = useState(() => new Set())
-  const [printScope, setPrintScope] = useState('all')
+  const pdf = usePdfSheets()
   const toggleSelect = (id) => setSelection((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next })
-  // See startPillsPrint in App.jsx: window.print() doesn't block on iOS/iPadOS Safari, so the
-  // scope reset has to wait for the real afterprint event instead of running right after the
-  // call — otherwise the scope reverts to "all" before the iPad's print sheet captures the page.
-  const startPrint = (scope) => {
-    flushSync(() => setPrintScope(scope))
-    const resetScope = () => { setPrintScope('all'); window.removeEventListener('afterprint', resetScope) }
-    window.addEventListener('afterprint', resetScope)
-    window.print()
-  }
-  const printingIds = forms.filter((form) => printScope === 'all' || selection.has(form.id)).map((form) => form.id)
-  const lastPrintingId = printingIds[printingIds.length - 1]
+  // One sheet per saved form (always 7 rows). A form with unsaved edits prints as last saved.
+  const printForms = (list) => pdf.run(list.map((form) => ({
+    key: String(form.id), patientName: form.patientName, today, room: form.roomNumber, roomLabel: 'رقم الغرفة', wardLabel: floorLabel, editTime,
+    rows: form.entries.map((entry) => ({ name: entry.medicineName, doseTime: entry.doseTime, usageMethod: entry.usageMethod, note: entry.note })),
+  })), `استمارة الحبوب الإضافي ${floorLabel} ${today}`)
 
   return <main className="app-shell">
     {header}
@@ -111,12 +106,12 @@ export default function ExtraPillsScreen({
         <div><p className="modal-kicker">استمارة الحبوب الإضافي</p><h1>{floorLabel}</h1></div>
         <div className="toolbar-actions">
           <button className="primary-button compact" onClick={onCreate} disabled={busy}>+ إنشاء استمارة جديدة</button>
-          <button className="secondary-button compact" onClick={() => startPrint('all')} disabled={forms.length === 0}>طباعة الكل</button>
-          <button className="secondary-button compact" disabled={selection.size === 0} onClick={() => startPrint('selected')}>طباعة المحدّدين ({selection.size})</button>
+          <button className="secondary-button compact" onClick={() => printForms(forms)} disabled={forms.length === 0 || pdf.busy}>{pdf.busy ? 'جارٍ إنشاء PDF…' : 'طباعة الكل'}</button>
+          <button className="secondary-button compact" disabled={selection.size === 0 || pdf.busy} onClick={() => printForms(forms.filter((form) => selection.has(form.id)))}>طباعة المحدّدين ({selection.size})</button>
         </div>
       </div>
 
-      {actionError && <p className="form-error" role="alert">{actionError}</p>}
+      {(actionError || pdf.error) && <p className="form-error" role="alert">{actionError || pdf.error}</p>}
 
       {loading ? <div className="empty-state"><span className="spinner" /><span>جارٍ تحميل الاستمارات…</span></div>
         : loadError ? <div className="empty-state"><strong>تعذّر تحميل الاستمارات</strong></div>
@@ -131,9 +126,8 @@ export default function ExtraPillsScreen({
             key={`${form.id}:${form.patientName}:${form.roomNumber}:${JSON.stringify(form.entries)}`}
             form={form} catalogue={catalogue} floorLabel={floorLabel} today={today} editTime={editTime}
             selected={selection.has(form.id)} onToggleSelect={toggleSelect}
-            willPrint={printScope === 'all' || selection.has(form.id)} printLast={form.id === lastPrintingId}
             onSave={onSave} onRemove={onRemove} busy={busy}
           />)}
-    </section>{confirmModal}
+    </section>{pdf.sheets && <PillsPrintTemplate ref={pdf.ref} sheets={pdf.sheets} />}{confirmModal}
   </main>
 }

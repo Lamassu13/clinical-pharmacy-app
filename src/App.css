@@ -1616,6 +1616,12 @@ button.topbar-user:hover { color: var(--primary); }
   background: var(--surface);
   border-left: 2px solid var(--border-strong);
 }
+/* The room field makes the name column wider on screen only; print keeps its own 28mm column. */
+@media screen {
+  .chart-head-corner, .chart-foot-corner, .chart-names { flex-basis: 258px; }
+  .chart-names .chart-table, .chart-table .patient-cell { width: 258px; min-width: 258px; max-width: 258px; }
+}
+@media print { .patient-room { display: none !important; } }
 /* Explicit row-delete, shown only on the active named row. Replaces the old clear-the-name-
    and-blur gesture, which deleted a patient's whole dose line with no confirm and no undo.
    Sits at the inline-start (visually left) edge, away from where the RTL name text begins. */
@@ -1651,7 +1657,9 @@ button.topbar-user:hover { color: var(--primary); }
 .patient-fields { display: contents; }
 @media screen {
   .patient-fields { display: flex; }
-  .patient-fields input:first-child { flex: 1 1 auto; min-width: 0; }
+  .patient-fields input.patient-name { flex: 1 1 auto; min-width: 0; }
+  .patient-cell input.patient-room { flex: 0 0 48px; width: 48px; padding: 5px 4px; border-inline-end: 1px dashed var(--chart-grid); color: var(--text-muted); text-align: center; }
+  .patient-cell input.patient-room::placeholder { color: var(--text-muted); font-size: 10px; opacity: .5; }
   .patient-cell input.patient-id { flex: 0 0 76px; width: 76px; padding: 5px 6px; border-inline-start: 1px dashed var(--chart-grid); color: var(--text-muted); text-align: left; }
   .patient-cell input.patient-id::placeholder { color: var(--text-muted); opacity: .5; }
   .patient-cell .row-delete { inset-inline-end: 80px; }
@@ -2227,3 +2235,29 @@ button.topbar-user:hover { color: var(--primary); }
   .reports-page .table-frame { overflow: visible; border: 0; }
   .reports-page .card-status { padding: 0; background: none; color: #000; }
 }
+
+/* Pills-form export (usePdfSheets + PillsPrintTemplate): one fixed A4 portrait sheet per form
+   page, off-screen and not gated behind @media print — html2canvas rasterizes it regardless.
+   Margins and the bordered form follow the old print rules (26.5mm top, 12mm sides, 16mm
+   bottom, 253mm form) so the paper keeps its layout. */
+.ppt-root { position: fixed; top: 0; left: -99999px; z-index: -1; direction: rtl; color: #000; }
+.ppt-sheet { width: 210mm; height: 297mm; box-sizing: border-box; padding: 26.5mm 12mm 16mm; background: #fff; }
+.ppt-form { height: 100%; box-sizing: border-box; border: 1px solid #000; display: flex; flex-direction: column; }
+.ppt-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border-bottom: 2px solid #000; }
+.ppt-patient strong { display: block; font-size: 18px; }
+.ppt-patient span, .ppt-title span { display: block; font-size: 12px; }
+.ppt-title strong { display: block; font-size: 14px; }
+.ppt-room { display: flex; align-items: baseline; gap: 6px; font-size: 14px; font-weight: 700; white-space: nowrap; }
+.ppt-room-value { display: inline-block; min-width: 28mm; min-height: 1.3em; border-bottom: 1px solid #000; text-align: center; }
+.ppt-brand { display: flex; align-items: center; gap: 12px; }
+.ppt-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.ppt-table th, .ppt-table td { border: 1px solid #000; padding: 6px 8px; font-size: 12px; text-align: start; vertical-align: middle; overflow-wrap: anywhere; line-height: 1.5; }
+.ppt-table th { font-weight: 700; }
+.ppt-table th:nth-child(1) { width: 24mm; }
+.ppt-table th:nth-child(2) { width: 50mm; }
+.ppt-table th:nth-child(3) { width: 30mm; }
+.ppt-table th:nth-child(4) { width: 42mm; }
+.ppt-table td { height: 26mm; }
+.ppt-table td.ppt-name { font-weight: 700; }
+.ppt-foot { margin-top: auto; display: flex; justify-content: space-between; gap: 24px; padding: 0 12px 10px; font-size: 13px; }
+.ppt-sign { flex: 1; padding-bottom: 20px; border-bottom: 1px solid #000; font-weight: 700; }

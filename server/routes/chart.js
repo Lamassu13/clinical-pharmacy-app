@@ -114,17 +114,43 @@ router.get('/chart', requireAuth, async (request, response) => {
   const chartResult = await query('SELECT id FROM daily_charts WHERE ward_id = $1 AND chart_date = $2 AND slot = $3', [wardId, chartDate, slot])
   if (!chartResult.rows[0]) return response.json({ chart: null, lock })
   const chartId = chartResult.rows[0].id
-  const [patients, columns, quantities, chartRow] = await Promise.all([
+  const [patients, columns, quantities, chartRow, roomRows] = await Promise.all([
     query('SELECT row_number, patient_name, patient_id FROM chart_patients WHERE chart_id = $1 ORDER BY row_number', [chartId]),
     query('SELECT cc.column_number, cc.medicine_id, COALESCE(m.name, cc.custom_name) AS medicine_name FROM chart_columns cc LEFT JOIN medicines m ON m.id = cc.medicine_id WHERE cc.chart_id = $1 ORDER BY cc.column_number', [chartId]),
     query('SELECT row_number, column_number, quantity FROM chart_quantities WHERE chart_id = $1', [chartId]),
     query('SELECT dc.version, dc.completed_at, dc.completed_by, u.full_name AS completed_by_name FROM daily_charts dc LEFT JOIN users u ON u.id = dc.completed_by WHERE dc.id = $1', [chartId]),
+    query("SELECT patient_row_number, room_number FROM pill_patient_meta WHERE chart_id = $1 AND room_number <> ''", [chartId]),
   ])
   response.json({ chart: {
     patients: patients.rows, columns: columns.rows, quantities: quantities.rows,
+    rooms: Object.fromEntries(roomRows.rows.map((row) => [row.patient_row_number, row.room_number])),
     version: chartRow.rows[0].version,
     completedAt: chartRow.rows[0].completed_at, completedBy: chartRow.rows[0].completed_by, completedByName: chartRow.rows[0].completed_by_name,
   }, lock })
+})
+
+// «رقم الغرفة» typed on the chart: the same per-row room the pills form uses (pill_patient_meta),
+// saved on its own, one row at a time, so it never goes through the versioned chart save. An
+// empty room clears the row. 404 when this day has no saved chart yet — the client retries once
+// the chart's first save has created it.
+router.put('/chart/room', requireAuth, async (request, response) => {
+  const location = readLocation(request.body, request.session.user)
+  if (location.status) return response.status(location.status).json({ message: location.message })
+  const { floor, wardName, chartDate, slot } = location
+  const rowNumber = clampInt(request.body.rowNumber, 1, MAX_PATIENT_ROWS)
+  if (rowNumber === null) return response.status(400).json({ message: 'الصف مطلوب' })
+  const room = cleanText(request.body.room, 40).trim()
+  const chartId = await resolveChartId(floor, wardName, chartDate, slot)
+  if (!chartId) return response.status(404).json({ message: 'لا يوجد جارت لهذا اليوم' })
+  if (room) {
+    await query(
+      'INSERT INTO pill_patient_meta (chart_id, patient_row_number, room_number) VALUES ($1, $2, $3) ON CONFLICT (chart_id, patient_row_number) DO UPDATE SET room_number = EXCLUDED.room_number',
+      [chartId, rowNumber, room],
+    )
+  } else {
+    await query('DELETE FROM pill_patient_meta WHERE chart_id = $1 AND patient_row_number = $2', [chartId, rowNumber])
+  }
+  response.json({ ok: true })
 })
 
 // Acquire (or re-affirm) the edit lock. Granted when the chart is free, when the current

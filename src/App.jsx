@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { flushSync } from 'react-dom'
 import { roleLabels, PATIENT_ROWS, CHART_COLUMNS, MAX_CHART_COLUMNS, apiUrl, floors, specialWards } from './constants.js'
 import { interactionsForChart, applyTemplateColumns,yesterdaySchedules, mergePreviousDayDoses, mergeChartSnapshots, diffMergeOutcome, addOfflineRows, mergeKeyedSnapshots, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, blankExtraPillForm, parseChartRows, toEnglishDigits, medicineKey, patientNameKey, nearestMedicine, UNIT_ONE, isSyringe, VIAL_AMP, SYRINGE_EXCLUDE, isoDate, isDraftStale, locationBody, pillEntryList } from './helpers.js'
 import ConfirmDialog from './components/ConfirmDialog.jsx'
@@ -207,6 +206,10 @@ function App() {
   const [pillsData, setPillsData] = useState(null)
   const [pillEntries, setPillEntries] = useState({})
   const [pillRooms, setPillRooms] = useState({})
+  // «رقم الغرفة» typed on the chart: { rowNumber: room }, the same rooms as the pills form (see
+  // PUT /api/chart/room). Screen only — never part of the chart save, the print template or the PDF.
+  const [chartRooms, setChartRooms] = useState({})
+  const chartRoomsSyncedRef = useRef({})
   const [pillsLoading, setPillsLoading] = useState(false)
   const [loadedPillsKey, setLoadedPillsKey] = useState(null)
   // saved | pending (edited, debounce running) | saving (PUT in flight) | error — mirrors
@@ -245,28 +248,11 @@ function App() {
   // Which patients go on paper. Every form stays on screen either way — the unpicked ones
   // are only dropped from the printed output, so ticking a box never hides a patient's data.
   const [pillSelection, setPillSelection] = useState(() => new Set())
-  const [printScope, setPrintScope] = useState('all')
   const togglePillPatient = useCallback((rowNumber) => setPillSelection((current) => {
     const next = new Set(current)
     if (next.has(rowNumber)) next.delete(rowNumber); else next.add(rowNumber)
     return next
   }), [])
-  // window.print() reads the DOM synchronously, so the scope has to be committed before it
-  // runs — a plain setState would still be queued and the browser would snapshot the previous
-  // selection. flushSync commits it first, which is exactly what it is for.
-  const startPillsPrint = useCallback((scope) => {
-    flushSync(() => setPrintScope(scope))
-    // Not "call print() then reset the scope on the next line": window.print() blocks until
-    // the dialog closes on desktop, but on iOS/iPadOS Safari it hands off to the system print
-    // sheet and returns immediately — the very quirk ChartPrintTemplate's comment describes
-    // fighting over several rounds elsewhere in this app. Resetting synchronously after the
-    // call reverted the scope to "all" before the iPad's sheet ever captured the page, so every
-    // form printed regardless of selection. afterprint fires when the sheet actually closes on
-    // every browser (including where print() already blocks, where it's effectively instant).
-    const resetScope = () => { setPrintScope('all'); window.removeEventListener('afterprint', resetScope) }
-    window.addEventListener('afterprint', resetScope)
-    window.print()
-  }, [])
   const [adminMedicines, setAdminMedicines] = useState([])
   // 'loading' until the catalogue first arrives, 'error' if that first load failed — the
   // medicines screen shows its own loading / retry state instead of an empty table and «0».
@@ -958,6 +944,25 @@ function App() {
   // Remove a patient row and pull every following row up one, keeping the grid at PATIENT_ROWS.
   // Triggered only by the explicit ✕ on the active row, gated by a confirm, and reversible for
   // 10s via the undo toast (grid only — see the ponytail note on the server call below).
+  // Rooms that differ from what the server has are sent one row at a time. A day with no saved
+  // chart yet answers 404, so they stay pending and go out again after the chart's first save.
+  const chartRoomsRef = useRef({})
+  useEffect(() => { chartRoomsRef.current = chartRooms })
+  const syncChartRooms = useCallback(() => {
+    if (!selected || selected.mode !== 'chart') return
+    const synced = chartRoomsSyncedRef.current
+    const latest = chartRoomsRef.current
+    const rows = new Set([...Object.keys(synced), ...Object.keys(latest)])
+    rows.forEach((row) => {
+      const room = (latest[row] || '').trim()
+      if (room === (synced[row] || '')) return
+      fetch(`${apiUrl}/chart/room`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ floor: selected.floor, ward: selected.ward, date: selectedDate, slot: selected.slot || 'main', rowNumber: Number(row), room }) })
+        .then((response) => { if (response.ok) chartRoomsSyncedRef.current = { ...chartRoomsSyncedRef.current, [row]: room } })
+        .catch(() => undefined)
+    })
+  }, [selected, selectedDate])
+  useEffect(() => { if (lastChartSaveAt) syncChartRooms() }, [lastChartSaveAt, syncChartRooms])
+  const setChartRoom = useCallback((rowIndex, value) => setChartRooms((current) => ({ ...current, [rowIndex + 1]: value.slice(0, 40) })), [])
   const collapseRow = useCallback(async (rowIndex) => {
     const label = patientNames[rowIndex]?.trim() || `مريض ${rowIndex + 1}`
     if (!(await askConfirm(`حذف صف «${label}»؟ ستُحذف كل جرعاته وستنتقل الصفوف التالية صفًّا واحدًا للأعلى.`, { danger: true }))) return
@@ -971,7 +976,7 @@ function App() {
     offerUndo(`حُذف صف «${label}»`, () => { noteChartEdit(); setPatientNames(prevNames); setPatientIds(prevIds); setQuantities(prevQuantities) })
     // The ✕ that was just clicked has unmounted; without this focus falls to <body> right
     // after a destructive confirm. Land on the name of whoever moved up into this row.
-    requestAnimationFrame(() => chartGridRef.current?.querySelector(`.chart-names tr[data-row="${rowIndex}"] input`)?.focus())
+    requestAnimationFrame(() => chartGridRef.current?.querySelector(`.chart-names tr[data-row="${rowIndex}"] input.patient-name`)?.focus())
     // The pill form's dose times and room numbers are keyed by row number and live only on
     // the server, so they have to be pulled up by one as well. Left behind, they reattach to
     // whoever moves into the row — the next patient inherits the deleted one's room number.
@@ -980,6 +985,10 @@ function App() {
     // re-typed there if it moved. Deferring this call to the undo window would avoid that, at
     // the cost of a navigation-vs-timer race on a shared iPad.
     if (!selected || selected.mode !== 'chart') return
+    // The server shifts the rooms up with the rows (collapse-row below); mirror it here.
+    const shiftRooms = (rooms) => Object.fromEntries(Object.entries(rooms).filter(([row]) => Number(row) !== rowIndex + 1).map(([row, room]) => [Number(row) > rowIndex + 1 ? Number(row) - 1 : row, room]))
+    setChartRooms(shiftRooms)
+    chartRoomsSyncedRef.current = shiftRooms(chartRoomsSyncedRef.current)
     fetch(`${apiUrl}/chart/collapse-row`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
       body: JSON.stringify({ floor: selected.floor, ward: selected.ward, date: selectedDate, slot: selected.slot || 'main', rowNumber: rowIndex + 1 }),
@@ -1343,6 +1352,8 @@ function App() {
     setLockHolder(null)
     setChartCompleted(false)
     setCompletedByName(null)
+    setChartRooms({})
+    chartRoomsSyncedRef.current = {}
     let cancelled = false
     let retryTimer
     const load = async () => {
@@ -1400,6 +1411,8 @@ function App() {
         chartVersionRef.current = result.chart ? result.chart.version : 0
         setChartCompleted(!!result.chart?.completedAt)
         setCompletedByName(result.chart?.completedByName ?? null)
+        setChartRooms(result.chart?.rooms || {})
+        chartRoomsSyncedRef.current = result.chart?.rooms || {}
         // Always the server snapshot, not `next`: a recovered draft is still unsaved until the
         // next PUT actually succeeds, so it must still read as "pending" if that save 409s.
         lastSyncedChartRef.current = fresh
@@ -1633,7 +1646,6 @@ function App() {
     // A different ward or day is a different set of patients — carrying ticks across would
     // silently print the wrong people.
     setPillSelection(new Set())
-    setPrintScope('all')
     setPillsYesterday(null)
     let cancelled = false
     let retryTimer
@@ -2222,20 +2234,15 @@ function App() {
   // made inert, so a slow or failed load cannot be typed into and then silently overwritten.
   const chartReadyKey = selected && selected.mode !== 'pills' ? wardKey(selected, selectedDate) : null
   const chartReady = chartReadyKey !== null && loadedChartKey === chartReadyKey
-  // The last form that actually prints must not force a page break after itself, or the job
-  // ends on a blank sheet. Which form that is depends on the selection, so :last-child cannot
-  // express it — a hidden last patient would leave the break on the one before it.
-  const printingRows = (pillsData?.patients || []).filter((patient) => printScope === 'all' || pillSelection.has(patient.rowNumber)).map((patient) => patient.rowNumber)
-  const lastPrintingRow = printingRows[printingRows.length - 1]
   if (selected && selected.mode === 'renal') return <RenalDoseScreen header={appHeader} wardLabel={wardLabel} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={renalLoading} data={renalData} loadError={renalError} />
   if (selected && selected.mode === 'antibiotics') return <MeropenemScreen header={appHeader} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={meropenemLoading} drugs={meropenemData?.drugs || []} loadError={meropenemError} onEditDay={saveCourseDay} onPrint={() => window.print()} />
   if (selected && selected.mode === 'meropenem') return <MeropenemScreen header={appHeader} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={meropenemLoading} data={meropenemData} loadError={meropenemError} onEditDay={saveCourseDay} onPrint={() => window.print()} />
   if (selected && selected.mode === 'interactions') return <InteractionsScreen header={appHeader} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={interactionsLoading} data={interactionsData} loadError={interactionsError} onPrint={() => window.print()} />
   if (selected && selected.mode === 'order') return <OrderScreen header={appHeader} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={orderLoading} data={orderData} loadError={orderError} onPrint={() => window.print()} />
   if (selected && selected.mode === 'extra-pills') return <ExtraPillsScreen header={appHeader} catalogue={adminMedicines} floorLabel={wardLabel} today={today} editTime={editTime} onBack={() => setSelected(null)} loading={extraPillsLoading} loadError={extraPillsError} forms={extraPillsForms} busy={extraPillsBusy} actionError={extraPillsActionError} onCreate={createExtraPillForm} onSave={saveExtraPillForm} onRemove={deleteExtraPillForm} confirmModal={confirmModal} />
-  if (selected && selected.mode === 'pills') return <PillsScreen header={appHeader} wardLabel={wardLabel} roomLabel={/\bccu\b/i.test(selected.ward || '') ? 'رقم السرير' : 'رقم الغرفة'} today={today} editTime={editTime} onBack={() => { flushPills(); setSelected(null) }} selectedDate={selectedDate} onChangeDate={(nextDate) => { flushPills(); setSelectedDate(nextDate) }} pillsLoading={pillsLoading} pillsData={pillsData} pillsSaveStatus={pillsSaveStatus} pillsLoadError={pillsLoadError} pillEntries={pillEntries} setPillEntries={setPillEntries} pillRooms={pillRooms} setPillRooms={setPillRooms} pillSelection={pillSelection} onTogglePatient={togglePillPatient} onSetPillSelection={setPillSelection} pillsYesterday={pillsYesterday} isOnline={isOnline} catalogue={adminMedicines} englishOnly={/\bccu\b/i.test(selected.ward || '')} printScope={printScope} lastPrintingRow={lastPrintingRow} onPrint={startPillsPrint} confirmModal={confirmModal} pillsClashNote={pillsClashNote} onDismissPillsClashNote={() => setPillsClashNote(null)} />
+  if (selected && selected.mode === 'pills') return <PillsScreen header={appHeader} wardLabel={wardLabel} roomLabel={/\bccu\b/i.test(selected.ward || '') ? 'رقم السرير' : 'رقم الغرفة'} today={today} editTime={editTime} onBack={() => { flushPills(); setSelected(null) }} selectedDate={selectedDate} onChangeDate={(nextDate) => { flushPills(); setSelectedDate(nextDate) }} pillsLoading={pillsLoading} pillsData={pillsData} pillsSaveStatus={pillsSaveStatus} pillsLoadError={pillsLoadError} pillEntries={pillEntries} setPillEntries={setPillEntries} pillRooms={pillRooms} setPillRooms={setPillRooms} pillSelection={pillSelection} onTogglePatient={togglePillPatient} onSetPillSelection={setPillSelection} pillsYesterday={pillsYesterday} isOnline={isOnline} catalogue={adminMedicines} englishOnly={/\bccu\b/i.test(selected.ward || '')} confirmModal={confirmModal} pillsClashNote={pillsClashNote} onDismissPillsClashNote={() => setPillsClashNote(null)} />
 
-  return <main className="app-shell">{appHeader}{!selected && !floor ? <FloorPickerScreen today={today} selectedDate={selectedDate} isExpired={isExpired} floors={visibleFloors} specialWards={visibleSpecialWards} resumeDraft={resumeDraft} onResume={resumeFromDraft} onPickFloor={setFloor} onOpen={openFromHub} dashboard={dashboardData} dashboardLoading={dashboardData === null && !dashboardError} dashboardError={dashboardError} onRetryDashboard={retryDashboard} announcements={announcements} isManager={isManager} announcementDraft={announcementDraft} setAnnouncementDraft={setAnnouncementDraft} announcementError={announcementError} announcementBusy={announcementBusy} onPostAnnouncement={postAnnouncement} onEditAnnouncement={editAnnouncement} onDeleteAnnouncement={deleteAnnouncement} /> : !selected ? <WardPickerScreen floor={floor} today={today} selectedDate={selectedDate} isExpired={isExpired} dashboard={dashboardData} dashboardError={dashboardError} onBack={() => setFloor(null)} onOpen={setSelected} announcements={announcements} isManager={isManager} announcementDraft={announcementDraft} setAnnouncementDraft={setAnnouncementDraft} announcementError={announcementError} announcementBusy={announcementBusy} onPostAnnouncement={postAnnouncement} onEditAnnouncement={editAnnouncement} onDeleteAnnouncement={deleteAnnouncement} /> :<ChartScreen selected={selected} wardLabel={wardLabel} today={today} todayWeekday={todayWeekday} isManager={isManager} onBack={() => { flushChart(); setSelected(null) }} onGoToPills={() => { flushChart(); setSelected({ ...selected, mode: 'pills' }) }} onGoToOrder={() => { flushChart(); setSelected({ ...selected, mode: 'order' }) }} onExportPdf={exportChartPdf} pdfBusy={pdfBusy} pdfExportError={pdfExportError} dateIsToday={dateIsToday} selectedDate={selectedDate} onChangeDate={changeDate} onCopyToNextDay={copyToNextDay} onOpenTemplates={openTemplates} isOnline={isOnline} chartSaveStatus={chartSaveStatus} loadError={loadError} copyError={copyError} chartReady={chartReady} lastChartSaveAt={lastChartSaveAt} chartCompleted={chartCompleted} completedByName={completedByName} onToggleComplete={toggleChartComplete} onRetryLoad={() => setChartLoadNonce((n) => n + 1)} onRetrySave={() => setChartSaveNonce((n) => n + 1)} lockState={lockState} lockHolder={lockHolder} chartClashNote={chartClashNote} onDismissClashNote={() => { setChartClashNote(null); setDroppedCells({}) }} droppedCells={droppedCells} undo={undo} onUndo={takeUndo} medicines={medicines} patientNames={patientNames} patientIds={patientIds} columnMedicines={columnMedicines} quantities={quantities} totals={totals} doubledTotals={doubledTotals} isThursday={isThursday} activeRow={activeRow} activeColumn={activeColumn} labelBelow={labelBelow} setActiveRow={setActiveRow} setActiveColumn={setActiveColumn} setLabelBelow={setLabelBelow} onSetColumnMedicine={setColumnMedicine} onCommitColumnMedicine={commitColumnMedicine} columnMedicineNotice={columnMedicineNotice} onDismissNotice={() => setColumnMedicineNotice(null)} onApplySuggestion={applyMedicineSuggestion} onSetPatientName={setPatientName} onSetPatientId={setPatientId} onCheckPreviousDay={checkPreviousDayPatient} onUpdateQuantity={updateQuantity} onCollapseRow={collapseRow} onAddColumn={addColumn} canAddColumn={canAddColumn} chartFrameRef={chartFrameRef} chartHeadRef={chartHeadRef} chartGridRef={chartGridRef} chartDosesRef={chartDosesRef} chartFootRef={chartFootRef} />}{selected?.mode === 'chart' && chartReady && <ChartPrintTemplate ref={printTemplateRef} selected={selected} today={today} todayWeekday={todayWeekday} isThursday={isThursday} patientNames={patientNames} patientIds={patientIds} columnMedicines={columnMedicines} quantities={quantities} totals={totals} doubledTotals={doubledTotals} />}{templatesModal}{confirmModal}{copyChoiceModal}</main>
+  return <main className="app-shell">{appHeader}{!selected && !floor ? <FloorPickerScreen today={today} selectedDate={selectedDate} isExpired={isExpired} floors={visibleFloors} specialWards={visibleSpecialWards} resumeDraft={resumeDraft} onResume={resumeFromDraft} onPickFloor={setFloor} onOpen={openFromHub} dashboard={dashboardData} dashboardLoading={dashboardData === null && !dashboardError} dashboardError={dashboardError} onRetryDashboard={retryDashboard} announcements={announcements} isManager={isManager} announcementDraft={announcementDraft} setAnnouncementDraft={setAnnouncementDraft} announcementError={announcementError} announcementBusy={announcementBusy} onPostAnnouncement={postAnnouncement} onEditAnnouncement={editAnnouncement} onDeleteAnnouncement={deleteAnnouncement} /> : !selected ? <WardPickerScreen floor={floor} today={today} selectedDate={selectedDate} isExpired={isExpired} dashboard={dashboardData} dashboardError={dashboardError} onBack={() => setFloor(null)} onOpen={setSelected} announcements={announcements} isManager={isManager} announcementDraft={announcementDraft} setAnnouncementDraft={setAnnouncementDraft} announcementError={announcementError} announcementBusy={announcementBusy} onPostAnnouncement={postAnnouncement} onEditAnnouncement={editAnnouncement} onDeleteAnnouncement={deleteAnnouncement} /> :<ChartScreen selected={selected} wardLabel={wardLabel} today={today} todayWeekday={todayWeekday} isManager={isManager} onBack={() => { flushChart(); setSelected(null) }} onGoToPills={() => { flushChart(); setSelected({ ...selected, mode: 'pills' }) }} onGoToOrder={() => { flushChart(); setSelected({ ...selected, mode: 'order' }) }} onExportPdf={exportChartPdf} pdfBusy={pdfBusy} pdfExportError={pdfExportError} dateIsToday={dateIsToday} selectedDate={selectedDate} onChangeDate={changeDate} onCopyToNextDay={copyToNextDay} onOpenTemplates={openTemplates} isOnline={isOnline} chartSaveStatus={chartSaveStatus} loadError={loadError} copyError={copyError} chartReady={chartReady} lastChartSaveAt={lastChartSaveAt} chartCompleted={chartCompleted} completedByName={completedByName} onToggleComplete={toggleChartComplete} onRetryLoad={() => setChartLoadNonce((n) => n + 1)} onRetrySave={() => setChartSaveNonce((n) => n + 1)} lockState={lockState} lockHolder={lockHolder} chartClashNote={chartClashNote} onDismissClashNote={() => { setChartClashNote(null); setDroppedCells({}) }} droppedCells={droppedCells} undo={undo} onUndo={takeUndo} medicines={medicines} patientNames={patientNames} patientIds={patientIds} columnMedicines={columnMedicines} quantities={quantities} totals={totals} doubledTotals={doubledTotals} isThursday={isThursday} activeRow={activeRow} activeColumn={activeColumn} labelBelow={labelBelow} setActiveRow={setActiveRow} setActiveColumn={setActiveColumn} setLabelBelow={setLabelBelow} onSetColumnMedicine={setColumnMedicine} onCommitColumnMedicine={commitColumnMedicine} columnMedicineNotice={columnMedicineNotice} onDismissNotice={() => setColumnMedicineNotice(null)} onApplySuggestion={applyMedicineSuggestion} onSetPatientName={setPatientName} onSetPatientId={setPatientId} onCheckPreviousDay={checkPreviousDayPatient} onUpdateQuantity={updateQuantity} onCollapseRow={collapseRow} chartRooms={chartRooms} roomLabel={/\bccu\b/i.test(selected.ward || '') ? 'رقم السرير' : 'رقم الغرفة'} onSetRoom={setChartRoom} onSaveRooms={syncChartRooms} onAddColumn={addColumn} canAddColumn={canAddColumn} chartFrameRef={chartFrameRef} chartHeadRef={chartHeadRef} chartGridRef={chartGridRef} chartDosesRef={chartDosesRef} chartFootRef={chartFootRef} />}{selected?.mode === 'chart' && chartReady && <ChartPrintTemplate ref={printTemplateRef} selected={selected} today={today} todayWeekday={todayWeekday} isThursday={isThursday} patientNames={patientNames} patientIds={patientIds} columnMedicines={columnMedicines} quantities={quantities} totals={totals} doubledTotals={doubledTotals} />}{templatesModal}{confirmModal}{copyChoiceModal}</main>
 }
 
 export default App

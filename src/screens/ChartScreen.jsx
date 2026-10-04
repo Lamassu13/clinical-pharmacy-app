@@ -12,7 +12,7 @@ import { medicineMatches } from '../helpers.js'
 export default function ChartScreen({
   selected, wardLabel, today, todayWeekday, isManager, dateIsToday, selectedDate, onChangeDate, onCopyToNextDay, onOpenTemplates, isOnline, onBack, onGoToPills, onGoToOrder, onExportPdf, pdfBusy, pdfExportError,
   chartSaveStatus, loadError, copyError, chartReady, lastChartSaveAt, onRetryLoad, onRetrySave, lockState, lockHolder,
-  chartCompleted, completedByName, onToggleComplete,
+  chartCompleted, completedByName, onToggleComplete, chartRooms, roomLabel, onSetRoom, onSaveRooms,
   chartClashNote, onDismissClashNote, droppedCells, undo, onUndo,
   medicines, patientNames, patientIds, columnMedicines, quantities, totals, doubledTotals, isThursday,
   activeRow, activeColumn, labelBelow, setActiveRow, setActiveColumn, setLabelBelow,
@@ -203,7 +203,9 @@ export default function ChartScreen({
             {/* Name and ID side by side, as on the printed sheet. The ID is screen-only here:
                 .patient-id is in the print block's display: none list. */}
             <div className="patient-fields">
-              <input value={name} onChange={(event) => onSetPatientName(rowIndex, event.target.value)}
+              <input className="patient-room" value={chartRooms[rowIndex + 1] || ''} onChange={(event) => onSetRoom(rowIndex, event.target.value)} onBlur={onSaveRooms}
+                placeholder={roomLabel} title={roomLabel} aria-label={`${roomLabel}، صف ${rowIndex + 1}`} />
+              <input className="patient-name" value={name} onChange={(event) => onSetPatientName(rowIndex, event.target.value)}
                 onFocus={(event) => { patientFocusEmpty.current = !event.target.value.trim() }}
                 onBlur={(event) => { if (patientFocusEmpty.current && event.target.value.trim()) onCheckPreviousDay(rowIndex, event.target.value) }}
                 placeholder={`مريض ${rowIndex + 1}`} aria-label={`اسم المريض، صف ${rowIndex + 1}`} />
