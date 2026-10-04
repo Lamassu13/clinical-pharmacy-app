@@ -1,5 +1,6 @@
 import { forwardRef } from 'react'
 import hospitalLogo from '../assets/hospital-logo.png'
+import { SHEETS_PER_CANVAS } from '../usePdfSheets.js'
 
 // The pills form as paper, drawn off-screen for usePdfSheets: plain text only, one A4 portrait
 // .ppt-sheet per form page. Same content as the on-screen form (PillsScreen / ExtraPillsScreen)
@@ -8,7 +9,8 @@ import hospitalLogo from '../assets/hospital-logo.png'
 // roomLabel, wardLabel, editTime, rows: [{ name, doseTime, usageMethod, note }] }]; the spare
 // rows are just blank entries in `rows`.
 const PillsPrintTemplate = forwardRef(function PillsPrintTemplate({ sheets }, ref) {
-  return <div ref={ref} className="ppt-root">{sheets.map((sheet) => <section key={sheet.key} className="ppt-sheet">
+  const chunks = Array.from({ length: Math.ceil(sheets.length / SHEETS_PER_CANVAS) }, (_, index) => sheets.slice(index * SHEETS_PER_CANVAS, (index + 1) * SHEETS_PER_CANVAS))
+  return <div ref={ref} className="ppt-root">{chunks.map((chunk) => <div key={chunk[0].key} className="ppt-chunk">{chunk.map((sheet) => <section key={sheet.key} className="ppt-sheet">
     <div className="ppt-form">
       <div className="ppt-head">
         <div className="ppt-patient"><strong>{sheet.patientName}</strong><span>{sheet.today}</span></div>
@@ -26,7 +28,7 @@ const PillsPrintTemplate = forwardRef(function PillsPrintTemplate({ sheets }, re
       </table>
       <div className="ppt-foot"><span className="ppt-sign">توقيع الصيدلاني السريري</span><span>وقت التحرير: {sheet.editTime}</span></div>
     </div>
-  </section>)}</div>
+  </section>)}</div>)}</div>
 })
 
 export default PillsPrintTemplate
