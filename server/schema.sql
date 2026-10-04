@@ -296,6 +296,18 @@ CREATE INDEX IF NOT EXISTS chart_patients_patient_id_idx ON chart_patients (pati
 -- «قوالب الأدوية»: a pharmacist's own named sets of chart medicine columns, applied to any
 -- day's chart that has no doses yet. Personal (user_id), so deleting a user deletes theirs.
 -- `medicines` holds catalogue spellings in column order (snapped on save).
+-- «استمارة متابعة الميروبينيم» / «متابعة المضادات الحيوية»: a pharmacist can retype a course's first
+-- shown day ("on anchor_date this patient is D3"); the days after it follow. One row per
+-- patient + drug + anchor date, the latest edit wins. patient_key is the form's own patient key.
+CREATE TABLE IF NOT EXISTS course_day_overrides (
+  patient_key TEXT NOT NULL,
+  drug_key TEXT NOT NULL,
+  anchor_date DATE NOT NULL,
+  n INTEGER NOT NULL CHECK (n BETWEEN 1 AND 365),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (patient_key, drug_key, anchor_date)
+);
+
 CREATE TABLE IF NOT EXISTS medicine_templates (
   id BIGSERIAL PRIMARY KEY,
   user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,

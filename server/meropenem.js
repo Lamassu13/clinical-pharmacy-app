@@ -42,8 +42,10 @@ const wardLabelOf = (floor, ward) => (floor ? `الطابق ${floor} — ${ward}
 // presence: [{ date, floor, ward, name, patientId }] — named chart rows on this ward, plus rows
 //           anywhere carrying an ID seen in `cells`.
 // charted:  [{ date, floor, ward }] — the days each ward has a chart with a named patient.
+// overrides: [{ patientKey, date, n }] oldest first — a typed course day: on `date` the patient is Dn,
+//           and the rest of that course counts on from it.
 // All over the lookback window. Returns this ward's rows for the month of `date`, up to `date`.
-export const buildMeropenemForm = ({ date, floor, ward, cells, presence, charted, perDay = 3 }) => {
+export const buildMeropenemForm = ({ date, floor, ward, cells, presence, charted, perDay = 3, overrides = [] }) => {
   const here = wardKeyOf(floor, ward)
   const chartedByWard = new Map()
   charted.forEach((row) => {
@@ -91,7 +93,7 @@ export const buildMeropenemForm = ({ date, floor, ward, cells, presence, charted
   const wardLabels = new Map(presence.map((row) => [wardKeyOf(row.floor, row.ward), wardLabelOf(row.floor, row.ward)]))
 
   const rows = []
-  patients.forEach((patient) => {
+  patients.forEach((patient, key) => {
     const doseDates = [...patient.doses.keys()].sort()
     // Course walk, calendar day by calendar day. A dose day counts. An off-day — on some chart
     // without Meronem, or absent while their ward charted — is held as pending; so is a day their
@@ -107,15 +109,22 @@ export const buildMeropenemForm = ({ date, floor, ward, cells, presence, charted
       if (doses) {
         const offDays = pending.filter((entry) => entry.off).length
         if (start === null || offDays > 1) start = day
-        else pending.forEach((entry) => days.set(entry.iso, { n: entry.day - start + 1, wardKey: entry.wardKey, missed: entry.off }))
+        else pending.forEach((entry) => days.set(entry.iso, { n: entry.day - start + 1, start, wardKey: entry.wardKey, missed: entry.off }))
         pending = []
         currentWard = (doses.find((dose) => dose.wardKey === here) || doses[0]).wardKey
-        days.set(iso, { n: day - start + 1, wardKey: currentWard, missed: false })
+        days.set(iso, { n: day - start + 1, start, wardKey: currentWard, missed: false })
       } else {
         const off = patient.seen.has(iso) || isCharted(currentWard, iso)
         pending.push({ iso, day, wardKey: currentWard, off })
       }
     }
+
+    overrides.filter((override) => override.patientKey === key).forEach((override) => {
+      const anchor = days.get(override.date)
+      if (!anchor) return
+      const shift = override.n - anchor.n
+      days.forEach((entry) => { if (entry.start === anchor.start) entry.n += shift })
+    })
 
     const hereDoseDates = doseDates.filter((iso) => iso >= first && patient.doses.get(iso).some((dose) => dose.wardKey === here))
     if (!hereDoseDates.length) return
@@ -133,6 +142,7 @@ export const buildMeropenemForm = ({ date, floor, ward, cells, presence, charted
     }
 
     rows.push({
+      key,
       name: patient.name,
       patientId: patient.patientId,
       dose: patient.doses.get(lastHere).filter((dose) => dose.wardKey === here).map((dose) => dose.text).join(' + '),

@@ -228,6 +228,7 @@ function App() {
   const [meropenemData, setMeropenemData] = useState(null)
   const [meropenemLoading, setMeropenemLoading] = useState(false)
   const [meropenemError, setMeropenemError] = useState(false)
+  const [meropenemNonce, setMeropenemNonce] = useState(0)
   const [interactionsData, setInteractionsData] = useState(null)
   const [interactionsLoading, setInteractionsLoading] = useState(false)
   const [interactionsError, setInteractionsError] = useState(false)
@@ -1770,6 +1771,14 @@ function App() {
       })
       .catch(() => { if (!cancelled) { setMeropenemError(true); setMeropenemLoading(false) } })
     return () => { cancelled = true }
+  }, [selected, selectedDate, isExpired, meropenemNonce])
+  // Retype a course's first shown day on the follow-up forms; the days after it count on from it.
+  const saveCourseDay = useCallback(async (patient, anchorDate, n) => {
+    try {
+      const response = await fetch(`${apiUrl}/course-day`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ floor: selected.floor || '', ward: selected.ward, date: selectedDate, patientKey: patient.key, drugKey: patient.drugKey, anchorDate, n }) })
+      isExpired(response)
+    } catch { /* the reload below shows what is really saved */ }
+    setMeropenemNonce((value) => value + 1)
   }, [selected, selectedDate, isExpired])
   // «التداخلات الدوائية»: the ward's main and extra charts for the day, checked in the browser
   // against the DDInter reference pairs and the bundled rule list — read-only, nothing is saved.
@@ -2219,8 +2228,8 @@ function App() {
   const printingRows = (pillsData?.patients || []).filter((patient) => printScope === 'all' || pillSelection.has(patient.rowNumber)).map((patient) => patient.rowNumber)
   const lastPrintingRow = printingRows[printingRows.length - 1]
   if (selected && selected.mode === 'renal') return <RenalDoseScreen header={appHeader} wardLabel={wardLabel} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={renalLoading} data={renalData} loadError={renalError} />
-  if (selected && selected.mode === 'antibiotics') return <MeropenemScreen header={appHeader} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={meropenemLoading} drugs={meropenemData?.drugs || []} loadError={meropenemError} onPrint={() => window.print()} />
-  if (selected && selected.mode === 'meropenem') return <MeropenemScreen header={appHeader} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={meropenemLoading} data={meropenemData} loadError={meropenemError} onPrint={() => window.print()} />
+  if (selected && selected.mode === 'antibiotics') return <MeropenemScreen header={appHeader} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={meropenemLoading} drugs={meropenemData?.drugs || []} loadError={meropenemError} onEditDay={saveCourseDay} onPrint={() => window.print()} />
+  if (selected && selected.mode === 'meropenem') return <MeropenemScreen header={appHeader} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={meropenemLoading} data={meropenemData} loadError={meropenemError} onEditDay={saveCourseDay} onPrint={() => window.print()} />
   if (selected && selected.mode === 'interactions') return <InteractionsScreen header={appHeader} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={interactionsLoading} data={interactionsData} loadError={interactionsError} onPrint={() => window.print()} />
   if (selected && selected.mode === 'order') return <OrderScreen header={appHeader} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={orderLoading} data={orderData} loadError={orderError} onPrint={() => window.print()} />
   if (selected && selected.mode === 'extra-pills') return <ExtraPillsScreen header={appHeader} catalogue={adminMedicines} floorLabel={wardLabel} today={today} editTime={editTime} onBack={() => setSelected(null)} loading={extraPillsLoading} loadError={extraPillsError} forms={extraPillsForms} busy={extraPillsBusy} actionError={extraPillsActionError} onCreate={createExtraPillForm} onSave={saveExtraPillForm} onRemove={deleteExtraPillForm} confirmModal={confirmModal} />

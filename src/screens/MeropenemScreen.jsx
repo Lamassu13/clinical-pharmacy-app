@@ -19,7 +19,7 @@ const statusText = (status, antibiotics) => ({
   transferred: `نُقل إلى ${status.to || 'ردهة أخرى'}`,
 }[status.kind] || '')
 
-export default function MeropenemScreen({ header, wardLabel, today, onBack, selectedDate, onChangeDate, loading, data, loadError, onPrint, drugs }) {
+export default function MeropenemScreen({ header, wardLabel, today, onBack, selectedDate, onChangeDate, loading, data, loadError, onPrint, drugs, onEditDay }) {
   const [showEnded, setShowEnded] = useState(false)
   const [drugFilter, setDrugFilter] = useState('')
   const antibiotics = Boolean(drugs)
@@ -30,6 +30,7 @@ export default function MeropenemScreen({ header, wardLabel, today, onBack, sele
   const endedCount = all.filter((patient) => patient.status.kind !== 'active').length
   const patients = showEnded ? all : all.filter((patient) => patient.status.kind === 'active')
   // Only the days some shown patient was on it — hidden patients leave no empty columns behind.
+  const firstOfMonth = `${selectedDate.slice(0, 8)}01`
   const dates = [...new Set(patients.flatMap((patient) => Object.keys(patient.days)))].sort()
   // Antibiotics: one block per patient (all their drugs together, the name cell spanning them),
   // patients and their drugs in the order they started.
@@ -92,7 +93,10 @@ export default function MeropenemScreen({ header, wardLabel, today, onBack, sele
                   const n = patient.days[iso]
                   const missed = patient.missed.includes(iso)
                   const length = antibiotics && n >= LONG_DAY ? ' meropenem-day--long' : antibiotics && n >= REVIEW_DAY ? ' meropenem-day--review' : ''
-                  return <td key={iso} className={`meropenem-day${length}${missed ? ' meropenem-day--missed' : ''}`} title={missed ? 'غير مسجّل في الجارت هذا اليوم — تحقّق منه' : undefined}>{n ? `D${n}${missed ? '؟' : ''}` : ''}</td>
+                  const editable = n && onEditDay && iso === Object.keys(patient.days).filter((day) => day >= firstOfMonth).sort()[0]
+                  return <td key={iso} className={`meropenem-day${length}${missed ? ' meropenem-day--missed' : ''}`} title={missed ? 'غير مسجّل في الجارت هذا اليوم — تحقّق منه' : undefined}>{editable
+                    ? <label className="meropenem-day-edit" title="يمكن تعديل اليوم الأول — الأيام التالية تتبعه">D<input type="number" min="1" max="365" inputMode="numeric" defaultValue={n} key={`${iso}|${n}`} onBlur={(event) => { const next = Number(event.target.value); if (Number.isInteger(next) && next >= 1 && next <= 365 && next !== n) onEditDay(patient, iso, next); else event.target.value = n }} onKeyDown={(event) => { if (event.key === 'Enter') event.target.blur() }} /></label>
+                    : n ? `D${n}${missed ? '؟' : ''}` : ''}</td>
                 })}
               </tr>)}</tbody>
             </table>

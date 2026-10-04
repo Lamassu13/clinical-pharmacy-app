@@ -455,12 +455,19 @@ const loadCourseRows = async ({ floor, wardName, chartDate }, { pattern, names }
   }
 }
 
+const loadOverrides = async (drugKey) => (await query(
+  'SELECT patient_key, anchor_date::text AS date, n FROM course_day_overrides WHERE drug_key = $1 ORDER BY updated_at',
+  [drugKey],
+)).rows.map((row) => ({ patientKey: row.patient_key, date: row.date, n: row.n }))
+
 // «استمارة متابعة الميروبينيم»: every patient on Meronem this month on this ward (main and extra
 // charts), each day's course number, and whether they are still on it. Read-only and fully derived.
 router.get('/meropenem', requireAuth, async (request, response) => {
   const location = readLocation(request.query, request.session.user)
   if (location.status) return response.status(location.status).json({ message: location.message })
-  response.json({ form: buildMeropenemForm(await loadCourseRows(location, { pattern: MEROPENEM_SQL_PATTERN })) })
+  const rows = await loadCourseRows(location, { pattern: MEROPENEM_SQL_PATTERN })
+  const form = buildMeropenemForm({ ...rows, overrides: await loadOverrides('meropenem') })
+  response.json({ form: { patients: form.patients.map((patient) => ({ ...patient, drugKey: 'meropenem' })) } })
 })
 
 // «متابعة المضادات الحيوية»: the same form for every antibiotic and antifungal in ../ddd.js
@@ -477,11 +484,29 @@ router.get('/antibiotics', requireAuth, async (request, response) => {
     if (!byDrug.has(drug.key)) byDrug.set(drug.key, { ...drug, cells: [] })
     byDrug.get(drug.key).cells.push(cell)
   })
-  const drugs = [...byDrug.values()]
-    .map((drug) => ({ key: drug.key, label: drug.label, patients: buildMeropenemForm({ ...rows, cells: drug.cells, perDay: drug.perDay }).patients }))
+  const drugs = (await Promise.all([...byDrug.values()]
+    .map(async (drug) => ({ key: drug.key, label: drug.label, patients: buildMeropenemForm({ ...rows, cells: drug.cells, perDay: drug.perDay, overrides: await loadOverrides(drug.key) }).patients.map((patient) => ({ ...patient, drugKey: drug.key })) }))
+  ))
     .filter((drug) => drug.patients.length)
     .sort((a, b) => a.label.localeCompare(b.label))
   response.json({ drugs })
+})
+
+// A typed course day: "on `anchorDate` this patient is D`n`" (the form's first shown day for a
+// course); the days after it count on from there. Shared by both forms through the drug key.
+router.put('/course-day', requireAuth, async (request, response) => {
+  const location = readLocation(request.body, request.session.user)
+  if (location.status) return response.status(location.status).json({ message: location.message })
+  const patientKey = cleanText(request.body.patientKey, 300).trim()
+  const drugKey = cleanText(request.body.drugKey, 60).trim()
+  const n = Number(request.body.n)
+  if (!patientKey || !drugKey || !isIsoDate(request.body.anchorDate) || !Number.isInteger(n) || n < 1 || n > 365) return response.status(400).json({ message: 'بيانات غير صحيحة' })
+  await query(
+    `INSERT INTO course_day_overrides (patient_key, drug_key, anchor_date, n) VALUES ($1, $2, $3::date, $4)
+     ON CONFLICT (patient_key, drug_key, anchor_date) DO UPDATE SET n = EXCLUDED.n, updated_at = NOW()`,
+    [patientKey, drugKey, request.body.anchorDate, n],
+  )
+  response.json({ ok: true })
 })
 
 // Patient search for one day: a pharmacist scans their floor's main and extra charts; a manager
