@@ -1025,6 +1025,9 @@ function App() {
     const params = new URLSearchParams({ floor: selected.floor || '', ward: selected.ward, slot: selected.slot || 'main', date })
     const response = await fetch(`${apiUrl}/chart?${params}`, { credentials: 'include' })
     if (!response.ok) return
+    // A cached copy is not the server's state (see the load effect): throwing hands the save to
+    // its normal 4 s error retry instead of merging stale names over saved ones.
+    if (response.headers.get('x-from-cache') === '1') throw new Error('stale chart copy')
     const result = await response.json()
     const fresh = parseChartRows(result.chart)
     const mine = { patientNames, patientIds, columnMedicines, quantities }
@@ -1404,6 +1407,24 @@ function App() {
           const raw = localStorage.getItem(draftKey)
           if (raw) draft = JSON.parse(raw)
         } catch { /* storage unavailable or the draft was corrupt — fall back to the server state */ }
+        // The service worker answered from its cache (weak link / no signal): that copy is only as
+        // new as the last successful GET, older than this device's own saves. Merging it would
+        // adopt blank names over names already saved (they equal the draft's base) while newly
+        // typed doses survive. Show what this device last had instead, keep its base, and leave
+        // the draft in place: the first save 409s against the real chart once the link is back and
+        // mergeAfterConflict merges it field by field, like any other offline work.
+        if (response.headers.get('x-from-cache') === '1') {
+          const shown = draft ? { ...draft.current, patientIds: draft.current.patientIds ?? fresh.patientIds } : fresh
+          setPatientNames(shown.patientNames); setPatientIds(shown.patientIds); setQuantities(shown.quantities); setColumnMedicines(shown.columnMedicines)
+          chartVersionRef.current = draft?.offline ? 0 : result.chart ? result.chart.version : 0
+          lastSyncedChartRef.current = draft ? { ...draft.base, patientIds: draft.base.patientIds ?? fresh.patientIds } : fresh
+          if (draft?.offline) setOfflineChartKey(chartKey)
+          setChartClashNote('الاتصال ضعيف أو مقطوع — عُرضت آخر نسخة محفوظة على هذا الجهاز. ما تكتبه يُحفظ ويُدمج تلقائيًا عند عودة الاتصال.')
+          setLoadError(false)
+          setLoadedChartKey(chartKey)
+          setChartLoading(false)
+          return
+        }
         // A draft typed on a chart opened blank offline is added row by row, never overlaid.
         const offlineAdd = draft?.offline ? addOfflineRows(fresh, draft.current) : null
         const next = offlineAdd ? offlineAdd.merged : draft ? mergeChartSnapshots(draft.base, draft.current, fresh) : fresh
@@ -1604,7 +1625,7 @@ function App() {
     const params = new URLSearchParams({ floor: selected.floor || '', ward: selected.ward, slot: selected.slot || 'main', date: selectedDate })
     let cancelled = false
     const poll = () => fetch(`${apiUrl}/chart?${params}`, { credentials: 'include' })
-      .then((response) => { isExpired(response); return response.ok ? response.json() : null })
+      .then((response) => { isExpired(response); return response.ok && response.headers.get('x-from-cache') !== '1' ? response.json() : null })
       .then((result) => {
         if (cancelled || !result) return
         const fresh = parseChartRows(result.chart)
