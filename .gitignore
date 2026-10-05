@@ -49,3 +49,6 @@ graphify-out/
 .impeccable/*
 !.impeccable/design.json
 scratchpad/
+
+# DDInter CSV downloads — CC BY-NC-SA data, imported into the database, never committed
+data/ddinter/

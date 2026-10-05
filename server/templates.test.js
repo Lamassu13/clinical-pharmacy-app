@@ -23,7 +23,7 @@ test('medicine templates: personal, snapped to the catalogue, upserted by name',
   const mine = await loginAs({ role: 'user', floor: 5 })
   const saved = await mine.post('/api/templates', { name: ' اعتيادي ', medicines: ['meronem  1000gm vial', 'Not In Catalogue', 'Amoxil 500mg Cap', 'MERONEM 1000GM VIAL', ''] })
   assert.equal(saved.status, 200)
-  assert.deepEqual(saved.body.template.medicines, ['Meronem 1000gm Vial', 'Amoxil 500mg Cap'])
+  assert.deepEqual(saved.body.template.medicines, ['Meronem 1000gm Vial', '', 'Amoxil 500mg Cap']) // empty columns keep their place
   assert.equal(saved.body.template.name, 'اعتيادي')
 
   const again = await mine.post('/api/templates', { name: 'اعتيادي', medicines: ['IV Set'] })

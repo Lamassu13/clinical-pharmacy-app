@@ -148,3 +148,29 @@ test('GET /api/order: on Thursday a medicine ticked «لا يُضاعف يوم �
   assert.equal(byName.Heparin.doubledQuantityWords, numberToArabicWords(4))
   assert.deepEqual([byName['Aspirin 100mg Tab'].quantity, byName['Aspirin 100mg Tab'].doubledQuantity], [3, 6])
 })
+
+test('GET /api/meropenem-order: Meronem lines from the MAIN chart only, with dose text and vial count', async () => {
+  const admin = await createUser({ role: 'admin' })
+  const client = new ApiClient(baseUrl)
+  assert.equal((await client.post('/api/auth/login', { username: admin.username, password: admin.password })).status, 200)
+  const wardId = await makeWard()
+  const columns = [{ n: 1, customName: 'Meronem 1000gm Vial' }, { n: 2, customName: 'Paracetamol 500mg' }]
+  const mainId = await seedChart({ wardId, createdBy: admin.id, columns, patients: [1, 2, 3], cells: [
+    { row: 1, col: 1, qty: 6 }, { row: 2, col: 1, qty: 2 }, { row: 2, col: 2, qty: 4 }, { row: 3, col: 2, qty: 5 },
+  ] })
+  await pool.query("UPDATE chart_patients SET patient_id = '1001' WHERE chart_id = $1 AND row_number = 1", [mainId])
+  await seedChart({ wardId, slot: 'extra', createdBy: admin.id, columns, patients: [1], cells: [{ row: 1, col: 1, qty: 3 }] })
+  const res = await client.get(`/api/meropenem-order?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=${DATE}`)
+  assert.equal(res.status, 200)
+  assert.deepEqual(res.body.order.items, [
+    { day: 1, name: 'مريض 1', patientId: '1001', dose: '2g × 3', count: 6 },
+    { day: 1, name: 'مريض 2', patientId: '', dose: '1g × 2', count: 2 },
+  ])
+  // The next day's chart makes it D2 for the patient with an ID.
+  await seedChart({ wardId, createdBy: admin.id, columns, patients: [1], cells: [{ row: 1, col: 1, qty: 6 }], date: '2026-05-21' })
+  await pool.query("UPDATE chart_patients SET patient_id = '1001' WHERE row_number = 1 AND chart_id = (SELECT id FROM daily_charts WHERE chart_date = '2026-05-21' AND slot = 'main')")
+  const next = await client.get(`/api/meropenem-order?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=2026-05-21`)
+  assert.deepEqual(next.body.order.items.map((item) => item.day), [2])
+  const none = await client.get(`/api/meropenem-order?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=2026-05-01`)
+  assert.deepEqual(none.body.order.items, [])
+})

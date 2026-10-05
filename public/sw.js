@@ -46,7 +46,14 @@ self.addEventListener('fetch', (event) => {
         const responseToCache = response.ok ? response.clone() : null
         if (responseToCache) event.waitUntil(caches.open(API_CACHE).then((cache) => cache.put(request, responseToCache)))
         return response
-      }).catch(() => caches.match(request)),
+      }).catch(() => caches.match(request).then((cached) => {
+        if (!cached) return cached
+        // Flag it: this copy is only as new as the last successful GET, never this device's own
+        // saves, so the app must not merge it as if it were the server's current state.
+        const headers = new Headers(cached.headers)
+        headers.set('x-from-cache', '1')
+        return new Response(cached.body, { status: cached.status, statusText: cached.statusText, headers })
+      })),
     )
     return
   }

@@ -12,7 +12,7 @@ import { medicineMatches } from '../helpers.js'
 export default function ChartScreen({
   selected, wardLabel, today, todayWeekday, isManager, dateIsToday, selectedDate, onChangeDate, onCopyToNextDay, onOpenTemplates, isOnline, onBack, onGoToPills, onGoToOrder, onOpenForm, onExportPdf, pdfBusy, pdfExportError,
   chartSaveStatus, loadError, copyError, chartReady, lastChartSaveAt, onRetryLoad, onRetrySave, lockState, lockHolder,
-  chartCompleted, completedByName, onToggleComplete,
+  chartCompleted, completedByName, onToggleComplete, chartRooms, roomLabel, onSetRoom, onSaveRooms,
   chartClashNote, onDismissClashNote, droppedCells, undo, onUndo,
   medicines, patientNames, patientIds, columnMedicines, quantities, totals, doubledTotals, isThursday,
   activeRow, activeColumn, labelBelow, setActiveRow, setActiveColumn, setLabelBelow,
@@ -42,13 +42,17 @@ export default function ChartScreen({
   const savedTime = lastChartSaveAt
     ? new Date(lastChartSaveAt).toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' })
     : ''
+  // Edits not yet confirmed by the server while there is no link (or the save is failing):
+  // they are on this device — the mirror and the device copy — and will upload by themselves.
+  const onDeviceOnly = !loadError && chartSaveStatus !== 'saved' && (!isOnline || chartSaveStatus === 'error')
   const saveText = loadError ? '⚠ تعذر تحميل الجارت'
-    : chartSaveStatus === 'error' ? '⚠ لم يُحفظ'
+    : onDeviceOnly ? '◐ على الجهاز فقط — لم يصل إلى الخادم بعد'
     : chartSaveStatus === 'saving' ? '⟳ جارٍ الحفظ…'
     : chartSaveStatus === 'pending' ? '○ لم يُحفظ بعد…'
     : savedTime ? `● محفوظ · آخر حفظ ${savedTime}`
     : '● محفوظ'
-  const saveClass = (loadError || chartSaveStatus === 'error') ? 'save-state save-state-error'
+  const saveClass = loadError ? 'save-state save-state-error'
+    : onDeviceOnly ? 'save-state save-state-device'
     : chartSaveStatus === 'saving' ? 'save-state save-state-saving'
     : chartSaveStatus === 'pending' ? 'save-state save-state-pending'
     : 'save-state'
@@ -204,7 +208,9 @@ export default function ChartScreen({
             {/* Name and ID side by side, as on the printed sheet. The ID is screen-only here:
                 .patient-id is in the print block's display: none list. */}
             <div className="patient-fields">
-              <input value={name} onChange={(event) => onSetPatientName(rowIndex, event.target.value)}
+              <input className="patient-room" value={chartRooms[rowIndex + 1] || ''} onChange={(event) => onSetRoom(rowIndex, event.target.value)} onBlur={onSaveRooms}
+                placeholder={roomLabel} title={roomLabel} aria-label={`${roomLabel}، صف ${rowIndex + 1}`} />
+              <input className="patient-name" value={name} onChange={(event) => onSetPatientName(rowIndex, event.target.value)}
                 onFocus={(event) => { patientFocusEmpty.current = !event.target.value.trim() }}
                 onBlur={(event) => { if (patientFocusEmpty.current && event.target.value.trim()) onCheckPreviousDay(rowIndex, event.target.value) }}
                 placeholder={`مريض ${rowIndex + 1}`} aria-label={`اسم المريض، صف ${rowIndex + 1}`} />

@@ -406,23 +406,76 @@ export const VIAL_AMP = /\b(vial|vials|amp|amps|ampoule|ampoules)\b/
 export const SYRINGE_EXCLUDE = /flagyl|paracetamol|فلاجيل|باراسيتامول/
 
 // A saved «قالب أدوية» laid onto a chart that has no doses yet: its medicines become the columns,
-// in order, snapped to today's catalogue (any deleted since the save are dropped and counted),
-// padded to the chart's width. Quantities start blank except the per-patient supplies (UNIT_ONE:
+// in order, empty columns kept where they were saved, snapped to today's catalogue (any deleted
+// since the save become empty columns and are counted), padded to the chart's width. Quantities start blank except the per-patient supplies (UNIT_ONE:
 // giving set, cannula), which get «1» for every named patient — what picking that column by hand
 // seeds (setColumnMedicine).
 export const applyTemplateColumns = (templateMeds, catalogue, patientNames, columnCount = CHART_COLUMNS) => {
-  const snapped = templateMeds.map((med) => catalogue.find((name) => medicineKey(name) === medicineKey(med))).filter(Boolean)
-  const kept = [...new Set(snapped)].slice(0, MAX_CHART_COLUMNS)
-  const width = Math.min(MAX_CHART_COLUMNS, Math.max(CHART_COLUMNS, columnCount, kept.length))
-  const columns = [...kept, ...Array(width - kept.length).fill('')]
+  const seen = new Set()
+  const snapped = templateMeds.map((med) => {
+    const name = med.trim() ? catalogue.find((entry) => medicineKey(entry) === medicineKey(med)) : ''
+    if (!name || seen.has(name)) return ''
+    seen.add(name)
+    return name
+  }).slice(0, MAX_CHART_COLUMNS)
+  const width = Math.min(MAX_CHART_COLUMNS, Math.max(CHART_COLUMNS, columnCount, snapped.length))
+  const columns = [...snapped, ...Array(width - snapped.length).fill('')]
   const unitColumns = columns.map((name, index) => (name && !isSyringe(name) && UNIT_ONE.test(medicineKey(name)) ? index : -1)).filter((index) => index >= 0)
   const quantities = patientNames.map((name) => {
     const row = Array(width).fill('')
     if (name.trim()) unitColumns.forEach((index) => { row[index] = '1' })
     return row
   })
-  return { columns, quantities, dropped: templateMeds.length - snapped.length }
+  return { columns, quantities, dropped: templateMeds.filter((med) => med.trim()).length - seen.size }
 }
+
+// «التداخلات الدوائية»: for one chart (parseChartRows output), every named patient whose row holds
+// two medicines (quantity > 0, in different columns) that interact. `dbPairs` is the server's
+// reference-data answer ([{ a, b, level }], catalogue names, see GET /api/interactions); `rules`
+// is the small hand-written list in interactions.js, which also supplies the English note for a
+// pair it knows and still catches pairs when the reference table is empty. Computed on screen
+// from the day's chart; nothing is stored. Returns [{ rowNumber, name, patientId, pairs: [{ a, b,
+// severity, note }] }], most severe first within a patient. `duplicates` (two drugs of one class,
+// from the same API call) add a 'duplicate' row, or the note on a pair that also interacts.
+const SEVERITY_ORDER = { major: 0, moderate: 1, duplicate: 2, minor: 3 }
+export const interactionsForChart = ({ patientNames, patientIds, columnMedicines, quantities }, rules, dbPairs = [], duplicates = []) => {
+  const keys = columnMedicines.map(medicineKey)
+  const keyOf = (pair) => [medicineKey(pair.a), medicineKey(pair.b)].sort().join('|')
+  const dbLevel = new Map(dbPairs.map((pair) => [keyOf(pair), pair.level]))
+  const duplicateNote = new Map(duplicates.map((pair) => [keyOf(pair), `Duplicate therapy: ${pair.className}${pair.note ? ` (${pair.note})` : ''}`]))
+  const results = []
+  patientNames.forEach((name, rowIndex) => {
+    if (!name.trim() && !patientIds[rowIndex]) return
+    const given = keys.map((key, columnIndex) => (key && Number(quantities[rowIndex]?.[columnIndex]) > 0 ? columnIndex : -1)).filter((index) => index >= 0)
+    const found = new Map()
+    given.forEach((first) => given.forEach((second) => {
+      if (first === second) return
+      const pairKey = [keys[first], keys[second]].sort().join('|')
+      const rule = rules.find((candidate) => candidate.a.test(keys[first]) && candidate.b.test(keys[second]))
+      const level = dbLevel.get(pairKey)
+      const duplicate = duplicateNote.get(pairKey)
+      if (!rule && !level && !duplicate) return
+      const existing = found.get(pairKey)
+      if (existing && (existing.rule || !rule)) return
+      found.set(pairKey, { a: columnMedicines[first], b: columnMedicines[second], severity: level || rule?.severity || 'duplicate', note: rule?.note || duplicate || '', rule: Boolean(rule) })
+    }))
+    const pairs = [...found.values()].map(({ rule: _rule, ...pair }) => pair).sort((x, y) => SEVERITY_ORDER[x.severity] - SEVERITY_ORDER[y.severity])
+    if (pairs.length) results.push({ rowNumber: rowIndex + 1, name: name.trim(), patientId: patientIds[rowIndex] || '', pairs })
+  })
+  return results
+}
+
+// «تعديل الجرعة الكلوية»: Cockcroft-Gault creatinine clearance (mL/min) from age (years), weight
+// (kg, actual body weight), sex and serum creatinine (mg/dL; µmol/L ÷ 88.4). null until all are
+// valid. Computed in the browser only — the values are never sent or stored.
+export const SCR_UMOL_PER_MGDL = 88.4
+export const cockcroftGault = ({ age, weightKg, female, scrMgDl }) => {
+  if (!(age > 0 && weightKg > 0 && scrMgDl > 0)) return null
+  return Math.max(0, ((140 - age) * weightKg) / (72 * scrMgDl) * (female ? 0.85 : 1))
+}
+// A renal dose rule's guidance (server/renal-doses.js): the first step whose CrCl the patient
+// meets, or the HD line.
+export const renalGuidance = (rule, crcl, onHd) => (onHd ? rule.hd : (rule.steps.find(([min]) => crcl >= min) || rule.steps[rule.steps.length - 1])[1])
 
 export const isoDate = (value) => {
   const date = new Date(value)
@@ -433,6 +486,41 @@ export const isoDate = (value) => {
 // draft from a past date is orphaned (the tab that wrote it never flushed) and would otherwise
 // resurface forever, since a draft only clears on a successful save.
 export const isDraftStale = (meta, todayIso) => !meta?.date || meta.date !== todayIso
+
+// This device's own copy of a chart as the server last confirmed it (a saved PUT or a network
+// load) — NOT the unsynced draft. The service worker's cached GET is only as new as the last GET,
+// so after a weak link it can predate this device's own saves; this copy never does. Names are
+// patient data on a shared iPad: forgetChartCopies() runs at logout, and with `todayIso` it drops
+// every copy of another day.
+const COPY_PREFIXES = { chart: 'cpa-chart-copy:', pills: 'cpa-pills-copy:' }
+const rememberCopy = (kind, key, date, version, state) => {
+  try { localStorage.setItem(`${COPY_PREFIXES[kind]}${key}`, JSON.stringify({ date, version, state })) } catch { /* storage full or unavailable — the draft/SW cache still cover */ }
+}
+const recallCopy = (kind, key) => {
+  try {
+    const copy = JSON.parse(localStorage.getItem(`${COPY_PREFIXES[kind]}${key}`) || 'null')
+    return copy?.state && (kind === 'chart' ? copy.state.patientNames && copy.state.quantities : copy.state.entries && copy.state.rooms) ? copy : null
+  } catch { return null }
+}
+export const rememberChart = (key, date, version, state) => rememberCopy('chart', key, date, version, state)
+export const recallChart = (key) => recallCopy('chart', key)
+// The pills form has no version (last write wins), so its copy is just { entries, rooms }.
+export const rememberPills = (key, date, state) => rememberCopy('pills', key, date, 0, state)
+export const recallPills = (key) => recallCopy('pills', key)
+export const forgetChartCopies = (todayIso) => {
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i -= 1) {
+      const key = localStorage.key(i)
+      if (!key || !Object.values(COPY_PREFIXES).some((prefix) => key.startsWith(prefix))) continue
+      if (todayIso) {
+        let date = null
+        try { date = JSON.parse(localStorage.getItem(key) || 'null')?.date } catch { /* corrupt — drop it */ }
+        if (!isDraftStale({ date }, todayIso)) continue
+      }
+      localStorage.removeItem(key)
+    }
+  } catch { /* storage unavailable */ }
+}
 
 // Ward-attention data, shared by the floor/ward hub and the manager dashboard: started counts
 // at ward granularity, plus one ranked list of wards needing a nudge — never-started first,

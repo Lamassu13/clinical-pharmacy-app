@@ -218,6 +218,28 @@ function ReportDocument({ report, stale }) {
         )}
       </Section>
 
+      {report.antibiotics && <Section title="استهلاك المضادات الحيوية — DDD لكل 100 يوم مريض" note="الجرعة اليومية المحددة (DDD) حسب منظمة الصحة العالمية، وتصنيف AWaRe (Access / Watch / Reserve) لعام 2023. مضادات الفطريات غير مصنّفة في AWaRe.">
+        {!report.antibiotics.lines.length && !report.antibiotics.notCounted.length ? <Empty>لا توجد مضادات حيوية مسجّلة في هذه المدة.</Empty> : <>
+          <dl className="report-figures">
+            <div><dt>DDD لكل 100 يوم مريض</dt><dd>{orDash(report.antibiotics.dddPer100)}</dd><span className="report-delta" dir="ltr">{report.antibiotics.totalDdds} DDD</span></div>
+            {['Access', 'Watch', 'Reserve'].map((group) => <div key={group}><dt lang="en" dir="ltr">{group}</dt><dd>{orDash(report.antibiotics.aware[group])}٪</dd></div>)}
+          </dl>
+          {report.antibiotics.lines.length > 0 && <div className="table-frame"><table className="requests-table report-table">
+            <thead><tr><th>الدواء</th><th>ATC</th><th>AWaRe</th><th>الكمية</th><th>المجموع</th><th>DDD</th><th>DDD/100</th></tr></thead>
+            <tbody>{report.antibiotics.lines.map((line) => <tr key={line.name}>
+              <td><span lang="en" dir="ltr">{line.name}</span></td>
+              <td lang="en" dir="ltr">{line.atc}</td>
+              <td lang="en" dir="ltr">{line.aware || '—'}</td>
+              <td className="num">{line.quantity}</td>
+              <td className="num" dir="ltr">{line.amount} {line.unit}</td>
+              <td className="num">{line.ddds}</td>
+              <td className="num">{orDash(line.dddPer100)}</td>
+            </tr>)}</tbody>
+          </table></div>}
+          {report.antibiotics.notCounted.length > 0 && <p className="report-note">غير محسوب: {report.antibiotics.notCounted.map((line) => <span key={line.name}><span lang="en" dir="ltr">{line.name}</span> ({line.reason})</span>).reduce((list, item) => [...list, list.length ? '، ' : '', item], [])}</p>}
+        </>}
+      </Section>}
+
       <Section title="تغطية الجارت" note="يوم «بجارت»: جارت رئيسي فيه اسم مريض وكمية واحدة على الأقل.">
         <div className="table-frame"><table className="requests-table report-table">
           <thead><tr><th>الردهة</th><th>أيام بجارت</th><th>اكتملت</th><th>الجارت الإضافي</th><th>استمارات الحبوب الإضافي</th><th>الأيام الفائتة</th></tr></thead>

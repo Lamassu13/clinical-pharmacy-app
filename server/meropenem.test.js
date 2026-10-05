@@ -36,7 +36,7 @@ const scenario = (chartDays) => {
   })
   return { cells, presence, charted }
 }
-const form = (date, where, chartDays) => buildMeropenemForm({ date, ...where, ...scenario(chartDays) }).patients
+const form = (date, where, chartDays) => buildMeropenemForm({ date, ...where, ...scenario(chartDays) }).patients.map(({ key: _key, ...row }) => row)
 const ali = (qty = 3, extra = {}) => ({ name: 'علي', id: '123', qty, ...extra })
 
 test('doseText: the catalogue\'s "gm" means mg, and a quantity divisible by 3 reads as a per-dose amount × 3', () => {
@@ -46,6 +46,7 @@ test('doseText: the catalogue\'s "gm" means mg, and a quantity divisible by 3 re
   assert.equal(doseText('Meronem 500gm Vial', 6), '1g × 3')
   assert.equal(doseText('Meronem 1000gm Vial', 2), '1g × 2')
   assert.equal(doseText('Meropenem 1g vial', 3), '1g × 3')
+  assert.equal(doseText('Vancomycin 500mg vial', 4, 2), '1g × 2') // twice-daily drug
 })
 
 test('meropenem: consecutive days count D1…D3 and the patient is active', () => {
@@ -124,8 +125,53 @@ test('GET /api/meropenem: builds the form from the ward\'s saved charts, and ref
   const client = await loginAs({ role: 'user', floor: FLOOR })
   const res = await client.get(`/api/meropenem?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=2026-09-26`)
   assert.equal(res.status, 200)
-  assert.deepEqual(res.body.form.patients, [{ name: 'علي', patientId: '123', dose: '1g × 3', days: { '2026-09-24': 1, '2026-09-25': 2, '2026-09-26': 3 }, missed: [], status: { kind: 'active' } }])
+  assert.deepEqual(res.body.form.patients, [{ name: 'علي', patientId: '123', dose: '1g × 3', days: { '2026-09-24': 1, '2026-09-25': 2, '2026-09-26': 3 }, missed: [], status: { kind: 'active' }, key: 'id:123', drugKey: 'meropenem' }])
+
+  // Retyping the first shown day shifts the course on both forms, and only the ward's own users may.
+  const where = `floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=2026-09-26`
+  const edit = { floor: FLOOR, ward: WARD, date: '2026-09-26', patientKey: 'id:123', drugKey: 'meropenem', anchorDate: '2026-09-24', n: 3 }
+  assert.equal((await client.put('/api/course-day', { ...edit, n: 0 })).status, 400)
+  assert.equal((await client.put('/api/course-day', edit)).status, 200)
+  assert.deepEqual((await client.get(`/api/meropenem?${where}`)).body.form.patients[0].days, { '2026-09-24': 3, '2026-09-25': 4, '2026-09-26': 5 })
+  assert.deepEqual((await client.get(`/api/antibiotics?${where}`)).body.drugs[0].patients[0].days, { '2026-09-24': 3, '2026-09-25': 4, '2026-09-26': 5 })
 
   const outsider = await loginAs({ role: 'user', floor: 6 })
-  assert.equal((await outsider.get(`/api/meropenem?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=2026-09-26`)).status, 403)
+  assert.equal((await outsider.get(`/api/meropenem?${where}`)).status, 403)
+  assert.equal((await outsider.put('/api/course-day', edit)).status, 403)
+})
+
+test('GET /api/antibiotics: one course per patient per antibiotic — any antibiotic, by generic name — Meropenem included', async () => {
+  const seeder = await createUser({ role: 'admin' })
+  const medicineId = (await pool.query("INSERT INTO medicines (name) VALUES ('Meronem 1000gm Vial') RETURNING id")).rows[0].id
+  const vancoId = (await pool.query("INSERT INTO medicines (name) VALUES ('Vancomycin 500mg Vial') RETURNING id")).rows[0].id
+  const ceftriaxoneId = (await pool.query("INSERT INTO medicines (name) VALUES ('Ceftrixone 1g inj') RETURNING id")).rows[0].id // catalogue misspelling
+  const wardId = (await pool.query('INSERT INTO wards (floor_number, name, is_special) VALUES ($1, $2, false) RETURNING id', [FLOOR, WARD])).rows[0].id
+  const patients = [{ row: 1, name: 'علي', id: '123' }]
+  for (const date of ['2026-09-25', '2026-09-26']) {
+    await seedDay({ wardId, createdBy: seeder.id, date, patients, meronemRows: [1], medicineId })
+    const chartId = (await pool.query('SELECT id FROM daily_charts WHERE chart_date = $1', [date])).rows[0].id
+    await pool.query('INSERT INTO chart_columns (chart_id, column_number, medicine_id) VALUES ($1, 2, $2)', [chartId, vancoId])
+    if (date === '2026-09-26') await pool.query('INSERT INTO chart_quantities (chart_id, row_number, column_number, quantity) VALUES ($1, 1, 2, 4)', [chartId])
+    await pool.query('INSERT INTO chart_columns (chart_id, column_number, medicine_id) VALUES ($1, 3, $2)', [chartId, ceftriaxoneId])
+    await pool.query('INSERT INTO chart_quantities (chart_id, row_number, column_number, quantity) VALUES ($1, 1, 3, 2)', [chartId])
+  }
+
+  const client = await loginAs({ role: 'user', floor: FLOOR })
+  const res = await client.get(`/api/antibiotics?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=2026-09-26`)
+  assert.equal(res.status, 200)
+  assert.deepEqual(res.body.drugs.map((drug) => [drug.label, drug.patients[0].dose, drug.patients[0].days]), [
+    ['Ceftriaxone', '2g × 1', { '2026-09-25': 1, '2026-09-26': 2 }],
+    ['Meropenem', '1g × 3', { '2026-09-25': 1, '2026-09-26': 2 }],
+    ['Vancomycin', '1g × 2', { '2026-09-26': 1 }],
+  ])
+  const meropenem = await client.get(`/api/meropenem?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=2026-09-26`)
+  assert.equal(meropenem.body.form.patients.length, 1) // the Meropenem form still lists Meronem only
+  assert.equal((await (await loginAs({ role: 'user', floor: 6 })).get(`/api/antibiotics?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=2026-09-26`)).status, 403)
+})
+
+test('meropenem: a typed first day shifts that course and the days after it follow', () => {
+  const days = [['2026-09-21', A, [ali()]], ['2026-09-22', A, [ali()]], ['2026-09-23', A, [ali()]]]
+  const [row] = buildMeropenemForm({ date: '2026-09-23', ...A, ...scenario(days), overrides: [{ patientKey: 'id:123', date: '2026-09-21', n: 3 }] }).patients
+  assert.deepEqual(row.days, { '2026-09-21': 3, '2026-09-22': 4, '2026-09-23': 5 })
+  assert.equal(row.key, 'id:123')
 })

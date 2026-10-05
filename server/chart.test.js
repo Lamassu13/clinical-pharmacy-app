@@ -316,3 +316,24 @@ test('PATCH /api/chart/complete: refuses an anonymous request and one for an una
   const wrongFloor = await client.patch('/api/chart/complete', { floor: FLOOR, ward: WARD, date: DATE, slot: 'main', completed: true })
   assert.equal(wrongFloor.status, 403)
 })
+
+test('PUT /api/chart/room: a room typed on the chart is the pills form\'s room, saved per row, cleared when empty, ward-scoped', async () => {
+  const client = await loginAs({ role: 'user', floor: FLOOR })
+  const where = `floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=${DATE}`
+  const room = (rowNumber, value, extra = {}) => client.put('/api/chart/room', { floor: FLOOR, ward: WARD, date: DATE, rowNumber, room: value, ...extra })
+
+  assert.equal((await room(1, '12')).status, 404) // no saved chart for the day yet
+  assert.equal((await client.put('/api/chart', buildChartBody())).status, 200)
+
+  assert.equal((await room(1, ' 12 ')).status, 200)
+  assert.equal((await room(2, 'B-3')).status, 200)
+  assert.equal((await room(0, '9')).status, 400)
+  assert.deepEqual((await client.get(`/api/chart?${where}`)).body.chart.rooms, { 1: '12', 2: 'B-3' })
+  assert.deepEqual((await client.get(`/api/pills?${where}`)).body.pills.rooms, { 1: '12', 2: 'B-3' }) // same data as the pills form
+
+  assert.equal((await room(1, '')).status, 200)
+  assert.deepEqual((await client.get(`/api/chart?${where}`)).body.chart.rooms, { 2: 'B-3' })
+
+  const outsider = await loginAs({ role: 'user', floor: OTHER_FLOOR })
+  assert.equal((await outsider.put('/api/chart/room', { floor: FLOOR, ward: WARD, date: DATE, rowNumber: 1, room: 'x' })).status, 403)
+})

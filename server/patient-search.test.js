@@ -53,3 +53,30 @@ test('patient search: scans the floor main + extra charts by ID prefix and name 
   const unit = (await search(admin, { q: '123' })).body.patients
   assert.deepEqual(unit.map((p) => p.floor), [5, 8])
 })
+
+test('patient history: one patient across dates and wards, newest first; managers only', async () => {
+  const admin = await loginAs({ role: 'admin' })
+  const putOn = (where, date, slot, patients) => admin.put('/api/chart', {
+    ...where, date, slot, expectedVersion: 0,
+    patients: patients.map((patient, index) => ({ rowNumber: index + 1, ...patient })),
+    columns: [{ columnNumber: 1, medicineName: 'Amoxicillin Cap' }],
+    quantities: [{ rowNumber: 1, columnNumber: 1, quantity: 1 }],
+  })
+  // Ali (ID 12345): two days on A, then a day on B's extra chart. Omar: name only, last year.
+  assert.equal((await putOn(A, '2025-03-01', 'main', [{ name: 'علي حسن', patientId: '12345' }])).status, 200)
+  assert.equal((await putOn(A, '2025-03-02', 'main', [{ name: 'علي حسن', patientId: '12345' }])).status, 200)
+  assert.equal((await putOn(B, '2025-03-05', 'extra', [{ name: 'علي حسن جاسم', patientId: '12345' }, { name: 'عمر علي' }])).status, 200)
+
+  const history = (q) => admin.get(`/api/patients/history?${new URLSearchParams({ q })}`)
+  const [ali] = (await history('123')).body.patients
+  assert.deepEqual([ali.name, ali.patientId, ali.first, ali.last, ali.days], ['علي حسن جاسم', '12345', '2025-03-01', '2025-03-05', 3])
+  assert.deepEqual(ali.stays.map((stay) => [stay.ward, stay.slot, stay.first, stay.last, stay.days]), [
+    [B.ward, 'extra', '2025-03-05', '2025-03-05', 1],
+    [A.ward, 'main', '2025-03-01', '2025-03-02', 2],
+  ])
+  assert.deepEqual((await history('علي')).body.patients.map((patient) => patient.name).sort(), ['علي حسن جاسم', 'عمر علي'].sort())
+  assert.deepEqual((await history('ع')).body.patients, []) // under 2 characters
+
+  const pharmacist = await loginAs({ role: 'user', floor: 5 })
+  assert.equal((await pharmacist.get('/api/patients/history?q=123')).status, 403)
+})

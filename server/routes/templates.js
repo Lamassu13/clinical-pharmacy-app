@@ -20,16 +20,23 @@ router.post('/templates', requireAuth, async (request, response) => {
   const requested = (Array.isArray(request.body.medicines) ? request.body.medicines : [])
     .slice(0, MAX_CHART_COLUMNS)
     .map((value) => cleanText(value, 200).trim())
-    .filter(Boolean)
   // A chart column may only hold a catalogue medicine, so a template may too: snap each name to
-  // its catalogue spelling, drop what is not in the catalogue, keep the first of any duplicate.
-  const keys = [...new Set(requested.map(normalizeMedicineKey))]
+  // its catalogue spelling and keep the first of any duplicate. Empty columns stay where they
+  // were (so does a name no longer in the catalogue, as an empty column) — the layout is saved as is.
+  const keys = [...new Set(requested.filter(Boolean).map(normalizeMedicineKey))]
   const found = keys.length
     ? await query(`SELECT name, ${medicineKeySql('name')} AS key FROM medicines WHERE ${medicineKeySql('name')} = ANY($1::text[])`, [keys])
     : { rows: [] }
   const nameByKey = new Map(found.rows.map((row) => [row.key, row.name]))
-  const medicines = keys.map((key) => nameByKey.get(key)).filter(Boolean)
-  if (!medicines.length) return response.status(400).json({ message: 'لا توجد أدوية من القائمة في هذا الجارت لحفظها' })
+  const used = new Set()
+  const medicines = requested.map((value) => {
+    const name = value && nameByKey.get(normalizeMedicineKey(value))
+    if (!name || used.has(name)) return ''
+    used.add(name)
+    return name
+  })
+  while (medicines.length && !medicines[medicines.length - 1]) medicines.pop() // trailing blanks are only padding
+  if (!used.size) return response.status(400).json({ message: 'لا توجد أدوية من القائمة في هذا الجارت لحفظها' })
   const result = await query(
     `INSERT INTO medicine_templates (user_id, name, medicines) VALUES ($1, $2, $3)
      ON CONFLICT (user_id, name) DO UPDATE SET medicines = EXCLUDED.medicines, updated_at = NOW()

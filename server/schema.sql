@@ -290,10 +290,24 @@ CREATE INDEX IF NOT EXISTS chart_quantities_positive_idx ON chart_quantities (ch
 -- The patient ID printed under each name on the chart screen (digits only, '' when unknown).
 -- Screen-only: nothing that prints reads it.
 ALTER TABLE chart_patients ADD COLUMN IF NOT EXISTS patient_id TEXT NOT NULL DEFAULT '';
+-- «كل التواريخ» patient search by «رقم الطبلة» prefix, across every date.
+CREATE INDEX IF NOT EXISTS chart_patients_patient_id_idx ON chart_patients (patient_id text_pattern_ops) WHERE patient_id <> '';
 
 -- «قوالب الأدوية»: a pharmacist's own named sets of chart medicine columns, applied to any
 -- day's chart that has no doses yet. Personal (user_id), so deleting a user deletes theirs.
 -- `medicines` holds catalogue spellings in column order (snapped on save).
+-- «استمارة متابعة الميروبينيم» / «متابعة المضادات الحيوية»: a pharmacist can retype a course's first
+-- shown day ("on anchor_date this patient is D3"); the days after it follow. One row per
+-- patient + drug + anchor date, the latest edit wins. patient_key is the form's own patient key.
+CREATE TABLE IF NOT EXISTS course_day_overrides (
+  patient_key TEXT NOT NULL,
+  drug_key TEXT NOT NULL,
+  anchor_date DATE NOT NULL,
+  n INTEGER NOT NULL CHECK (n BETWEEN 1 AND 365),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (patient_key, drug_key, anchor_date)
+);
+
 CREATE TABLE IF NOT EXISTS medicine_templates (
   id BIGSERIAL PRIMARY KEY,
   user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -302,3 +316,13 @@ CREATE TABLE IF NOT EXISTS medicine_templates (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (user_id, name)
 );
+
+-- «التداخلات الدوائية»: drug-pair reference data from DDInter (CC BY-NC-SA 4.0), loaded by
+-- `node server/import-ddinter.js`. Holds no patient data. Generic names, lowercase, drug_a < drug_b.
+CREATE TABLE IF NOT EXISTS drug_interactions (
+  drug_a TEXT NOT NULL,
+  drug_b TEXT NOT NULL,
+  level TEXT NOT NULL,
+  PRIMARY KEY (drug_a, drug_b)
+);
+CREATE INDEX IF NOT EXISTS drug_interactions_b ON drug_interactions (drug_b);

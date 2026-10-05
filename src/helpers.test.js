@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mergeKeyedSnapshots, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, EXTRA_PILL_SLOTS, isDraftStale, mergePreviousDayDoses, addPatientToChart, medicineMatches, pillSheetPlan, yesterdaySchedules, scheduleFor, applyTemplateColumns, catalogueMatches } from './helpers.js'
+import { interactionsForChart, mergeKeyedSnapshots, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, EXTRA_PILL_SLOTS, isDraftStale, rememberChart, recallChart, forgetChartCopies, mergePreviousDayDoses, addPatientToChart, medicineMatches, pillSheetPlan, yesterdaySchedules, scheduleFor, applyTemplateColumns, catalogueMatches, cockcroftGault, renalGuidance, SCR_UMOL_PER_MGDL } from './helpers.js'
 
 test('mergeKeyedSnapshots keeps a local edit and adopts an unrelated server change', () => {
   const base = { a: '1', b: '2' }
@@ -155,10 +155,10 @@ test('yesterdaySchedules matches a patient by ID first, then by name', () => {
 test('applyTemplateColumns lays a template onto a dose-free chart', () => {
   const catalogue = ['Amoxil 500mg Cap', 'IV Set', 'Meronem 1000gm Vial']
   const result = applyTemplateColumns(['meronem 1000gm vial', 'Gone Since Saving', 'IV Set', 'Amoxil 500mg Cap'], catalogue, ['علي', '', 'مريم'], 51)
-  assert.deepEqual(result.columns.slice(0, 4), ['Meronem 1000gm Vial', 'IV Set', 'Amoxil 500mg Cap', ''])
+  assert.deepEqual(result.columns.slice(0, 4), ['Meronem 1000gm Vial', '', 'IV Set', 'Amoxil 500mg Cap'])
   assert.equal(result.columns.length, 51)
   assert.equal(result.dropped, 1)
-  assert.deepEqual(result.quantities.map((row) => row.slice(0, 3)), [['', '1', ''], ['', '', ''], ['', '1', '']]) // giving set seeded for named rows only
+  assert.deepEqual(result.quantities.map((row) => row.slice(0, 3)), [['', '', '1'], ['', '', ''], ['', '', '1']]) // giving set seeded for named rows only
   assert.equal(applyTemplateColumns(['IV Set'], catalogue, [], 60).columns.length, 60) // keeps a wider chart's width
 })
 
@@ -209,4 +209,88 @@ test('addPatientToChart: same ID reuses its row; full grid and unknown medicine'
   const full = blankChart()
   full.patientNames.fill('x')
   assert.deepEqual(addPatientToChart(full, { name: 'y', id: '', doses: [] }, cat), { ok: false, reason: 'full' })
+})
+
+test('interactionsForChart flags a named patient holding two interacting medicines', () => {
+  const rules = [{ a: /warfarin/, b: /aspirin/, severity: 'major', note: 'bleeding' }]
+  const chart = {
+    patientNames: ['علي', 'مريم', ''],
+    patientIds: ['', '', ''],
+    columnMedicines: ['Warfarin 5mg Tab', 'Aspirin 75mg Tab', ''],
+    quantities: [['1', '1', ''], ['1', '', ''], ['1', '1', '']],
+  }
+  const result = interactionsForChart(chart, rules)
+  assert.equal(result.length, 1) // مريم takes only one of the two; the unnamed row is skipped
+  assert.equal(result[0].name, 'علي')
+  assert.deepEqual(result[0].pairs, [{ a: 'Warfarin 5mg Tab', b: 'Aspirin 75mg Tab', severity: 'major', note: 'bleeding' }])
+})
+
+test('interactionsForChart adds reference-data pairs, keeps rule notes and ranks by severity', () => {
+  const rules = [{ a: /amikacin/, b: /furosemide|lasix/, severity: 'major', note: 'Additive nephrotoxicity' }]
+  const chart = {
+    patientNames: ['علي'], patientIds: [''],
+    columnMedicines: ['Amikacin 500mg Vial', 'Lasix 40mg Tab', 'Aspirin 100mg Tab', 'Zinc'],
+    quantities: [['1', '1', '1', '']],
+  }
+  const dbPairs = [
+    { a: 'Lasix 40mg Tab', b: 'Aspirin 100mg Tab', level: 'moderate' },
+    { a: 'Aspirin 100mg Tab', b: 'Amikacin 500mg Vial', level: 'minor' },
+    { a: 'Lasix 40mg Tab', b: 'Zinc', level: 'major' }, // Zinc has no dose: ignored
+  ]
+  const [patient] = interactionsForChart(chart, rules, dbPairs)
+  assert.deepEqual(patient.pairs.map((pair) => [pair.a, pair.b, pair.severity, pair.note]), [
+    ['Amikacin 500mg Vial', 'Lasix 40mg Tab', 'major', 'Additive nephrotoxicity'],
+    ['Lasix 40mg Tab', 'Aspirin 100mg Tab', 'moderate', ''],
+    ['Amikacin 500mg Vial', 'Aspirin 100mg Tab', 'minor', ''],
+  ])
+})
+
+test('interactionsForChart lists duplicate therapy after moderate, and as the note on a pair that also interacts', () => {
+  const chart = {
+    patientNames: ['علي'], patientIds: [''],
+    columnMedicines: ['Risek 20mg cap', 'Pantoprazole 40mg vial', 'Brufen 400mg Tab', 'Voltarin 75mg Amp', 'Amikacin 500mg Vial', 'Lasix 40mg Tab'],
+    quantities: [['1', '1', '1', '1', '1', '1']],
+  }
+  const dbPairs = [{ a: 'Brufen 400mg Tab', b: 'Voltarin 75mg Amp', level: 'moderate' }, { a: 'Amikacin 500mg Vial', b: 'Lasix 40mg Tab', level: 'major' }]
+  const duplicates = [
+    { a: 'Risek 20mg cap', b: 'Pantoprazole 40mg vial', className: 'Proton pump inhibitors', note: '' },
+    { a: 'Brufen 400mg Tab', b: 'Voltarin 75mg Amp', className: 'NSAIDs', note: '' },
+  ]
+  const [patient] = interactionsForChart(chart, [], dbPairs, duplicates)
+  assert.deepEqual(patient.pairs.map((pair) => [pair.a, pair.severity, pair.note]), [
+    ['Amikacin 500mg Vial', 'major', ''],
+    ['Brufen 400mg Tab', 'moderate', 'Duplicate therapy: NSAIDs'],
+    ['Risek 20mg cap', 'duplicate', 'Duplicate therapy: Proton pump inhibitors'],
+  ])
+})
+
+test('cockcroftGault: textbook case, female factor, and null on missing input', () => {
+  assert.equal(Math.round(cockcroftGault({ age: 60, weightKg: 72, female: false, scrMgDl: 1 })), 80)
+  assert.equal(Math.round(cockcroftGault({ age: 60, weightKg: 72, female: true, scrMgDl: 1 })), 68)
+  assert.equal(Math.round(cockcroftGault({ age: 60, weightKg: 72, female: false, scrMgDl: 176.8 / SCR_UMOL_PER_MGDL })), 40)
+  assert.equal(cockcroftGault({ age: 60, weightKg: 0, female: false, scrMgDl: 1 }), null)
+})
+
+test('renalGuidance picks the first step the CrCl meets, the lowest below all, and HD on dialysis', () => {
+  const rule = { steps: [[51, 'No change'], [26, '1 g q12h'], [10, '500 mg q12h'], [0, '500 mg q24h']], hd: 'after HD' }
+  assert.deepEqual([80, 51, 50.9, 26, 12, 3].map((crcl) => renalGuidance(rule, crcl, false)), ['No change', 'No change', '1 g q12h', '1 g q12h', '500 mg q12h', '500 mg q24h'])
+  assert.equal(renalGuidance(rule, 80, true), 'after HD')
+})
+
+test('chart device copy: remembered, recalled, dropped by logout and by a past day', () => {
+  const store = new Map()
+  globalThis.localStorage = { get length() { return store.size }, key: (i) => [...store.keys()][i] ?? null, getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, String(v)), removeItem: (k) => store.delete(k) }
+  const state = { patientNames: ['Ali'], patientIds: [''], columnMedicines: ['A'], quantities: [['2']] }
+  rememberChart('k-today', '2026-10-05', 4, state)
+  rememberChart('k-old', '2026-10-04', 2, state)
+  localStorage.setItem('cpa-chart-draft:k-today', '{}')
+  assert.deepEqual(recallChart('k-today'), { date: '2026-10-05', version: 4, state })
+  assert.equal(recallChart('missing'), null)
+  forgetChartCopies('2026-10-05')
+  assert.equal(recallChart('k-old'), null)
+  assert.ok(recallChart('k-today'))
+  forgetChartCopies()
+  assert.equal(recallChart('k-today'), null)
+  assert.equal(localStorage.getItem('cpa-chart-draft:k-today'), '{}')
+  delete globalThis.localStorage
 })

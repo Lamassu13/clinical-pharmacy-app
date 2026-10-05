@@ -7,7 +7,8 @@ import {
   normalizeMedicineKey, medicineKeySql,
 } from '../validation.js'
 import { numberToArabicWords } from '../arabic-number.js'
-import { buildMeropenemForm, windowStart, MEROPENEM_SQL_PATTERN } from '../meropenem.js'
+import { buildMeropenemForm, windowStart, doseText, MEROPENEM_SQL_PATTERN } from '../meropenem.js'
+import { antibioticOf } from '../ddd.js'
 
 const router = express.Router()
 
@@ -113,17 +114,43 @@ router.get('/chart', requireAuth, async (request, response) => {
   const chartResult = await query('SELECT id FROM daily_charts WHERE ward_id = $1 AND chart_date = $2 AND slot = $3', [wardId, chartDate, slot])
   if (!chartResult.rows[0]) return response.json({ chart: null, lock })
   const chartId = chartResult.rows[0].id
-  const [patients, columns, quantities, chartRow] = await Promise.all([
+  const [patients, columns, quantities, chartRow, roomRows] = await Promise.all([
     query('SELECT row_number, patient_name, patient_id FROM chart_patients WHERE chart_id = $1 ORDER BY row_number', [chartId]),
     query('SELECT cc.column_number, cc.medicine_id, COALESCE(m.name, cc.custom_name) AS medicine_name FROM chart_columns cc LEFT JOIN medicines m ON m.id = cc.medicine_id WHERE cc.chart_id = $1 ORDER BY cc.column_number', [chartId]),
     query('SELECT row_number, column_number, quantity FROM chart_quantities WHERE chart_id = $1', [chartId]),
     query('SELECT dc.version, dc.completed_at, dc.completed_by, u.full_name AS completed_by_name FROM daily_charts dc LEFT JOIN users u ON u.id = dc.completed_by WHERE dc.id = $1', [chartId]),
+    query("SELECT patient_row_number, room_number FROM pill_patient_meta WHERE chart_id = $1 AND room_number <> ''", [chartId]),
   ])
   response.json({ chart: {
     patients: patients.rows, columns: columns.rows, quantities: quantities.rows,
+    rooms: Object.fromEntries(roomRows.rows.map((row) => [row.patient_row_number, row.room_number])),
     version: chartRow.rows[0].version,
     completedAt: chartRow.rows[0].completed_at, completedBy: chartRow.rows[0].completed_by, completedByName: chartRow.rows[0].completed_by_name,
   }, lock })
+})
+
+// «رقم الغرفة» typed on the chart: the same per-row room the pills form uses (pill_patient_meta),
+// saved on its own, one row at a time, so it never goes through the versioned chart save. An
+// empty room clears the row. 404 when this day has no saved chart yet — the client retries once
+// the chart's first save has created it.
+router.put('/chart/room', requireAuth, async (request, response) => {
+  const location = readLocation(request.body, request.session.user)
+  if (location.status) return response.status(location.status).json({ message: location.message })
+  const { floor, wardName, chartDate, slot } = location
+  const rowNumber = clampInt(request.body.rowNumber, 1, MAX_PATIENT_ROWS)
+  if (rowNumber === null) return response.status(400).json({ message: 'الصف مطلوب' })
+  const room = cleanText(request.body.room, 40).trim()
+  const chartId = await resolveChartId(floor, wardName, chartDate, slot)
+  if (!chartId) return response.status(404).json({ message: 'لا يوجد جارت لهذا اليوم' })
+  if (room) {
+    await query(
+      'INSERT INTO pill_patient_meta (chart_id, patient_row_number, room_number) VALUES ($1, $2, $3) ON CONFLICT (chart_id, patient_row_number) DO UPDATE SET room_number = EXCLUDED.room_number',
+      [chartId, rowNumber, room],
+    )
+  } else {
+    await query('DELETE FROM pill_patient_meta WHERE chart_id = $1 AND patient_row_number = $2', [chartId, rowNumber])
+  }
+  response.json({ ok: true })
 })
 
 // Acquire (or re-affirm) the edit lock. Granted when the chart is free, when the current
@@ -401,14 +428,37 @@ router.get('/order', requireAuth, async (request, response) => {
   })
 })
 
-// «استمارة متابعة الميروبينيم»: every patient on Meronem this month on this ward (main and extra
-// charts), each day's course number, and whether they are still on it. Read-only and fully
-// derived — see ../meropenem.js. Meronem cells are read hospital-wide so a patient transferred in
-// keeps counting from the ward they came from.
-router.get('/meropenem', requireAuth, async (request, response) => {
+// «طلبية الميرونيم»: who is on Meronem on the ward's MAIN chart for the day — name, ID (رقم الطبلة),
+// the dose as the follow-up form words it, and the vial count charted. One line per patient per
+// Meronem column (a 500 mg and a 1 g column are different doses). Read-only and fully derived.
+router.get('/meropenem-order', requireAuth, async (request, response) => {
   const location = readLocation(request.query, request.session.user)
   if (location.status) return response.status(location.status).json({ message: location.message })
   const { floor, wardName, chartDate } = location
+  const chartId = await resolveChartId(floor, wardName, chartDate, 'main')
+  if (!chartId) return response.json({ order: { items: [] } })
+  const rows = await query(
+    `SELECT cp.patient_name AS name, cp.patient_id, COALESCE(m.name, cc.custom_name) AS medicine, cq.quantity
+     FROM chart_patients cp
+     JOIN chart_quantities cq ON cq.chart_id = cp.chart_id AND cq.row_number = cp.row_number
+     JOIN chart_columns cc ON cc.chart_id = cp.chart_id AND cc.column_number = cq.column_number
+     LEFT JOIN medicines m ON m.id = cc.medicine_id
+     WHERE cp.chart_id = $1 AND cq.quantity > 0 AND COALESCE(m.name, cc.custom_name) ~* $2
+       AND (btrim(cp.patient_name) <> '' OR cp.patient_id <> '')
+     ORDER BY cp.row_number, cc.column_number`,
+    [chartId, MEROPENEM_SQL_PATTERN],
+  )
+  // The course day (D1, D2 …) is the follow-up form's own number for that date, so an edited first
+  // day and the forgiven-gap rules carry over; matched by ID, else by name.
+  const form = buildMeropenemForm({ ...(await loadCourseRows(location, { pattern: MEROPENEM_SQL_PATTERN })), overrides: await loadOverrides('meropenem') })
+  const dayOf = (row) => (form.patients.find((patient) => (row.patient_id ? patient.patientId === row.patient_id : patient.name === row.name)) || {}).days?.[chartDate] ?? null
+  response.json({ order: { items: rows.rows.map((row) => ({ day: dayOf(row), name: row.name, patientId: row.patient_id, dose: doseText(row.medicine, row.quantity), count: row.quantity })) } })
+})
+
+// The saved-chart rows a course form is built from (see ../meropenem.js), for every medicine
+// matching `pattern` (a regex) or named in `names`. Cells are read hospital-wide so a patient transferred in keeps counting
+// from the ward they came from.
+const loadCourseRows = async ({ floor, wardName, chartDate }, { pattern, names }) => {
   const from = windowStart(chartDate)
   const cellRows = await query(
     `SELECT dc.chart_date::text AS date, w.floor_number AS floor, w.name AS ward, cp.patient_name AS name, cp.patient_id,
@@ -420,15 +470,15 @@ router.get('/meropenem', requireAuth, async (request, response) => {
      JOIN chart_columns cc ON cc.chart_id = dc.id AND cc.column_number = cq.column_number
      LEFT JOIN medicines m ON m.id = cc.medicine_id
      WHERE dc.chart_date BETWEEN $1::date AND $2::date
-       AND cq.quantity > 0 AND COALESCE(m.name, cc.custom_name) ~* $3
+       AND cq.quantity > 0 AND ${pattern ? 'COALESCE(m.name, cc.custom_name) ~* $3' : 'COALESCE(m.name, cc.custom_name) = ANY($3::text[])'}
        AND (btrim(cp.patient_name) <> '' OR cp.patient_id <> '')
      ORDER BY dc.chart_date, cp.row_number`,
-    [from, chartDate, MEROPENEM_SQL_PATTERN],
+    [from, chartDate, pattern || names],
   )
   const ids = [...new Set(cellRows.rows.map((row) => row.patient_id).filter(Boolean))]
   const [presenceRows, chartedRows] = await Promise.all([
     // Who is on a chart each day: everyone on this ward, plus anyone anywhere carrying an ID that
-    // had Meronem — "still here without it?" and "turned up on another ward?".
+    // had the drug — "still here without it?" and "turned up on another ward?".
     query(
       `SELECT dc.chart_date::text AS date, w.floor_number AS floor, w.name AS ward, cp.patient_name AS name, cp.patient_id
        FROM daily_charts dc
@@ -450,12 +500,66 @@ router.get('/meropenem', requireAuth, async (request, response) => {
     ),
   ])
   const toRow = (row) => ({ date: row.date, floor: row.floor, ward: row.ward, name: row.name, patientId: row.patient_id })
-  response.json({ form: buildMeropenemForm({
+  return {
     date: chartDate, floor, ward: wardName,
     cells: cellRows.rows.map((row) => ({ ...toRow(row), medicine: row.medicine, quantity: row.quantity })),
     presence: presenceRows.rows.map(toRow),
     charted: chartedRows.rows,
-  }) })
+  }
+}
+
+const loadOverrides = async (drugKey) => (await query(
+  'SELECT patient_key, anchor_date::text AS date, n FROM course_day_overrides WHERE drug_key = $1 ORDER BY updated_at',
+  [drugKey],
+)).rows.map((row) => ({ patientKey: row.patient_key, date: row.date, n: row.n }))
+
+// «استمارة متابعة الميروبينيم»: every patient on Meronem this month on this ward (main and extra
+// charts), each day's course number, and whether they are still on it. Read-only and fully derived.
+router.get('/meropenem', requireAuth, async (request, response) => {
+  const location = readLocation(request.query, request.session.user)
+  if (location.status) return response.status(location.status).json({ message: location.message })
+  const rows = await loadCourseRows(location, { pattern: MEROPENEM_SQL_PATTERN })
+  const form = buildMeropenemForm({ ...rows, overrides: await loadOverrides('meropenem') })
+  response.json({ form: { patients: form.patients.map((patient) => ({ ...patient, drugKey: 'meropenem' })) } })
+})
+
+// «متابعة المضادات الحيوية»: the same form for every antibiotic and antifungal in ../ddd.js
+// (Meropenem included), matched by generic name so brands and misspellings count — one course per
+// patient per drug. Read-only and fully derived.
+router.get('/antibiotics', requireAuth, async (request, response) => {
+  const location = readLocation(request.query, request.session.user)
+  if (location.status) return response.status(location.status).json({ message: location.message })
+  const names = (await query('SELECT name FROM medicines')).rows.map((row) => row.name).filter(antibioticOf)
+  const rows = await loadCourseRows(location, { names })
+  const byDrug = new Map()
+  rows.cells.forEach((cell) => {
+    const drug = antibioticOf(cell.medicine)
+    if (!byDrug.has(drug.key)) byDrug.set(drug.key, { ...drug, cells: [] })
+    byDrug.get(drug.key).cells.push(cell)
+  })
+  const drugs = (await Promise.all([...byDrug.values()]
+    .map(async (drug) => ({ key: drug.key, label: drug.label, patients: buildMeropenemForm({ ...rows, cells: drug.cells, perDay: drug.perDay, overrides: await loadOverrides(drug.key) }).patients.map((patient) => ({ ...patient, drugKey: drug.key })) }))
+  ))
+    .filter((drug) => drug.patients.length)
+    .sort((a, b) => a.label.localeCompare(b.label))
+  response.json({ drugs })
+})
+
+// A typed course day: "on `anchorDate` this patient is D`n`" (the form's first shown day for a
+// course); the days after it count on from there. Shared by both forms through the drug key.
+router.put('/course-day', requireAuth, async (request, response) => {
+  const location = readLocation(request.body, request.session.user)
+  if (location.status) return response.status(location.status).json({ message: location.message })
+  const patientKey = cleanText(request.body.patientKey, 300).trim()
+  const drugKey = cleanText(request.body.drugKey, 60).trim()
+  const n = Number(request.body.n)
+  if (!patientKey || !drugKey || !isIsoDate(request.body.anchorDate) || !Number.isInteger(n) || n < 1 || n > 365) return response.status(400).json({ message: 'بيانات غير صحيحة' })
+  await query(
+    `INSERT INTO course_day_overrides (patient_key, drug_key, anchor_date, n) VALUES ($1, $2, $3::date, $4)
+     ON CONFLICT (patient_key, drug_key, anchor_date) DO UPDATE SET n = EXCLUDED.n, updated_at = NOW()`,
+    [patientKey, drugKey, request.body.anchorDate, n],
+  )
+  response.json({ ok: true })
 })
 
 // Patient search for one day: a pharmacist scans their floor's main and extra charts; a manager
@@ -495,6 +599,44 @@ router.get('/patients/search', requireAuth, async (request, response) => {
     floor: row.floor, ward: row.ward, slot: row.slot, rowNumber: row.row_number,
     name: row.name, patientId: row.patient_id, medicines: row.medicines,
   })) })
+})
+
+// Patient search across every saved date — managers only, from the floor list's «كل التواريخ».
+// One row per patient (by ID, else by name) with each ward stay's first and last charted date, so
+// an old patient is found without knowing the day. Read-only; most recently seen first.
+const HISTORY_LIMIT = 30
+router.get('/patients/history', requireAuth, async (request, response) => {
+  const user = request.session.user
+  if (user.role !== 'admin' && user.role !== 'supervisor') return response.status(403).json({ message: 'للمسؤولين فقط' })
+  const q = cleanText(request.query.q, 60).trim()
+  if (q.length < 2) return response.json({ patients: [] })
+  const byId = /^\d+$/.test(q)
+  const pattern = byId ? `${q}%` : `%${q.replace(/[\\%_]/g, '\\$&')}%`
+  const result = await query(
+    `SELECT CASE WHEN cp.patient_id <> '' THEN 'id:' || cp.patient_id ELSE 'name:' || btrim(cp.patient_name) END AS key,
+            (array_agg(cp.patient_name ORDER BY dc.chart_date DESC))[1] AS name, max(cp.patient_id) AS patient_id,
+            w.floor_number AS floor, w.name AS ward, dc.slot,
+            min(dc.chart_date)::text AS first, max(dc.chart_date)::text AS last, count(DISTINCT dc.chart_date)::int AS days
+     FROM chart_patients cp
+     JOIN daily_charts dc ON dc.id = cp.chart_id
+     JOIN wards w ON w.id = dc.ward_id
+     WHERE ${byId ? 'cp.patient_id LIKE $1' : "cp.patient_name ILIKE $1 AND btrim(cp.patient_name) <> ''"}
+     GROUP BY 1, w.floor_number, w.name, dc.slot`,
+    [pattern],
+  )
+  const patients = new Map()
+  result.rows.forEach((row) => {
+    const patient = patients.get(row.key) || { name: '', patientId: row.patient_id, first: row.first, last: '', days: 0, stays: [] }
+    if (row.last > patient.last) { patient.last = row.last; patient.name = row.name.trim() }
+    if (row.first < patient.first) patient.first = row.first
+    patient.days += row.days // a day on two wards counts twice — rare (a transfer day)
+    patient.stays.push({ floor: row.floor, ward: row.ward, slot: row.slot, first: row.first, last: row.last, days: row.days })
+    patients.set(row.key, patient)
+  })
+  response.json({ patients: [...patients.values()]
+    .map((patient) => ({ ...patient, stays: patient.stays.sort((a, b) => b.last.localeCompare(a.last)) }))
+    .sort((a, b) => b.last.localeCompare(a.last))
+    .slice(0, HISTORY_LIMIT) })
 })
 
 export { resolveChartId }
