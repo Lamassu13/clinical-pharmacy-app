@@ -8,11 +8,12 @@ import { medicineKey, medicineMatches, toEnglishDigits } from '../helpers.js'
 const blankLine = () => ({ id: Math.random().toString(36).slice(2), med: '', qty: '' })
 
 export default function ChartFormScreen({
-  wardLabel, slot, onSlotChange, onClose, medicines, chartReady, lockState, lockHolder, chartSaveStatus, isOnline, loadError,
+  wardLabel, roomLabel, slot, onSlotChange, onClose, medicines, chartReady, lockState, lockHolder, chartSaveStatus, isOnline, loadError,
   onSubmit, onFindPrevious, askConfirm,
 }) {
   const [name, setName] = useState('')
   const [id, setId] = useState('')
+  const [room, setRoom] = useState('')
   const [lines, setLines] = useState(() => [blankLine()])
   const [focusLine, setFocusLine] = useState(null)
   const [error, setError] = useState('')
@@ -31,7 +32,7 @@ export default function ChartFormScreen({
     if (!canEdit || !isOnline || !String(value).trim()) return
     const found = await onFindPrevious(value, field)
     if (!found) return
-    const { matchRow, prevName, prevId, prevDoses } = found
+    const { matchRow, prevName, prevId, prevRoom, prevDoses } = found
     if (!prevDoses.length && !(field === 'id' && prevName)) return
     const askedKey = `${slot}|${matchRow}`
     if (asked.current.has(askedKey)) return
@@ -40,6 +41,7 @@ export default function ChartFormScreen({
     if (!(await askConfirm(`${who} موجود في جارت الأمس — هل تريد نسخ بياناته (الاسم والرقم والأدوية والكميات)؟`))) return
     if (prevName && !name.trim()) setName(prevName)
     if (prevId && !id) setId(prevId)
+    if (prevRoom && !room.trim()) setRoom(prevRoom)
     setLines((current) => {
       const kept = current.filter((line) => line.med.trim() || line.qty)
       const have = new Set(kept.map((line) => medicineKey(line.med)))
@@ -60,10 +62,10 @@ export default function ChartFormScreen({
     const unknown = filled.find((line) => line.med.trim() && !canonical(line.med))
     if (unknown) { setError(`«${unknown.med.trim()}» غير موجود في قائمة الأدوية — اختره من القائمة.`); return }
     if (filled.some((line) => !line.med.trim())) { setError('اختر الدواء لكل كمية مكتوبة.'); return }
-    const result = onSubmit({ name, id, doses: filled.map((line) => ({ med: canonical(line.med), qty: line.qty })) })
+    const result = onSubmit({ name, id, room, doses: filled.map((line) => ({ med: canonical(line.med), qty: line.qty })) })
     if (!result.ok) { setError(result.reason === 'full' ? 'الجارت ممتلئ — لا يوجد صف فارغ لمريض جديد.' : 'الجارت قيد التعديل من جهاز آخر.'); return }
     setAdded({ row: result.row + 1, name: name.trim() })
-    setName(''); setId(''); setLines([blankLine()]); setError('')
+    setName(''); setId(''); setRoom(''); setLines([blankLine()]); setError('')
     nameRef.current?.focus()
   }
 
@@ -94,6 +96,9 @@ export default function ChartFormScreen({
       <div className="entry-form-card">
         <label>اسم المريض
           <input ref={nameRef} value={name} autoComplete="off" disabled={!canEdit} onChange={(e) => { setError(''); setName(e.target.value) }} onBlur={() => offerPrevious('name')} />
+        </label>
+        <label>{roomLabel}
+          <input value={room} autoComplete="off" disabled={!canEdit} onChange={(e) => { setError(''); setRoom(e.target.value.slice(0, 40)) }} />
         </label>
         <label>رقم الطبلة
           <input value={id} inputMode="numeric" autoComplete="off" disabled={!canEdit} onChange={(e) => { setError(''); setId(toEnglishDigits(e.target.value).replace(/\D/g, '').slice(0, 20)) }} onBlur={() => offerPrevious('id')} />
