@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { interactionsForChart, mergeKeyedSnapshots, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, EXTRA_PILL_SLOTS, isDraftStale, rememberChart, recallChart, forgetChartCopies, mergePreviousDayDoses, medicineMatches, pillSheetPlan, yesterdaySchedules, scheduleFor, applyTemplateColumns, catalogueMatches, cockcroftGault, renalGuidance, SCR_UMOL_PER_MGDL } from './helpers.js'
+import { interactionsForChart, mergeKeyedSnapshots, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, EXTRA_PILL_SLOTS, isDraftStale, rememberChart, recallChart, forgetChartCopies, mergePreviousDayDoses, addPatientToChart, medicineMatches, pillSheetPlan, yesterdaySchedules, scheduleFor, applyTemplateColumns, catalogueMatches, cockcroftGault, renalGuidance, SCR_UMOL_PER_MGDL } from './helpers.js'
 
 test('mergeKeyedSnapshots keeps a local edit and adopts an unrelated server change', () => {
   const base = { a: '1', b: '2' }
@@ -178,6 +178,37 @@ test('catalogueMatches finds a medicine by its English or Arabic name', () => {
   assert.deepEqual(names('صيدله'), ['Tramadol Tab']) // ta marbuta folded
   assert.deepEqual(names('tab', 2), ['Aspirin 100mg Tab', 'Lasix 40mg Tab'])
   assert.deepEqual(names('  '), [])
+})
+
+const blankChart = (cols = 6) => ({
+  patientNames: Array(41).fill(''), patientIds: Array(41).fill(''),
+  columnMedicines: Array(cols).fill(''), quantities: Array.from({ length: 41 }, () => Array(cols).fill('')),
+})
+const cat = ['Ceftriaxone vial', 'IV set', 'Syringe 5cc', 'Lasix amp']
+
+test('addPatientToChart: first empty row, doses placed, supplies seeded, syringe totalled', () => {
+  const chart = blankChart()
+  chart.columnMedicines[0] = 'IV set'; chart.columnMedicines[1] = 'Syringe 5cc'
+  chart.patientNames[0] = 'Ali'
+  const r = addPatientToChart(chart, { name: 'Sara', id: '٧٧', doses: [{ med: 'Ceftriaxone vial', qty: '2' }, { med: 'Lasix amp', qty: '1' }] }, cat)
+  assert.equal(r.row, 1)
+  assert.equal(r.chart.patientNames[1], 'Sara'); assert.equal(r.chart.patientIds[1], '77')
+  const q = r.chart.quantities[1]
+  assert.equal(q[0], '1')                       // IV set seeded
+  assert.equal(q[1], '3')                       // syringe = 2 + 1 vial/amp
+  assert.equal(q[2], '2'); assert.equal(q[3], '1')
+  assert.equal(chart.patientNames[1], '')       // input untouched
+})
+
+test('addPatientToChart: same ID reuses its row; full grid and unknown medicine', () => {
+  const chart = blankChart()
+  chart.patientNames[4] = 'Old'; chart.patientIds[4] = '9'
+  const r = addPatientToChart(chart, { name: 'New', id: '9', doses: [{ med: 'Lasix amp', qty: '2' }, { med: 'Nope', qty: '5' }] }, cat)
+  assert.equal(r.row, 4); assert.equal(r.chart.patientNames[4], 'New')
+  assert.equal(r.chart.columnMedicines.includes('Nope'), false)
+  const full = blankChart()
+  full.patientNames.fill('x')
+  assert.deepEqual(addPatientToChart(full, { name: 'y', id: '', doses: [] }, cat), { ok: false, reason: 'full' })
 })
 
 test('interactionsForChart flags a named patient holding two interacting medicines', () => {

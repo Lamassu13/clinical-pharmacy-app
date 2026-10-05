@@ -14,6 +14,7 @@ const EXTRA_PILLS_FLOORS = [3, 6, 8, 9]
 // look-alike buttons. `open` is merged into { floor, ward } and handed to onOpen as is.
 const GROUPS = [
   { id: 'forms', label: 'الاستمارات اليومية', items: [
+    { label: 'إدخال مريض (استمارة)', icon: 'sheet-plus', open: { mode: 'chart', slot: 'main', form: true } },
     { label: 'الجارت الإضافي', icon: 'sheet-plus', open: { mode: 'chart', slot: 'extra' } },
     { label: 'الحبوب', icon: 'pill', open: { mode: 'pills' } },
     { label: 'الطلبية', icon: 'clipboard', open: { mode: 'order', slot: 'main' } },

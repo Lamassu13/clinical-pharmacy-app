@@ -1766,7 +1766,8 @@ button.topbar-user:hover { color: var(--primary); }
   place-items: center;
   padding: var(--space-5);
   background: #062b21a8;
-  z-index: 10;
+  /* above the patient-entry sheet (z-index 40), whose copy-from-yesterday confirm opens over it */
+  z-index: 50;
   animation: fade-in var(--dur) var(--ease);
 }
 .medicine-modal {
@@ -2258,6 +2259,40 @@ button.topbar-user:hover { color: var(--primary); }
   .report-table tr { break-inside: avoid; }
   .reports-page .table-frame { overflow: visible; border: 0; }
   .reports-page .card-status { padding: 0; background: none; color: #000; }
+}
+
+/* ============================================================
+   Patient-entry form («+ إدخال مريض») — phone first. A full-screen sheet over the chart (the
+   chart stays mounted so its load/lock/autosave keep running). Screen only; print never sees it.
+   ============================================================ */
+@media screen {
+  .entry-form-page { position: fixed; inset: 0; z-index: 40; display: flex; flex-direction: column; background: var(--bg); overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  .entry-form-head { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); background: var(--surface); border-bottom: 1px solid var(--border); }
+  .entry-form-title { min-width: 0; }
+  .entry-form-title h1 { margin: 0; font-size: var(--text-lg); line-height: 1.3; }
+  .entry-form-title span { display: block; color: var(--text-muted); font-size: var(--text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .entry-form-slots { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: var(--space-3) var(--space-4) 0; padding: 4px; background: var(--surface-alt); border: 1px solid var(--border); border-radius: var(--radius-md); }
+  .entry-form-slots button { min-height: 44px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-muted); font-weight: 700; font-size: var(--text-sm); }
+  .entry-form-slots button[aria-pressed="true"] { background: var(--surface); color: var(--heading); box-shadow: var(--shadow-xs); }
+  .entry-form-page .form-error, .entry-form-page .form-success, .entry-form-note { margin: var(--space-3) var(--space-4) 0; }
+  .entry-form-note { color: var(--text-muted); font-size: var(--text-sm); }
+  .entry-form { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3) var(--space-4) 0; width: 100%; max-width: 560px; margin-inline: auto; flex: 1; }
+  .entry-form-card { display: grid; gap: var(--space-3); padding: var(--space-4); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); }
+  .entry-form-card h2 { margin: 0; font-size: var(--text-base); }
+  .entry-form-card input { min-height: 48px; font-size: 16px; }
+  .entry-lines { display: grid; gap: var(--space-3); margin: 0; padding: 0; list-style: none; }
+  .entry-line { display: grid; grid-template-columns: 1fr 84px auto; gap: var(--space-2); align-items: start; }
+  .entry-line-med { position: relative; min-width: 0; }
+  .entry-line-med input { width: 100%; }
+  .entry-line-qty { width: 100%; text-align: center; font-variant-numeric: tabular-nums; }
+  .entry-line-remove { display: grid; place-items: center; width: 44px; height: 48px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); color: var(--text-muted); }
+  .entry-line-remove:hover { color: var(--danger); border-color: var(--danger); }
+  .entry-suggest { position: absolute; inset-inline: 0; top: calc(100% + 4px); z-index: 2; margin: 0; padding: 4px; list-style: none; background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-md); box-shadow: var(--shadow-md); }
+  .entry-suggest button { display: block; width: 100%; min-height: 44px; padding: 8px 12px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text); font-size: var(--text-base); text-align: start; }
+  .entry-suggest button:hover, .entry-suggest button:active { background: var(--green-50); }
+  .entry-form-bar { position: sticky; bottom: 0; display: grid; gap: var(--space-2); margin-top: auto; padding: var(--space-3) 0 max(var(--space-3), env(safe-area-inset-bottom)); background: var(--bg); }
+  .entry-form-bar .form-error, .entry-form-bar .form-success { margin: 0; }
+  .entry-form-bar .primary-button { min-height: 52px; font-size: var(--text-base); }
 }
 
 /* Pills-form export (usePdfSheets + PillsPrintTemplate): one fixed A4 portrait sheet per form
