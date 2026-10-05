@@ -19,6 +19,7 @@ import ReportsScreen from './screens/ReportsScreen.jsx'
 import PillsScreen from './screens/PillsScreen.jsx'
 import OrderScreen from './screens/OrderScreen.jsx'
 import MeropenemScreen from './screens/MeropenemScreen.jsx'
+import MeropenemOrderScreen from './screens/MeropenemOrderScreen.jsx'
 import InteractionsScreen from './screens/InteractionsScreen.jsx'
 import RenalDoseScreen from './screens/RenalDoseScreen.jsx'
 import { INTERACTION_RULES } from './interactions.js'
@@ -232,6 +233,9 @@ function App() {
   const [orderData, setOrderData] = useState(null)
   const [orderLoading, setOrderLoading] = useState(false)
   const [orderError, setOrderError] = useState(false)
+  const [meroOrderData, setMeroOrderData] = useState(null)
+  const [meroOrderLoading, setMeroOrderLoading] = useState(false)
+  const [meroOrderError, setMeroOrderError] = useState(false)
   // «متابعة الميروبينيم» — read-only, derived from the ward's charts for the chosen date's month.
   const [meropenemData, setMeropenemData] = useState(null)
   const [meropenemLoading, setMeropenemLoading] = useState(false)
@@ -1195,6 +1199,7 @@ function App() {
     else if (adminView === 'reports') screen = 'التقارير'
     else if (selected?.mode === 'pills') screen = `الحبوب — ${ward}`
     else if (selected?.mode === 'order') screen = `الطلبية — ${ward}`
+    else if (selected?.mode === 'meropenem-order') screen = `طلبية الميرونيم — ${ward}`
     else if (selected?.mode === 'meropenem') screen = `متابعة الميروبينيم — ${ward}`
     else if (selected?.mode === 'antibiotics') screen = `متابعة المضادات الحيوية — ${ward}`
     else if (selected?.mode === 'renal') screen = `تعديل الجرعة الكلوية — ${ward}`
@@ -1843,6 +1848,24 @@ function App() {
       .catch(() => { if (!cancelled) { setOrderError(true); setOrderLoading(false) } })
     return () => { cancelled = true }
   }, [selected, selectedDate, isExpired])
+  // «طلبية الميرونيم» — the same plain read-only fetch, from the main chart.
+  useEffect(() => {
+    if (!selected || selected.mode !== 'meropenem-order') return undefined
+    let cancelled = false
+    setMeroOrderLoading(true)
+    setMeroOrderError(false)
+    const params = new URLSearchParams({ floor: selected.floor || '', ward: selected.ward, date: selectedDate })
+    fetch(`${apiUrl}/meropenem-order?${params}`, { credentials: 'include' })
+      .then((response) => { isExpired(response); return response.ok ? response.json() : null })
+      .then((result) => {
+        if (cancelled) return
+        setMeroOrderData(result ? result.order || { items: [] } : null)
+        setMeroOrderError(!result)
+        setMeroOrderLoading(false)
+      })
+      .catch(() => { if (!cancelled) { setMeroOrderError(true); setMeroOrderLoading(false) } })
+    return () => { cancelled = true }
+  }, [selected, selectedDate, isExpired])
   useEffect(() => {
     // «متابعة المضادات الحيوية» is the same form for every followed antibiotic; it shares this state.
     if (!selected || (selected.mode !== 'meropenem' && selected.mode !== 'antibiotics')) return undefined
@@ -2313,6 +2336,7 @@ function App() {
   const chartReadyKey = selected && selected.mode !== 'pills' ? wardKey(selected, selectedDate) : null
   const chartReady = chartReadyKey !== null && loadedChartKey === chartReadyKey
   if (selected && selected.mode === 'renal') return <RenalDoseScreen header={appHeader} wardLabel={wardLabel} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={renalLoading} data={renalData} loadError={renalError} />
+  if (selected && selected.mode === 'meropenem-order') return <MeropenemOrderScreen header={appHeader} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={meroOrderLoading} data={meroOrderData} loadError={meroOrderError} onPrint={() => window.print()} />
   if (selected && selected.mode === 'antibiotics') return <MeropenemScreen header={appHeader} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={meropenemLoading} drugs={meropenemData?.drugs || []} loadError={meropenemError} onEditDay={saveCourseDay} onPrint={() => window.print()} />
   if (selected && selected.mode === 'meropenem') return <MeropenemScreen header={appHeader} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={meropenemLoading} data={meropenemData} loadError={meropenemError} onEditDay={saveCourseDay} onPrint={() => window.print()} />
   if (selected && selected.mode === 'interactions') return <InteractionsScreen header={appHeader} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={interactionsLoading} data={interactionsData} loadError={interactionsError} onPrint={() => window.print()} />

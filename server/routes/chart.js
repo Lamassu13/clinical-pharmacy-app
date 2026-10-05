@@ -7,7 +7,7 @@ import {
   normalizeMedicineKey, medicineKeySql,
 } from '../validation.js'
 import { numberToArabicWords } from '../arabic-number.js'
-import { buildMeropenemForm, windowStart, MEROPENEM_SQL_PATTERN } from '../meropenem.js'
+import { buildMeropenemForm, windowStart, doseText, MEROPENEM_SQL_PATTERN } from '../meropenem.js'
 import { antibioticOf } from '../ddd.js'
 
 const router = express.Router()
@@ -426,6 +426,29 @@ router.get('/order', requireAuth, async (request, response) => {
       })),
     },
   })
+})
+
+// «طلبية الميرونيم»: who is on Meronem on the ward's MAIN chart for the day — name, ID (رقم الطبلة),
+// the dose as the follow-up form words it, and the vial count charted. One line per patient per
+// Meronem column (a 500 mg and a 1 g column are different doses). Read-only and fully derived.
+router.get('/meropenem-order', requireAuth, async (request, response) => {
+  const location = readLocation(request.query, request.session.user)
+  if (location.status) return response.status(location.status).json({ message: location.message })
+  const { floor, wardName, chartDate } = location
+  const chartId = await resolveChartId(floor, wardName, chartDate, 'main')
+  if (!chartId) return response.json({ order: { items: [] } })
+  const rows = await query(
+    `SELECT cp.patient_name AS name, cp.patient_id, COALESCE(m.name, cc.custom_name) AS medicine, cq.quantity
+     FROM chart_patients cp
+     JOIN chart_quantities cq ON cq.chart_id = cp.chart_id AND cq.row_number = cp.row_number
+     JOIN chart_columns cc ON cc.chart_id = cp.chart_id AND cc.column_number = cq.column_number
+     LEFT JOIN medicines m ON m.id = cc.medicine_id
+     WHERE cp.chart_id = $1 AND cq.quantity > 0 AND COALESCE(m.name, cc.custom_name) ~* $2
+       AND (btrim(cp.patient_name) <> '' OR cp.patient_id <> '')
+     ORDER BY cp.row_number, cc.column_number`,
+    [chartId, MEROPENEM_SQL_PATTERN],
+  )
+  response.json({ order: { items: rows.rows.map((row) => ({ name: row.name, patientId: row.patient_id, dose: doseText(row.medicine, row.quantity), count: row.quantity })) } })
 })
 
 // The saved-chart rows a course form is built from (see ../meropenem.js), for every medicine
