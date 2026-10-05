@@ -1189,10 +1189,21 @@ button.topbar-user:hover { color: var(--primary); }
 .meropenem-table .meropenem-status { white-space: nowrap; font-size: var(--text-xs); color: var(--text-muted); }
 .meropenem-table .meropenem-status--active { color: var(--primary); font-weight: 700; }
 .meropenem-table td.meropenem-day--missed { color: var(--danger); }
-.meropenem-day-edit { display: inline-flex; align-items: baseline; }
-.meropenem-day-edit input { width: 3.2ch; padding: 0; border: 0; border-bottom: 1px dashed var(--muted, #888); background: transparent; color: inherit; font: inherit; text-align: center; appearance: textfield; -moz-appearance: textfield; }
+/* direction: ltr — inside the RTL table the flex row would put the number to the LEFT of the D
+   ("5D") and spill it into the neighbouring day's cell on a phone. */
+.meropenem-day-edit { display: inline-flex; align-items: baseline; direction: ltr; max-width: 100%; }
+.meropenem-day-edit input { box-sizing: content-box; width: 2.4ch; min-width: 0; margin: 0; padding: 0; border: 0; border-radius: 0; border-bottom: 1px dashed var(--muted, #888); background: transparent; color: inherit; font: inherit; text-align: center; -webkit-appearance: none; appearance: textfield; -moz-appearance: textfield; }
 .meropenem-day-edit input::-webkit-inner-spin-button, .meropenem-day-edit input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .meropenem-table tr.meropenem-patient-start > td { border-top-width: 2px; }
+/* On a phone .pill-table switches to table-layout: fixed with percentage widths meant for the pills
+   form; here they squeeze the status/dose/date headers into each other. Let the columns size to
+   their content and the wrapper scroll sideways instead. */
+@media screen {
+  .pill-table.meropenem-table { table-layout: auto; min-width: 0; width: max-content; }
+  .pill-table.meropenem-table th, .pill-table.meropenem-table td { width: auto; white-space: nowrap; }
+  .pill-table.meropenem-table th:first-child, .pill-table.meropenem-table td:first-child { min-width: 120px; }
+  .pill-table.meropenem-table .meropenem-day { min-width: 44px; }
+}
 .meropenem-table td[rowspan] { vertical-align: top; }
 .meropenem-table td.meropenem-day--review { background: var(--warning-tint); }
 .meropenem-table td.meropenem-day--long { background: var(--danger-tint); color: var(--danger); }
