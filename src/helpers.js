@@ -259,6 +259,49 @@ export const mergePreviousDayDoses = (columns, quantities, rowIndex, prevDoses, 
   return { columns: nextColumns, quantities: nextQuantities }
 }
 
+// The patient-entry form's submit: puts ONE patient ({ name, id, doses: [{ med, qty }] }) onto the
+// chart as it is now. The row is the same patient's if the chart already has them (same ID, else
+// same name), otherwise the first empty row; null `row` in the result means the grid is full.
+// Doses go where mergePreviousDayDoses puts them (the column already holding that medicine, else
+// the first blank one). Then the seeding the grid does by hand: a giving set / cannula the form
+// did not mention gets «1», and a syringe column the form did not mention gets that row's
+// vial/amp total (setColumnMedicine / applySyringeTotal in App). Inputs are not touched.
+export const addPatientToChart = (chart, patient, catalogue) => {
+  const name = String(patient.name ?? '').trim()
+  const id = toEnglishDigits(String(patient.id ?? '')).replace(/\D/g, '').slice(0, 20)
+  const doses = (patient.doses || [])
+    .map(({ med, qty }) => ({ med: String(med ?? '').trim(), qty: toEnglishDigits(String(qty ?? '')).replace(/\D/g, '').slice(0, 4) }))
+    .filter(({ med, qty }) => med && Number(qty) > 0)
+  const rowEmpty = (index) => !chart.patientNames[index]?.trim() && !chart.patientIds[index] && !chart.quantities[index].some(Boolean)
+  let row = id ? chart.patientIds.findIndex((value) => value === id) : -1
+  if (row === -1 && name) row = chart.patientNames.findIndex((value) => patientNameKey(value) === patientNameKey(name))
+  if (row === -1) row = chart.patientNames.findIndex((_, index) => rowEmpty(index))
+  if (row === -1) return { ok: false, reason: 'full' }
+  const placed = mergePreviousDayDoses(chart.columnMedicines, chart.quantities, row, doses, catalogue)
+  const columns = placed.columns
+  const quantities = placed.quantities
+  const patientNames = chart.patientNames.map((value, index) => (index === row && name ? name : value))
+  const patientIds = chart.patientIds.map((value, index) => (index === row && id ? id : value))
+  const given = new Set(doses.map(({ med }) => medicineKey(med)))
+  const cells = [...quantities[row]]
+  const vialAmp = []
+  columns.forEach((medicine, column) => {
+    const key = medicineKey(medicine)
+    if (medicine.trim() && !isSyringe(medicine) && VIAL_AMP.test(key) && !SYRINGE_EXCLUDE.test(key)) vialAmp.push(column)
+  })
+  if (patientNames[row].trim()) {
+    columns.forEach((medicine, column) => {
+      if (!medicine.trim() || given.has(medicineKey(medicine))) return
+      if (isSyringe(medicine)) {
+        const total = vialAmp.reduce((sum, index) => sum + (Number(cells[index]) || 0), 0)
+        if (total) cells[column] = String(total)
+      } else if (UNIT_ONE.test(medicineKey(medicine)) && !cells[column]) cells[column] = '1'
+    })
+  }
+  quantities[row] = cells
+  return { ok: true, row, chart: { patientNames, patientIds, columnMedicines: columns, quantities } }
+}
+
 // Arabic spelling variants a pharmacist types interchangeably — hamza seats, ta marbuta, alif
 // maqsura, tatweel and harakat — folded away so «اموكسيل» finds «أموكسيل».
 const foldArabic = (value) => medicineKey(value)

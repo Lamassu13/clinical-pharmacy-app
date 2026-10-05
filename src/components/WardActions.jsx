@@ -33,6 +33,7 @@ export default function WardActions({ floor, ward, started, onOpen }) {
       <details className="ward-card-more" ref={ref}>
         <summary aria-label="خيارات أخرى للردهة">…</summary>
         <div className="ward-card-more-list">
+          <button className="secondary-button compact" onClick={() => { ref.current.open = false; onOpen({ floor, ward, mode: 'chart', slot: 'main', form: true }) }}>إدخال مريض (استمارة)</button>
           <button className="secondary-button compact" onClick={() => { ref.current.open = false; onOpen({ floor, ward, mode: 'chart', slot: 'extra' }) }}>الجارت الإضافي</button>
           <button className="secondary-button compact" onClick={() => { ref.current.open = false; onOpen({ floor, ward, mode: 'pills' }) }}>الحبوب</button>
           <button className="secondary-button compact" onClick={() => { ref.current.open = false; onOpen({ floor, ward, mode: 'order', slot: 'main' }) }}>الطلبية</button>

@@ -10,7 +10,7 @@ import { medicineMatches } from '../helpers.js'
 // maintains it, stays in App so that swapping in the sign-in card when a session lapses does
 // not unmount the half-typed chart.
 export default function ChartScreen({
-  selected, wardLabel, today, todayWeekday, isManager, dateIsToday, selectedDate, onChangeDate, onCopyToNextDay, onOpenTemplates, isOnline, onBack, onGoToPills, onGoToOrder, onExportPdf, pdfBusy, pdfExportError,
+  selected, wardLabel, today, todayWeekday, isManager, dateIsToday, selectedDate, onChangeDate, onCopyToNextDay, onOpenTemplates, isOnline, onBack, onGoToPills, onGoToOrder, onOpenForm, onExportPdf, pdfBusy, pdfExportError,
   chartSaveStatus, loadError, copyError, chartReady, lastChartSaveAt, onRetryLoad, onRetrySave, lockState, lockHolder,
   chartCompleted, completedByName, onToggleComplete,
   chartClashNote, onDismissClashNote, droppedCells, undo, onUndo,
@@ -92,6 +92,7 @@ export default function ChartScreen({
       <button className="back-button" onClick={onBack}>→ العودة للردهات</button>
       <div><h1>{wardLabel}</h1></div>
       <div className="toolbar-actions">
+        {!readOnly && <button className="primary-button compact" onClick={onOpenForm}>+ إدخال مريض</button>}
         {!readOnly && <button className="secondary-button compact" onClick={onAddColumn} disabled={!canAddColumn} title={canAddColumn ? undefined : `الحد الأقصى لعدد الأعمدة`}>+ عمود</button>}
         {!readOnly && <button type="button" className="secondary-button compact" onClick={onToggleComplete}>{chartCompleted ? '✓ اكتمل — إلغاء' : 'اكتمل الجارت'}</button>}
         <button className="primary-button compact" onClick={onExportPdf} disabled={pdfBusy}>{pdfBusy ? 'جارٍ التحضير…' : 'طباعة A4 / PDF'}</button>
