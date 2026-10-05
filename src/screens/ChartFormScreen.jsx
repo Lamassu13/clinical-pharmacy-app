@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { PATIENT_ROWS } from '../constants.js'
 import { medicineKey, medicineMatches, toEnglishDigits } from '../helpers.js'
 
 // Phone-first entry form for ONE patient. It has no state of the chart's own: «إضافة إلى الجارت»
@@ -8,7 +9,7 @@ import { medicineKey, medicineMatches, toEnglishDigits } from '../helpers.js'
 const blankLine = () => ({ id: Math.random().toString(36).slice(2), med: '', qty: '' })
 
 export default function ChartFormScreen({
-  wardLabel, roomLabel, slot, onSlotChange, onClose, medicines, chartReady, lockState, lockHolder, chartSaveStatus, isOnline, loadError,
+  usedRows, wardLabel, roomLabel, slot, onSlotChange, onClose, medicines, chartReady, lockState, lockHolder, chartSaveStatus, isOnline, loadError,
   onSubmit, onFindPrevious, askConfirm,
 }) {
   const [name, setName] = useState('')
@@ -87,6 +88,10 @@ export default function ChartFormScreen({
       <button type="button" aria-pressed={slot === 'extra'} onClick={() => slot !== 'extra' && onSlotChange('extra')}>الجارت الإضافي</button>
     </div>
 
+    {chartReady && <p className={`entry-form-count${usedRows >= PATIENT_ROWS - 3 ? ' entry-form-count--near' : ''}`} role="status">
+      المرضى في الجارت: <b>{usedRows}</b> من {PATIENT_ROWS}
+      {usedRows >= PATIENT_ROWS ? ' — الجارت ممتلئ، لا يمكن إضافة مريض جديد' : usedRows >= PATIENT_ROWS - 3 ? ` — بقي ${PATIENT_ROWS - usedRows} فقط` : ''}
+    </p>}
     {loadError && <p className="form-error" role="alert">تعذر تحميل الجارت — لا يمكن الإضافة الآن.</p>}
     {!loadError && !chartReady && <p className="entry-form-note" role="status">جارٍ تحميل الجارت…</p>}
     {readOnly && <p className="form-error" role="status">الجارت قيد التعديل — {lockHolder?.name || 'جهاز آخر'}. لا يمكن الإضافة حتى ينتهي.</p>}

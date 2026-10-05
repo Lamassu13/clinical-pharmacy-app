@@ -2276,6 +2276,9 @@ button.topbar-user:hover { color: var(--primary); }
   .entry-form-slots button[aria-pressed="true"] { background: var(--surface); color: var(--heading); box-shadow: var(--shadow-xs); }
   .entry-form-page .form-error, .entry-form-page .form-success, .entry-form-note { margin: var(--space-3) var(--space-4) 0; }
   .entry-form-note { color: var(--text-muted); font-size: var(--text-sm); }
+  .entry-form-count { margin: var(--space-3) var(--space-4) 0; color: var(--text-muted); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
+  .entry-form-count b { color: var(--heading); }
+  .entry-form-count--near { color: var(--warning-text, var(--warning)); font-weight: 700; }
   .entry-form { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3) var(--space-4) 0; width: 100%; max-width: 560px; margin-inline: auto; flex: 1; }
   .entry-form-card { display: grid; gap: var(--space-3); padding: var(--space-4); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); }
   .entry-form-card h2 { margin: 0; font-size: var(--text-base); }
