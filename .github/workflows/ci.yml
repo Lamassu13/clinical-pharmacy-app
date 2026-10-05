@@ -1,11 +1,11 @@
 name: CI
 
 # Render auto-deploys every push to main, so this is the only gate between a commit
-# and production. No secrets: the Postgres service below is a disposable container
-# scoped to this job, not a database anything else can reach.
+# and production. main is protected (changes only arrive through a PR whose «check» passed),
+# so it runs on PRs only — a second run on the merge itself would just repeat it.
+# No secrets: the Postgres service below is a disposable container scoped to this job, not a
+# database anything else can reach.
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
 
