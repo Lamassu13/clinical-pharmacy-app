@@ -1372,6 +1372,7 @@ button.topbar-user:hover { color: var(--primary); }
 .save-state { margin-inline-start: auto; background: transparent !important; border: 0 !important; padding: 0 !important; color: var(--text-muted); font-weight: 700; }
 .save-state-error { color: var(--danger); font-weight: 700; }
 .save-state-pending { color: var(--warning-text); font-weight: 700; }
+.save-state-device { color: var(--warning-text); font-weight: 700; }
 .save-state-saving { color: var(--text-muted); font-weight: 400; }
 
 /* Per-session edit-lock banner — a flat one-line strip above the toolbar. Word first, colour
@@ -1438,6 +1439,7 @@ button.topbar-user:hover { color: var(--primary); }
 .active-patient-bar .save-state { flex: 0 0 auto; margin-inline-start: 0; white-space: nowrap; color: var(--text); font-weight: 700; }
 .active-patient-bar .save-state-error { color: var(--danger); }
 .active-patient-bar .save-state-pending { color: var(--warning-text); }
+.active-patient-bar .save-state-device { color: var(--warning-text); }
 .active-patient-bar .save-state-saving { color: var(--text-muted); font-weight: 400; }
 /* Save / copy failure recovery, and the "a clash kept your value" note — both render below
    the grid so a save error or merge outcome never pushes the cells being typed into.

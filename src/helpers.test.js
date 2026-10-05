@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { interactionsForChart, mergeKeyedSnapshots, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, EXTRA_PILL_SLOTS, isDraftStale, mergePreviousDayDoses, medicineMatches, pillSheetPlan, yesterdaySchedules, scheduleFor, applyTemplateColumns, catalogueMatches, cockcroftGault, renalGuidance, SCR_UMOL_PER_MGDL } from './helpers.js'
+import { interactionsForChart, mergeKeyedSnapshots, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, EXTRA_PILL_SLOTS, isDraftStale, rememberChart, recallChart, forgetChartCopies, mergePreviousDayDoses, medicineMatches, pillSheetPlan, yesterdaySchedules, scheduleFor, applyTemplateColumns, catalogueMatches, cockcroftGault, renalGuidance, SCR_UMOL_PER_MGDL } from './helpers.js'
 
 test('mergeKeyedSnapshots keeps a local edit and adopts an unrelated server change', () => {
   const base = { a: '1', b: '2' }
@@ -244,4 +244,22 @@ test('renalGuidance picks the first step the CrCl meets, the lowest below all, a
   const rule = { steps: [[51, 'No change'], [26, '1 g q12h'], [10, '500 mg q12h'], [0, '500 mg q24h']], hd: 'after HD' }
   assert.deepEqual([80, 51, 50.9, 26, 12, 3].map((crcl) => renalGuidance(rule, crcl, false)), ['No change', 'No change', '1 g q12h', '1 g q12h', '500 mg q12h', '500 mg q24h'])
   assert.equal(renalGuidance(rule, 80, true), 'after HD')
+})
+
+test('chart device copy: remembered, recalled, dropped by logout and by a past day', () => {
+  const store = new Map()
+  globalThis.localStorage = { get length() { return store.size }, key: (i) => [...store.keys()][i] ?? null, getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, String(v)), removeItem: (k) => store.delete(k) }
+  const state = { patientNames: ['Ali'], patientIds: [''], columnMedicines: ['A'], quantities: [['2']] }
+  rememberChart('k-today', '2026-10-05', 4, state)
+  rememberChart('k-old', '2026-10-04', 2, state)
+  localStorage.setItem('cpa-chart-draft:k-today', '{}')
+  assert.deepEqual(recallChart('k-today'), { date: '2026-10-05', version: 4, state })
+  assert.equal(recallChart('missing'), null)
+  forgetChartCopies('2026-10-05')
+  assert.equal(recallChart('k-old'), null)
+  assert.ok(recallChart('k-today'))
+  forgetChartCopies()
+  assert.equal(recallChart('k-today'), null)
+  assert.equal(localStorage.getItem('cpa-chart-draft:k-today'), '{}')
+  delete globalThis.localStorage
 })

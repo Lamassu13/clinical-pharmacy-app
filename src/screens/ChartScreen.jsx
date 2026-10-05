@@ -42,13 +42,17 @@ export default function ChartScreen({
   const savedTime = lastChartSaveAt
     ? new Date(lastChartSaveAt).toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' })
     : ''
+  // Edits not yet confirmed by the server while there is no link (or the save is failing):
+  // they are on this device — the mirror and the device copy — and will upload by themselves.
+  const onDeviceOnly = !loadError && chartSaveStatus !== 'saved' && (!isOnline || chartSaveStatus === 'error')
   const saveText = loadError ? '⚠ تعذر تحميل الجارت'
-    : chartSaveStatus === 'error' ? '⚠ لم يُحفظ'
+    : onDeviceOnly ? '◐ على الجهاز فقط — لم يصل إلى الخادم بعد'
     : chartSaveStatus === 'saving' ? '⟳ جارٍ الحفظ…'
     : chartSaveStatus === 'pending' ? '○ لم يُحفظ بعد…'
     : savedTime ? `● محفوظ · آخر حفظ ${savedTime}`
     : '● محفوظ'
-  const saveClass = (loadError || chartSaveStatus === 'error') ? 'save-state save-state-error'
+  const saveClass = loadError ? 'save-state save-state-error'
+    : onDeviceOnly ? 'save-state save-state-device'
     : chartSaveStatus === 'saving' ? 'save-state save-state-saving'
     : chartSaveStatus === 'pending' ? 'save-state save-state-pending'
     : 'save-state'

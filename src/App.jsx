@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { roleLabels, PATIENT_ROWS, CHART_COLUMNS, MAX_CHART_COLUMNS, apiUrl, floors, specialWards } from './constants.js'
-import { interactionsForChart, applyTemplateColumns,yesterdaySchedules, mergePreviousDayDoses, mergeChartSnapshots, diffMergeOutcome, addOfflineRows, mergeKeyedSnapshots, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, blankExtraPillForm, parseChartRows, toEnglishDigits, medicineKey, patientNameKey, nearestMedicine, UNIT_ONE, isSyringe, VIAL_AMP, SYRINGE_EXCLUDE, isoDate, isDraftStale, locationBody, pillEntryList } from './helpers.js'
+import { interactionsForChart, applyTemplateColumns,yesterdaySchedules, mergePreviousDayDoses, mergeChartSnapshots, diffMergeOutcome, addOfflineRows, mergeKeyedSnapshots, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, blankExtraPillForm, parseChartRows, toEnglishDigits, medicineKey, patientNameKey, nearestMedicine, UNIT_ONE, isSyringe, VIAL_AMP, SYRINGE_EXCLUDE, isoDate, isDraftStale, rememberChart, recallChart, forgetChartCopies, locationBody, pillEntryList } from './helpers.js'
 import ConfirmDialog from './components/ConfirmDialog.jsx'
 import CopyChartDialog from './components/CopyChartDialog.jsx'
 import TemplatesDialog from './components/TemplatesDialog.jsx'
@@ -1038,6 +1038,7 @@ function App() {
       setDroppedCells({})
       chartVersionRef.current = result.chart ? result.chart.version : 0
       lastSyncedChartRef.current = fresh
+      rememberChart(wardKey(selected, date), date, chartVersionRef.current, fresh)
       setChartCompleted(!!result.chart?.completedAt)
       setCompletedByName(result.chart?.completedByName ?? null)
       setChartClashNote(`أُضيف ما كُتب دون اتصال إلى جارت الخادم كمرضى جدد${unplaced ? ` — ${unplaced} مريض لم يتّسع له الجارت، راجعه` : ''}. راجِع الجارت.`)
@@ -1052,6 +1053,7 @@ function App() {
     setDroppedCells(dropped)
     chartVersionRef.current = result.chart ? result.chart.version : 0
     lastSyncedChartRef.current = fresh
+    rememberChart(wardKey(selected, date), date, chartVersionRef.current, fresh)
     // A conflict re-fetch may reveal another device marked (or un-marked) completion meanwhile.
     setChartCompleted(!!result.chart?.completedAt)
     setCompletedByName(result.chart?.completedByName ?? null)
@@ -1083,6 +1085,7 @@ function App() {
         // genuinely newer save from elsewhere the next time this exact chart is opened.
         chartVersionRef.current = result.version
         lastSyncedChartRef.current = { patientNames, patientIds, columnMedicines, quantities }
+        rememberChart(chartKey, selectedDate, result.version, lastSyncedChartRef.current)
         try { localStorage.removeItem(`cpa-chart-draft:${chartKey}`) } catch { /* best effort */ }
       })
       .catch(() => { /* the debounced autosave or next visit will retry */ })
@@ -1155,6 +1158,7 @@ function App() {
     // Ward iPads are shared between pharmacists — the next person to sign in on this device
     // shouldn't be able to see this session's cached chart/pills/extra-pills responses if they
     // go offline before their own first successful load. Name must match sw.js's API_CACHE.
+    forgetChartCopies()
     try { await caches.delete('cpa-api-v1') } catch { /* Cache API unavailable — nothing cached to worry about either */ }
     setIsLoggedIn(false)
     setCurrentUser(null)
@@ -1359,6 +1363,23 @@ function App() {
     chartRoomsSyncedRef.current = {}
     let cancelled = false
     let retryTimer
+    // No usable server answer: open from this device. Its own last server-confirmed copy
+    // (rememberChart) beats the service worker's cached GET, which can predate this device's saves;
+    // an unsynced draft still goes on top of it. False when this device never saw the chart.
+    const openFromDeviceCopy = (draft, fallback) => {
+      const copy = recallChart(chartKey)
+      if (!copy || draft?.offline) return false
+      const pick = (snapshot) => ({ ...snapshot, patientIds: snapshot.patientIds ?? fallback.patientIds })
+      const shown = pick(draft ? draft.current : copy.state)
+      setPatientNames(shown.patientNames); setPatientIds(shown.patientIds); setQuantities(shown.quantities); setColumnMedicines(shown.columnMedicines)
+      chartVersionRef.current = copy.version
+      lastSyncedChartRef.current = pick(draft ? draft.base : copy.state)
+      setChartClashNote('الاتصال ضعيف أو مقطوع — عُرضت آخر نسخة حُفظت من هذا الجهاز. ما تكتبه يُحفظ ويُدمج تلقائيًا عند عودة الاتصال.')
+      setLoadError(false)
+      setLoadedChartKey(chartKey)
+      setChartLoading(false)
+      return true
+    }
     const load = async () => {
       try {
         const params = new URLSearchParams({ floor: selected.floor || '', ward: selected.ward, slot: selected.slot || 'main', date: selectedDate })
@@ -1377,6 +1398,7 @@ function App() {
           const blank = parseChartRows(null)
           let draft = null
           try { draft = JSON.parse(localStorage.getItem(draftKey) || 'null') } catch { /* corrupt — start blank */ }
+          if (openFromDeviceCopy(draft, blank)) return
           const base = draft ? { ...draft.base, patientIds: draft.base.patientIds ?? blank.patientIds } : blank
           const next = draft ? mergeChartSnapshots(base, draft.current, base) : blank
           setPatientNames(next.patientNames); setPatientIds(next.patientIds); setQuantities(next.quantities); setColumnMedicines(next.columnMedicines)
@@ -1414,6 +1436,7 @@ function App() {
         // the draft in place: the first save 409s against the real chart once the link is back and
         // mergeAfterConflict merges it field by field, like any other offline work.
         if (response.headers.get('x-from-cache') === '1') {
+          if (openFromDeviceCopy(draft, fresh)) return
           const shown = draft ? { ...draft.current, patientIds: draft.current.patientIds ?? fresh.patientIds } : fresh
           setPatientNames(shown.patientNames); setPatientIds(shown.patientIds); setQuantities(shown.quantities); setColumnMedicines(shown.columnMedicines)
           chartVersionRef.current = draft?.offline ? 0 : result.chart ? result.chart.version : 0
@@ -1437,6 +1460,7 @@ function App() {
         // Always the server snapshot, not `next`: a recovered draft is still unsaved until the
         // next PUT actually succeeds, so it must still read as "pending" if that save 409s.
         lastSyncedChartRef.current = fresh
+        rememberChart(chartKey, selectedDate, chartVersionRef.current, fresh)
         if (offlineAdd) {
           // Kept in localStorage until the merged grid is saved (the mirror rewrites it meanwhile).
           setChartClashNote(`أُضيف ما كُتب دون اتصال إلى جارت الخادم كمرضى جدد${offlineAdd.unplaced ? ` — ${offlineAdd.unplaced} مريض لم يتّسع له الجارت، راجعه` : ''}. راجِع الجارت.`)
@@ -1517,6 +1541,7 @@ function App() {
         if (key && key.startsWith('cpa-chart-draft:')) keys.push(key)
       }
       const todayIso = isoDate(new Date())
+      forgetChartCopies(todayIso)
       let found = null
       for (const key of keys) {
         const meta = JSON.parse(localStorage.getItem(key) || 'null')?.meta
@@ -1586,6 +1611,7 @@ function App() {
         const result = await response.json()
         chartVersionRef.current = result.version
         lastSyncedChartRef.current = { patientNames, patientIds, columnMedicines, quantities }
+        rememberChart(chartKey, selectedDate, result.version, lastSyncedChartRef.current)
         setOfflineChartKey(null)
         // Everything the localStorage mirror was protecting has now actually reached the
         // server — an empty draft is indistinguishable from no draft, so just drop it.

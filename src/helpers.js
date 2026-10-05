@@ -444,6 +444,36 @@ export const isoDate = (value) => {
 // resurface forever, since a draft only clears on a successful save.
 export const isDraftStale = (meta, todayIso) => !meta?.date || meta.date !== todayIso
 
+// This device's own copy of a chart as the server last confirmed it (a saved PUT or a network
+// load) — NOT the unsynced draft. The service worker's cached GET is only as new as the last GET,
+// so after a weak link it can predate this device's own saves; this copy never does. Names are
+// patient data on a shared iPad: forgetChartCopies() runs at logout, and with `todayIso` it drops
+// every copy of another day.
+const CHART_COPY_PREFIX = 'cpa-chart-copy:'
+export const rememberChart = (chartKey, date, version, state) => {
+  try { localStorage.setItem(`${CHART_COPY_PREFIX}${chartKey}`, JSON.stringify({ date, version, state })) } catch { /* storage full or unavailable — the draft/SW cache still cover */ }
+}
+export const recallChart = (chartKey) => {
+  try {
+    const copy = JSON.parse(localStorage.getItem(`${CHART_COPY_PREFIX}${chartKey}`) || 'null')
+    return copy?.state?.patientNames && copy.state.quantities ? copy : null
+  } catch { return null }
+}
+export const forgetChartCopies = (todayIso) => {
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i -= 1) {
+      const key = localStorage.key(i)
+      if (!key?.startsWith(CHART_COPY_PREFIX)) continue
+      if (todayIso) {
+        let date = null
+        try { date = JSON.parse(localStorage.getItem(key) || 'null')?.date } catch { /* corrupt — drop it */ }
+        if (!isDraftStale({ date }, todayIso)) continue
+      }
+      localStorage.removeItem(key)
+    }
+  } catch { /* storage unavailable */ }
+}
+
 // Ward-attention data, shared by the floor/ward hub and the manager dashboard: started counts
 // at ward granularity, plus one ranked list of wards needing a nudge — never-started first,
 // then started-but-stalled (idle QUIET_AFTER_MIN+ minutes). Every entry names the ward its row
