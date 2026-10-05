@@ -448,7 +448,11 @@ router.get('/meropenem-order', requireAuth, async (request, response) => {
      ORDER BY cp.row_number, cc.column_number`,
     [chartId, MEROPENEM_SQL_PATTERN],
   )
-  response.json({ order: { items: rows.rows.map((row) => ({ name: row.name, patientId: row.patient_id, dose: doseText(row.medicine, row.quantity), count: row.quantity })) } })
+  // The course day (D1, D2 …) is the follow-up form's own number for that date, so an edited first
+  // day and the forgiven-gap rules carry over; matched by ID, else by name.
+  const form = buildMeropenemForm({ ...(await loadCourseRows(location, { pattern: MEROPENEM_SQL_PATTERN })), overrides: await loadOverrides('meropenem') })
+  const dayOf = (row) => (form.patients.find((patient) => (row.patient_id ? patient.patientId === row.patient_id : patient.name === row.name)) || {}).days?.[chartDate] ?? null
+  response.json({ order: { items: rows.rows.map((row) => ({ day: dayOf(row), name: row.name, patientId: row.patient_id, dose: doseText(row.medicine, row.quantity), count: row.quantity })) } })
 })
 
 // The saved-chart rows a course form is built from (see ../meropenem.js), for every medicine

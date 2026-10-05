@@ -163,9 +163,14 @@ test('GET /api/meropenem-order: Meronem lines from the MAIN chart only, with dos
   const res = await client.get(`/api/meropenem-order?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=${DATE}`)
   assert.equal(res.status, 200)
   assert.deepEqual(res.body.order.items, [
-    { name: 'مريض 1', patientId: '1001', dose: '2g × 3', count: 6 },
-    { name: 'مريض 2', patientId: '', dose: '1g × 2', count: 2 },
+    { day: 1, name: 'مريض 1', patientId: '1001', dose: '2g × 3', count: 6 },
+    { day: 1, name: 'مريض 2', patientId: '', dose: '1g × 2', count: 2 },
   ])
+  // The next day's chart makes it D2 for the patient with an ID.
+  await seedChart({ wardId, createdBy: admin.id, columns, patients: [1], cells: [{ row: 1, col: 1, qty: 6 }], date: '2026-05-21' })
+  await pool.query("UPDATE chart_patients SET patient_id = '1001' WHERE row_number = 1 AND chart_id = (SELECT id FROM daily_charts WHERE chart_date = '2026-05-21' AND slot = 'main')")
+  const next = await client.get(`/api/meropenem-order?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=2026-05-21`)
+  assert.deepEqual(next.body.order.items.map((item) => item.day), [2])
   const none = await client.get(`/api/meropenem-order?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=2026-05-01`)
   assert.deepEqual(none.body.order.items, [])
 })

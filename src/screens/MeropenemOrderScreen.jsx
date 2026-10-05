@@ -1,7 +1,7 @@
 import hospitalLogo from '../assets/hospital-logo.png'
 
 // «طلبية الميرونيم» — read-only, built by GET /api/meropenem-order from the ward's MAIN chart for
-// the day: one line per patient on Meronem with the dose and the vial count. Same frame (and
+// the day: one line per patient on Meronem with the course day (D1, D2 …), the dose and the vial count. Same frame (and
 // print rules) as the requisition (OrderScreen).
 export default function MeropenemOrderScreen({ header, wardLabel, today, onBack, selectedDate, onChangeDate, loading, data, loadError, onPrint }) {
   const items = data?.items || []
@@ -33,9 +33,10 @@ export default function MeropenemOrderScreen({ header, wardLabel, today, onBack,
         : <div className="order-table-scroll">
             <table className="pill-table order-table meropenem-order-table">
               <thead><tr>
-                <th scope="col">اسم المريض</th><th scope="col">رقم الطبلة</th><th scope="col">الجرعة</th><th scope="col">العدد</th>
+                <th scope="col">اليوم</th><th scope="col">اسم المريض</th><th scope="col">رقم الطبلة</th><th scope="col">الجرعة</th><th scope="col">العدد</th>
               </tr></thead>
               <tbody>{items.map((item, index) => <tr key={`${item.patientId}|${item.name}|${index}`}>
+                <td className="meropenem-id" lang="en" dir="ltr">{item.day ? `D${item.day}` : ''}</td>
                 <td>{item.name}</td>
                 <td className="meropenem-id">{item.patientId}</td>
                 <td className="meropenem-dose" lang="en" dir="ltr">{item.dose}</td>
