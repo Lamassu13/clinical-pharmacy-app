@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { roleLabels, PATIENT_ROWS, CHART_COLUMNS, MAX_CHART_COLUMNS, apiUrl, floors, specialWards } from './constants.js'
-import { interactionsForChart, applyTemplateColumns,yesterdaySchedules, mergePreviousDayDoses, mergeChartSnapshots, diffMergeOutcome, addOfflineRows, mergeKeyedSnapshots, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, blankExtraPillForm, parseChartRows, toEnglishDigits, medicineKey, patientNameKey, nearestMedicine, UNIT_ONE, isSyringe, VIAL_AMP, SYRINGE_EXCLUDE, isoDate, isDraftStale, rememberChart, recallChart, forgetChartCopies, locationBody, pillEntryList } from './helpers.js'
+import { interactionsForChart, applyTemplateColumns,yesterdaySchedules, mergePreviousDayDoses, mergeChartSnapshots, diffMergeOutcome, addOfflineRows, mergeKeyedSnapshots, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, blankExtraPillForm, parseChartRows, toEnglishDigits, medicineKey, patientNameKey, nearestMedicine, UNIT_ONE, isSyringe, VIAL_AMP, SYRINGE_EXCLUDE, isoDate, isDraftStale, rememberChart, recallChart, rememberPills, recallPills, forgetChartCopies, locationBody, pillEntryList } from './helpers.js'
 import ConfirmDialog from './components/ConfirmDialog.jsx'
 import CopyChartDialog from './components/CopyChartDialog.jsx'
 import TemplatesDialog from './components/TemplatesDialog.jsx'
@@ -211,6 +211,11 @@ function App() {
   const [chartRooms, setChartRooms] = useState({})
   const chartRoomsSyncedRef = useRef({})
   const [pillsLoading, setPillsLoading] = useState(false)
+  // Opened from this device's copy because the service worker had only its cached GET: edits stay
+  // on the device (mirror + copy) and are NOT PUT — the form has no version check, so a PUT now
+  // would overwrite the server with a stale base. Back online, the form reloads and merges.
+  const [pillsStale, setPillsStale] = useState(false)
+  const [pillsLoadNonce, setPillsLoadNonce] = useState(0)
   const [loadedPillsKey, setLoadedPillsKey] = useState(null)
   // saved | pending (edited, debounce running) | saving (PUT in flight) | error — mirrors
   // chartSaveStatus so the pills toolbar chip can tell "saved" from "not saved yet".
@@ -1119,6 +1124,7 @@ function App() {
         // Same bookkeeping flushChart does on its own success path — without it a tab that
         // resumes after this flush lands treats its own already-saved edits as still dirty.
         lastSyncedPillsRef.current = { entries: pillEntries, rooms: pillRooms }
+        rememberPills(pillsKey, selectedDate, lastSyncedPillsRef.current)
         try { localStorage.removeItem(`cpa-pills-draft:${pillsKey}`) } catch { /* best effort */ }
       })
       .catch(() => { /* the debounced autosave or next visit will retry */ })
@@ -1704,6 +1710,7 @@ function App() {
         if (!response.ok) throw new Error('load failed')
         const result = await response.json()
         if (cancelled) return
+        const fromCache = response.headers.get('x-from-cache') === '1'
         setPillsData(result.pills || null)
         // Best effort, never blocks the form: yesterday's schedule, keyed by patient.
         const prevDate = isoDate(new Date(`${selectedDate}T12:00:00`).getTime() - 86400000)
@@ -1722,6 +1729,25 @@ function App() {
           const raw = localStorage.getItem(draftKey)
           if (raw) draft = JSON.parse(raw)
         } catch { /* storage unavailable or the draft was corrupt — fall back to the server state */ }
+        if (fromCache) {
+          // Not the server's state (see the chart load effect): this device's own copy and draft
+          // are newer than the cached GET, so show those and hold the save until the real load.
+          const copy = recallPills(pillsKey)
+          const base = draft ? draft.base : copy ? copy.state : { entries: seed, rooms: freshRooms }
+          const shown = draft ? draft.current : base
+          setPillEntries(shown.entries)
+          setPillRooms(shown.rooms)
+          lastSyncedPillsRef.current = base
+          setPillsStale(true)
+          setPillsClashNote('الاتصال ضعيف أو مقطوع — عُرضت آخر نسخة من هذا الجهاز. ما تكتبه يُحفظ على الجهاز ويُرفع ويُدمج تلقائيًا عند عودة الاتصال.')
+          setPillsLoadError(false)
+          setEditedAt(new Date())
+          setLoadedPillsKey(pillsKey)
+          setPillsLoading(false)
+          retryTimer = setTimeout(load, 8000) // weak link: keep trying for the real form
+          return
+        }
+        setPillsStale(false)
         const nextEntries = draft ? mergeKeyedSnapshots(draft.base.entries, draft.current.entries, seed) : seed
         const nextRooms = draft ? mergeKeyedSnapshots(draft.base.rooms, draft.current.rooms, freshRooms) : freshRooms
         setPillEntries(nextEntries)
@@ -1729,6 +1755,7 @@ function App() {
         // Always the server snapshot, not the merged result: a recovered draft is still unsaved
         // until the next PUT actually succeeds.
         lastSyncedPillsRef.current = { entries: seed, rooms: freshRooms }
+        rememberPills(pillsKey, selectedDate, lastSyncedPillsRef.current)
         if (draft) {
           try { localStorage.removeItem(draftKey) } catch { /* best effort */ }
           const { adopted, dropped } = diffKeyedMergeOutcome(nextEntries, draft.current.entries, seed)
@@ -1752,7 +1779,9 @@ function App() {
     }
     load()
     return () => { cancelled = true; clearTimeout(retryTimer) }
-  }, [selected, selectedDate, isExpired])
+  }, [selected, selectedDate, isExpired, pillsLoadNonce])
+  // Back online on a form opened from the device copy: load the real one and merge the draft.
+  useEffect(() => { if (isOnline && pillsStale) setPillsLoadNonce((n) => n + 1) }, [isOnline, pillsStale])
   // Mirrors the live pills form to localStorage so a killed/offline tab doesn't lose whatever
   // hadn't reached the server yet — same role as chart's cpa-chart-draft mirror below.
   useEffect(() => {
@@ -1773,6 +1802,7 @@ function App() {
     const synced = lastSyncedPillsRef.current
     const dirty = JSON.stringify(pillEntries) !== JSON.stringify(synced.entries) || JSON.stringify(pillRooms) !== JSON.stringify(synced.rooms)
     if (!dirty) return undefined
+    if (pillsStale) { setPillsSaveStatus('pending'); return undefined }
     let retryTimer
     const save = async () => {
       const entries = pillEntryList(pillEntries)
@@ -1782,6 +1812,7 @@ function App() {
         if (isExpired(response)) return
         if (!response.ok) throw new Error('save failed')
         lastSyncedPillsRef.current = { entries: pillEntries, rooms: pillRooms }
+        rememberPills(pillsKey, selectedDate, lastSyncedPillsRef.current)
         try { localStorage.removeItem(`cpa-pills-draft:${pillsKey}`) } catch { /* best effort */ }
         setPillsSaveStatus('saved')
       } catch {
@@ -1792,7 +1823,7 @@ function App() {
     setPillsSaveStatus('pending')
     const timer = setTimeout(save, 1200)
     return () => { clearTimeout(timer); clearTimeout(retryTimer) }
-  }, [isExpired, isLoggedIn, loadedPillsKey, pillEntries, pillRooms, pillsData, pillsLoading, selected, selectedDate, sessionExpired])
+  }, [isExpired, isLoggedIn, loadedPillsKey, pillEntries, pillRooms, pillsData, pillsLoading, pillsStale, selected, selectedDate, sessionExpired])
 
   // The requisition — a plain read-only fetch on ward/date change. No autosave, no lock.
   useEffect(() => {

@@ -449,21 +449,26 @@ export const isDraftStale = (meta, todayIso) => !meta?.date || meta.date !== tod
 // so after a weak link it can predate this device's own saves; this copy never does. Names are
 // patient data on a shared iPad: forgetChartCopies() runs at logout, and with `todayIso` it drops
 // every copy of another day.
-const CHART_COPY_PREFIX = 'cpa-chart-copy:'
-export const rememberChart = (chartKey, date, version, state) => {
-  try { localStorage.setItem(`${CHART_COPY_PREFIX}${chartKey}`, JSON.stringify({ date, version, state })) } catch { /* storage full or unavailable — the draft/SW cache still cover */ }
+const COPY_PREFIXES = { chart: 'cpa-chart-copy:', pills: 'cpa-pills-copy:' }
+const rememberCopy = (kind, key, date, version, state) => {
+  try { localStorage.setItem(`${COPY_PREFIXES[kind]}${key}`, JSON.stringify({ date, version, state })) } catch { /* storage full or unavailable — the draft/SW cache still cover */ }
 }
-export const recallChart = (chartKey) => {
+const recallCopy = (kind, key) => {
   try {
-    const copy = JSON.parse(localStorage.getItem(`${CHART_COPY_PREFIX}${chartKey}`) || 'null')
-    return copy?.state?.patientNames && copy.state.quantities ? copy : null
+    const copy = JSON.parse(localStorage.getItem(`${COPY_PREFIXES[kind]}${key}`) || 'null')
+    return copy?.state && (kind === 'chart' ? copy.state.patientNames && copy.state.quantities : copy.state.entries && copy.state.rooms) ? copy : null
   } catch { return null }
 }
+export const rememberChart = (key, date, version, state) => rememberCopy('chart', key, date, version, state)
+export const recallChart = (key) => recallCopy('chart', key)
+// The pills form has no version (last write wins), so its copy is just { entries, rooms }.
+export const rememberPills = (key, date, state) => rememberCopy('pills', key, date, 0, state)
+export const recallPills = (key) => recallCopy('pills', key)
 export const forgetChartCopies = (todayIso) => {
   try {
     for (let i = localStorage.length - 1; i >= 0; i -= 1) {
       const key = localStorage.key(i)
-      if (!key?.startsWith(CHART_COPY_PREFIX)) continue
+      if (!key || !Object.values(COPY_PREFIXES).some((prefix) => key.startsWith(prefix))) continue
       if (todayIso) {
         let date = null
         try { date = JSON.parse(localStorage.getItem(key) || 'null')?.date } catch { /* corrupt — drop it */ }
