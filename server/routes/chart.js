@@ -7,7 +7,7 @@ import {
   normalizeMedicineKey, medicineKeySql,
 } from '../validation.js'
 import { numberToArabicWords } from '../arabic-number.js'
-import { buildMeropenemForm, windowStart, doseText, MEROPENEM_SQL_PATTERN } from '../meropenem.js'
+import { buildMeropenemForm, activeCourseDay, monthStart, windowStart, doseText, MEROPENEM_SQL_PATTERN } from '../meropenem.js'
 import { antibioticOf } from '../ddd.js'
 
 const router = express.Router()
@@ -458,7 +458,7 @@ router.get('/meropenem-order', requireAuth, async (request, response) => {
 // The saved-chart rows a course form is built from (see ../meropenem.js), for every medicine
 // matching `pattern` (a regex) or named in `names`. Cells are read hospital-wide so a patient transferred in keeps counting
 // from the ward they came from.
-const loadCourseRows = async ({ floor, wardName, chartDate }, { pattern, names }) => {
+const loadCourseRows = async ({ floor, wardName, chartDate }, { pattern, names, allWards = false }) => {
   const from = windowStart(chartDate)
   const cellRows = await query(
     `SELECT dc.chart_date::text AS date, w.floor_number AS floor, w.name AS ward, cp.patient_name AS name, cp.patient_id,
@@ -476,6 +476,9 @@ const loadCourseRows = async ({ floor, wardName, chartDate }, { pattern, names }
     [from, chartDate, pattern || names],
   )
   const ids = [...new Set(cellRows.rows.map((row) => row.patient_id).filter(Boolean))]
+  // allWards (the hospital-wide long-course list): presence is every row carrying a seen ID or a
+  // seen name, on any ward, instead of one ward's whole chart.
+  const cellNames = [...new Set(cellRows.rows.map((row) => String(row.name).trim().replace(/\s+/g, ' ')).filter(Boolean))]
   const [presenceRows, chartedRows] = await Promise.all([
     // Who is on a chart each day: everyone on this ward, plus anyone anywhere carrying an ID that
     // had the drug — "still here without it?" and "turned up on another ward?".
@@ -486,8 +489,10 @@ const loadCourseRows = async ({ floor, wardName, chartDate }, { pattern, names }
        JOIN chart_patients cp ON cp.chart_id = dc.id
        WHERE dc.chart_date BETWEEN $1::date AND $2::date
          AND (btrim(cp.patient_name) <> '' OR cp.patient_id <> '')
-         AND ((w.floor_number IS NOT DISTINCT FROM $3 AND w.name = $4) OR cp.patient_id = ANY($5::text[]))`,
-      [from, chartDate, floor, wardName, ids],
+         AND ${allWards
+    ? "(cp.patient_id = ANY($3::text[]) OR regexp_replace(btrim(cp.patient_name), '\\s+', ' ', 'g') = ANY($4::text[]))"
+    : '((w.floor_number IS NOT DISTINCT FROM $3 AND w.name = $4) OR cp.patient_id = ANY($5::text[]))'}`,
+      allWards ? [from, chartDate, ids, cellNames] : [from, chartDate, floor, wardName, ids],
     ),
     // The days each ward has a chart at all — a day with no chart (Friday) never ends a course.
     query(
@@ -543,6 +548,38 @@ router.get('/antibiotics', requireAuth, async (request, response) => {
     .filter((drug) => drug.patients.length)
     .sort((a, b) => a.label.localeCompare(b.label))
   response.json({ drugs })
+})
+
+// Patients on an antibiotic for more than LONG_COURSE_DAYS days as of `date`, hospital-wide, for the
+// floor list's manager card. Each ward's form is built exactly as «متابعة المضادات الحيوية» builds
+// it, so the day numbers (forgiven gaps, typed course days) always agree with that screen.
+const LONG_COURSE_DAYS = 14
+router.get('/antibiotics/long', requireManager, async (request, response) => {
+  const date = request.query.date
+  if (!isIsoDate(date)) return response.status(400).json({ message: 'التاريخ مطلوب' })
+  const names = (await query('SELECT name FROM medicines')).rows.map((row) => row.name).filter(antibioticOf)
+  const rows = await loadCourseRows({ floor: null, wardName: '', chartDate: date }, { names, allWards: true })
+  const byDrug = new Map()
+  rows.cells.forEach((cell) => {
+    const drug = antibioticOf(cell.medicine)
+    if (!byDrug.has(drug.key)) byDrug.set(drug.key, { ...drug, cells: [] })
+    byDrug.get(drug.key).cells.push(cell)
+  })
+  const first = monthStart(date)
+  const patients = []
+  for (const drug of byDrug.values()) {
+    const overrides = await loadOverrides(drug.key)
+    const wards = new Map()
+    drug.cells.filter((cell) => cell.date >= first).forEach((cell) => wards.set(`${cell.floor ?? ''}|${cell.ward}`, { floor: cell.floor, ward: cell.ward }))
+    wards.forEach(({ floor, ward }) => {
+      buildMeropenemForm({ ...rows, floor, ward, cells: drug.cells, perDay: drug.perDay, overrides }).patients.forEach((patient) => {
+        const day = activeCourseDay(patient)
+        if (day > LONG_COURSE_DAYS) patients.push({ floor, ward, name: patient.name, patientId: patient.patientId, drugKey: drug.key, drug: drug.label, day })
+      })
+    })
+  }
+  patients.sort((a, b) => b.day - a.day || a.name.localeCompare(b.name, 'ar'))
+  response.json({ threshold: LONG_COURSE_DAYS, patients })
 })
 
 // A typed course day: "on `anchorDate` this patient is D`n`" (the form's first shown day for a

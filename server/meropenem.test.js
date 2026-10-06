@@ -175,3 +175,20 @@ test('meropenem: a typed first day shifts that course and the days after it foll
   assert.deepEqual(row.days, { '2026-09-21': 3, '2026-09-22': 4, '2026-09-23': 5 })
   assert.equal(row.key, 'id:123')
 })
+
+test('GET /api/antibiotics/long: managers see active courses past 14 days across wards; others are refused', async () => {
+  const seeder = await createUser({ role: 'admin' })
+  const medicineId = (await pool.query("INSERT INTO medicines (name) VALUES ('Meronem 1000gm Vial') RETURNING id")).rows[0].id
+  const ward = async (floor, name) => (await pool.query('INSERT INTO wards (floor_number, name, is_special) VALUES ($1, $2, false) RETURNING id', [floor, name])).rows[0].id
+  const [long, short] = [await ward(FLOOR, WARD), await ward(8, 'الردهة الخامسة')]
+  for (let day = 11; day <= 26; day += 1) await seedDay({ wardId: long, createdBy: seeder.id, date: `2026-09-${day}`, patients: [{ row: 1, name: 'علي', id: '123' }], meronemRows: [1], medicineId })
+  for (let day = 22; day <= 26; day += 1) await seedDay({ wardId: short, createdBy: seeder.id, date: `2026-09-${day}`, patients: [{ row: 1, name: 'حسن', id: '456' }], meronemRows: [1], medicineId })
+
+  const supervisor = await loginAs({ role: 'supervisor' })
+  const res = await supervisor.get('/api/antibiotics/long?date=2026-09-26')
+  assert.equal(res.status, 200)
+  assert.deepEqual(res.body.patients, [{ floor: FLOOR, ward: WARD, name: 'علي', patientId: '123', drugKey: 'meropenem', drug: 'Meropenem', day: 16 }])
+  assert.equal((await supervisor.get('/api/antibiotics/long?date=2026-09-14')).body.patients.length, 0) // D4 that day
+  assert.equal((await supervisor.get('/api/antibiotics/long')).status, 400)
+  assert.equal((await (await loginAs({ role: 'user', floor: FLOOR })).get('/api/antibiotics/long?date=2026-09-26')).status, 403)
+})
