@@ -192,3 +192,22 @@ test('GET /api/antibiotics/long: managers see active courses past 14 days across
   assert.equal((await supervisor.get('/api/antibiotics/long')).status, 400)
   assert.equal((await (await loginAs({ role: 'user', floor: FLOOR })).get('/api/antibiotics/long?date=2026-09-26')).status, 403)
 })
+
+test('GET /api/antibiotics/long?floor=: a floor user sees only their own floor; another floor is refused', async () => {
+  const seeder = await createUser({ role: 'admin' })
+  const medicineId = (await pool.query("INSERT INTO medicines (name) VALUES ('Meronem 1000gm Vial') RETURNING id")).rows[0].id
+  const ward = async (floor, name) => (await pool.query('INSERT INTO wards (floor_number, name, is_special) VALUES ($1, $2, false) RETURNING id', [floor, name])).rows[0].id
+  const [mine, other] = [await ward(FLOOR, WARD), await ward(8, 'الردهة الخامسة')]
+  for (let day = 11; day <= 26; day += 1) {
+    await seedDay({ wardId: mine, createdBy: seeder.id, date: `2026-09-${day}`, patients: [{ row: 1, name: 'علي', id: '123' }], meronemRows: [1], medicineId })
+    await seedDay({ wardId: other, createdBy: seeder.id, date: `2026-09-${day}`, patients: [{ row: 1, name: 'حسن', id: '456' }], meronemRows: [1], medicineId })
+  }
+  const user = await loginAs({ role: 'user', floor: FLOOR })
+  const res = await user.get(`/api/antibiotics/long?date=2026-09-26&floor=${FLOOR}`)
+  assert.equal(res.status, 200)
+  assert.deepEqual(res.body.patients.map((patient) => patient.name), ['علي'])
+  assert.equal((await user.get('/api/antibiotics/long?date=2026-09-26&floor=8')).status, 403)
+  assert.equal((await user.get('/api/antibiotics/long?date=2026-09-26')).status, 403) // hospital-wide is for managers
+  const manager = await loginAs({ role: 'supervisor' })
+  assert.equal((await manager.get('/api/antibiotics/long?date=2026-09-26')).body.patients.length, 2)
+})

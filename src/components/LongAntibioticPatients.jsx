@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { apiUrl } from '../constants.js'
 
-// Manager card on «لوحة التحكم»: every patient whose antibiotic course has run past 14 days as of
-// `date`, hospital-wide. The day numbers come from the same derivation as «متابعة المضادات
-// الحيوية», which is where a tap goes. It always shows, so it is clear where the list lives: a
-// loading line, «no one», or a retry, then the list.
-export default function LongAntibioticPatients({ date, onOpen, isExpired }) {
+// Every patient whose antibiotic course has run past 14 days as of `date`: hospital-wide on the
+// managers' floor list, or just `floor` on that floor's ward list (everyone with access). The day
+// numbers come from the same derivation as «متابعة المضادات الحيوية», which is where a tap goes.
+// It always shows, so it is clear where the list lives: a loading line, «no one», or a retry,
+// then the list.
+export default function LongAntibioticPatients({ date, floor = null, onOpen, isExpired }) {
   const [list, setList] = useState(null)
   const [failed, setFailed] = useState(false)
   const [attempt, setAttempt] = useState(0)
@@ -16,7 +17,7 @@ export default function LongAntibioticPatients({ date, onOpen, isExpired }) {
     ;(async () => {
       try {
         setFailed(false)
-        const response = await fetch(`${apiUrl}/antibiotics/long?${new URLSearchParams({ date })}`, { credentials: 'include' })
+        const response = await fetch(`${apiUrl}/antibiotics/long?${new URLSearchParams({ date, ...(floor ? { floor } : {}) })}`, { credentials: 'include' })
         if (isExpired?.(response)) return
         if (!response.ok) throw new Error('failed')
         const result = await response.json()
@@ -24,7 +25,7 @@ export default function LongAntibioticPatients({ date, onOpen, isExpired }) {
       } catch { if (!cancelled) setFailed(true) }
     })()
     return () => { cancelled = true }
-  }, [date, isExpired, attempt])
+  }, [date, floor, isExpired, attempt])
 
   const ready = list && list.date === date
   const title = `مضادات حيوية لأكثر من ${ready ? list.threshold : 14} يومًا`
