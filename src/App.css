@@ -2284,10 +2284,15 @@ button.topbar-user:hover { color: var(--primary); }
   .entry-form-card h2 { margin: 0; font-size: var(--text-base); }
   .entry-form-card input { min-height: 48px; font-size: 16px; }
   .entry-lines { display: grid; gap: var(--space-3); margin: 0; padding: 0; list-style: none; }
-  .entry-line { display: grid; grid-template-columns: 1fr 84px auto; gap: var(--space-2); align-items: start; }
-  .entry-line-med { position: relative; min-width: 0; }
+  .entry-line { display: grid; grid-template-columns: 1fr auto; gap: var(--space-2); align-items: start; }
+  .entry-line-med { position: relative; min-width: 0; grid-column: 1 / -1; }
   .entry-line-med input { width: 100%; }
-  .entry-line-qty { width: 100%; text-align: center; font-variant-numeric: tabular-nums; }
+  .entry-stepper { display: inline-grid; grid-template-columns: 48px 72px 48px; align-items: stretch; height: 48px; direction: ltr; }
+  .entry-stepper button { border: 1px solid var(--border-strong); background: var(--surface); color: var(--text); font-size: 1.5rem; line-height: 1; }
+  .entry-stepper button:first-child { border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
+  .entry-stepper button:last-child { border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+  .entry-stepper button:disabled { color: var(--text-muted); opacity: .5; }
+  .entry-stepper input { width: 100%; min-width: 0; text-align: center; border-radius: 0; border-inline: 0; font-variant-numeric: tabular-nums; }
   .entry-line-remove { display: grid; place-items: center; width: 44px; height: 48px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); color: var(--text-muted); }
   .entry-line-remove:hover { color: var(--danger); border-color: var(--danger); }
   .entry-suggest { position: absolute; inset-inline: 0; top: calc(100% + 4px); z-index: 2; margin: 0; padding: 4px; list-style: none; background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-md); box-shadow: var(--shadow-md); }
