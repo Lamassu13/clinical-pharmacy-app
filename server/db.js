@@ -1,5 +1,10 @@
+import dns from 'node:dns'
 import pg from 'pg'
 import 'dotenv/config'
+
+// Render has no outbound IPv6 route: a host that resolves to an IPv6 address first fails with
+// ENETUNREACH on port 5432. Try IPv4 first; nothing changes where IPv6 works.
+dns.setDefaultResultOrder('ipv4first')
 
 const { Pool } = pg
 
