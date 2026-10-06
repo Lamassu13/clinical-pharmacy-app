@@ -155,3 +155,10 @@ export const buildMeropenemForm = ({ date, floor, ward, cells, presence, charted
   rows.sort((a, b) => a.firstDay.localeCompare(b.firstDay) || a.name.localeCompare(b.name, 'ar'))
   return { patients: rows.map(({ firstDay: _firstDay, ...rest }) => rest) }
 }
+
+// A patient's course day as of their latest shown day, 0 unless the course is still active.
+export const activeCourseDay = (patient) => {
+  if (patient.status.kind !== 'active') return 0
+  const dates = Object.keys(patient.days).sort()
+  return dates.length ? patient.days[dates[dates.length - 1]] : 0
+}
