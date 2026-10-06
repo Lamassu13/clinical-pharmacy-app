@@ -1,7 +1,6 @@
 import { floors, specialWards, roleLabels } from '../constants.js'
 import { PatientsDailyTrendWidget, PatientsRangeTableWidget, WardStatusBand } from '../components/DashboardWidgets.jsx'
 import { ChevronStart } from '../components/WardGlyph.jsx'
-import LongAntibioticPatients from '../components/LongAntibioticPatients.jsx'
 import { wardAttention } from '../helpers.js'
 
 // The manager's landing page inside «الإدارة» — an at-a-glance answer to "does anything need
@@ -53,7 +52,7 @@ function StatCard({ icon, value, label, detail, onClick }) {
 }
 
 export default function AdminDashboardScreen({
-  adminHeader, isAdmin, onNavigate, onOpenWard, selectedDate, isExpired,
+  adminHeader, isAdmin, onNavigate, onOpenWard,
   registrations, allUsers, adminMedicines, treatmentForms,
   dashboard, dashboardLoading, dashboardError, onRetryDashboard,
   rangeFrom, setRangeFrom, rangeTo, setRangeTo,
@@ -80,8 +79,6 @@ export default function AdminDashboardScreen({
       onOpen={onOpenWard}
       loading={dashboardLoading} error={dashboardError} onRetry={onRetryDashboard}
     />
-
-    <LongAntibioticPatients date={selectedDate} onOpen={onOpenWard} isExpired={isExpired} />
 
     <div className="location-grid">
       {isAdmin && (

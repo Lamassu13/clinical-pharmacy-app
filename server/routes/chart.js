@@ -558,11 +558,10 @@ const LONG_COURSE_DAYS = 14
 // free database a ~90-day read on every open. ponytail: per-process memory, so a restart empties it.
 const LONG_COURSE_TTL_MS = 120_000
 const longCourseCache = new Map()
-router.get('/antibiotics/long', requireManager, async (request, response) => {
-  const date = request.query.date
-  if (!isIsoDate(date)) return response.status(400).json({ message: 'التاريخ مطلوب' })
+// Hospital-wide, computed once per date; a floor request is filtered from the same result.
+const longCourses = async (date) => {
   const cached = longCourseCache.get(date)
-  if (cached && Date.now() - cached.at < LONG_COURSE_TTL_MS) return response.json(cached.body)
+  if (cached && Date.now() - cached.at < LONG_COURSE_TTL_MS) return cached.body
   const names = (await query('SELECT name FROM medicines')).rows.map((row) => row.name).filter(antibioticOf)
   const rows = await loadCourseRows({ floor: null, wardName: '', chartDate: date }, { names, allWards: true })
   const byDrug = new Map()
@@ -595,7 +594,19 @@ router.get('/antibiotics/long', requireManager, async (request, response) => {
   const body = { threshold: LONG_COURSE_DAYS, patients }
   longCourseCache.clear() // one date at a time is plenty; keeps the map from growing
   longCourseCache.set(date, { at: Date.now(), body })
-  response.json(body)
+  return body
+}
+// Managers read the whole hospital; anyone else (and a manager too, from a floor's ward page) reads
+// one floor they have access to via ?floor=.
+router.get('/antibiotics/long', requireAuth, async (request, response) => {
+  const user = request.session.user
+  const date = request.query.date
+  const floor = request.query.floor ? clampInt(request.query.floor, 2, 10) : null
+  if (!isIsoDate(date)) return response.status(400).json({ message: 'التاريخ مطلوب' })
+  if (request.query.floor && (floor === null || !ALLOWED_FLOORS.includes(floor))) return response.status(400).json({ message: 'الطابق غير مسموح' })
+  if (floor === null ? user.role !== 'admin' && user.role !== 'supervisor' : !canAccessLocation(user, floor, null)) return response.status(403).json({ message: 'لا تملك صلاحية لهذا الطابق' })
+  const body = await longCourses(date)
+  response.json(floor === null ? body : { ...body, patients: body.patients.filter((patient) => patient.floor === floor) })
 })
 
 // A typed course day: "on `anchorDate` this patient is D`n`" (the form's first shown day for a
