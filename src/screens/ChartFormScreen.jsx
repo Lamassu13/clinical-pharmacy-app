@@ -6,7 +6,7 @@ import { medicineKey, medicineMatches, toEnglishDigits } from '../helpers.js'
 // hands the patient to App (onSubmit), which puts it into the same chart state the grid edits,
 // so the lock, draft, autosave and conflict merge all apply. A name or ID that was on
 // yesterday's chart offers the same copy-forward the grid does, filling this form instead.
-const blankLine = () => ({ id: Math.random().toString(36).slice(2), med: '', qty: '' })
+const blankLine = () => ({ id: Math.random().toString(36).slice(2), med: '', qty: '1' })
 
 export default function ChartFormScreen({
   usedRows, wardLabel, roomLabel, slot, onSlotChange, onClose, medicines, chartReady, lockState, lockHolder, chartSaveStatus, isOnline, loadError,
@@ -44,7 +44,7 @@ export default function ChartFormScreen({
     if (prevId && !id) setId(prevId)
     if (prevRoom && !room.trim()) setRoom(prevRoom)
     setLines((current) => {
-      const kept = current.filter((line) => line.med.trim() || line.qty)
+      const kept = current.filter((line) => line.med.trim())
       const have = new Set(kept.map((line) => medicineKey(line.med)))
       const carried = prevDoses
         .map(({ med, qty }) => ({ med: canonical(med), qty: String(qty) }))
@@ -59,11 +59,10 @@ export default function ChartFormScreen({
     event.preventDefault()
     setAdded(null)
     if (!name.trim()) { setError('اكتب اسم المريض أولًا.'); return }
-    const filled = lines.filter((line) => line.med.trim() || line.qty)
+    const filled = lines.filter((line) => line.med.trim())
     const unknown = filled.find((line) => line.med.trim() && !canonical(line.med))
     if (unknown) { setError(`«${unknown.med.trim()}» غير موجود في قائمة الأدوية — اختره من القائمة.`); return }
-    if (filled.some((line) => !line.med.trim())) { setError('اختر الدواء لكل كمية مكتوبة.'); return }
-    const result = onSubmit({ name, id, room, doses: filled.map((line) => ({ med: canonical(line.med), qty: line.qty })) })
+    const result = onSubmit({ name, id, room, doses: filled.map((line) => ({ med: canonical(line.med), qty: line.qty || '1' })) })
     if (!result.ok) { setError(result.reason === 'full' ? 'الجارت ممتلئ — لا يوجد صف فارغ لمريض جديد.' : 'الجارت قيد التعديل من جهاز آخر.'); return }
     setAdded({ row: result.row + 1, name: name.trim() })
     setName(''); setId(''); setRoom(''); setLines([blankLine()]); setError('')
@@ -130,8 +129,13 @@ export default function ChartFormScreen({
                   ))}
                 </ul>}
               </div>
-              <input className="entry-line-qty" value={line.qty} inputMode="numeric" aria-label={`الكمية ${index + 1}`} placeholder="الكمية" autoComplete="off" disabled={!canEdit}
-                onChange={(e) => setLine(line.id, { qty: toEnglishDigits(e.target.value).replace(/\D/g, '').slice(0, 4) })} />
+              <div className="entry-stepper" role="group" aria-label={`الكمية ${index + 1}`}>
+                <button type="button" aria-label="زيادة" disabled={!canEdit || Number(line.qty) >= 9999} onClick={() => setLine(line.id, { qty: String(Math.min(9999, (Number(line.qty) || 0) + 1)) })}>+</button>
+                <input value={line.qty} inputMode="numeric" aria-label={`الكمية ${index + 1}`} autoComplete="off" disabled={!canEdit}
+                  onChange={(e) => setLine(line.id, { qty: toEnglishDigits(e.target.value).replace(/\D/g, '').slice(0, 4) })}
+                  onBlur={() => !Number(line.qty) && setLine(line.id, { qty: '1' })} />
+                <button type="button" aria-label="إنقاص" disabled={!canEdit || Number(line.qty) <= 1} onClick={() => setLine(line.id, { qty: String(Math.max(1, (Number(line.qty) || 2) - 1)) })}>−</button>
+              </div>
               <button type="button" className="entry-line-remove" aria-label={`حذف الدواء ${index + 1}`}
                 onClick={() => setLines((current) => (current.length > 1 ? current.filter((item) => item.id !== line.id) : [blankLine()]))}>
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
