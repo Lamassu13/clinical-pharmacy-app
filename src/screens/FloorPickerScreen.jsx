@@ -2,7 +2,6 @@ import DashboardWidgets from '../components/DashboardWidgets.jsx'
 import { WardGlyph, ChevronStart, StatusCheck, CardStatus } from '../components/WardGlyph.jsx'
 import WardActions from '../components/WardActions.jsx'
 import PatientSearch from '../components/PatientSearch.jsx'
-import LongAntibioticPatients from '../components/LongAntibioticPatients.jsx'
 import { wardAttention } from '../helpers.js'
 
 // The floor/special-ward grid. `floors` / `specialWards` arrive already narrowed to what this
@@ -50,7 +49,6 @@ export default function FloorPickerScreen({
       </button>
     )}
 
-    {isManager && <LongAntibioticPatients date={selectedDate} onOpen={onOpen} isExpired={isExpired} />}
     {isManager && <PatientSearch date={selectedDate} onOpen={onOpen} isExpired={isExpired} />}
 
     {nothingAssigned && (

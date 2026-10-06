@@ -554,9 +554,15 @@ router.get('/antibiotics', requireAuth, async (request, response) => {
 // floor list's manager card. Each ward's form is built exactly as «متابعة المضادات الحيوية» builds
 // it, so the day numbers (forgiven gaps, typed course days) always agree with that screen.
 const LONG_COURSE_DAYS = 14
+// Kept for two minutes per date: a dashboard card does not need to be second-fresh, and it spares the
+// free database a ~90-day read on every open. ponytail: per-process memory, so a restart empties it.
+const LONG_COURSE_TTL_MS = 120_000
+const longCourseCache = new Map()
 router.get('/antibiotics/long', requireManager, async (request, response) => {
   const date = request.query.date
   if (!isIsoDate(date)) return response.status(400).json({ message: 'التاريخ مطلوب' })
+  const cached = longCourseCache.get(date)
+  if (cached && Date.now() - cached.at < LONG_COURSE_TTL_MS) return response.json(cached.body)
   const names = (await query('SELECT name FROM medicines')).rows.map((row) => row.name).filter(antibioticOf)
   const rows = await loadCourseRows({ floor: null, wardName: '', chartDate: date }, { names, allWards: true })
   const byDrug = new Map()
@@ -570,16 +576,26 @@ router.get('/antibiotics/long', requireManager, async (request, response) => {
   for (const drug of byDrug.values()) {
     const overrides = await loadOverrides(drug.key)
     const wards = new Map()
-    drug.cells.filter((cell) => cell.date >= first).forEach((cell) => wards.set(`${cell.floor ?? ''}|${cell.ward}`, { floor: cell.floor, ward: cell.ward }))
-    wards.forEach(({ floor, ward }) => {
-      buildMeropenemForm({ ...rows, floor, ward, cells: drug.cells, perDay: drug.perDay, overrides }).patients.forEach((patient) => {
+    drug.cells.filter((cell) => cell.date >= first).forEach((cell) => {
+      const key = `${cell.floor ?? ''}|${cell.ward}`
+      if (!wards.has(key)) wards.set(key, { floor: cell.floor, ward: cell.ward, ids: new Set() })
+      if (cell.patientId) wards.get(key).ids.add(cell.patientId)
+    })
+    wards.forEach(({ floor, ward, ids }) => {
+      // Only what can change this ward's patients: rows on this ward, or carrying one of their IDs
+      // (a transfer). Building from the whole hospital for every ward and drug took ~40 s.
+      const mine = (row) => (row.floor === floor && row.ward === ward) || (row.patientId && ids.has(row.patientId))
+      buildMeropenemForm({ ...rows, floor, ward, cells: drug.cells.filter(mine), presence: rows.presence.filter(mine), perDay: drug.perDay, overrides }).patients.forEach((patient) => {
         const day = activeCourseDay(patient)
         if (day > LONG_COURSE_DAYS) patients.push({ floor, ward, name: patient.name, patientId: patient.patientId, drugKey: drug.key, drug: drug.label, day })
       })
     })
   }
   patients.sort((a, b) => b.day - a.day || a.name.localeCompare(b.name, 'ar'))
-  response.json({ threshold: LONG_COURSE_DAYS, patients })
+  const body = { threshold: LONG_COURSE_DAYS, patients }
+  longCourseCache.clear() // one date at a time is plenty; keeps the map from growing
+  longCourseCache.set(date, { at: Date.now(), body })
+  response.json(body)
 })
 
 // A typed course day: "on `anchorDate` this patient is D`n`" (the form's first shown day for a
