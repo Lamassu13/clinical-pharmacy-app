@@ -1,32 +1,44 @@
 import { useEffect, useState } from 'react'
 import { apiUrl } from '../constants.js'
 
-// Manager card on the floor list: every patient whose antibiotic course has run past 14 days as of
+// Manager card on «لوحة التحكم»: every patient whose antibiotic course has run past 14 days as of
 // `date`, hospital-wide. The day numbers come from the same derivation as «متابعة المضادات
-// الحيوية», which is where a tap goes. Quiet by design: nothing renders while loading, on any
-// failure, offline, or when there is no one to list.
+// الحيوية», which is where a tap goes. It always shows, so it is clear where the list lives: a
+// loading line, «no one», or a retry, then the list.
 export default function LongAntibioticPatients({ date, onOpen, isExpired }) {
   const [list, setList] = useState(null)
+  const [failed, setFailed] = useState(false)
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
-    if (!date || !navigator.onLine) return undefined
+    if (!date) return undefined
     let cancelled = false
     ;(async () => {
       try {
+        setFailed(false)
         const response = await fetch(`${apiUrl}/antibiotics/long?${new URLSearchParams({ date })}`, { credentials: 'include' })
-        if (isExpired?.(response) || !response.ok) return
+        if (isExpired?.(response)) return
+        if (!response.ok) throw new Error('failed')
         const result = await response.json()
         if (!cancelled) setList({ date, threshold: result.threshold, patients: result.patients })
-      } catch { /* no card is better than a broken one */ }
+      } catch { if (!cancelled) setFailed(true) }
     })()
     return () => { cancelled = true }
-  }, [date, isExpired])
+  }, [date, isExpired, attempt])
 
-  if (!list || list.date !== date || !list.patients.length) return null
+  const ready = list && list.date === date
+  const title = `مضادات حيوية لأكثر من ${ready ? list.threshold : 14} يومًا`
+  if (!ready) return <div className="long-abx long-abx--note" role="status">
+    <strong>{title}</strong>
+    {failed
+      ? <span>تعذّر التحميل <button type="button" className="text-button" onClick={() => setAttempt((n) => n + 1)}>إعادة المحاولة</button></span>
+      : <span>جارٍ التحميل…</span>}
+  </div>
+  if (!list.patients.length) return <div className="long-abx long-abx--note"><strong>{title}</strong><span>لا يوجد مرضى</span></div>
   return <details className="long-abx" open={list.patients.length <= 5}>
     <summary>
       <span className="long-abx-count">{list.patients.length}</span>
-      <strong>مضادات حيوية لأكثر من {list.threshold} يومًا</strong>
+      <strong>{title}</strong>
     </summary>
     <ul className="long-abx-list">
       {list.patients.map((patient) => (

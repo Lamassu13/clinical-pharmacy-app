@@ -2306,6 +2306,8 @@ button.topbar-user:hover { color: var(--primary); }
   .long-abx { margin-bottom: var(--space-6); border: 1px solid var(--warning-border); border-radius: var(--radius-md); background: var(--warning-tint); }
   .long-abx > summary { display: flex; align-items: center; gap: var(--space-3); min-height: 48px; padding: var(--space-3) var(--space-4); cursor: pointer; color: var(--warning-text); list-style: none; }
   .long-abx > summary::-webkit-details-marker { display: none; }
+  .long-abx--note { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; min-height: 48px; padding: var(--space-3) var(--space-4); color: var(--warning-text); }
+  .long-abx--note span { color: var(--text-muted); font-weight: 700; font-size: var(--text-sm); }
   .long-abx-count { display: grid; place-items: center; min-width: 28px; height: 28px; padding: 0 var(--space-2); border-radius: 999px; background: var(--warning); color: var(--on-warning, #fff); font-weight: 800; font-variant-numeric: tabular-nums; }
   .long-abx-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: var(--space-2); margin: 0; padding: 0 var(--space-3) var(--space-3); list-style: none; }
   .long-abx-row { display: grid; grid-template-columns: 1fr auto; gap: var(--space-1) var(--space-3); width: 100%; min-height: 44px; padding: var(--space-3) var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); text-align: start; cursor: pointer; }
