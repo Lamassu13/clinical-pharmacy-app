@@ -886,28 +886,32 @@ function App() {
     const keyOf = field === 'id' ? (value) => String(value ?? '').trim() : patientNameKey
     const trimmed = keyOf(rawValue)
     if (!trimmed) return null
-    const prevDate = isoDate(new Date(`${selectedDate}T12:00:00`).getTime() - 86400000)
-    let prevChart
-    try {
-      const params = new URLSearchParams({ floor: selected.floor || '', ward: selected.ward, slot: selected.slot || 'main', date: prevDate })
-      const response = await fetch(`${apiUrl}/chart?${params}`, { credentials: 'include' })
-      prevChart = response.ok ? (await response.json()).chart : null
-    } catch { return null }
-    if (!prevChart) return null
-    const prevRows = parseChartRows(prevChart)
-    const matchRow = (field === 'id' ? prevRows.patientIds : prevRows.patientNames).findIndex((value) => keyOf(value) === trimmed)
-    if (matchRow === -1) return null
-    const prevDoses = prevRows.columnMedicines
-      .map((med, columnIndex) => ({ med: med.trim(), qty: prevRows.quantities[matchRow][columnIndex] }))
-      .filter((entry) => entry.med && Number(entry.qty) > 0)
-    return { trimmed, matchRow, prevName: prevRows.patientNames[matchRow].trim(), prevId: prevRows.patientIds[matchRow], prevRoom: prevChart.rooms?.[matchRow + 1] || '', prevDoses }
+    // Yesterday first, then the day before (a day with no chart, or a patient not on it, falls through).
+    for (const daysAgo of [1, 2]) {
+      const prevDate = isoDate(new Date(`${selectedDate}T12:00:00`).getTime() - daysAgo * 86400000)
+      let prevChart
+      try {
+        const params = new URLSearchParams({ floor: selected.floor || '', ward: selected.ward, slot: selected.slot || 'main', date: prevDate })
+        const response = await fetch(`${apiUrl}/chart?${params}`, { credentials: 'include' })
+        prevChart = response.ok ? (await response.json()).chart : null
+      } catch { return null }
+      if (!prevChart) continue
+      const prevRows = parseChartRows(prevChart)
+      const matchRow = (field === 'id' ? prevRows.patientIds : prevRows.patientNames).findIndex((value) => keyOf(value) === trimmed)
+      if (matchRow === -1) continue
+      const prevDoses = prevRows.columnMedicines
+        .map((med, columnIndex) => ({ med: med.trim(), qty: prevRows.quantities[matchRow][columnIndex] }))
+        .filter((entry) => entry.med && Number(entry.qty) > 0)
+      return { trimmed, matchRow, daysAgo, prevName: prevRows.patientNames[matchRow].trim(), prevId: prevRows.patientIds[matchRow], prevRoom: prevChart.rooms?.[matchRow + 1] || '', prevDoses }
+    }
+    return null
   }, [selected, selectedDate])
   const checkPreviousDayPatient = useCallback(async (rowIndex, rawValue, field = 'name') => {
     if (!selected || selected.mode !== 'chart' || lockState === 'readonly') return
     const keyOf = field === 'id' ? (value) => String(value ?? '').trim() : patientNameKey
     const found = await findPreviousDayPatient(rawValue, field)
     if (!found) return
-    const { trimmed, matchRow, prevName, prevId, prevDoses } = found
+    const { trimmed, matchRow, daysAgo, prevName, prevId, prevDoses } = found
     // An ID match is worth offering for the name alone; a name match only for its doses.
     if (!prevDoses.length && !(field === 'id' && prevName)) return
     const latest = latestChartRef.current
@@ -916,7 +920,7 @@ function App() {
     if (askedOffersRef.current.has(askedKey)) return
     askedOffersRef.current.add(askedKey)
     const who = field === 'id' ? `رقم المريض ${trimmed}${prevName ? ` («${prevName}»)` : ''}` : `«${trimmed}»`
-    setPreviousDayOffer({ chartKey: `${selected.floor ?? ''}|${selected.ward}|${selected.slot || 'main'}|${selectedDate}`, rowIndex, field, trimmed, who, prevName, prevId, prevDoses })
+    setPreviousDayOffer({ chartKey: `${selected.floor ?? ''}|${selected.ward}|${selected.slot || 'main'}|${selectedDate}`, rowIndex, field, trimmed, who, daysAgo, prevName, prevId, prevDoses })
   }, [selected, selectedDate, lockState, findPreviousDayPatient])
   // The patient-entry form's submit. It edits the same chart state the grid does — so the lock,
   // draft, autosave and conflict merge all apply — and only decides where the patient lands.
@@ -961,7 +965,7 @@ function App() {
     const typingInHeader = () => Boolean(document.activeElement?.classList?.contains('medicine-select'))
     const present = async () => {
       offerDialogOpenRef.current = true
-      const accepted = await askConfirm(`${offer.who} موجود في جارت الأمس — هل تريد نسخ بياناته (الاسم والرقم والأدوية والكميات)؟`)
+      const accepted = await askConfirm(`${offer.who} موجود في ${offer.daysAgo === 2 ? 'جارت أول أمس' : 'جارت الأمس'} — هل تريد نسخ بياناته (الاسم والرقم والأدوية والكميات)؟`)
       offerDialogOpenRef.current = false
       setPreviousDayOffer((current) => (current === offer ? null : current))
       if (accepted) applyPreviousDayOffer(offer)
@@ -1773,12 +1777,14 @@ function App() {
         if (cancelled) return
         const fromCache = response.headers.get('x-from-cache') === '1'
         setPillsData(result.pills || null)
-        // Best effort, never blocks the form: yesterday's schedule, keyed by patient.
-        const prevDate = isoDate(new Date(`${selectedDate}T12:00:00`).getTime() - 86400000)
-        fetch(`${apiUrl}/pills?${new URLSearchParams({ ...Object.fromEntries(params), date: prevDate })}`, { credentials: 'include' })
-          .then((prev) => (prev.ok ? prev.json() : null))
-          .then((prev) => { if (!cancelled) setPillsYesterday(yesterdaySchedules(prev?.pills)) })
-          .catch(() => {})
+        // Best effort, never blocks the form: the schedule from yesterday, and from the day before
+        // for patients yesterday's form doesn't have (yesterday wins where both do).
+        const earlier = (daysAgo) => fetch(`${apiUrl}/pills?${new URLSearchParams({ ...Object.fromEntries(params), date: isoDate(new Date(`${selectedDate}T12:00:00`).getTime() - daysAgo * 86400000) })}`, { credentials: 'include' })
+          .then((prev) => (prev.ok ? prev.json() : null)).then((prev) => yesterdaySchedules(prev?.pills)).catch(() => null)
+        Promise.all([earlier(1), earlier(2)]).then(([one, two]) => {
+          if (cancelled) return
+          setPillsYesterday(one || two ? { byId: { ...two?.byId, ...one?.byId }, byName: { ...two?.byName, ...one?.byName } } : null)
+        })
         const seed = {}
         ;(result.pills?.entries || []).forEach((entry) => { seed[`${entry.patientRowNumber}:${entry.medicineKey}`] = { doseTime: entry.doseTime || '', usageMethod: entry.usageMethod || '', note: entry.note || '', pillQty: entry.pillQty || '', pillName: entry.pillName || '' } })
         const freshRooms = result.pills?.rooms || {}
