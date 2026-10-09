@@ -1,3 +1,5 @@
+import { PARENTERAL, ORAL } from './ddd.js'
+
 // Duplicate therapy («التداخلات الدوائية»): two different drugs of one class given to one patient
 // on the same day. Members are generic names as genericName() returns them (DDInter spelling).
 // Aspirin + a P2Y12 inhibitor is deliberately not a class here: dual antiplatelet therapy is
@@ -34,5 +36,18 @@ export const duplicatePairs = (names, genericOf) => {
       pairs.push({ a, b, className: therapyClass.name, note: therapyClass.note || '' })
     }))
   })
+  // The same drug as an injection (vial/amp) and by mouth (tab/cap) on one day, e.g. Paracetamol
+  // vial + tab: usually a switch where the old route was never stopped. Any drug, not just the
+  // classes above.
+  names.forEach((a, i) => names.slice(i + 1).forEach((b) => {
+    const generic = genericOf(a)
+    if (!generic || generic !== genericOf(b)) return
+    const routes = [a, b].map((name) => (PARENTERAL.test(name) ? 'P' : ORAL.test(name) ? 'O' : ''))
+    if (!(routes.includes('P') && routes.includes('O'))) return
+    const key = [a, b].sort().join('|')
+    if (seen.has(key)) return
+    seen.add(key)
+    pairs.push({ a, b, className: 'Same drug IV and oral', note: 'check the route switch' })
+  }))
   return pairs
 }

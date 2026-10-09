@@ -25,10 +25,12 @@ router.get('/interactions', requireAuth, async (request, response) => {
     if (generic) namesByGeneric.set(generic, [...(namesByGeneric.get(generic) || []), name])
   })
   const generics = [...namesByGeneric.keys()]
-  if (generics.length < 2) return response.json({ pairs: [], duplicates: [] })
+  // One generic can still be a duplicate (the same drug IV and oral), so this check runs first.
+  const duplicates = duplicatePairs(names, genericName)
+  if (generics.length < 2) return response.json({ pairs: [], duplicates })
   const result = await query("SELECT drug_a, drug_b, level FROM drug_interactions WHERE drug_a = ANY($1::text[]) AND drug_b = ANY($1::text[]) AND level <> 'minor'", [generics])
   const pairs = result.rows.flatMap((row) => namesByGeneric.get(row.drug_a).flatMap((a) => namesByGeneric.get(row.drug_b).map((b) => ({ a, b, level: row.level }))))
-  response.json({ pairs, duplicates: duplicatePairs(names, genericName) })
+  response.json({ pairs, duplicates })
 })
 
 // «تعديل الجرعة الكلوية»: the renal dose rules (../renal-doses.js) for the given medicine names,
