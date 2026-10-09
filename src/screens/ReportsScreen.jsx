@@ -103,7 +103,7 @@ export default function ReportsScreen({ adminHeader, isExpired }) {
     ) : !report ? (
       <div className="report-start">
         <strong>اختر الطابق والمدة ثم اضغط «عرض التقرير»</strong>
-        <span>يشمل التقرير: عدد المرضى والدخول والخروج، مدة البقاء، تعدد الأدوية، استهلاك كل دواء مقارنةً بالمدة السابقة، وتغطية الجارت لكل ردهة.</span>
+        <span>يشمل التقرير: عدد المرضى والدخول والخروج، مدة البقاء، استهلاك كل دواء مقارنةً بالمدة السابقة، ومتابعة المضادات الحيوية.</span>
       </div>
     ) : <ReportDocument report={report} stale={loading} />}
   </section></main>
@@ -112,7 +112,6 @@ export default function ReportsScreen({ adminHeader, isExpired }) {
 function ReportDocument({ report, stale }) {
   const { summary, range, thresholds } = report
   const scopedToFloor = report.scope !== 'all'
-  const coverage = summary.possibleChartDays ? Math.round((summary.chartedDays / summary.possibleChartDays) * 100) : 0
   const generatedAt = new Date().toLocaleString('ar-IQ', { dateStyle: 'medium', timeStyle: 'short' })
 
   return (
@@ -138,7 +137,6 @@ function ReportDocument({ report, stale }) {
         <div><dt>دخول / خروج</dt><dd>{summary.admissions} / {summary.discharges}</dd></div>
         <div><dt>متوسط مدة البقاء</dt><dd>{orDash(summary.averageStay)} <small>يوم</small></dd></div>
         <div><dt>متوسط الأدوية لكل مريض</dt><dd>{orDash(summary.averageMedicines)}</dd></div>
-        <div><dt>تغطية الجارت</dt><dd>{coverage}٪</dd><span className="report-delta">{summary.chartedDays} من {summary.possibleChartDays} يوم-ردهة</span></div>
       </dl>
 
       {!scopedToFloor && (
@@ -193,17 +191,6 @@ function ReportDocument({ report, stale }) {
         )}
       </Section>
 
-      <Section title={`تعدد الأدوية (${thresholds.polypharmacy} أدوية فأكثر)`} note="يُحتسب عدد الأدوية المختلفة للمريض في اليوم نفسه، دون المستلزمات المؤشَّرة «مستلزم» في إدارة الأدوية.">
-        {report.polypharmacy.length === 0 ? <Empty>لا يوجد مريض أخذ {thresholds.polypharmacy} أدوية أو أكثر في يوم واحد.</Empty> : (
-          <div className="table-frame"><table className="requests-table report-table">
-            <thead><tr><th>المريض</th><th>الردهة</th><th>أعلى عدد أدوية</th><th>في يوم</th></tr></thead>
-            <tbody>{report.polypharmacy.map((row) => <tr key={`${row.floor}|${row.ward}|${row.patientId}|${row.patient}`}>
-              <td>{row.patient}{row.patientId && <span className="report-patient-id"> · {row.patientId}</span>}</td><td>{wardName(row, scopedToFloor)}</td><td className="num">{row.maxMedicines}</td><td>{formatDate(row.date)}</td>
-            </tr>)}</tbody>
-          </table></div>
-        )}
-      </Section>
-
       <Section title="استهلاك الأدوية" note="مجموع الكميات في الجارت (الرئيسي والإضافي) لكل دواء، مقارنةً بالمدة السابقة بنفس الطول.">
         {report.consumption.length === 0 ? <Empty>لا توجد كميات مسجّلة في هذه المدة.</Empty> : (
           <div className="table-frame"><table className="requests-table report-table">
@@ -240,23 +227,37 @@ function ReportDocument({ report, stale }) {
         </>}
       </Section>}
 
-      <Section title="تغطية الجارت" note="يوم «بجارت»: جارت رئيسي فيه اسم مريض وكمية واحدة على الأقل.">
-        <div className="table-frame"><table className="requests-table report-table">
-          <thead><tr><th>الردهة</th><th>أيام بجارت</th><th>اكتملت</th><th>الجارت الإضافي</th><th>استمارات الحبوب الإضافي</th><th>الأيام الفائتة</th></tr></thead>
-          <tbody>{report.wards.map((row) => <tr key={`${row.floor}|${row.ward}`}>
-            <td>{wardName(row, scopedToFloor)}</td>
-            <td className="num">{row.chartedDays} / {range.days}</td>
-            <td className="num">{row.completedDays}</td>
-            <td className="num">{row.extraChartDays}</td>
-            <td className="num">{row.extraPillForms}</td>
-            <td>{row.missedDates.length === 0
-              ? <span className="card-status card-status--done">لا يوجد</span>
-              : row.missedDates.length === range.days
-                ? <span className="card-status card-status--pending">لم تبدأ طوال المدة</span>
-                : <><span className="card-status card-status--pending">{row.missedDates.length} يوم</span> <small className="report-missed">{row.missedDates.map(formatDate).join('، ')}</small></>}
-            </td>
-          </tr>)}</tbody>
-        </table></div>
+      <Section title={`مضادات حيوية لأكثر من ${report.antibiotics.longCourseDays} يومًا`} note="مرضى ما زالوا على المضاد في آخر يوم من المدة؛ رقم اليوم محسوب بنفس قواعد «متابعة المضادات الحيوية».">
+        {report.antibiotics.longCourses.length === 0 ? <Empty>لا توجد كورسات أطول من {report.antibiotics.longCourseDays} يومًا.</Empty> : (
+          <div className="table-frame"><table className="requests-table report-table">
+            <thead><tr><th>المريض</th><th>الردهة</th><th>المضاد</th><th>اليوم</th></tr></thead>
+            <tbody>{report.antibiotics.longCourses.map((row) => <tr key={`${row.floor}|${row.ward}|${row.patientId}|${row.name}|${row.drugKey}`}>
+              <td>{row.name}{row.patientId && <span className="report-patient-id"> · {row.patientId}</span>}</td><td>{wardName(row, scopedToFloor)}</td><td lang="en" dir="ltr">{row.drug}</td><td className="num">D{row.day}</td>
+            </tr>)}</tbody>
+          </table></div>
+        )}
+      </Section>
+
+      <Section title="أكثر من مضاد حيوي في اليوم نفسه" note="مرضى أُعطوا مضادين مختلفين أو أكثر في يوم واحد. المضاد المركّب (مثل Tazocin) يُحتسب دواءً مستقلًا عن مكوّنه.">
+        {report.antibiotics.multiple.length === 0 ? <Empty>لا يوجد مريض أخذ أكثر من مضاد حيوي في يوم واحد.</Empty> : (
+          <div className="table-frame"><table className="requests-table report-table">
+            <thead><tr><th>المريض</th><th>الردهة</th><th>أعلى عدد في يوم</th><th>أيام</th><th>المضادات</th></tr></thead>
+            <tbody>{report.antibiotics.multiple.map((row) => <tr key={`${row.floor}|${row.ward}|${row.patientId}|${row.patient}`}>
+              <td>{row.patient}{row.patientId && <span className="report-patient-id"> · {row.patientId}</span>}</td><td>{wardName(row, scopedToFloor)}</td><td className="num">{row.maxConcurrent}</td><td className="num">{row.days}</td><td lang="en" dir="ltr">{row.drugs.join(', ')}</td>
+            </tr>)}</tbody>
+          </table></div>
+        )}
+      </Section>
+
+      <Section title="مضادات الاحتياط (Reserve)" note="مرضى أُعطوا دواءً من فئة Reserve حسب تصنيف AWaRe لمنظمة الصحة العالمية.">
+        {report.antibiotics.reserve.length === 0 ? <Empty>لم يُعطَ أي مريض مضادًا من فئة Reserve في هذه المدة.</Empty> : (
+          <div className="table-frame"><table className="requests-table report-table">
+            <thead><tr><th>المريض</th><th>الردهة</th><th>الدواء</th><th>الأيام</th></tr></thead>
+            <tbody>{report.antibiotics.reserve.map((row) => <tr key={`${row.floor}|${row.ward}|${row.patientId}|${row.patient}|${row.drug}`}>
+              <td>{row.patient}{row.patientId && <span className="report-patient-id"> · {row.patientId}</span>}</td><td>{wardName(row, scopedToFloor)}</td><td lang="en" dir="ltr">{row.drug}</td><td className="num">{row.days}</td>
+            </tr>)}</tbody>
+          </table></div>
+        )}
       </Section>
     </article>
   )
