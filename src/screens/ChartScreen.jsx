@@ -9,6 +9,8 @@ import { medicineMatches } from '../helpers.js'
 // Presentational only: every piece of chart state, and the autosave/lock/draft logic that
 // maintains it, stays in App so that swapping in the sign-in card when a session lapses does
 // not unmount the half-typed chart.
+const formatNoteDate = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString('ar-IQ', { weekday: 'long', day: 'numeric', month: 'numeric' })
+
 export default function ChartScreen({
   selected, wardLabel, today, todayWeekday, isManager, dateIsToday, selectedDate, onChangeDate, onCopyToNextDay, onOpenTemplates, isOnline, onBack, onGoToPills, onGoToOrder, onOpenForm, onExportPdf, pdfBusy, pdfExportError,
   chartSaveStatus, loadError, copyError, chartReady, lastChartSaveAt, onRetryLoad, onRetrySave, lockState, lockHolder,
@@ -17,7 +19,7 @@ export default function ChartScreen({
   medicines, patientNames, patientIds, columnMedicines, quantities, totals, doubledTotals, isThursday,
   activeRow, activeColumn, labelBelow, setActiveRow, setActiveColumn, setLabelBelow,
   onSetColumnMedicine, onCommitColumnMedicine, columnMedicineNotice, onDismissNotice, onApplySuggestion,
-  onSetPatientName, onSetPatientId, onCheckPreviousDay, onUpdateQuantity, onCollapseRow, onAddColumn, canAddColumn, chartAlerts = {}, onShowAlerts,
+  onSetPatientName, onSetPatientId, onCheckPreviousDay, onUpdateQuantity, onCollapseRow, onAddColumn, canAddColumn, chartAlerts = {}, onShowAlerts, wardNote, onChangeWardNote, onSaveWardNote,
   chartFrameRef, chartHeadRef, chartGridRef, chartDosesRef, chartFootRef,
 }) {
   const columnFocusValue = useRef('')
@@ -118,6 +120,22 @@ export default function ChartScreen({
         {!readOnly && <button type="button" onClick={onOpenTemplates} disabled={!isOnline} title={isOnline ? undefined : 'القوالب تحتاج اتصالًا'}>القوالب</button>}
       </span>
     </div>
+
+    {wardNote && wardNote.status !== 'loading' && <details className="ward-note" open={Boolean(wardNote.previous || wardNote.note) || undefined}>
+      <summary>ملاحظة التسليم{wardNote.previous && !wardNote.note ? ' — توجد ملاحظة سابقة' : ''}</summary>
+      {wardNote.status === 'load-error' && <p className="ward-note-status" role="alert">تعذّر تحميل الملاحظة.</p>}
+      {wardNote.previous && <blockquote className="ward-note-previous">
+        <p>{wardNote.previous.body}</p>
+        <footer>{formatNoteDate(wardNote.previous.date)}{wardNote.previous.by ? ` — ${wardNote.previous.by}` : ''}</footer>
+      </blockquote>}
+      <label className="ward-note-today">ملاحظة اليوم
+        <textarea value={wardNote.draft} maxLength={2000} rows={2} onChange={(event) => onChangeWardNote(event.target.value)} onBlur={onSaveWardNote}
+          placeholder="ما يحتاج الصيدلي التالي معرفته عن هذه الردهة" disabled={wardNote.status === 'load-error'} />
+      </label>
+      <p className="ward-note-status" role="status">{wardNote.status === 'saving' ? 'جارٍ الحفظ…'
+        : wardNote.status === 'save-error' ? 'لم تُحفظ الملاحظة — تحقّق من الاتصال ثم اخرج من المربع مرة أخرى.'
+        : wardNote.note ? `محفوظة${wardNote.note.by ? ` — ${wardNote.note.by}` : ''}` : ''}</p>
+    </details>}
 
     {/* The only strip that stays put while the grid scrolls, so the status that matters at a
         hand-off — is it saved, is this today's chart — rides here, not in the scrolling meta row.
