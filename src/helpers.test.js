@@ -264,21 +264,21 @@ test('interactionsForChart lists duplicate therapy after moderate, and as the no
   ])
 })
 
-test('RENAL_EQUATIONS: textbook values, and null on missing input', () => {
-  const cg = RENAL_EQUATIONS.cg.calc
-  assert.equal(Math.round(cg({ age: 60, weightKg: 72, female: false, scr: 1 })), 80)
-  assert.equal(Math.round(cg({ age: 60, weightKg: 72, female: true, scr: 1 })), 68)
-  assert.equal(Math.round(cg({ age: 60, weightKg: 72, female: false, scr: 176.8 / SCR_UMOL_PER_MGDL })), 40)
-  assert.equal(cg({ age: 60, weightKg: 0, female: false, scr: 1 }), null)
-  // obese 100 kg / 170 cm man: C-G uses adjusted weight (IBW 66 + 40% of the excess), not the actual 100 kg
-  assert.equal(Math.round(cg({ age: 60, weightKg: 100, heightCm: 170, female: false, scr: 1 })), 88)
-  assert.equal(Math.round(RENAL_EQUATIONS.ckd2021.calc({ age: 60, female: false, scr: 1 })), 86)
-  assert.equal(Math.round(RENAL_EQUATIONS.ckd2009.calc({ age: 60, female: false, black: false, scr: 1 })), 81)
-  assert.equal(Math.round(RENAL_EQUATIONS.mdrd.calc({ age: 60, female: false, scr: 1 })), 76)
-  assert.equal(Math.round(RENAL_EQUATIONS.jelliffe73.calc({ age: 60, female: false, scr: 1 })), 66)
-  assert.equal(Math.round(RENAL_EQUATIONS.salazar.calc({ age: 60, weightKg: 72, heightCm: 170, female: false, scr: 1 })), 84)
-  assert.ok(RENAL_EQUATIONS.jelliffe72.calc({ age: 60, weightKg: 70, female: false, scr: 1, scr2: 1, hours: 24 }) > 0)
-  assert.equal(RENAL_EQUATIONS.jelliffe72.calc({ age: 60, weightKg: 70, female: false, scr: 1, scr2: 0, hours: 24 }), null)
+test('RENAL_EQUATIONS match ClinCalc.com (values read from its calculator), and are null on missing input', () => {
+  const E = RENAL_EQUATIONS
+  const r = (equation, x) => Math.round(E[equation].calc(x))
+  const m60 = { age: 60, weightKg: 72, heightCm: 170, female: false, black: false, scr: 1 }
+  assert.deepEqual([r('cg', m60), r('ckd2021', m60), r('ckd2009', m60), r('mdrd', m60), r('jelliffe73', m60)], [65, 91, 86, 81, 62])
+  assert.equal(Math.round(E.ckd2021.calc({ age: 60, female: false, scr: 1 })), 86) // per 1.73 m² without height and weight
+  assert.equal(r('cg', { age: 70, weightKg: 50, heightCm: 175, female: false, scr: 0.8 }), 37) // underweight: actual × 0.69
+  const obese = { age: 55, weightKg: 100, heightCm: 160, female: true, scr: 1.2 }
+  assert.deepEqual([r('cg', obese), r('salazar', obese)], [53, 61]) // adjusted body weight
+  assert.equal(r('cg', { ...m60, scr: 176.8 / SCR_UMOL_PER_MGDL, weightKg: 0 }) === null, false)
+  const rising = { age: 60, weightKg: 72, heightCm: 170, female: false, scr: 1, scr2: 1.6, hours: 24 }
+  assert.deepEqual(['jelliffe72', 'chiou', 'chen'].map((k) => r(k, rising)), [34, 35, 26])
+  assert.deepEqual(['jelliffe72', 'chiou', 'chen'].map((k) => r(k, { ...rising, scr: 1.6, scr2: 1 })), [66, 59, 41])
+  assert.equal(E.cg.calc({ ...m60, heightCm: 0 }), null)
+  assert.equal(E.chen.calc({ ...rising, scr2: 0 }), null)
 })
 
 test('renalGuidance picks the first step the CrCl meets, the lowest below all, and HD on dialysis', () => {

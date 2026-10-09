@@ -465,32 +465,44 @@ export const interactionsForChart = ({ patientNames, patientIds, columnMedicines
   return results
 }
 
-// «تعديل الجرعة الكلوية»: kidney-function equations (the ClinCalc.com set). Each takes the typed
-// values (age years, weight kg, height cm, scr mg/dL — µmol/L ÷ 88.4 — plus scr2/hours for the
-// unstable one) and returns CrCl in mL/min, or null until its inputs are valid. Computed in the
-// browser only — the values are never sent or stored. Creatinine is used as typed (no IDMS
-// conversion), matching the earlier Cockcroft-Gault-only screen.
+// «تعديل الجرعة الكلوية»: kidney-function equations, matching ClinCalc.com (checked against its
+// calculator). Each takes the typed values (age years, weight kg, height cm, scr mg/dL IDMS —
+// µmol/L ÷ 88.4 — plus scr2/hours for the unstable ones; scr is the LESS recent value there) and
+// returns CrCl in mL/min, or null until its inputs are valid. Computed in the browser only — the
+// values are never sent or stored. Older equations (before MDRD) were built on non-IDMS creatinine,
+// so the IDMS value is converted for them, as ClinCalc does.
 export const SCR_UMOL_PER_MGDL = 88.4
+const nonIdms = (scr) => Math.round((scr * 1.065 + 0.067) * 100) / 100 // ClinCalc shows (and uses) 2 decimals
 const ibw = (female, heightCm) => (female ? 45.5 : 50) + 2.3 * Math.max(0, heightCm / 2.54 - 60)
-const dosingWeight = ({ female, weightKg, heightCm }) => (heightCm > 0 ? Math.min(weightKg, ibw(female, heightCm)) : weightKg)
-// Cockcroft-Gault weight (ClinCalc): actual if below ideal, ideal up to 1.3×, adjusted (IBW + 40%) beyond.
-const cgWeight = ({ female, weightKg, heightCm }) => {
-  if (!(heightCm > 0)) return weightKg
-  const ideal = ibw(female, heightCm)
-  return weightKg < ideal ? weightKg : weightKg <= ideal * 1.3 ? ideal : ideal + 0.4 * (weightKg - ideal)
-}
+// ClinCalc's dosing weight for the unstable equations: ideal or actual, whichever is less.
+const lighter = ({ female, weightKg, heightCm }) => Math.min(weightKg, ibw(female, heightCm))
 // mL/min/1.73 m² → mL/min with the patient's own BSA, when height and weight were typed.
-const denormalize = (gfr, { weightKg, heightCm }) => (weightKg > 0 && heightCm > 0 ? (gfr * Math.sqrt((heightCm * weightKg) / 3600)) / 1.73 : gfr)
+// ClinCalc rounds the 1.73 m² value and the BSA (2 decimals) before converting, so do the same.
+const denormalize = (gfr, { weightKg, heightCm }) => (weightKg > 0 && heightCm > 0 ? (Math.round(gfr) * Math.round(Math.sqrt((heightCm * weightKg) / 3600) * 100) / 100) / 1.73 : gfr)
 const ckdEpi = (age, scr, female, black, v2009) => {
   const k = female ? 0.7 : 0.9
   const a = v2009 ? (female ? -0.329 : -0.411) : (female ? -0.241 : -0.302)
   const base = v2009 ? (female ? 144 : 141) * (black ? (female ? 166 / 144 : 163 / 141) : 1) : 142 * (female ? 1.012 : 1)
   return base * Math.min(scr / k, 1) ** a * Math.max(scr / k, 1) ** (v2009 ? -1.209 : -1.2) * (v2009 ? 0.993 : 0.9938) ** age
 }
+// Serum-creatinine production (mg/day) used by the unstable equations.
+const production = (x, a, b, c, d) => lighter(x) * (x.female ? c - d * x.age : a - b * x.age)
 const valid = (...numbers) => numbers.every((n) => n > 0)
+// ClinCalc rounds the interval between the two creatinines to 0.1 day (2.4 h) before using it.
+const interval = (x) => Math.round(x.hours / 2.4) * 2.4
+const unstable = (x) => valid(x.age, x.weightKg, x.heightCm, x.scr, x.scr2, interval(x))
 export const RENAL_EQUATIONS = {
-  cg: { label: 'Cockcroft-Gault (1976)', fields: ['age', 'sex', 'weight', 'height?', 'scr'],
-    calc: (x) => (valid(x.age, x.weightKg, x.scr) ? Math.max(0, ((140 - x.age) * cgWeight(x)) / (72 * x.scr) * (x.female ? 0.85 : 1)) : null) },
+  cg: { label: 'Cockcroft-Gault (1976)', fields: ['age', 'sex', 'weight', 'height', 'scr'],
+    calc: (x) => {
+      if (!valid(x.age, x.weightKg, x.heightCm, x.scr)) return null
+      const ideal = ibw(x.female, x.heightCm)
+      const ratio = x.weightKg / ideal
+      // under ideal: actual weight (× 0.69 when under 90% of ideal); up to 130%: ideal; above (or BMI > 30): adjusted (IBW + 40% of the excess)
+      const bmi = x.weightKg / (x.heightCm / 100) ** 2
+      const weight = ratio < 1 ? x.weightKg : ratio <= 1.3 && bmi <= 30 ? ideal : ideal + 0.4 * (x.weightKg - ideal)
+      const crcl = Math.max(0, ((140 - x.age) * weight) / (72 * nonIdms(x.scr)) * (x.female ? 0.85 : 1))
+      return ratio < 0.9 ? Math.round(crcl) * 0.69 : crcl // ClinCalc rounds before the underweight factor
+    } },
   ckd2021: { label: 'CKD-EPI 2021', fields: ['age', 'sex', 'scr', 'weight?', 'height?'],
     calc: (x) => (valid(x.age, x.scr) ? denormalize(ckdEpi(x.age, x.scr, x.female, false, false), x) : null) },
   ckd2009: { label: 'CKD-EPI 2009 (deprecated)', fields: ['age', 'sex', 'black', 'scr', 'weight?', 'height?'],
@@ -498,18 +510,32 @@ export const RENAL_EQUATIONS = {
   mdrd: { label: 'MDRD 4-variable (IDMS)', fields: ['age', 'sex', 'black', 'scr', 'weight?', 'height?'],
     calc: (x) => (valid(x.age, x.scr) ? denormalize(175 * x.scr ** -1.154 * x.age ** -0.203 * (x.female ? 0.742 : 1) * (x.black ? 1.21 : 1), x) : null) },
   jelliffe73: { label: 'Jelliffe (1973)', fields: ['age', 'sex', 'scr', 'weight?', 'height?'],
-    calc: (x) => (valid(x.age, x.scr) ? denormalize(((98 - 16 * ((x.age - 20) / 20)) / x.scr) * (x.female ? 0.9 : 1), x) : null) },
+    calc: (x) => (valid(x.age, x.scr) ? denormalize(((98 - 16 * ((x.age - 20) / 20)) / nonIdms(x.scr)) * (x.female ? 0.9 : 1), x) : null) },
   salazar: { label: 'Salazar-Corcoran (1988, obese)', fields: ['age', 'sex', 'weight', 'height', 'scr'],
     calc: (x) => (valid(x.age, x.weightKg, x.heightCm, x.scr) ? Math.max(0, x.female
-      ? ((146 - x.age) * (0.287 * x.weightKg + 9.74 * (x.heightCm / 100) ** 2)) / (60 * x.scr)
-      : ((137 - x.age) * (0.285 * x.weightKg + 12.1 * (x.heightCm / 100) ** 2)) / (51 * x.scr)) : null) },
-  jelliffe72: { label: 'Jelliffe (1972) — unstable creatinine', fields: ['age', 'sex', 'weight', 'height?', 'scr', 'scr2', 'hours'],
+      ? ((146 - x.age) * (0.287 * x.weightKg + 9.74 * (x.heightCm / 100) ** 2)) / (60 * nonIdms(x.scr))
+      : ((137 - x.age) * (0.285 * x.weightKg + 12.1 * (x.heightCm / 100) ** 2)) / (51 * nonIdms(x.scr))) : null) },
+  jelliffe72: { label: 'Jelliffe (1972) — unstable creatinine', fields: ['age', 'sex', 'weight', 'height', 'scr', 'scr2', 'hours'],
     calc: (x) => {
-      if (!valid(x.age, x.weightKg, x.scr, x.scr2, x.hours)) return null
-      const bw = dosingWeight(x)
-      const production = bw * (x.female ? 25.3 - 0.175 * x.age : 29.3 - 0.203 * x.age) // mg/day
-      const scrX = x.scr2 >= x.scr ? x.scr2 : (x.scr + x.scr2) / 2 // x.scr = less recent, x.scr2 = more recent
-      return Math.max(0, ((production - (0.6 * bw * 10 * (x.scr2 - x.scr)) / (x.hours / 24)) * 100) / (scrX * 1440))
+      if (!unstable(x)) return null
+      const [s1, s2] = [nonIdms(x.scr), nonIdms(x.scr2)]
+      const scrX = s2 >= s1 ? s2 : (s1 + s2) / 2
+      return Math.max(0, ((production(x, 29.3, 0.203, 25.3, 0.175) - (0.6 * lighter(x) * 10 * (s2 - s1)) / (interval(x) / 24)) * 100) / (scrX * 1440))
+    } },
+  chiou: { label: 'Chiou (1975) — unstable creatinine', fields: ['age', 'sex', 'weight', 'height', 'scr', 'scr2', 'hours'],
+    calc: (x) => {
+      if (!unstable(x)) return null
+      const [s1, s2] = [nonIdms(x.scr), nonIdms(x.scr2)]
+      const pr = production(x, 28, 0.2, 22.4, 0.16) / 1440 // mg/min
+      const v = 0.6 * lighter(x) * 1000 // mL
+      return Math.max(0, (2 * pr) / ((s1 + s2) * 0.01) + (2 * v * (s1 - s2)) / ((s1 + s2) * interval(x) * 60) - 8e-5 * v)
+    } },
+  chen: { label: 'Chen (2013) — unstable creatinine', fields: ['age', 'sex', 'weight', 'height', 'scr', 'scr2', 'hours'],
+    calc: (x) => {
+      if (!unstable(x)) return null
+      const pr = production(x, 28, 0.2, 22.4, 0.16) // mg/day; IDMS creatinine as typed
+      const maxRise = Math.max(pr / (0.6 * lighter(x) * 10), x.scr2 - x.scr)
+      return Math.max(0, (pr / 24 / ((x.scr + x.scr2) / 2)) * (1 - ((x.scr2 - x.scr) / maxRise) * (24 / interval(x))))
     } },
 }
 // A renal dose rule's guidance (server/renal-doses.js): the first step whose CrCl the patient
