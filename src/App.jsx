@@ -287,6 +287,8 @@ function App() {
   const [purgeFrom, setPurgeFrom] = useState('')
   const [purgeTo, setPurgeTo] = useState('')
   const [purgeAll, setPurgeAll] = useState(false)
+  // What the purge clears: whole charts (which take their pill forms with them), or just pill forms.
+  const [purgeKinds, setPurgeKinds] = useState({ charts: true, pills: false, extra: false })
   const [purgeTargets, setPurgeTargets] = useState(() => new Set())
   // The session cookie lasts 8 hours. When it lapses the server answers 401, and the save
   // loop below used to retry a rejected request every 4 seconds forever while the pharmacist
@@ -650,19 +652,32 @@ function App() {
     const floorNumbers = [...purgeTargets].filter((key) => typeof key === 'number')
     const wardNames = [...purgeTargets].filter((key) => typeof key === 'string')
     if (!purgeAll && floorNumbers.length === 0 && wardNames.length === 0) { setRegistrationsError('اختر طابقًا واحدًا على الأقل أو فعّل "كل الطوابق والردهات"'); return }
+    const { charts, pills, extra } = purgeKinds
+    if (!charts && !pills && !extra) { setRegistrationsError('اختر ما تريد مسحه'); return }
     const scopeText = purgeAll ? 'كل الطوابق والردهات' : `${floorNumbers.length + wardNames.length} موقعًا مختارًا`
-    if (!(await askConfirm(`مسح جميع الجارتات من ${purgeFrom} إلى ${purgeTo} — ${scopeText}؟ لا يمكن التراجع عن هذا نهائيًا.`, { danger: true }))) return
+    const whatText = [charts && 'الجارتات (مع استمارات الحبوب)', !charts && pills && 'استمارات الحبوب', extra && 'استمارات الحبوب الإضافية'].filter(Boolean).join(' و')
+    if (!(await askConfirm(`مسح ${whatText} من ${purgeFrom} إلى ${purgeTo} — ${scopeText}؟ لا يمكن التراجع عن هذا نهائيًا.`, { danger: true }))) return
     setRegistrationsError(''); setAdminSuccess(''); setBusy(true)
     try {
       const body = purgeAll ? { from: purgeFrom, to: purgeTo, all: true } : { from: purgeFrom, to: purgeTo, floors: floorNumbers, wards: wardNames }
-      const response = await fetch(`${apiUrl}/charts/purge`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body) })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.message || 'تعذر مسح الجارتات')
-      setAdminSuccess(`تم مسح ${result.deleted} جارت`)
+      const post = async (path, payload, failure) => {
+        const response = await fetch(`${apiUrl}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(payload) })
+        const result = await response.json()
+        if (!response.ok) throw new Error(result.message || failure)
+        return result
+      }
+      const done = []
+      if (charts) done.push(`${(await post('/charts/purge', body, 'تعذر مسح الجارتات')).deleted} جارت`)
+      if ((!charts && pills) || extra) {
+        const result = await post('/pills/purge', { ...body, regular: !charts && pills, extra }, 'تعذر مسح الاستمارات')
+        if (!charts && pills) done.push(`${result.deleted.regular} سطر استمارة حبوب`)
+        if (extra) done.push(`${result.deleted.extra} استمارة حبوب إضافية`)
+      }
+      setAdminSuccess(`تم مسح ${done.join(' و')}`)
       setPurgeTargets(new Set())
       setPurgeAll(false)
     } catch (error) { setRegistrationsError(error.message || 'تعذر الاتصال بالخادم') } finally { setBusy(false) }
-  }, [askConfirm, purgeAll, purgeFrom, purgeTo, purgeTargets])
+  }, [askConfirm, purgeAll, purgeFrom, purgeKinds, purgeTo, purgeTargets])
   useEffect(() => {
     setRegistrationsError(''); setAdminSuccess('')
     if (adminView === 'requests') loadRegistrations()
@@ -2347,7 +2362,7 @@ function App() {
 
   if (adminView === 'reports' && isManager) return <ReportsScreen adminHeader={appHeader} isExpired={isExpired} />
 
-  if (adminView === 'floors' && isManager) return <AdminFloorsScreen adminHeader={appHeader} purgeFrom={purgeFrom} setPurgeFrom={setPurgeFrom} purgeTo={purgeTo} setPurgeTo={setPurgeTo} purgeAll={purgeAll} setPurgeAll={setPurgeAll} purgeTargets={purgeTargets} onToggleTarget={togglePurgeTarget} busy={busy} registrationsError={registrationsError} adminSuccess={adminSuccess} onPurge={purgeCharts} confirmModal={confirmModal} />
+  if (adminView === 'floors' && isManager) return <AdminFloorsScreen adminHeader={appHeader} purgeFrom={purgeFrom} setPurgeFrom={setPurgeFrom} purgeTo={purgeTo} setPurgeTo={setPurgeTo} purgeAll={purgeAll} setPurgeAll={setPurgeAll} purgeKinds={purgeKinds} setPurgeKinds={setPurgeKinds} purgeTargets={purgeTargets} onToggleTarget={togglePurgeTarget} busy={busy} registrationsError={registrationsError} adminSuccess={adminSuccess} onPurge={purgeCharts} confirmModal={confirmModal} />
 
   // adminMedicines holds the catalogue exactly as the server returned it, so its length is
   // the number of rows in the database; the filter only narrows what the table draws.

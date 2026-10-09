@@ -84,3 +84,36 @@ test('POST /api/charts/purge: all=true clears every ward in the range, numbered 
   assert.equal(response.body.deleted, 2)
   assert.equal(await chartCount(), 1)
 })
+
+test('POST /api/pills/purge: clears pill forms only, in range and scope, and keeps the charts', async () => {
+  const user = await createUser({ role: 'user', floor: 5 })
+  const inScope = await seedChart({ floor: 5, ward: 'ردهة رجال', date: '2026-05-10', createdBy: user.id })
+  const otherFloor = await seedChart({ floor: 3, ward: 'ردهة CCU', date: '2026-05-10', createdBy: user.id })
+  const outOfRange = await seedChart({ floor: 5, ward: 'ردهة النساء', date: '2026-06-10', createdBy: user.id })
+  await pool.query("INSERT INTO pill_patient_meta (chart_id, patient_row_number, room_number) VALUES ($1, 1, '12')", [inScope])
+  const extraForm = async (floor, createdAt) => (await pool.query("INSERT INTO extra_pill_forms (floor_number, ward, patient_name, created_at) VALUES ($1, 'ردهة', 'س', $2) RETURNING id", [floor, createdAt])).rows[0].id
+  await extraForm(3, '2026-05-10T12:00:00Z')
+  await extraForm(6, '2026-05-10T12:00:00Z')
+  await extraForm(3, '2026-06-10T12:00:00Z')
+  const pillCount = async (id) => (await pool.query('SELECT COUNT(*)::int AS c FROM pill_entries WHERE chart_id = $1', [id])).rows[0].c
+  const extraCount = async () => (await pool.query('SELECT COUNT(*)::int AS c FROM extra_pill_forms')).rows[0].c
+
+  const plain = await loginAs({ role: 'user', floor: 5 })
+  assert.equal((await plain.post('/api/pills/purge', { from: '2026-05-01', to: '2026-05-31', all: true, regular: true })).status, 403)
+  const manager = await loginAs({ role: 'admin' })
+  assert.equal((await manager.post('/api/pills/purge', { from: '2026-05-01', to: '2026-05-31', all: true })).status, 400, 'no kind chosen')
+  assert.equal((await manager.post('/api/pills/purge', { from: '2026-05-01', to: '2026-05-31', regular: true })).status, 400, 'no scope chosen')
+
+  // Regular forms of floor 5 only: charts, rooms and extra forms stay.
+  const first = await manager.post('/api/pills/purge', { from: '2026-05-01', to: '2026-05-31', floors: [5], regular: true })
+  assert.deepEqual(first.body.deleted, { regular: 1, extra: 0 })
+  assert.deepEqual([await pillCount(inScope), await pillCount(otherFloor), await pillCount(outOfRange)], [0, 1, 1])
+  assert.equal(await chartCount(), 3)
+  assert.equal((await pool.query('SELECT COUNT(*)::int AS c FROM pill_patient_meta WHERE chart_id = $1', [inScope])).rows[0].c, 1)
+  assert.equal(await extraCount(), 3)
+
+  // Extra forms on floor 3 in May.
+  const second = await manager.post('/api/pills/purge', { from: '2026-05-01', to: '2026-05-31', floors: [3], extra: true })
+  assert.deepEqual(second.body.deleted, { regular: 0, extra: 1 })
+  assert.equal(await extraCount(), 2)
+})

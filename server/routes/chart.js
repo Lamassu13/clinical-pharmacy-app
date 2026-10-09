@@ -102,6 +102,43 @@ router.post('/charts/purge', requireManager, async (request, response) => {
   response.json({ deleted: result.rowCount })
 })
 
+// Clears pill forms only, leaving the charts (and the room numbers, which the chart shares) alone.
+// kinds.regular: the per-chart pill form (pill_entries) of charts dated in the range.
+// kinds.extra: «استمارات الحبوب الإضافية», by the Baghdad day they were made; they belong to
+// floors 3/6/8/9 only, so special wards never match them.
+router.post('/pills/purge', requireManager, async (request, response) => {
+  const { from, to } = request.body
+  if (!isIsoDate(from) || !isIsoDate(to)) return response.status(400).json({ message: 'التاريخ مطلوب' })
+  if (from > to) return response.status(400).json({ message: 'تاريخ البداية بعد تاريخ النهاية' })
+  const all = request.body.all === true
+  const floors = Array.isArray(request.body.floors) ? [...new Set(request.body.floors.map(Number).filter((n) => ALLOWED_FLOORS.includes(n)))] : []
+  const wards = Array.isArray(request.body.wards) ? [...new Set(request.body.wards.filter((w) => SPECIAL_WARDS.includes(w)))] : []
+  if (!all && floors.length === 0 && wards.length === 0) return response.status(400).json({ message: 'اختر طابقًا واحدًا على الأقل أو كل الطوابق' })
+  const regular = request.body.regular === true
+  const extra = request.body.extra === true
+  if (!regular && !extra) return response.status(400).json({ message: 'اختر نوع الاستمارات' })
+
+  const deleted = { regular: 0, extra: 0 }
+  if (regular) {
+    deleted.regular = (await query(
+      `DELETE FROM pill_entries WHERE chart_id IN (
+         SELECT dc.id FROM daily_charts dc JOIN wards w ON w.id = dc.ward_id
+         WHERE dc.chart_date BETWEEN $1 AND $2
+           AND ($3::boolean OR w.floor_number = ANY($4::int[]) OR (w.floor_number IS NULL AND w.name = ANY($5::text[]))))`,
+      [from, to, all, floors, wards],
+    )).rowCount
+  }
+  if (extra) {
+    deleted.extra = (await query(
+      `DELETE FROM extra_pill_forms
+       WHERE (created_at AT TIME ZONE 'Asia/Baghdad')::date BETWEEN $1 AND $2
+         AND ($3::boolean OR floor_number = ANY($4::int[]))`,
+      [from, to, all, floors],
+    )).rowCount
+  }
+  response.json({ deleted })
+})
+
 router.get('/chart', requireAuth, async (request, response) => {
   const location = readLocation(request.query, request.session.user)
   if (location.status) return response.status(location.status).json({ message: location.message })
