@@ -214,7 +214,7 @@ export default function PillsScreen({
                 })}{lastPage && <tr className="pill-add-extra-row"><td colSpan={6}>
                   {/* Screen-only row (hidden in print): this patient's shortcuts. */}
                   <span className="pill-row-actions">
-                    {fromYesterday > 0 && <button type="button" className="secondary-button compact" onClick={() => fillEmptyRows(medRows, (medKey) => yesterday[medKey])}>نسخ من استمارة الأمس ({fromYesterday})</button>}
+                    {fromYesterday > 0 && <button type="button" className="secondary-button compact" onClick={() => fillEmptyRows(medRows, (medKey) => yesterday[medKey])}>نسخ من استمارة الأمس / أول أمس ({fromYesterday})</button>}
                     {canApplyFirst && <button type="button" className="secondary-button compact" title="يملأ الأسطر الفارغة فقط بوقت الجرعة والطريقة والملاحظة من أول سطر مُعبّأ" onClick={() => fillEmptyRows(medRows, () => firstFilled.entry)}>تطبيق أول سطر على الفارغة</button>}
                     <button type="button" className="text-button" onClick={() => setExtraRowCounts((current) => ({ ...current, [patient.rowNumber]: extraCount + 1 }))}>+ سطر إضافي</button>
                   </span>

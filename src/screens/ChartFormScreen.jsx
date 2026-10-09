@@ -39,7 +39,7 @@ export default function ChartFormScreen({
     if (asked.current.has(askedKey)) return
     asked.current.add(askedKey)
     const who = field === 'id' ? `رقم المريض ${found.trimmed}${prevName ? ` («${prevName}»)` : ''}` : `«${found.trimmed}»`
-    if (!(await askConfirm(`${who} موجود في جارت الأمس — هل تريد نسخ بياناته (الاسم والرقم والأدوية والكميات)؟`))) return
+    if (!(await askConfirm(`${who} موجود في ${found.daysAgo === 2 ? 'جارت أول أمس' : 'جارت الأمس'} — هل تريد نسخ بياناته (الاسم والرقم والأدوية والكميات)؟`))) return
     if (prevName && !name.trim()) setName(prevName)
     if (prevId && !id) setId(prevId)
     if (prevRoom && !room.trim()) setRoom(prevRoom)
