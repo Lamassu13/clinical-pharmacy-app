@@ -99,6 +99,12 @@ router.post('/charts/purge', requireManager, async (request, response) => {
          AND ward_id IN (SELECT id FROM wards WHERE floor_number = ANY($3::int[]) OR (floor_number IS NULL AND name = ANY($4::text[])))`,
       [from, to, floors, wards],
     )
+  // Handover notes are per ward/day like the charts, and may name patients, so they go too.
+  await query(
+    `DELETE FROM ward_notes WHERE note_date BETWEEN $1 AND $2
+       AND ($3::boolean OR split_part(ward_key, '|', 1) = ANY($4::text[]) OR (split_part(ward_key, '|', 1) = '' AND split_part(ward_key, '|', 2) = ANY($5::text[])))`,
+    [from, to, all, floors.map(String), wards],
+  )
   response.json({ deleted: result.rowCount })
 })
 
@@ -137,6 +143,41 @@ router.post('/pills/purge', requireManager, async (request, response) => {
     )).rowCount
   }
   response.json({ deleted })
+})
+
+// «ملاحظة التسليم»: today's note for the ward, plus the latest earlier one within three days (so
+// a Friday with no chart still hands Thursday's note to Saturday). Same access as the chart.
+const NOTE_LOOKBACK_DAYS = 3
+router.get('/ward-note', requireAuth, async (request, response) => {
+  const location = readLocation(request.query, request.session.user)
+  if (location.status) return response.status(location.status).json({ message: location.message })
+  const result = await query(
+    `SELECT wn.note_date::text AS date, wn.body, u.full_name AS by, wn.updated_at AS at
+     FROM ward_notes wn LEFT JOIN users u ON u.id = wn.updated_by
+     WHERE wn.ward_key = $1 AND wn.note_date BETWEEN $2::date - $3::int AND $2::date
+     ORDER BY wn.note_date DESC`,
+    [wardKeyOf(location.floor, location.wardName), location.chartDate, NOTE_LOOKBACK_DAYS],
+  )
+  const today = result.rows.find((row) => row.date === location.chartDate) || null
+  const previous = result.rows.find((row) => row.date < location.chartDate) || null
+  response.json({ note: today, previous })
+})
+
+router.put('/ward-note', requireAuth, async (request, response) => {
+  const location = readLocation(request.body, request.session.user)
+  if (location.status) return response.status(location.status).json({ message: location.message })
+  const body = cleanText(request.body.body, 2000).trim()
+  const key = wardKeyOf(location.floor, location.wardName)
+  if (!body) {
+    await query('DELETE FROM ward_notes WHERE ward_key = $1 AND note_date = $2', [key, location.chartDate])
+    return response.json({ note: null })
+  }
+  await query(
+    `INSERT INTO ward_notes (ward_key, note_date, body, updated_by) VALUES ($1, $2, $3, $4)
+     ON CONFLICT (ward_key, note_date) DO UPDATE SET body = EXCLUDED.body, updated_by = EXCLUDED.updated_by, updated_at = NOW()`,
+    [key, location.chartDate, body, request.session.user.id],
+  )
+  response.json({ note: { date: location.chartDate, body, by: request.session.user.fullName || '', at: new Date().toISOString() } })
 })
 
 router.get('/chart', requireAuth, async (request, response) => {

@@ -328,3 +328,14 @@ CREATE TABLE IF NOT EXISTS drug_interactions (
   PRIMARY KEY (drug_a, drug_b)
 );
 CREATE INDEX IF NOT EXISTS drug_interactions_b ON drug_interactions (drug_b);
+
+-- «ملاحظة التسليم»: one free-text handover note per ward per day, shown to the next shift on the
+-- chart. Keyed by `${floor ?? ''}|${ward}` (wardKeyOf in meropenem.js), so it needs no wards row.
+CREATE TABLE IF NOT EXISTS ward_notes (
+  ward_key TEXT NOT NULL,
+  note_date DATE NOT NULL,
+  body TEXT NOT NULL,
+  updated_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (ward_key, note_date)
+);
