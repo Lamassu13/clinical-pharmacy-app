@@ -102,6 +102,26 @@ test('GET /api/reports: antibiotic stewardship — long courses, concurrent anti
   assert.deepEqual([floor5.longCourses.length, floor5.multiple.length, floor5.reserve.map((row) => row.patient)], [0, 0, ['سعد']])
 })
 
+test('GET /api/reports: staff activity per user, scoped to the floor', async () => {
+  const admin = await loginAs({ role: 'admin' })
+  const pharmacist = await loginAs({ role: 'user', floor: 5 })
+  await saveChart(pharmacist, 5, '2026-05-01', [{ name: 'علي', meds: { 'Aspirin 100mg Tab': 1 } }])
+  await saveChart(pharmacist, 5, '2026-05-02', [{ name: 'علي', meds: { 'Aspirin 100mg Tab': 1 } }])
+  await admin.patch('/api/chart/complete', { floor: 5, ward: WARD, date: '2026-05-02', completed: true })
+  await saveChart(admin, 2, '2026-05-02', [{ name: 'هادي', meds: { 'Aspirin 100mg Tab': 1 } }])
+
+  const byName = (body) => Object.fromEntries(body.staff.map(({ name, userId: _userId, ...counts }) => [name, counts]))
+  const floor5 = byName((await admin.get('/api/reports?scope=5&from=2026-05-01&to=2026-05-05')).body)
+  const names = Object.keys(floor5)
+  assert.equal(names.length, 2)
+  const [pharmacistName, adminName] = names.sort((a, b) => floor5[b].started - floor5[a].started)
+  assert.deepEqual(floor5[pharmacistName], { started: 2, completed: 0, lastEdited: 2, extraForms: 0 })
+  assert.deepEqual(floor5[adminName], { started: 0, completed: 1, lastEdited: 0, extraForms: 0 })
+  // The floor-2 chart only counts hospital-wide.
+  const all = byName((await admin.get('/api/reports?scope=all&from=2026-05-01&to=2026-05-05')).body)
+  assert.deepEqual(all[adminName], { started: 1, completed: 1, lastEdited: 1, extraForms: 0 })
+})
+
 test('GET /api/reports: managers only, valid scope, and at most 120 days', async () => {
   const user = await loginAs({ role: 'user', floor: 5 })
   assert.equal((await user.get('/api/reports?scope=5&from=2026-05-01&to=2026-05-05')).status, 403)
