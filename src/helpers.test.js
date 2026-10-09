@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { interactionsForChart, mergeKeyedSnapshots, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, EXTRA_PILL_SLOTS, isDraftStale, rememberChart, recallChart, forgetChartCopies, mergePreviousDayDoses, addPatientToChart, medicineMatches, pillSheetPlan, yesterdaySchedules, scheduleFor, applyTemplateColumns, catalogueMatches, cockcroftGault, renalGuidance, SCR_UMOL_PER_MGDL } from './helpers.js'
+import { interactionsForChart, mergeKeyedSnapshots, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, EXTRA_PILL_SLOTS, isDraftStale, rememberChart, recallChart, forgetChartCopies, mergePreviousDayDoses, addPatientToChart, medicineMatches, pillSheetPlan, yesterdaySchedules, scheduleFor, applyTemplateColumns, catalogueMatches, RENAL_EQUATIONS, renalGuidance, SCR_UMOL_PER_MGDL } from './helpers.js'
 
 test('mergeKeyedSnapshots keeps a local edit and adopts an unrelated server change', () => {
   const base = { a: '1', b: '2' }
@@ -264,11 +264,21 @@ test('interactionsForChart lists duplicate therapy after moderate, and as the no
   ])
 })
 
-test('cockcroftGault: textbook case, female factor, and null on missing input', () => {
-  assert.equal(Math.round(cockcroftGault({ age: 60, weightKg: 72, female: false, scrMgDl: 1 })), 80)
-  assert.equal(Math.round(cockcroftGault({ age: 60, weightKg: 72, female: true, scrMgDl: 1 })), 68)
-  assert.equal(Math.round(cockcroftGault({ age: 60, weightKg: 72, female: false, scrMgDl: 176.8 / SCR_UMOL_PER_MGDL })), 40)
-  assert.equal(cockcroftGault({ age: 60, weightKg: 0, female: false, scrMgDl: 1 }), null)
+test('RENAL_EQUATIONS: textbook values, and null on missing input', () => {
+  const cg = RENAL_EQUATIONS.cg.calc
+  assert.equal(Math.round(cg({ age: 60, weightKg: 72, female: false, scr: 1 })), 80)
+  assert.equal(Math.round(cg({ age: 60, weightKg: 72, female: true, scr: 1 })), 68)
+  assert.equal(Math.round(cg({ age: 60, weightKg: 72, female: false, scr: 176.8 / SCR_UMOL_PER_MGDL })), 40)
+  assert.equal(cg({ age: 60, weightKg: 0, female: false, scr: 1 }), null)
+  // obese 100 kg / 170 cm man: C-G uses adjusted weight (IBW 66 + 40% of the excess), not the actual 100 kg
+  assert.equal(Math.round(cg({ age: 60, weightKg: 100, heightCm: 170, female: false, scr: 1 })), 88)
+  assert.equal(Math.round(RENAL_EQUATIONS.ckd2021.calc({ age: 60, female: false, scr: 1 })), 86)
+  assert.equal(Math.round(RENAL_EQUATIONS.ckd2009.calc({ age: 60, female: false, black: false, scr: 1 })), 81)
+  assert.equal(Math.round(RENAL_EQUATIONS.mdrd.calc({ age: 60, female: false, scr: 1 })), 76)
+  assert.equal(Math.round(RENAL_EQUATIONS.jelliffe73.calc({ age: 60, female: false, scr: 1 })), 66)
+  assert.equal(Math.round(RENAL_EQUATIONS.salazar.calc({ age: 60, weightKg: 72, heightCm: 170, female: false, scr: 1 })), 84)
+  assert.ok(RENAL_EQUATIONS.jelliffe72.calc({ age: 60, weightKg: 70, female: false, scr: 1, scr2: 1, hours: 24 }) > 0)
+  assert.equal(RENAL_EQUATIONS.jelliffe72.calc({ age: 60, weightKg: 70, female: false, scr: 1, scr2: 0, hours: 24 }), null)
 })
 
 test('renalGuidance picks the first step the CrCl meets, the lowest below all, and HD on dialysis', () => {

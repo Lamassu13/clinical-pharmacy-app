@@ -55,5 +55,8 @@ test('GET /api/renal-doses returns the rule for each known medicine by name, not
   assert.equal(res.status, 200)
   assert.deepEqual(Object.keys(res.body.rules), ['Meronem 1000gm Vial'])
   assert.equal(res.body.rules['Meronem 1000gm Vial'].generic, 'meropenem')
+  const all = await client.get('/api/renal-doses?all=1')
+  assert.equal(all.body.rules.meropenem.generic, 'meropenem')
+  assert.ok(Object.keys(all.body.rules).length > 10)
   assert.equal((await new ApiClient(baseUrl).get('/api/renal-doses?name=a')).status, 401)
 })

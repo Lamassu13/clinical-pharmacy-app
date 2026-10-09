@@ -1189,6 +1189,7 @@ button.topbar-user:hover { color: var(--primary); }
 .renal-table { width: 100%; border-collapse: collapse; }
 .renal-table th, .renal-table td { border: 1px solid var(--border-strong); padding: var(--space-2) var(--space-3); text-align: start; font-size: var(--text-sm); vertical-align: top; overflow-wrap: anywhere; }
 .renal-table thead th { background: var(--green-100); color: var(--heading); font-weight: 700; }
+.renal-table .renal-drug { text-transform: capitalize; }
 .renal-table .renal-usual { color: var(--text-muted); }
 .renal-table .renal-guidance { font-weight: 700; color: var(--text); }
 .renal-table .renal-guidance--same { font-weight: 400; color: var(--text-muted); }
