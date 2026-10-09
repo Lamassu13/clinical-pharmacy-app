@@ -592,7 +592,7 @@ router.get('/meropenem', requireAuth, async (request, response) => {
 
 // Every name a chart column can carry: the catalogue, plus the names kept on columns whose
 // medicine was later deleted from it (custom_name) — otherwise those courses vanished from the forms.
-const antibioticNames = async () => (await query(
+export const antibioticNames = async () => (await query(
   'SELECT name FROM medicines UNION SELECT custom_name FROM chart_columns WHERE custom_name IS NOT NULL',
 )).rows.map((row) => row.name).filter(antibioticOf)
 
@@ -627,7 +627,7 @@ const LONG_COURSE_DAYS = 14
 const LONG_COURSE_TTL_MS = 120_000
 const longCourseCache = new Map()
 // Hospital-wide, computed once per date; a floor request is filtered from the same result.
-const longCourses = async (date) => {
+export const longCourses = async (date) => {
   const cached = longCourseCache.get(date)
   if (cached && Date.now() - cached.at < LONG_COURSE_TTL_MS) return cached.body
   const names = await antibioticNames()

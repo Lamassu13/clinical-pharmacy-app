@@ -1,6 +1,7 @@
 import express from 'express'
 import { query } from '../db.js'
-import { dddLine } from '../ddd.js'
+import { dddLine, antibioticOf } from '../ddd.js'
+import { antibioticNames, longCourses } from './chart.js'
 import { requireManager } from '../auth.js'
 import { ALLOWED_FLOORS, FLOOR_WARDS, SPECIAL_WARDS, SUPPLY_MATCH, SUPPLY_EXCEPT, isIsoDate } from '../validation.js'
 
@@ -53,7 +54,8 @@ router.get('/reports', requireManager, async (request, response) => {
   const previousTo = toIso(toDay(from) - 1)
   const params = [previousFrom, to, scope.value, SUPPLY_MATCH, SUPPLY_EXCEPT]
 
-  const [patientRows, consumptionRows, chartRows, extraFormRows] = await Promise.all([
+  const antibioticList = [...new Set((await antibioticNames()).map((name) => name.toLowerCase()))]
+  const [patientRows, consumptionRows, chartRows, extraFormRows, antibioticRows, longCourseBody] = await Promise.all([
     // One row per patient per ward per day, main and extra charts merged, with how many distinct
     // non-supply medicines they had a quantity of that day.
     query(
@@ -106,6 +108,24 @@ router.get('/reports', requireManager, async (request, response) => {
        GROUP BY 1, 2`,
       [from, to, scope.value],
     ),
+    // Antibiotic cells per patient per day, for the stewardship tables below.
+    antibioticList.length ? query(
+      `SELECT w.floor_number AS floor, w.name AS ward, dc.chart_date::text AS date, ${PATIENT_SQL} AS patient, cp.patient_id,
+              COALESCE(m.name, cc.custom_name) AS name
+       FROM chart_quantities cq
+       JOIN chart_patients cp ON cp.chart_id = cq.chart_id AND cp.row_number = cq.row_number
+       JOIN chart_columns cc ON cc.chart_id = cq.chart_id AND cc.column_number = cq.column_number
+       JOIN daily_charts dc ON dc.id = cq.chart_id
+       JOIN wards w ON w.id = dc.ward_id
+       LEFT JOIN medicines m ON m.id = cc.medicine_id
+       WHERE cq.quantity > 0 AND (${PATIENT_SQL} <> '' OR cp.patient_id <> '')
+         AND dc.chart_date BETWEEN $1::date AND $2::date AND ${scope.sql}
+         AND lower(COALESCE(m.name, cc.custom_name)) = ANY($4::text[])
+       GROUP BY 1, 2, 3, 4, 5, 6
+       ORDER BY 3`,
+      [from, to, scope.value, antibioticList],
+    ) : { rows: [] },
+    longCourses(to),
   ])
 
   const inRange = (date) => date >= from && date <= to
@@ -276,6 +296,37 @@ router.get('/reports', requireManager, async (request, response) => {
   const sum = (field) => wards.reduce((total, row) => total + row[field], 0)
   const patientDays = sum('patientDays')
 
+  // Stewardship. Per patient (same identity as the rest of the report): the antibiotics given each
+  // day, then who was on two or more at once and who received a Reserve-class (AWaRe) drug.
+  const awareOf = new Map()
+  const awareFor = (name) => { if (!awareOf.has(name)) awareOf.set(name, dddLine(name, 1)?.aware || null); return awareOf.get(name) }
+  const antibioticPatients = new Map() // `${wardKey}|${patient}` -> { floor, ward, patient, days: Map(date -> Set(drug label)), reserve: Map(drug label -> Set(date)) }
+  antibioticRows.rows.forEach((row) => {
+    const patient = patientKeyOf(row)
+    const key = `${wardKey(row.floor, row.ward)}|${patient}`
+    const entry = antibioticPatients.get(key) || { floor: row.floor, ward: row.ward, ...labelOf(patient), days: new Map(), reserve: new Map() }
+    const drug = antibioticOf(row.name).label
+    if (!entry.days.has(row.date)) entry.days.set(row.date, new Set())
+    entry.days.get(row.date).add(drug)
+    if (awareFor(row.name) === 'Reserve') {
+      if (!entry.reserve.has(drug)) entry.reserve.set(drug, new Set())
+      entry.reserve.get(drug).add(row.date)
+    }
+    antibioticPatients.set(key, entry)
+  })
+  const multiple = []
+  const reserve = []
+  antibioticPatients.forEach(({ days: byDay, reserve: reserveDrugs, ...who }) => {
+    const crowded = [...byDay.values()].filter((drugs) => drugs.size > 1)
+    if (crowded.length) multiple.push({ ...who, maxConcurrent: Math.max(...crowded.map((drugs) => drugs.size)), days: crowded.length, drugs: [...new Set(crowded.flatMap((drugs) => [...drugs]))].sort() })
+    reserveDrugs.forEach((dates, drug) => reserve.push({ ...who, drug, days: dates.size }))
+  })
+  const byName = (a, b) => a.patient.localeCompare(b.patient, 'ar')
+  multiple.sort((a, b) => b.maxConcurrent - a.maxConcurrent || b.days - a.days || byName(a, b))
+  reserve.sort((a, b) => b.days - a.days || byName(a, b))
+  const inScope = (row) => scope.value === 'all' || (row.floor === null ? row.ward === scope.value : String(row.floor) === scope.value)
+  const longCoursePatients = longCourseBody.patients.filter(inScope)
+
   // Antibiotic consumption in WHO DDDs per 100 patient-days (../ddd.js), with the AWaRe split.
   // Lines whose DDDs can't be worked out from the name are listed, not guessed.
   const antibioticLines = consumption.filter((line) => line.quantity > 0 && !line.isSupply)
@@ -290,6 +341,7 @@ router.get('/reports', requireManager, async (request, response) => {
     notCounted: antibioticLines.filter((line) => line.ddds === undefined).map(({ name, quantity, reason }) => ({ name, quantity, reason })),
     totalDdds: Math.round(totalDdds * 10) / 10,
     dddPer100: per100(totalDdds),
+    longCourseDays: longCourseBody.threshold, longCourses: longCoursePatients, multiple, reserve,
     aware: Object.fromEntries(['Access', 'Watch', 'Reserve'].map((group) => [group,
       totalDdds ? Math.round((counted.filter((line) => line.aware === group).reduce((total, line) => total + line.ddds, 0) / totalDdds) * 100) : null])),
   }

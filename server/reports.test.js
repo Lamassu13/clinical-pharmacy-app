@@ -83,6 +83,25 @@ test('GET /api/reports: a stay of 7+ days still running on the last day is a lon
   assert.ok(body.floors.some((row) => row.floor === 2 && row.patientDays === 5))
 })
 
+test('GET /api/reports: antibiotic stewardship — long courses, concurrent antibiotics, Reserve drugs, scope', async () => {
+  const admin = await loginAs({ role: 'admin' })
+  await pool.query('INSERT INTO medicines (name) SELECT unnest($1::text[])', [['Meronem 1000gm Vial', 'Tazocin 4.5gm Vial', 'Tygacil 50mg Vial']])
+  for (let day = 1; day <= 16; day += 1) {
+    const meds = { 'Meronem 1000gm Vial': 3 }
+    if (day === 10) Object.assign(meds, { 'Tazocin 4.5gm Vial': 3, 'Tygacil 50mg Vial': 2 })
+    await saveChart(admin, 2, `2026-05-${String(day).padStart(2, '0')}`, [{ name: 'هادي', meds }])
+  }
+  await saveChart(admin, 5, '2026-05-16', [{ name: 'سعد', meds: { 'Tygacil 50mg Vial': 2 } }])
+
+  const { body } = await admin.get('/api/reports?scope=all&from=2026-05-01&to=2026-05-16')
+  assert.deepEqual(body.antibiotics.longCourses.map((row) => [row.name, row.floor, row.drugKey, row.day]), [['هادي', 2, 'meropenem', 16]])
+  assert.deepEqual(body.antibiotics.multiple.map((row) => [row.patient, row.maxConcurrent, row.days, row.drugs]), [['هادي', 3, 1, ['Meropenem', 'Piperacillin/tazobactam', 'Tigecycline']]])
+  assert.deepEqual(body.antibiotics.reserve.map((row) => [row.patient, row.drug, row.days]), [['سعد', 'Tigecycline', 1], ['هادي', 'Tigecycline', 1]])
+
+  const floor5 = (await admin.get('/api/reports?scope=5&from=2026-05-01&to=2026-05-16')).body.antibiotics
+  assert.deepEqual([floor5.longCourses.length, floor5.multiple.length, floor5.reserve.map((row) => row.patient)], [0, 0, ['سعد']])
+})
+
 test('GET /api/reports: managers only, valid scope, and at most 120 days', async () => {
   const user = await loginAs({ role: 'user', floor: 5 })
   assert.equal((await user.get('/api/reports?scope=5&from=2026-05-01&to=2026-05-05')).status, 403)
