@@ -17,7 +17,7 @@ export default function ChartScreen({
   medicines, patientNames, patientIds, columnMedicines, quantities, totals, doubledTotals, isThursday,
   activeRow, activeColumn, labelBelow, setActiveRow, setActiveColumn, setLabelBelow,
   onSetColumnMedicine, onCommitColumnMedicine, columnMedicineNotice, onDismissNotice, onApplySuggestion,
-  onSetPatientName, onSetPatientId, onCheckPreviousDay, onUpdateQuantity, onCollapseRow, onAddColumn, canAddColumn,
+  onSetPatientName, onSetPatientId, onCheckPreviousDay, onUpdateQuantity, onCollapseRow, onAddColumn, canAddColumn, chartAlerts = {}, onShowAlerts,
   chartFrameRef, chartHeadRef, chartGridRef, chartDosesRef, chartFootRef,
 }) {
   const columnFocusValue = useRef('')
@@ -214,6 +214,9 @@ export default function ChartScreen({
                 onFocus={(event) => { patientFocusEmpty.current = !event.target.value.trim() }}
                 onBlur={(event) => { if (patientFocusEmpty.current && event.target.value.trim()) onCheckPreviousDay(rowIndex, event.target.value) }}
                 placeholder={`مريض ${rowIndex + 1}`} aria-label={`اسم المريض، صف ${rowIndex + 1}`} />
+              {chartAlerts[rowIndex] && <button type="button" className={`patient-alert${chartAlerts[rowIndex].some((pair) => pair.severity === 'major') ? ' patient-alert--major' : ''}`}
+                onPointerDown={(event) => event.preventDefault()} onMouseDown={(event) => event.preventDefault()} onClick={() => onShowAlerts(rowIndex)}
+                title="تنبيه دوائي" aria-label={`تنبيه دوائي، صف ${rowIndex + 1}: ${chartAlerts[rowIndex].length}`}>⚠</button>}
               <input className="patient-id" value={patientIds[rowIndex] || ''} onChange={(event) => onSetPatientId(rowIndex, event.target.value)}
                 inputMode="numeric" pattern="[0-9]*" dir="ltr"
                 onFocus={(event) => { patientFocusEmpty.current = !event.target.value.trim() }}

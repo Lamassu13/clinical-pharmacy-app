@@ -1647,6 +1647,12 @@ button.topbar-user:hover { color: var(--primary); }
   .chart-names .chart-table, .chart-table .patient-cell { width: 258px; min-width: 258px; max-width: 258px; }
 }
 @media print { .patient-room { display: none !important; } }
+/* ⚠ on a patient row with a major interaction or duplicate therapy (App's chartAlerts). Screen
+   only: its own print rule, so the frozen chart print block stays untouched. */
+.patient-alert { flex: 0 0 26px; align-self: center; width: 26px; height: 26px; margin-inline: 2px; display: grid; place-items: center; padding: 0; border: 1px solid var(--warning-border); border-radius: var(--radius-sm); background: var(--warning-tint); color: var(--warning-text); font-size: 13px; line-height: 1; cursor: pointer; }
+.patient-alert--major { border-color: var(--danger); background: var(--danger-tint); color: var(--danger); }
+.patient-alert:focus-visible { outline: 2px solid currentColor; outline-offset: 1px; }
+@media print { .patient-alert { display: none !important; } }
 /* Explicit row-delete, shown only on the active named row. Replaces the old clear-the-name-
    and-blur gesture, which deleted a patient's whole dose line with no confirm and no undo.
    Sits at the inline-start (visually left) edge, away from where the RTL name text begins. */
@@ -1787,7 +1793,7 @@ button.topbar-user:hover { color: var(--primary); }
    message and the two-button row are its own. */
 #confirm-dialog-message, #copy-dialog-message { margin: 0 0 var(--space-6); color: var(--text); line-height: 1.6; }
 /* The consequence line under a confirm question — what stays, what changes. */
-.confirm-dialog-detail { margin: calc(-1 * var(--space-4)) 0 var(--space-6); color: var(--text-muted); font-size: var(--text-sm); line-height: 1.6; }
+.confirm-dialog-detail { margin: calc(-1 * var(--space-4)) 0 var(--space-6); color: var(--text-muted); font-size: var(--text-sm); line-height: 1.6; white-space: pre-line; }
 .modal-actions { display: flex; justify-content: flex-end; gap: var(--space-3); }
 
 /* «قوالب الأدوية» dialog: the user's templates, then a save row. Wider than a confirm. */
