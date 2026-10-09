@@ -32,10 +32,8 @@ router.get('/interactions', requireAuth, async (request, response) => {
 })
 
 // «تعديل الجرعة الكلوية»: the renal dose rules (../renal-doses.js) for the given medicine names,
-// keyed by name; `?all=1` returns every rule keyed by generic name (the calculator screen). The
-// creatinine and CrCl typed there stay in the browser.
+// keyed by name. Only names go out; the patient's creatinine and CrCl stay in the browser.
 router.get('/renal-doses', requireAuth, (request, response) => {
-  if (request.query.all) return response.json({ rules: Object.fromEntries(Object.entries(RENAL_DOSES).map(([generic, rule]) => [generic, { generic, ...rule }])) })
   const names = [...new Set([].concat(request.query.name ?? []).map((value) => cleanText(value, 200).trim()).filter(Boolean))].slice(0, MAX_NAMES)
   const rules = {}
   names.forEach((name) => {

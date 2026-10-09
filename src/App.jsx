@@ -245,9 +245,6 @@ function App() {
   const [interactionsData, setInteractionsData] = useState(null)
   const [interactionsLoading, setInteractionsLoading] = useState(false)
   const [interactionsError, setInteractionsError] = useState(false)
-  const [renalData, setRenalData] = useState(null)
-  const [renalLoading, setRenalLoading] = useState(false)
-  const [renalError, setRenalError] = useState(false)
   // استمارة الحبوب الإضافي (mode 'extra-pills') — a standalone, per-ward list of manually
   // created pill forms with no chart behind them at all.
   const [extraPillsForms, setExtraPillsForms] = useState([])
@@ -1946,19 +1943,6 @@ function App() {
     return () => { cancelled = true }
   }, [selected, selectedDate, isExpired])
 
-  // «تعديل الجرعة الكلوية»: the full renal dose list. Labs are typed on the screen and never leave it.
-  useEffect(() => {
-    if (!selected || selected.mode !== 'renal') return undefined
-    let cancelled = false
-    setRenalLoading(true)
-    setRenalError(false)
-    fetch(`${apiUrl}/renal-doses?all=1`, { credentials: 'include' })
-      .then((response) => { isExpired(response); if (!response.ok) throw new Error('rules failed'); return response.json() })
-      .then((data) => { if (!cancelled) { setRenalData(data); setRenalLoading(false) } })
-      .catch(() => { if (!cancelled) { setRenalData(null); setRenalError(true); setRenalLoading(false) } })
-    return () => { cancelled = true }
-  }, [selected, isExpired])
-
   // استمارة الحبوب الإضافي: one standing list per ward — no date scoping, since these aren't a
   // daily/reset artifact like the chart or the real pills form. `applyExtraPillsQueue` layers
   // in whatever create/edit/delete didn't reach the server yet (see the callbacks below), so a
@@ -2342,7 +2326,7 @@ function App() {
   // made inert, so a slow or failed load cannot be typed into and then silently overwritten.
   const chartReadyKey = selected && selected.mode !== 'pills' ? wardKey(selected, selectedDate) : null
   const chartReady = chartReadyKey !== null && loadedChartKey === chartReadyKey
-  if (selected && selected.mode === 'renal') return <RenalDoseScreen header={appHeader} wardLabel={wardLabel} onBack={() => setSelected(null)} loading={renalLoading} data={renalData} loadError={renalError} />
+  if (selected && selected.mode === 'renal') return <RenalDoseScreen header={appHeader} wardLabel={wardLabel} onBack={() => setSelected(null)} />
   if (selected && selected.mode === 'meropenem-order') return <MeropenemOrderScreen header={appHeader} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={meroOrderLoading} data={meroOrderData} loadError={meroOrderError} onPrint={() => window.print()} />
   if (selected && selected.mode === 'antibiotics') return <MeropenemScreen header={appHeader} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={meropenemLoading} drugs={meropenemData?.drugs || []} loadError={meropenemError} onEditDay={saveCourseDay} onPrint={() => window.print()} />
   if (selected && selected.mode === 'meropenem') return <MeropenemScreen header={appHeader} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={meropenemLoading} data={meropenemData} loadError={meropenemError} onEditDay={saveCourseDay} onPrint={() => window.print()} />
