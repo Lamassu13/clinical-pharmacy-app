@@ -56,8 +56,8 @@ export const DDD = {
   trimethoprim: { perDay: 2, label: 'Co-trimoxazole', atc: 'J01EE01', aware: 'Access', ddd: {} }, // WHO gives no gram DDD for co-trimoxazole
 }
 
-const PARENTERAL = /\b(vial|amp|ampoule|inj|injection|infusion|iv|bag)\b/i
-const ORAL = /\b(tab|tablet|cap|capsule)s?\b/i
+export const PARENTERAL = /\b(vial|amp|ampoule|inj|injection|infusion|iv|bag)\b/i
+export const ORAL = /\b(tab|tablet|cap|capsule)s?\b/i
 const PER_VOLUME = /\b(syp|syrup|susp|suspension|drops?)\b|\/\s*\d*\s*ml/i // strength is per ml, not per unit
 
 // The followed drug a medicine name belongs to: { key, label, perDay }, or null.

@@ -36,14 +36,21 @@ test('GET /api/interactions answers with interacting pairs among the given medic
     'Amikacin 500mg Vial|Lasix 20mg Amp|major', 'Amikacin 500mg Vial|Lasix 40mg Tab|major',
     'Aspirin 100mg Tab|Lasix 20mg Amp|moderate', 'Aspirin 100mg Tab|Lasix 40mg Tab|moderate',
   ].sort()) // warfarin was not asked about, so its pair is absent; aspirin + amikacin is minor, so left out
-  assert.deepEqual(result.body.duplicates, [])
+  // Lasix by mouth and by injection on one patient: the same drug on two routes.
+  assert.deepEqual(result.body.duplicates.map((pair) => `${pair.a}|${pair.b}|${pair.className}`), ['Lasix 40mg Tab|Lasix 20mg Amp|Same drug IV and oral'])
   assert.deepEqual((await client.get('/api/interactions?name=Aspirin')).body.pairs, [])
-  // Two PPIs are a duplicate; one PPI in two strengths is not.
+  // Two PPIs are a duplicate; omeprazole cap + vial is the same drug on two routes.
   const ppis = ['Risek 20mg cap', 'Omeprazole 40mg vial', 'Pantoprazole 40mg vial', 'Lasix 40mg Tab']
   const dup = await client.get(`/api/interactions?${ppis.map((name) => `name=${encodeURIComponent(name)}`).join('&')}`)
   assert.deepEqual(dup.body.duplicates.map((pair) => `${pair.a}|${pair.b}|${pair.className}`), [
     'Risek 20mg cap|Pantoprazole 40mg vial|Proton pump inhibitors', 'Omeprazole 40mg vial|Pantoprazole 40mg vial|Proton pump inhibitors',
+    'Risek 20mg cap|Omeprazole 40mg vial|Same drug IV and oral',
   ])
+  // One drug, one route, two strengths is not a duplicate — even when it is the only drug asked about.
+  const strengths = ['Paracetamol 500mg Tab', 'Paracetamol 1g Tab']
+  assert.deepEqual((await client.get(`/api/interactions?${strengths.map((name) => `name=${encodeURIComponent(name)}`).join('&')}`)).body.duplicates, [])
+  const paracetamol = ['Paracetamol 500mg Tab', 'Paracetamol 1g Vial']
+  assert.deepEqual((await client.get(`/api/interactions?${paracetamol.map((name) => `name=${encodeURIComponent(name)}`).join('&')}`)).body.duplicates.map((pair) => pair.className), ['Same drug IV and oral'])
   assert.equal((await new ApiClient(baseUrl).get('/api/interactions?name=a&name=b')).status, 401)
 })
 
