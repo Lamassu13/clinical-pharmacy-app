@@ -1946,35 +1946,18 @@ function App() {
     return () => { cancelled = true }
   }, [selected, selectedDate, isExpired])
 
-  // «تعديل الجرعة الكلوية»: the day's patients (main and extra charts) with the medicines they were
-  // given, and the renal rules for those medicines. Labs are typed on the screen and never leave it.
+  // «تعديل الجرعة الكلوية»: the full renal dose list. Labs are typed on the screen and never leave it.
   useEffect(() => {
     if (!selected || selected.mode !== 'renal') return undefined
     let cancelled = false
     setRenalLoading(true)
     setRenalError(false)
-    const load = (slot) => fetch(`${apiUrl}/chart?${new URLSearchParams({ floor: selected.floor || '', ward: selected.ward, slot, date: selectedDate })}`, { credentials: 'include' })
-      .then((response) => { isExpired(response); if (!response.ok) throw new Error('load failed'); return response.json() })
-      .then((result) => ({ slot, rows: parseChartRows(result.chart) }))
-    Promise.all([load('main'), load('extra')])
-      .then(async (charts) => {
-        const patients = charts.flatMap(({ slot, rows }) => rows.patientNames.map((name, row) => ({
-          key: `${slot}|${row}`, name: name.trim(), patientId: rows.patientIds[row] || '', extra: slot === 'extra',
-          medicines: [...new Set(rows.columnMedicines.filter((medicine, column) => medicine.trim() && Number(rows.quantities[row]?.[column]) > 0))],
-        })).filter((patient) => (patient.name || patient.patientId) && patient.medicines.length))
-        const names = [...new Set(patients.flatMap((patient) => patient.medicines))]
-        let rules = {}
-        if (names.length) {
-          const response = await fetch(`${apiUrl}/renal-doses?${new URLSearchParams(names.map((name) => ['name', name]))}`, { credentials: 'include' })
-          if (!response.ok) throw new Error('rules failed')
-          rules = (await response.json()).rules
-        }
-        return { patients, rules }
-      })
+    fetch(`${apiUrl}/renal-doses?all=1`, { credentials: 'include' })
+      .then((response) => { isExpired(response); if (!response.ok) throw new Error('rules failed'); return response.json() })
       .then((data) => { if (!cancelled) { setRenalData(data); setRenalLoading(false) } })
       .catch(() => { if (!cancelled) { setRenalData(null); setRenalError(true); setRenalLoading(false) } })
     return () => { cancelled = true }
-  }, [selected, selectedDate, isExpired])
+  }, [selected, isExpired])
 
   // استمارة الحبوب الإضافي: one standing list per ward — no date scoping, since these aren't a
   // daily/reset artifact like the chart or the real pills form. `applyExtraPillsQueue` layers
@@ -2359,7 +2342,7 @@ function App() {
   // made inert, so a slow or failed load cannot be typed into and then silently overwritten.
   const chartReadyKey = selected && selected.mode !== 'pills' ? wardKey(selected, selectedDate) : null
   const chartReady = chartReadyKey !== null && loadedChartKey === chartReadyKey
-  if (selected && selected.mode === 'renal') return <RenalDoseScreen header={appHeader} wardLabel={wardLabel} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={renalLoading} data={renalData} loadError={renalError} />
+  if (selected && selected.mode === 'renal') return <RenalDoseScreen header={appHeader} wardLabel={wardLabel} onBack={() => setSelected(null)} loading={renalLoading} data={renalData} loadError={renalError} />
   if (selected && selected.mode === 'meropenem-order') return <MeropenemOrderScreen header={appHeader} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={meroOrderLoading} data={meroOrderData} loadError={meroOrderError} onPrint={() => window.print()} />
   if (selected && selected.mode === 'antibiotics') return <MeropenemScreen header={appHeader} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={meropenemLoading} drugs={meropenemData?.drugs || []} loadError={meropenemError} onEditDay={saveCourseDay} onPrint={() => window.print()} />
   if (selected && selected.mode === 'meropenem') return <MeropenemScreen header={appHeader} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={meropenemLoading} data={meropenemData} loadError={meropenemError} onEditDay={saveCourseDay} onPrint={() => window.print()} />
