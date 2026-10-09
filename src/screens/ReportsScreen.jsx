@@ -103,7 +103,7 @@ export default function ReportsScreen({ adminHeader, isExpired }) {
     ) : !report ? (
       <div className="report-start">
         <strong>اختر الطابق والمدة ثم اضغط «عرض التقرير»</strong>
-        <span>يشمل التقرير: عدد المرضى والدخول والخروج، مدة البقاء، استهلاك كل دواء مقارنةً بالمدة السابقة، ومتابعة المضادات الحيوية.</span>
+        <span>يشمل التقرير: عدد المرضى والدخول والخروج، مدة البقاء، استهلاك كل دواء مقارنةً بالمدة السابقة، ومتابعة المضادات الحيوية، ونشاط الصيادلة.</span>
       </div>
     ) : <ReportDocument report={report} stale={loading} />}
   </section></main>
@@ -255,6 +255,20 @@ function ReportDocument({ report, stale }) {
             <thead><tr><th>المريض</th><th>الردهة</th><th>الدواء</th><th>الأيام</th></tr></thead>
             <tbody>{report.antibiotics.reserve.map((row) => <tr key={`${row.floor}|${row.ward}|${row.patientId}|${row.patient}|${row.drug}`}>
               <td>{row.patient}{row.patientId && <span className="report-patient-id"> · {row.patientId}</span>}</td><td>{wardName(row, scopedToFloor)}</td><td lang="en" dir="ltr">{row.drug}</td><td className="num">{row.days}</td>
+            </tr>)}</tbody>
+          </table></div>
+        )}
+      </Section>
+      <Section title="نشاط الصيادلة" note="للجارتات المؤرّخة في هذه المدة (الرئيسي والإضافي). لا يوجد سجل لكل تعديل، فالجارت يعرف فقط من أنشأه ومن أكمله ومن حفظه آخر مرة.">
+        {report.staff.length === 0 ? <Empty>لا يوجد نشاط مسجّل في هذه المدة.</Empty> : (
+          <div className="table-frame"><table className="requests-table report-table">
+            <thead><tr><th>الصيدلي</th><th>جارتات أنشأها</th><th>جارتات أكملها</th><th>آخر من حفظ</th><th>استمارات حبوب إضافية</th></tr></thead>
+            <tbody>{report.staff.map((row) => <tr key={row.userId}>
+              <td>{row.name}</td>
+              <td className="num">{row.started}</td>
+              <td className="num">{row.completed}</td>
+              <td className="num">{row.lastEdited}</td>
+              <td className="num">{row.extraForms}</td>
             </tr>)}</tbody>
           </table></div>
         )}

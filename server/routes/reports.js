@@ -55,7 +55,7 @@ router.get('/reports', requireManager, async (request, response) => {
   const params = [previousFrom, to, scope.value, SUPPLY_MATCH, SUPPLY_EXCEPT]
 
   const antibioticList = [...new Set((await antibioticNames()).map((name) => name.toLowerCase()))]
-  const [patientRows, consumptionRows, chartRows, extraFormRows, antibioticRows, longCourseBody] = await Promise.all([
+  const [patientRows, consumptionRows, chartRows, extraFormRows, antibioticRows, longCourseBody, staffRows] = await Promise.all([
     // One row per patient per ward per day, main and extra charts merged, with how many distinct
     // non-supply medicines they had a quantity of that day.
     query(
@@ -126,6 +126,26 @@ router.get('/reports', requireManager, async (request, response) => {
       [from, to, scope.value, antibioticList],
     ) : { rows: [] },
     longCourses(to),
+    // Who did what, per user, on the charts dated in the range (main and extra). There is no
+    // audit log, so a chart only knows who created it, who marked it complete and who saved it last.
+    query(
+      `WITH charts AS (
+         SELECT dc.created_by, dc.completed_by, dc.updated_by FROM daily_charts dc JOIN wards w ON w.id = dc.ward_id
+         WHERE dc.chart_date BETWEEN $1::date AND $2::date AND ${scope.sql}
+       )
+       SELECT u.id::int AS "userId", u.full_name AS name, SUM(started)::int AS started, SUM(completed)::int AS completed,
+              SUM(last_edited)::int AS "lastEdited", SUM(extra)::int AS "extraForms"
+       FROM (
+         SELECT created_by AS user_id, 1 AS started, 0 AS completed, 0 AS last_edited, 0 AS extra FROM charts
+         UNION ALL SELECT completed_by, 0, 1, 0, 0 FROM charts WHERE completed_by IS NOT NULL
+         UNION ALL SELECT updated_by, 0, 0, 1, 0 FROM charts
+         UNION ALL SELECT created_by, 0, 0, 0, 1 FROM extra_pill_forms
+           WHERE created_by IS NOT NULL AND (created_at AT TIME ZONE 'Asia/Baghdad')::date BETWEEN $1::date AND $2::date
+             AND ($3::text = 'all' OR floor_number::text = $3::text)
+       ) activity JOIN users u ON u.id = activity.user_id
+       GROUP BY u.id, u.full_name`,
+      [from, to, scope.value],
+    ),
   ])
 
   const inRange = (date) => date >= from && date <= to
@@ -370,6 +390,7 @@ router.get('/reports', requireManager, async (request, response) => {
     daily: [...daily.values()],
     longStays: longStays.sort((a, b) => b.days - a.days),
     polypharmacy: polypharmacyPatients,
+    staff: staffRows.rows.sort((a, b) => (b.started + b.completed + b.lastEdited + b.extraForms) - (a.started + a.completed + a.lastEdited + a.extraForms) || a.name.localeCompare(b.name, 'ar')),
     consumption,
     antibiotics,
   })
