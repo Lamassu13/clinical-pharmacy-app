@@ -547,10 +547,12 @@ export const isoDate = (value) => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
-// A resumable chart draft (localStorage `cpa-chart-draft:*`) only makes sense for today — a
-// draft from a past date is orphaned (the tab that wrote it never flushed) and would otherwise
-// resurface forever, since a draft only clears on a successful save.
-export const isDraftStale = (meta, todayIso) => !meta?.date || meta.date !== todayIso
+// A resumable chart draft (localStorage `cpa-chart-draft:*`) only clears on a successful save,
+// so an orphaned one would otherwise resurface forever.
+// Kept for DRAFT_KEEP_DAYS, not just today: a draft typed on a past date (yesterday's chart, or
+// one left unsaved just before midnight) is real unsaved work, and the resume card still opens it.
+export const DRAFT_KEEP_DAYS = 7
+export const isDraftStale = (meta, todayIso) => !meta?.date || meta.date < isoDate(new Date(`${todayIso}T12:00:00`).getTime() - DRAFT_KEEP_DAYS * 86400000)
 
 // This device's own copy of a chart as the server last confirmed it (a saved PUT or a network
 // load) — NOT the unsynced draft. The service worker's cached GET is only as new as the last GET,
@@ -580,7 +582,7 @@ export const forgetChartCopies = (todayIso) => {
       if (todayIso) {
         let date = null
         try { date = JSON.parse(localStorage.getItem(key) || 'null')?.date } catch { /* corrupt — drop it */ }
-        if (!isDraftStale({ date }, todayIso)) continue
+        if (date === todayIso) continue // a copy is patient data on a shared iPad: today's only, unlike a draft
       }
       localStorage.removeItem(key)
     }
@@ -638,6 +640,17 @@ export const pillEntryList = (entries) => Object.entries(entries).map(([key, val
     doseTime: value.doseTime || '', usageMethod: value.usageMethod || '', note: value.note || '',
     pillQty: value.pillQty || '', pillName: value.pillName || '',
   }
+})
+
+// Only what this device changed on the pill form since it last synced with the server: a
+// removed entry or room goes out blank, which the server reads as "delete". Sending the whole
+// form instead let one device's save wipe whatever another device (or the chart's room column)
+// had written meanwhile.
+const changedKeys = (base = {}, current = {}) => [...new Set([...Object.keys(base), ...Object.keys(current)])]
+  .filter((key) => JSON.stringify(base[key] ?? null) !== JSON.stringify(current[key] ?? null))
+export const pillChanges = (base, current) => ({
+  entries: pillEntryList(Object.fromEntries(changedKeys(base?.entries, current.entries).map((key) => [key, current.entries[key] || {}]))),
+  rooms: Object.fromEntries(changedKeys(base?.rooms, current.rooms).map((row) => [row, current.rooms[row] || ''])),
 })
 
 // A treatment-form's size, for the استمارات العلاج list — "340 كيلوبايت" / "1.2 ميغابايت".

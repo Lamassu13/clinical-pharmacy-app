@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { interactionsForChart, mergeKeyedSnapshots, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, EXTRA_PILL_SLOTS, isDraftStale, rememberChart, recallChart, forgetChartCopies, mergePreviousDayDoses, addPatientToChart, medicineMatches, pillSheetPlan, yesterdaySchedules, scheduleFor, applyTemplateColumns, catalogueMatches, RENAL_EQUATIONS, renalGuidance, SCR_UMOL_PER_MGDL } from './helpers.js'
+import { pillChanges, interactionsForChart, mergeKeyedSnapshots, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, EXTRA_PILL_SLOTS, isDraftStale, rememberChart, recallChart, forgetChartCopies, mergePreviousDayDoses, addPatientToChart, medicineMatches, pillSheetPlan, yesterdaySchedules, scheduleFor, applyTemplateColumns, catalogueMatches, RENAL_EQUATIONS, renalGuidance, SCR_UMOL_PER_MGDL } from './helpers.js'
 
 test('mergeKeyedSnapshots keeps a local edit and adopts an unrelated server change', () => {
   const base = { a: '1', b: '2' }
@@ -63,8 +63,10 @@ test('applyExtraPillsQueue layers a pending create, update and delete onto serve
   assert.equal(result[1].patientName, 'New patient')
 })
 
-test('isDraftStale is false only when the draft date matches today', () => {
+test('isDraftStale keeps a draft for a week, so unsaved work on a past date is not dropped', () => {
   assert.equal(isDraftStale({ date: '2026-09-22' }, '2026-09-22'), false)
+  assert.equal(isDraftStale({ date: '2026-09-21' }, '2026-09-22'), false)
+  assert.equal(isDraftStale({ date: '2026-09-15' }, '2026-09-22'), false)
   assert.equal(isDraftStale({ date: '2026-09-14' }, '2026-09-22'), true)
   assert.equal(isDraftStale({}, '2026-09-22'), true)
 })
@@ -303,4 +305,12 @@ test('chart device copy: remembered, recalled, dropped by logout and by a past d
   assert.equal(recallChart('k-today'), null)
   assert.equal(localStorage.getItem('cpa-chart-draft:k-today'), '{}')
   delete globalThis.localStorage
+})
+
+test('pillChanges sends only what changed since the last sync; a removed entry or room goes out blank', () => {
+  const base = { entries: { '1:a': { doseTime: 'x' }, '2:a': { doseTime: 'y' }, '3:a': { doseTime: 'z' } }, rooms: { 1: '5', 2: '6' } }
+  const current = { entries: { '1:a': { doseTime: 'x' }, '2:a': { doseTime: 'w' } }, rooms: { 1: '5', 3: '9' } }
+  const { entries, rooms } = pillChanges(base, current)
+  assert.deepEqual(entries.map((entry) => [entry.patientRowNumber, entry.doseTime]).sort(), [[2, 'w'], [3, '']])
+  assert.deepEqual(rooms, { 2: '', 3: '9' })
 })

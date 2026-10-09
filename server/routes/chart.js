@@ -4,10 +4,10 @@ import { requireAuth, requireManager } from '../auth.js'
 import {
   ALLOWED_FLOORS, MAX_PATIENT_ROWS, MAX_CHART_COLUMNS, SPECIAL_WARDS, isKnownWard,
   canAccessLocation, clampInt, isIsoDate, cleanText,
-  normalizeMedicineKey, medicineKeySql,
+  normalizeMedicineKey, medicineKeySql, DOSE_TIMES, USAGE_METHODS, NOTE_OPTIONS,
 } from '../validation.js'
 import { numberToArabicWords } from '../arabic-number.js'
-import { buildMeropenemForm, activeCourseDay, monthStart, windowStart, doseText, MEROPENEM_SQL_PATTERN } from '../meropenem.js'
+import { buildMeropenemForm, activeCourseDay, monthStart, windowStart, doseText, wardKeyOf, MEROPENEM_SQL_PATTERN } from '../meropenem.js'
 import { antibioticOf } from '../ddd.js'
 
 const router = express.Router()
@@ -364,6 +364,9 @@ router.post('/chart/collapse-row', requireAuth, async (request, response) => {
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
+    // The deleted row's own data goes back to the client, so an undo can put it back (expand-row).
+    const removedEntries = await client.query('SELECT medicine_key, dose_time, usage_method, note, pill_qty, pill_name FROM pill_entries WHERE chart_id = $1 AND patient_row_number = $2', [chartId, rowNumber])
+    const removedRoom = await client.query('SELECT room_number FROM pill_patient_meta WHERE chart_id = $1 AND patient_row_number = $2', [chartId, rowNumber])
     const entries = await client.query('SELECT patient_row_number, medicine_key, dose_time, usage_method, note, pill_qty, pill_name FROM pill_entries WHERE chart_id = $1 AND patient_row_number > $2 ORDER BY patient_row_number', [chartId, rowNumber])
     const rooms = await client.query('SELECT patient_row_number, room_number FROM pill_patient_meta WHERE chart_id = $1 AND patient_row_number > $2 ORDER BY patient_row_number', [chartId, rowNumber])
     await client.query('DELETE FROM pill_entries WHERE chart_id = $1 AND patient_row_number >= $2', [chartId, rowNumber])
@@ -381,11 +384,70 @@ router.post('/chart/collapse-row', requireAuth, async (request, response) => {
       )
     }
     await client.query('COMMIT')
-    response.json({ ok: true })
+    response.json({ ok: true, removed: {
+      entries: removedEntries.rows.map((row) => ({ medicineKey: row.medicine_key, doseTime: row.dose_time, usageMethod: row.usage_method, note: row.note, pillQty: row.pill_qty, pillName: row.pill_name })),
+      room: removedRoom.rows[0]?.room_number || '',
+    } })
   } catch (error) {
     await client.query('ROLLBACK')
     console.error('collapse row failed:', error)
     response.status(500).json({ message: 'تعذر إزاحة بيانات الحبوب' })
+  } finally { client.release() }
+})
+
+// The undo of collapse-row: push every row from `rowNumber` down one again and put back the
+// deleted row's pill data, which collapse-row handed to the client. Without it an undone row
+// delete left each patient below it holding the dose times and room of the patient underneath.
+router.post('/chart/expand-row', requireAuth, async (request, response) => {
+  const location = readLocation(request.body, request.session.user)
+  if (location.status) return response.status(location.status).json({ message: location.message })
+  const { floor, wardName, chartDate, slot } = location
+  const rowNumber = clampInt(request.body.rowNumber, 1, MAX_PATIENT_ROWS)
+  if (rowNumber === null) return response.status(400).json({ message: 'الصف مطلوب' })
+  const removed = request.body.removed && typeof request.body.removed === 'object' ? request.body.removed : {}
+  const restored = (Array.isArray(removed.entries) ? removed.entries : [])
+    .map((entry) => ({
+      medicineKey: normalizeMedicineKey(cleanText(entry?.medicineKey, 200)),
+      doseTime: DOSE_TIMES.includes(entry?.doseTime) ? entry.doseTime : '',
+      usageMethod: USAGE_METHODS.includes(entry?.usageMethod) ? entry.usageMethod : '',
+      note: NOTE_OPTIONS.includes(entry?.note) ? entry.note : '',
+      pillQty: String(entry?.pillQty ?? '').replace(/\D/g, '').slice(0, 9),
+      pillName: cleanText(entry?.pillName, 200).trim(),
+    }))
+    .filter((entry) => entry.medicineKey)
+  const room = cleanText(removed.room, 40).trim()
+  const chartId = await resolveChartId(floor, wardName, chartDate, slot)
+  if (!chartId) return response.json({ ok: true })
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    const entries = await client.query('SELECT patient_row_number, medicine_key, dose_time, usage_method, note, pill_qty, pill_name FROM pill_entries WHERE chart_id = $1 AND patient_row_number >= $2 AND patient_row_number < $3', [chartId, rowNumber, MAX_PATIENT_ROWS])
+    const rooms = await client.query('SELECT patient_row_number, room_number FROM pill_patient_meta WHERE chart_id = $1 AND patient_row_number >= $2 AND patient_row_number < $3', [chartId, rowNumber, MAX_PATIENT_ROWS])
+    await client.query('DELETE FROM pill_entries WHERE chart_id = $1 AND patient_row_number >= $2', [chartId, rowNumber])
+    await client.query('DELETE FROM pill_patient_meta WHERE chart_id = $1 AND patient_row_number >= $2', [chartId, rowNumber])
+    const entryRows = [
+      ...restored.map((entry) => ({ ...entry, row: rowNumber })),
+      ...entries.rows.map((row) => ({ row: row.patient_row_number + 1, medicineKey: row.medicine_key, doseTime: row.dose_time, usageMethod: row.usage_method, note: row.note, pillQty: row.pill_qty, pillName: row.pill_name })),
+    ]
+    if (entryRows.length) {
+      await client.query(
+        'INSERT INTO pill_entries (chart_id, patient_row_number, medicine_key, dose_time, usage_method, note, pill_qty, pill_name) SELECT $1, prn, mk, dt, um, nt, pq, pn FROM UNNEST($2::int[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::text[]) AS u(prn, mk, dt, um, nt, pq, pn) ON CONFLICT DO NOTHING',
+        [chartId, entryRows.map((row) => row.row), entryRows.map((row) => row.medicineKey), entryRows.map((row) => row.doseTime), entryRows.map((row) => row.usageMethod), entryRows.map((row) => row.note), entryRows.map((row) => row.pillQty), entryRows.map((row) => row.pillName)],
+      )
+    }
+    const roomRows = [...(room ? [{ row: rowNumber, room }] : []), ...rooms.rows.map((row) => ({ row: row.patient_row_number + 1, room: row.room_number }))]
+    if (roomRows.length) {
+      await client.query(
+        'INSERT INTO pill_patient_meta (chart_id, patient_row_number, room_number) SELECT $1, prn, rn FROM UNNEST($2::int[], $3::text[]) AS u(prn, rn)',
+        [chartId, roomRows.map((row) => row.row), roomRows.map((row) => row.room)],
+      )
+    }
+    await client.query('COMMIT')
+    response.json({ ok: true })
+  } catch (error) {
+    await client.query('ROLLBACK')
+    console.error('expand row failed:', error)
+    response.status(500).json({ message: 'تعذر إرجاع بيانات الحبوب' })
   } finally { client.release() }
 })
 
@@ -528,13 +590,19 @@ router.get('/meropenem', requireAuth, async (request, response) => {
   response.json({ form: { patients: form.patients.map((patient) => ({ ...patient, drugKey: 'meropenem' })) } })
 })
 
+// Every name a chart column can carry: the catalogue, plus the names kept on columns whose
+// medicine was later deleted from it (custom_name) — otherwise those courses vanished from the forms.
+const antibioticNames = async () => (await query(
+  'SELECT name FROM medicines UNION SELECT custom_name FROM chart_columns WHERE custom_name IS NOT NULL',
+)).rows.map((row) => row.name).filter(antibioticOf)
+
 // «متابعة المضادات الحيوية»: the same form for every antibiotic and antifungal in ../ddd.js
 // (Meropenem included), matched by generic name so brands and misspellings count — one course per
 // patient per drug. Read-only and fully derived.
 router.get('/antibiotics', requireAuth, async (request, response) => {
   const location = readLocation(request.query, request.session.user)
   if (location.status) return response.status(location.status).json({ message: location.message })
-  const names = (await query('SELECT name FROM medicines')).rows.map((row) => row.name).filter(antibioticOf)
+  const names = await antibioticNames()
   const rows = await loadCourseRows(location, { names })
   const byDrug = new Map()
   rows.cells.forEach((cell) => {
@@ -562,7 +630,7 @@ const longCourseCache = new Map()
 const longCourses = async (date) => {
   const cached = longCourseCache.get(date)
   if (cached && Date.now() - cached.at < LONG_COURSE_TTL_MS) return cached.body
-  const names = (await query('SELECT name FROM medicines')).rows.map((row) => row.name).filter(antibioticOf)
+  const names = await antibioticNames()
   const rows = await loadCourseRows({ floor: null, wardName: '', chartDate: date }, { names, allWards: true })
   const byDrug = new Map()
   rows.cells.forEach((cell) => {
@@ -618,6 +686,25 @@ router.put('/course-day', requireAuth, async (request, response) => {
   const drugKey = cleanText(request.body.drugKey, 60).trim()
   const n = Number(request.body.n)
   if (!patientKey || !drugKey || !isIsoDate(request.body.anchorDate) || !Number.isInteger(n) || n < 1 || n > 365) return response.status(400).json({ message: 'بيانات غير صحيحة' })
+  // The override is keyed by patient, not ward, so ward access alone let a pharmacist renumber a
+  // course for any patient in the hospital. Outside management, the patient must be on this ward:
+  // a name key carries its ward; an ID must appear on this ward's charts in the form's window.
+  const user = request.session.user
+  if (user.role !== 'admin' && user.role !== 'supervisor') {
+    const { floor, wardName, chartDate } = location
+    const onWard = patientKey.startsWith('name:')
+      ? patientKey.startsWith(`name:${wardKeyOf(floor, wardName)}|`)
+      : patientKey.startsWith('id:') && (await query(
+        `SELECT 1 FROM chart_patients cp
+         JOIN daily_charts dc ON dc.id = cp.chart_id
+         JOIN wards w ON w.id = dc.ward_id
+         WHERE cp.patient_id = $1 AND w.floor_number IS NOT DISTINCT FROM $2 AND w.name = $3
+           AND dc.chart_date BETWEEN $4::date AND $5::date
+         LIMIT 1`,
+        [patientKey.slice(3), floor, wardName, windowStart(chartDate), chartDate],
+      )).rows.length > 0
+    if (!onWard) return response.status(403).json({ message: 'المريض ليس في هذه الردهة' })
+  }
   await query(
     `INSERT INTO course_day_overrides (patient_key, drug_key, anchor_date, n) VALUES ($1, $2, $3::date, $4)
      ON CONFLICT (patient_key, drug_key, anchor_date) DO UPDATE SET n = EXCLUDED.n, updated_at = NOW()`,
