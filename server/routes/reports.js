@@ -95,11 +95,13 @@ router.get('/reports', requireManager, async (request, response) => {
        WHERE dc.chart_date BETWEEN $1::date AND $2::date AND ${scope.sql}`,
       [previousTo, to, scope.value],
     ),
-    // extra_pill_forms carries its own floor/ward (no wards row), so it's filtered directly.
+    // extra_pill_forms carries its own floor/ward (no wards row), so it's filtered directly. Its
+    // timestamp is bucketed by the hospital's day (Baghdad, UTC+3), not the database's UTC one,
+    // or a form made between midnight and 3 am counted toward the day before.
     query(
       `SELECT floor_number AS floor, ward, COUNT(*)::int AS count
        FROM extra_pill_forms
-       WHERE created_at >= $1::date AND created_at < $2::date + 1
+       WHERE (created_at AT TIME ZONE 'Asia/Baghdad')::date BETWEEN $1::date AND $2::date
          AND ($3::text = 'all' OR floor_number::text = $3::text)
        GROUP BY 1, 2`,
       [from, to, scope.value],

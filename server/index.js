@@ -88,9 +88,17 @@ app.use((request, response, next) => {
   next()
 })
 
-const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: 'draft-7', legacyHeaders: false, skipSuccessfulRequests: true, message: { message: 'محاولات كثيرة، حاول لاحقًا بعد ١٥ دقيقة' } })
+// The hospital's devices reach us through one shared IP, so a limit keyed on the IP alone made
+// one pharmacist's typos lock every device out of signing in, and let a ward full of polling
+// iPads trip the API limit together. Failed logins count per IP *and* account (with a looser
+// per-IP ceiling against spraying many accounts); signed-in API traffic counts per user.
+const loginMessage = { message: 'محاولات كثيرة، حاول لاحقًا بعد ١٥ دقيقة' }
+const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: 'draft-7', legacyHeaders: false, skipSuccessfulRequests: true, message: loginMessage,
+  keyGenerator: (request) => `${request.ip}|${String(request.body?.username || '').trim().toLowerCase().slice(0, 80)}` })
+const loginIpLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 100, standardHeaders: false, legacyHeaders: false, skipSuccessfulRequests: true, message: loginMessage })
 const registerLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 30, standardHeaders: 'draft-7', legacyHeaders: false, message: { message: 'محاولات كثيرة لإنشاء حساب، حاول لاحقًا' } })
-const apiLimiter = rateLimit({ windowMs: 60 * 1000, limit: 300, standardHeaders: 'draft-7', legacyHeaders: false })
+const apiLimiter = rateLimit({ windowMs: 60 * 1000, limit: 300, standardHeaders: 'draft-7', legacyHeaders: false,
+  keyGenerator: (request) => (request.session?.user?.id ? `user:${request.session.user.id}` : request.ip) })
 app.use('/api/', apiLimiter)
 
 // Session data is a snapshot taken at login, so a demoted, suspended or deleted
@@ -102,7 +110,7 @@ const revokeUserSessions = async (executor, userId) => {
   } catch (error) { console.error('failed to revoke sessions for user', userId, error) }
 }
 
-app.post('/api/auth/login', loginLimiter, async (request, response) => {
+app.post('/api/auth/login', loginIpLimiter, loginLimiter, async (request, response) => {
   // Cap the inputs before bcrypt sees them: bcryptjs is pure JS and runs on the
   // event loop, so an oversized password would be a cheap CPU-exhaustion vector.
   const username = cleanText(request.body.username, 80).trim()
@@ -716,28 +724,54 @@ app.put('/api/pills', requireAuth, async (request, response) => {
   const { floor, wardName, chartDate, slot } = location
   const chartId = await resolveChartId(floor, wardName, chartDate, slot)
   if (!chartId) return response.status(404).json({ message: 'لا يوجد جارت لهذا اليوم' })
-  const byKey = new Map()
-  ;(Array.isArray(request.body.entries) ? request.body.entries : []).forEach((entry) => {
+  const readEntry = (entry) => {
     const patientRowNumber = clampInt(entry?.patientRowNumber, 1, MAX_PATIENT_ROWS)
     const medicineKey = normalizeMedicineKey(cleanText(entry?.medicineKey, 200))
-    if (patientRowNumber === null || !medicineKey) return
-    const doseTime = DOSE_TIMES.includes(entry?.doseTime) ? entry.doseTime : ''
-    const usageMethod = USAGE_METHODS.includes(entry?.usageMethod) ? entry.usageMethod : ''
-    const note = NOTE_OPTIONS.includes(entry?.note) ? entry.note : ''
-    const pillQty = String(entry?.pillQty ?? '').replace(/\D/g, '').slice(0, 9)
-    const pillName = cleanText(entry?.pillName, 200).trim()
-    if (!doseTime && !usageMethod && !note && !pillQty && !pillName) return
-    byKey.set(`${patientRowNumber}:${medicineKey}`, { patientRowNumber, medicineKey, doseTime, usageMethod, note, pillQty, pillName })
-  })
-  const rows = [...byKey.values()]
-  const roomRows = Object.entries(request.body.rooms && typeof request.body.rooms === 'object' ? request.body.rooms : {})
+    if (patientRowNumber === null || !medicineKey) return null
+    return {
+      patientRowNumber, medicineKey,
+      doseTime: DOSE_TIMES.includes(entry?.doseTime) ? entry.doseTime : '',
+      usageMethod: USAGE_METHODS.includes(entry?.usageMethod) ? entry.usageMethod : '',
+      note: NOTE_OPTIONS.includes(entry?.note) ? entry.note : '',
+      pillQty: String(entry?.pillQty ?? '').replace(/\D/g, '').slice(0, 9),
+      pillName: cleanText(entry?.pillName, 200).trim(),
+    }
+  }
+  const isBlank = (entry) => !entry.doseTime && !entry.usageMethod && !entry.note && !entry.pillQty && !entry.pillName
+  const readRooms = (rooms) => Object.entries(rooms && typeof rooms === 'object' ? rooms : {})
     .map(([key, value]) => ({ patientRowNumber: clampInt(key, 1, MAX_PATIENT_ROWS), roomNumber: cleanText(value, 40).trim() }))
-    .filter((room) => room.patientRowNumber !== null && room.roomNumber)
+    .filter((room) => room.patientRowNumber !== null)
+  // `changes` (current clients): only what that device changed — a blank entry or room deletes,
+  // and every other row is left as it is, so two devices on one form no longer erase each other.
+  // `entries`/`rooms` (a tab still on the previous build): the whole form, replacing what is saved.
+  const partial = request.body.changes && typeof request.body.changes === 'object'
+  const source = partial ? request.body.changes : request.body
+  const byKey = new Map()
+  ;(Array.isArray(source.entries) ? source.entries : []).forEach((raw) => {
+    const entry = readEntry(raw)
+    if (entry) byKey.set(`${entry.patientRowNumber}:${entry.medicineKey}`, entry)
+  })
+  const touched = [...byKey.values()]
+  const rows = touched.filter((entry) => !isBlank(entry))
+  const touchedRooms = readRooms(source.rooms)
+  const roomRows = touchedRooms.filter((room) => room.roomNumber)
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
-    await client.query('DELETE FROM pill_entries WHERE chart_id = $1', [chartId])
-    await client.query('DELETE FROM pill_patient_meta WHERE chart_id = $1', [chartId])
+    if (partial) {
+      if (touched.length) {
+        await client.query(
+          'DELETE FROM pill_entries WHERE chart_id = $1 AND (patient_row_number, medicine_key) IN (SELECT * FROM UNNEST($2::int[], $3::text[]))',
+          [chartId, touched.map((entry) => entry.patientRowNumber), touched.map((entry) => entry.medicineKey)],
+        )
+      }
+      if (touchedRooms.length) {
+        await client.query('DELETE FROM pill_patient_meta WHERE chart_id = $1 AND patient_row_number = ANY($2::int[])', [chartId, touchedRooms.map((room) => room.patientRowNumber)])
+      }
+    } else {
+      await client.query('DELETE FROM pill_entries WHERE chart_id = $1', [chartId])
+      await client.query('DELETE FROM pill_patient_meta WHERE chart_id = $1', [chartId])
+    }
     if (rows.length) {
       await client.query(
         'INSERT INTO pill_entries (chart_id, patient_row_number, medicine_key, dose_time, usage_method, note, pill_qty, pill_name) SELECT $1, prn, mk, dt, um, nt, pq, pn FROM UNNEST($2::int[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::text[]) AS u(prn, mk, dt, um, nt, pq, pn)',

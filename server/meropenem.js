@@ -34,7 +34,7 @@ export const doseText = (medicine, quantity, perDay = 3) => {
   return perDay && quantity % perDay === 0 ? `${formatMg(mg * quantity / perDay)} × ${perDay}` : `${formatMg(mg)} × ${quantity}`
 }
 
-const wardKeyOf = (floor, ward) => `${floor ?? ''}|${ward}`
+export const wardKeyOf = (floor, ward) => `${floor ?? ''}|${ward}`
 const wardLabelOf = (floor, ward) => (floor ? `الطابق ${floor} — ${ward}` : ward)
 
 // cells:    [{ date, floor, ward, name, patientId, medicine, quantity }] — Meronem cells with a

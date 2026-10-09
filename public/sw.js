@@ -60,7 +60,15 @@ self.addEventListener('fetch', (event) => {
   if (url.pathname.startsWith('/api/')) return
 
   if (request.mode === 'navigate') {
-    event.respondWith(fetch(request).catch(() => caches.match('/index.html')))
+    // Refresh the offline copy on every online load. Cached only at install, it stayed whatever
+    // build was live the last time sw.js itself changed, so an offline cold start ran that old
+    // build — or a blank page, when its hashed scripts had never been cached.
+    event.respondWith(fetch(request).then((response) => {
+      const isPage = response.ok && (response.headers.get('content-type') || '').includes('text/html')
+      const responseToCache = isPage ? response.clone() : null
+      if (responseToCache) event.waitUntil(caches.open(SHELL_CACHE).then((cache) => cache.put('/index.html', responseToCache)))
+      return response
+    }).catch(() => caches.match('/index.html')))
     return
   }
 

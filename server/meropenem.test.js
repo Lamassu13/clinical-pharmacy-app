@@ -138,6 +138,24 @@ test('GET /api/meropenem: builds the form from the ward\'s saved charts, and ref
   const outsider = await loginAs({ role: 'user', floor: 6 })
   assert.equal((await outsider.get(`/api/meropenem?${where}`)).status, 403)
   assert.equal((await outsider.put('/api/course-day', edit)).status, 403)
+  // Floor 6's own user, addressing their own ward, still can't renumber a floor-5 patient.
+  const sixth = { ...edit, floor: 6, ward: 'ردهة الخاص' }
+  assert.equal((await outsider.put('/api/course-day', sixth)).status, 403)
+  assert.equal((await outsider.put('/api/course-day', { ...sixth, patientKey: `name:${FLOOR}|${WARD}|حسن` })).status, 403)
+  assert.equal((await client.put('/api/course-day', { ...edit, patientKey: `name:${FLOOR}|${WARD}|حسن` })).status, 200)
+})
+
+test('GET /api/antibiotics: a course whose medicine was deleted from the catalogue still shows', async () => {
+  const seeder = await createUser({ role: 'admin' })
+  const medicineId = (await pool.query("INSERT INTO medicines (name) VALUES ('Meronem 1000gm Vial') RETURNING id")).rows[0].id
+  const wardId = (await pool.query('INSERT INTO wards (floor_number, name, is_special) VALUES ($1, $2, false) RETURNING id', [FLOOR, WARD])).rows[0].id
+  await seedDay({ wardId, createdBy: seeder.id, date: '2026-09-26', patients: [{ row: 1, name: 'علي', id: '123' }], meronemRows: [1], medicineId })
+  const admin = await loginAs({ role: 'admin' })
+  assert.equal((await admin.delete(`/api/medicines/${medicineId}`)).status, 200)
+  const client = await loginAs({ role: 'user', floor: FLOOR })
+  const res = await client.get(`/api/antibiotics?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=2026-09-26`)
+  assert.equal(res.status, 200)
+  assert.equal(res.body.drugs[0]?.patients[0]?.patientId, '123')
 })
 
 test('GET /api/antibiotics: one course per patient per antibiotic — any antibiotic, by generic name — Meropenem included', async () => {

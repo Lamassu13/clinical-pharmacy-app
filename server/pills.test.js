@@ -190,3 +190,48 @@ test('POST /api/chart/collapse-row: pill_qty and pill_name move up with the pati
   const { rows } = await pool.query('SELECT patient_row_number, dose_time, pill_qty, pill_name FROM pill_entries')
   assert.deepEqual(rows, [{ patient_row_number: 2, dose_time: '٨ صباحًا', pill_qty: '5', pill_name: 'أسبرين' }])
 })
+
+test('PUT /api/pills with changes: only the changed rows move; another device\'s entries and rooms stay', async () => {
+  const client = await loginAs({ role: 'user', floor: FLOOR })
+  await client.put('/api/chart', chartBody())
+  // Another device saved row 3's schedule and row 3's room.
+  await client.put('/api/pills', {
+    floor: FLOOR, ward: WARD, date: DATE,
+    entries: [{ patientRowNumber: 3, medicineKey: KEY, doseTime: '٨ صباحًا' }],
+    rooms: { 3: '12' },
+  })
+  // This device only changed row 1, and cleared a row 2 entry it had seen.
+  await pool.query("INSERT INTO pill_entries (chart_id, patient_row_number, medicine_key, dose_time) SELECT id, 2, $1, '٩ صباحًا' FROM daily_charts", [KEY])
+  const saved = await client.put('/api/pills', {
+    floor: FLOOR, ward: WARD, date: DATE,
+    changes: { entries: [{ patientRowNumber: 1, medicineKey: KEY, doseTime: '١٠ صباحًا' }, { patientRowNumber: 2, medicineKey: KEY }], rooms: { 1: '7' } },
+  })
+  assert.equal(saved.status, 200)
+  const { rows } = await pool.query('SELECT patient_row_number, dose_time FROM pill_entries ORDER BY patient_row_number')
+  assert.deepEqual(rows, [{ patient_row_number: 1, dose_time: '١٠ صباحًا' }, { patient_row_number: 3, dose_time: '٨ صباحًا' }])
+  const rooms = await pool.query('SELECT patient_row_number, room_number FROM pill_patient_meta ORDER BY patient_row_number')
+  assert.deepEqual(rooms.rows, [{ patient_row_number: 1, room_number: '7' }, { patient_row_number: 3, room_number: '12' }])
+})
+
+test('POST /api/chart/expand-row undoes collapse-row: every row\'s pill data is back on its own patient', async () => {
+  const client = await loginAs({ role: 'user', floor: FLOOR })
+  await client.put('/api/chart', chartBody())
+  await client.put('/api/pills', {
+    floor: FLOOR, ward: WARD, date: DATE,
+    entries: [
+      { patientRowNumber: 2, medicineKey: KEY, doseTime: '٨ صباحًا', pillQty: '2' },
+      { patientRowNumber: 3, medicineKey: KEY, doseTime: '٩ صباحًا' },
+    ],
+    rooms: { 2: 'A', 3: 'B' },
+  })
+  const before = (await pool.query('SELECT patient_row_number, medicine_key, dose_time, pill_qty FROM pill_entries ORDER BY 1')).rows
+  const collapsed = await client.post('/api/chart/collapse-row', { floor: FLOOR, ward: WARD, date: DATE, rowNumber: 2 })
+  assert.equal(collapsed.status, 200)
+  assert.deepEqual(collapsed.body.removed.room, 'A')
+  assert.equal(collapsed.body.removed.entries.length, 1)
+  const expanded = await client.post('/api/chart/expand-row', { floor: FLOOR, ward: WARD, date: DATE, rowNumber: 2, removed: collapsed.body.removed })
+  assert.equal(expanded.status, 200)
+  assert.deepEqual((await pool.query('SELECT patient_row_number, medicine_key, dose_time, pill_qty FROM pill_entries ORDER BY 1')).rows, before)
+  const rooms = await pool.query('SELECT patient_row_number, room_number FROM pill_patient_meta ORDER BY patient_row_number')
+  assert.deepEqual(rooms.rows, [{ patient_row_number: 2, room_number: 'A' }, { patient_row_number: 3, room_number: 'B' }])
+})

@@ -274,6 +274,8 @@ CREATE INDEX IF NOT EXISTS daily_charts_date_idx ON daily_charts (chart_date);
 CREATE INDEX IF NOT EXISTS chart_quantities_chart_idx ON chart_quantities (chart_id);
 CREATE INDEX IF NOT EXISTS users_account_status_idx ON users (account_status);
 CREATE INDEX IF NOT EXISTS pill_entries_chart_idx ON pill_entries (chart_id);
+-- The antibiotic forms list the names kept on columns whose medicine left the catalogue.
+CREATE INDEX IF NOT EXISTS chart_columns_custom_name_idx ON chart_columns (custom_name) WHERE custom_name IS NOT NULL;
 CREATE INDEX IF NOT EXISTS announcements_created_at_idx ON announcements (created_at DESC);
 CREATE INDEX IF NOT EXISTS extra_pill_forms_floor_ward_idx ON extra_pill_forms (floor_number, ward);
 CREATE INDEX IF NOT EXISTS treatment_forms_title_idx ON treatment_forms (title);
