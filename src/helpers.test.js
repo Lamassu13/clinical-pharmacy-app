@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { pillChanges, interactionsForChart, mergeKeyedSnapshots, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, EXTRA_PILL_SLOTS, isDraftStale, rememberChart, recallChart, forgetChartCopies, mergePreviousDayDoses, addPatientToChart, medicineMatches, pillSheetPlan, yesterdaySchedules, scheduleFor, applyTemplateColumns, catalogueMatches, RENAL_EQUATIONS, renalGuidance, SCR_UMOL_PER_MGDL } from './helpers.js'
+import { averagePatients, pillChanges, interactionsForChart, mergeKeyedSnapshots, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, EXTRA_PILL_SLOTS, isDraftStale, rememberChart, recallChart, forgetChartCopies, mergePreviousDayDoses, addPatientToChart, medicineMatches, pillSheetPlan, yesterdaySchedules, scheduleFor, applyTemplateColumns, catalogueMatches, RENAL_EQUATIONS, renalGuidance, SCR_UMOL_PER_MGDL } from './helpers.js'
 
 test('mergeKeyedSnapshots keeps a local edit and adopts an unrelated server change', () => {
   const base = { a: '1', b: '2' }
@@ -313,4 +313,19 @@ test('pillChanges sends only what changed since the last sync; a removed entry o
   const { entries, rooms } = pillChanges(base, current)
   assert.deepEqual(entries.map((entry) => [entry.patientRowNumber, entry.doseTime]).sort(), [[2, 'w'], [3, '']])
   assert.deepEqual(rooms, { 2: '', 3: '9' })
+})
+
+test('averagePatients divides by the days a chart was made, not the days in the range', () => {
+  const rows = [
+    { floor: 5, ward: null, date: '2026-05-01', count: 10 }, { floor: 5, ward: null, date: '2026-05-02', count: 20 },
+    { floor: 2, ward: null, date: '2026-05-01', count: 6 },
+    { floor: null, ward: 'ردهة العناية المركزة', date: '2026-05-03', count: 4 },
+  ]
+  const { locations, total } = averagePatients(rows, [2, 3, 5, 'ردهة العناية المركزة'])
+  assert.deepEqual(locations.map((row) => [row.key, row.chartedDays, row.patientDays, row.average]), [
+    [2, 1, 6, 6], [3, 0, 0, null], [5, 2, 30, 15], ['ردهة العناية المركزة', 1, 4, 4],
+  ])
+  // Hospital: 16 + 20 + 4 over the 3 days anything was charted.
+  assert.deepEqual(total, { chartedDays: 3, patientDays: 40, average: 13.3 })
+  assert.equal(averagePatients([], [5]).total.average, null)
 })

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { floors, specialWards } from '../constants.js'
-import { isoDate } from '../helpers.js'
+import { averagePatients, isoDate } from '../helpers.js'
 import { ChevronStart, StatusCheck, StalledIcon } from './WardGlyph.jsx'
 
 // The floor-picker's information layer, in two tiers.
@@ -248,6 +248,57 @@ export function PatientsRangeTableWidget({ patientsByFloorRange, rangeFrom, setR
             <td>{row.label}</td>
             {dates.map((date) => <td key={date}>{byKeyDate.get(`${row.key}|${date}`) || 0}</td>)}
           </tr>)}</tbody>
+        </table></div>
+      )}
+    </details>
+  )
+}
+
+// Average patients per day for every floor and the special wards (ICU), dividing only by the days
+// a chart was actually made for that location. Reads the same rows as the table above it (and
+// the same range), so a manager can check any average against that table.
+export function AveragePatientsWidget({ patientsByFloorRange, rangeFrom, setRangeFrom, rangeTo, setRangeTo, loading, error, onRetry }) {
+  const hasRange = Boolean(rangeFrom && rangeTo)
+  const locations = [
+    ...floors.map((item) => ({ key: item.number, label: `الطابق ${item.number}` })),
+    ...specialWards.map((wardName) => ({ key: wardName, label: wardName })),
+  ]
+  const { locations: stats, total } = averagePatients(patientsByFloorRange, locations.map((item) => item.key))
+  const lastDays = (days) => {
+    const today = new Date()
+    setRangeTo(isoDate(today)); setRangeFrom(isoDate(new Date(today.getTime() - (days - 1) * 86400000)))
+  }
+  return (
+    <details className="dashboard-widget dashboard-widget--wide dashboard-widget--collapsible">
+      <summary className="dashboard-widget-head">
+        <span className="dashboard-widget-icon" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="3.5" y="4" width="17" height="16" rx="2" fill="currentColor" fillOpacity="0.14" stroke="none"></rect><rect x="3.5" y="4" width="17" height="16" rx="2"></rect><line x1="7.5" y1="16" x2="7.5" y2="12"></line><line x1="12" y1="16" x2="12" y2="8"></line><line x1="16.5" y1="16" x2="16.5" y2="10.5"></line></svg>
+        </span>
+        <strong>متوسط عدد المرضى لكل طابق</strong>
+      </summary>
+      <p className="dashboard-widget-note">المتوسط = مجموع أيام المرضى ÷ الأيام التي أُنجز فيها جارت للطابق أو الردهة، فيوم بلا جارت لا يُحتسب صفرًا. الطابق يُعدّ يومه منجزًا إذا أُنجز جارت لأي من ردهاته.</p>
+      <div className="purge-dates">
+        <label>من تاريخ<input type="date" value={rangeFrom} onChange={(event) => setRangeFrom(event.target.value)} /></label>
+        <label>إلى تاريخ<input type="date" value={rangeTo} onChange={(event) => setRangeTo(event.target.value)} /></label>
+        <button type="button" className="secondary-button compact" onClick={() => lastDays(7)}>آخر 7 أيام</button>
+        <button type="button" className="secondary-button compact" onClick={() => lastDays(30)}>آخر 30 يومًا</button>
+      </div>
+      {!hasRange ? <p className="dashboard-widget-empty">اختر تاريخ البداية والنهاية، أو آخر 7 / 30 يومًا.</p>
+        : loading ? <SkeletonRows /> : error ? <DashboardError onRetry={onRetry} /> : (
+        <div className="table-frame"><table className="requests-table patients-average-table">
+          <thead><tr><th>الطابق / الردهة</th><th>أيام الجارت</th><th>مجموع أيام المرضى</th><th>المتوسط اليومي</th></tr></thead>
+          <tbody>{stats.map((stat, index) => <tr key={stat.key}>
+            <td>{locations[index].label}</td>
+            <td className="num">{stat.chartedDays}</td>
+            <td className="num">{stat.patientDays}</td>
+            <td className="num"><strong>{stat.average ?? '—'}</strong></td>
+          </tr>)}</tbody>
+          <tfoot><tr>
+            <th scope="row">كل المستشفى</th>
+            <td className="num">{total.chartedDays}</td>
+            <td className="num">{total.patientDays}</td>
+            <td className="num"><strong>{total.average ?? '—'}</strong></td>
+          </tr></tfoot>
         </table></div>
       )}
     </details>
