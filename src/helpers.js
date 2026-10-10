@@ -661,3 +661,28 @@ export const formatFileSize = (bytes) => {
   if (n < 1024 * 1024) return `${Math.round(n / 1024)} كيلوبايت`
   return `${(n / (1024 * 1024)).toFixed(1)} ميغابايت`
 }
+
+// Average patients per day for each floor / special ward, over only the days a chart was made.
+// `rows` is the dashboard's patientsByFloorRange ([{ floor, ward, date, count }], one row per
+// floor-or-ward per day that had a named patient); `keys` the floor numbers and ward names to report.
+// A day counts for a floor when it has a row — a day without a chart is left out of the divisor,
+// not counted as zero. The total divides the hospital's summed daily census by the days any
+// location was charted. null average when nothing was charted.
+export const averagePatients = (rows, keys) => {
+  const mean = (sum, days) => (days ? Math.round((sum / days) * 10) / 10 : null)
+  const byKey = new Map()
+  const totalByDate = new Map()
+  ;(rows || []).forEach((row) => {
+    const key = row.floor ?? row.ward
+    const entry = byKey.get(key) || { days: 0, patientDays: 0 }
+    entry.days += 1; entry.patientDays += row.count
+    byKey.set(key, entry)
+    totalByDate.set(row.date, (totalByDate.get(row.date) || 0) + row.count)
+  })
+  const locations = keys.map((key) => {
+    const { days = 0, patientDays = 0 } = byKey.get(key) || {}
+    return { key, chartedDays: days, patientDays, average: mean(patientDays, days) }
+  })
+  const patientDays = [...totalByDate.values()].reduce((sum, count) => sum + count, 0)
+  return { locations, total: { chartedDays: totalByDate.size, patientDays, average: mean(patientDays, totalByDate.size) } }
+}

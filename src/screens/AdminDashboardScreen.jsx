@@ -1,5 +1,5 @@
 import { floors, specialWards, roleLabels } from '../constants.js'
-import { PatientsDailyTrendWidget, PatientsRangeTableWidget, WardStatusBand } from '../components/DashboardWidgets.jsx'
+import { AveragePatientsWidget, PatientsDailyTrendWidget, PatientsRangeTableWidget, WardStatusBand } from '../components/DashboardWidgets.jsx'
 import { ChevronStart } from '../components/WardGlyph.jsx'
 import { wardAttention } from '../helpers.js'
 
@@ -119,6 +119,11 @@ export default function AdminDashboardScreen({
         for a manager who only opened it to check ward status or approve a request. */}
     <PatientsDailyTrendWidget
       dailyPatientsByFloor={dashboard?.dailyPatientsByFloor ?? []}
+      loading={dashboardLoading} error={dashboardError} onRetry={onRetryDashboard}
+    />
+    <AveragePatientsWidget
+      patientsByFloorRange={dashboard?.patientsByFloorRange ?? []}
+      rangeFrom={rangeFrom} setRangeFrom={setRangeFrom} rangeTo={rangeTo} setRangeTo={setRangeTo}
       loading={dashboardLoading} error={dashboardError} onRetry={onRetryDashboard}
     />
     <PatientsRangeTableWidget
