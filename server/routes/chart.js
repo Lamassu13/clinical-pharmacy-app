@@ -7,7 +7,7 @@ import {
   normalizeMedicineKey, medicineKeySql, DOSE_TIMES, USAGE_METHODS, NOTE_OPTIONS,
 } from '../validation.js'
 import { numberToArabicWords } from '../arabic-number.js'
-import { buildMeropenemForm, activeCourseDay, monthStart, windowStart, doseText, wardKeyOf, MEROPENEM_SQL_PATTERN } from '../meropenem.js'
+import { buildMeropenemForm, activeCourseDay, monthStart, windowStart, doseText, strengthMg, wardKeyOf, MEROPENEM_SQL_PATTERN } from '../meropenem.js'
 import { antibioticOf } from '../ddd.js'
 
 const router = express.Router()
@@ -592,7 +592,7 @@ router.get('/meropenem-order', requireAuth, async (request, response) => {
   // day and the forgiven-gap rules carry over; matched by ID, else by name.
   const form = buildMeropenemForm({ ...(await loadCourseRows(location, { pattern: MEROPENEM_SQL_PATTERN })), overrides: await loadOverrides('meropenem') })
   const dayOf = (row) => (form.patients.find((patient) => (row.patient_id ? patient.patientId === row.patient_id : patient.name === row.name)) || {}).days?.[chartDate] ?? null
-  response.json({ order: { items: rows.rows.map((row) => ({ day: dayOf(row), name: row.name, patientId: row.patient_id, dose: doseText(row.medicine, row.quantity), count: row.quantity })) } })
+  response.json({ order: { items: rows.rows.map((row) => ({ day: dayOf(row), name: row.name, patientId: row.patient_id, dose: doseText(row.medicine, row.quantity), strengthMg: strengthMg(row.medicine), count: row.quantity })) } })
 })
 
 // The saved-chart rows a course form is built from (see ../meropenem.js), for every medicine

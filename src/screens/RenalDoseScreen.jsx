@@ -1,16 +1,18 @@
 import { useState } from 'react'
-import { RENAL_EQUATIONS, SCR_UMOL_PER_MGDL } from '../helpers.js'
+import { RENAL_EQUATIONS, SCR_UMOL_PER_MGDL, toEnglishDigits } from '../helpers.js'
 
 // «تعديل الجرعة الكلوية»: type the patient's values once and read the result of every kidney-function
 // equation side by side. Nothing typed here is sent or stored — it lives in this screen's state.
 const BLANK = { age: '', weight: '', height: '', female: false, black: false, scr: '', scr2: '', hours: '', umol: false }
 const number = (value) => Number(String(value).replace(',', '.'))
+// Arabic-Indic digits and the Arabic decimal mark («٫») are not read by Number(), so they are converted as typed.
+const latin = (value) => toEnglishDigits(value).replace(/[٫،]/g, '.')
 const INPUTS = [['age', 'العمر (سنة)'], ['weight', 'الوزن الفعلي (كغم)'], ['height', 'الطول (سم)'], ['scr', 'الكرياتينين'], ['scr2', 'الكرياتينين الأحدث (للمتغيّر)'], ['hours', 'الفاصل بين القياسين (ساعة)']]
 const FIELD_NAMES = { age: 'Age', weight: 'Weight', height: 'Height', scr: 'Creatinine', scr2: 'Recent creatinine', hours: 'Hours between' }
 
 export default function RenalDoseScreen({ header, wardLabel, onBack }) {
   const [labs, setLabs] = useState(BLANK)
-  const set = (field) => (event) => setLabs((current) => ({ ...current, [field]: event.target.value }))
+  const set = (field) => (event) => setLabs((current) => ({ ...current, [field]: latin(event.target.value) }))
   const choose = (field, value) => setLabs((current) => ({ ...current, [field]: value }))
   const mgDl = (value) => (labs.umol ? number(value) / SCR_UMOL_PER_MGDL : number(value))
   const values = { age: number(labs.age), weightKg: number(labs.weight), heightCm: number(labs.height), female: labs.female, black: labs.black, scr: mgDl(labs.scr), scr2: mgDl(labs.scr2), hours: number(labs.hours) }

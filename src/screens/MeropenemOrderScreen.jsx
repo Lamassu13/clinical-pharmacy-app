@@ -5,7 +5,9 @@ import hospitalLogo from '../assets/hospital-logo.png'
 // print rules) as the requisition (OrderScreen).
 export default function MeropenemOrderScreen({ header, wardLabel, today, onBack, selectedDate, onChangeDate, loading, data, loadError, onPrint }) {
   const items = data?.items || []
-  const total = items.reduce((sum, item) => sum + (Number(item.count) || 0), 0)
+  // Vials are ordered per strength, so the total is one line per vial size (1g, 500mg), biggest first.
+  const totals = [...items.reduce((map, item) => map.set(item.strengthMg || 0, (map.get(item.strengthMg || 0) || 0) + (Number(item.count) || 0)), new Map())].sort((a, b) => b[0] - a[0])
+  const strengthLabel = (mg) => (!mg ? 'أخرى' : mg >= 1000 ? `${mg / 1000}g` : `${mg}mg`)
 
   return <main className="app-shell">
     {header}
@@ -43,10 +45,10 @@ export default function MeropenemOrderScreen({ header, wardLabel, today, onBack,
                 <td className="meropenem-dose" lang="en" dir="ltr">{item.dose}</td>
                 <td className="order-qty">{item.count}</td>
               </tr>)}</tbody>
-              <tfoot><tr>
-                <th scope="row" colSpan={4}>المجموع الكلي</th>
+              <tfoot>{totals.map(([mg, total]) => <tr key={mg}>
+                <th scope="row" colSpan={4}>المجموع الكلي — <bdi lang="en">{strengthLabel(mg)}</bdi></th>
                 <td className="order-qty">{total}</td>
-              </tr></tfoot>
+              </tr>)}</tfoot>
             </table>
           </div>}
     </section>
