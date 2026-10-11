@@ -1161,6 +1161,8 @@ button.topbar-user:hover { color: var(--primary); }
 .order-table th:first-child, .order-table td:first-child { width: 56px; min-width: 56px; text-align: center; }
 .order-table.meropenem-order-table { min-width: 420px; }
 .order-table.meropenem-order-table th:first-child, .order-table.meropenem-order-table td:first-child { width: 64px; min-width: 64px; text-align: center; font-weight: 700; }
+.order-table.meropenem-order-table tfoot th { text-align: start; width: auto; min-width: 0; background: var(--surface-alt); }
+.order-table.meropenem-order-table tfoot td { background: var(--surface-alt); }
 /* The pills form's print rule (.pill-table td:first-child { height: 100px }) must not reach here. */
 @media print { .order-table.meropenem-order-table td:first-child { height: auto; } .order-table.meropenem-order-table th:first-child { width: 14mm; } }
 .order-table .order-qty { text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
