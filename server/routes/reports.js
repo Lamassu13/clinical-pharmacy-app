@@ -24,19 +24,14 @@ const PATIENT_SQL = "btrim(regexp_replace(cp.patient_name, '\\s+', ' ', 'g'))"
 // deleted from the catalogue (medicine_id NULL, name kept in custom_name) — per the default patterns.
 const SUPPLY_SQL = 'COALESCE(m.is_supply, cc.custom_name ~* $4 AND cc.custom_name !~* $5, FALSE)'
 
-// scope: 'all', a floor number, or a special ward's name. Returns the wards it covers and the
-// SQL filter on `wards w` ($3 is the scope value), or null when the scope is unknown.
+// scope: 'all' or a comma-separated list of floor numbers / special-ward names. Returns the wards
+// it covers, the SQL filter on `wards w` ($3 is the list of keys: a floor number or a ward name),
+// or null when any entry is unknown.
 const resolveScope = (scope) => {
-  if (scope === 'all') {
-    return {
-      wards: [...ALLOWED_FLOORS.flatMap((floor) => FLOOR_WARDS[floor].map((ward) => ({ floor, ward }))), ...SPECIAL_WARDS.map((ward) => ({ floor: null, ward }))],
-      sql: '$3::text IS NOT NULL', value: 'all',
-    }
-  }
-  const floor = Number(scope)
-  if (ALLOWED_FLOORS.includes(floor)) return { wards: FLOOR_WARDS[floor].map((ward) => ({ floor, ward })), sql: 'w.floor_number = $3::int', value: String(floor) }
-  if (SPECIAL_WARDS.includes(scope)) return { wards: [{ floor: null, ward: scope }], sql: 'w.floor_number IS NULL AND w.name = $3::text', value: scope }
-  return null
+  const everyWard = [...ALLOWED_FLOORS.flatMap((floor) => FLOOR_WARDS[floor].map((ward) => ({ floor, ward }))), ...SPECIAL_WARDS.map((ward) => ({ floor: null, ward }))]
+  const keys = scope === 'all' ? [...ALLOWED_FLOORS.map(String), ...SPECIAL_WARDS] : [...new Set(scope.split(',').map((key) => key.trim()))]
+  if (!keys.length || !keys.every((key) => ALLOWED_FLOORS.map(String).includes(key) || SPECIAL_WARDS.includes(key))) return null
+  return { wards: everyWard.filter(({ floor, ward }) => keys.includes(String(floor ?? ward))), sql: 'COALESCE(w.floor_number::text, w.name) = ANY($3::text[])', value: keys }
 }
 
 router.get('/reports', requireManager, async (request, response) => {
@@ -104,7 +99,7 @@ router.get('/reports', requireManager, async (request, response) => {
       `SELECT floor_number AS floor, ward, COUNT(*)::int AS count
        FROM extra_pill_forms
        WHERE (created_at AT TIME ZONE 'Asia/Baghdad')::date BETWEEN $1::date AND $2::date
-         AND ($3::text = 'all' OR floor_number::text = $3::text)
+         AND COALESCE(floor_number::text, ward) = ANY($3::text[])
        GROUP BY 1, 2`,
       [from, to, scope.value],
     ),
@@ -141,7 +136,7 @@ router.get('/reports', requireManager, async (request, response) => {
          UNION ALL SELECT updated_by, 0, 0, 1, 0 FROM charts
          UNION ALL SELECT created_by, 0, 0, 0, 1 FROM extra_pill_forms
            WHERE created_by IS NOT NULL AND (created_at AT TIME ZONE 'Asia/Baghdad')::date BETWEEN $1::date AND $2::date
-             AND ($3::text = 'all' OR floor_number::text = $3::text)
+             AND COALESCE(floor_number::text, ward) = ANY($3::text[])
        ) activity JOIN users u ON u.id = activity.user_id
        GROUP BY u.id, u.full_name`,
       [from, to, scope.value],
@@ -344,7 +339,7 @@ router.get('/reports', requireManager, async (request, response) => {
   const byName = (a, b) => a.patient.localeCompare(b.patient, 'ar')
   multiple.sort((a, b) => b.maxConcurrent - a.maxConcurrent || b.days - a.days || byName(a, b))
   reserve.sort((a, b) => b.days - a.days || byName(a, b))
-  const inScope = (row) => scope.value === 'all' || (row.floor === null ? row.ward === scope.value : String(row.floor) === scope.value)
+  const inScope = (row) => scope.value.includes(String(row.floor ?? row.ward))
   const longCoursePatients = longCourseBody.patients.filter(inScope)
 
   // Antibiotic consumption in WHO DDDs per 100 patient-days (../ddd.js), with the AWaRe split.

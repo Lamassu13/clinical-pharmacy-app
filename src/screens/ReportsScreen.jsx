@@ -11,7 +11,9 @@ const DAY_MS = 86400000
 const formatDate = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString('ar-IQ')
 const weekday = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString('ar-IQ', { weekday: 'long' })
 const wardName = (row, scopedToFloor) => (row.floor === null ? row.ward : scopedToFloor ? row.ward : `الطابق ${row.floor} — ${row.ward}`)
-const scopeLabel = (scope) => (scope === 'all' ? 'كل الطوابق والردهات' : specialWards.includes(scope) ? scope : `الطابق ${scope}`)
+const allKeys = [...floors.map((item) => String(item.number)), ...specialWards]
+const keyLabel = (key) => (specialWards.includes(key) ? key : `الطابق ${key}`)
+const scopeLabel = (scope) => (scope === 'all' ? 'كل الطوابق والردهات' : scope.split(',').map(keyLabel).join('، '))
 const orDash = (value) => (value === null || value === undefined ? '—' : value)
 
 // Change against the previous period of the same length, as words and a drawn arrow — never
@@ -47,7 +49,9 @@ function Empty({ children }) {
 
 export default function ReportsScreen({ adminHeader, isExpired }) {
   const today = isoDate(new Date())
-  const [scope, setScope] = useState('all')
+  const [selected, setSelected] = useState(allKeys)
+  const scope = selected.length === allKeys.length ? 'all' : allKeys.filter((key) => selected.includes(key)).join(',')
+  const toggle = (key) => setSelected((current) => (current.includes(key) ? current.filter((item) => item !== key) : [...current, key]))
   const [from, setFrom] = useState(() => isoDate(new Date(Date.now() - 29 * DAY_MS)))
   const [to, setTo] = useState(today)
   const [report, setReport] = useState(null)
@@ -62,7 +66,7 @@ export default function ReportsScreen({ adminHeader, isExpired }) {
 
   const load = async (event) => {
     event.preventDefault()
-    if (rangeProblem || loading) return
+    if (rangeProblem || !selected.length || loading) return
     setLoading(true); setError('')
     try {
       const params = new URLSearchParams({ scope, from, to })
@@ -80,19 +84,18 @@ export default function ReportsScreen({ adminHeader, isExpired }) {
     <div className="section-heading"><div><h1>التقارير</h1></div></div>
 
     <form className="reports-controls" onSubmit={load}>
-      <label>الطابق أو الردهة
-        <select value={scope} onChange={(event) => setScope(event.target.value)}>
-          <option value="all">كل الطوابق والردهات</option>
-          <optgroup label="الطوابق">{floors.map((item) => <option key={item.number} value={item.number}>الطابق {item.number}</option>)}</optgroup>
-          <optgroup label="ردهات مستقلة">{specialWards.map((ward) => <option key={ward} value={ward}>{ward}</option>)}</optgroup>
-        </select>
-      </label>
+      <fieldset className="reports-scope">
+        <legend>الطوابق والردهات</legend>
+        <label><input type="checkbox" checked={selected.length === allKeys.length} onChange={() => setSelected(selected.length === allKeys.length ? [] : allKeys)} /> الكل</label>
+        {allKeys.map((key) => <label key={key}><input type="checkbox" checked={selected.includes(key)} onChange={() => toggle(key)} /> {keyLabel(key)}</label>)}
+      </fieldset>
       <label>من تاريخ<input type="date" value={from} max={to || today} onChange={(event) => setFrom(event.target.value)} /></label>
       <label>إلى تاريخ<input type="date" value={to} min={from} max={today} onChange={(event) => setTo(event.target.value)} /></label>
       <div className="reports-controls-actions">
-        <button type="submit" className="primary-button" disabled={Boolean(rangeProblem) || loading}>{loading ? 'جارٍ إنشاء التقرير…' : 'عرض التقرير'}</button>
+        <button type="submit" className="primary-button" disabled={Boolean(rangeProblem) || !selected.length || loading}>{loading ? 'جارٍ إنشاء التقرير…' : 'عرض التقرير'}</button>
         <button type="button" className="secondary-button" disabled={!report || loading} onClick={() => window.print()}>طباعة / PDF</button>
       </div>
+      {!selected.length && <p className="reports-controls-hint" role="status">اختر طابقًا أو ردهة واحدة على الأقل.</p>}
       {rangeProblem && <p className="reports-controls-hint" role="status">{rangeProblem}</p>}
     </form>
 
@@ -111,7 +114,7 @@ export default function ReportsScreen({ adminHeader, isExpired }) {
 
 function ReportDocument({ report, stale }) {
   const { summary, range, thresholds } = report
-  const scopedToFloor = report.scope !== 'all'
+  const scopedToFloor = report.scope !== 'all' && !report.scope.includes(',')
   const generatedAt = new Date().toLocaleString('ar-IQ', { dateStyle: 'medium', timeStyle: 'short' })
 
   return (
