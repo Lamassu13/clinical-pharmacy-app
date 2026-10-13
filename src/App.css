@@ -2365,3 +2365,8 @@ button.topbar-user:hover { color: var(--primary); }
 .ppt-table td.ppt-name { font-weight: 700; }
 .ppt-foot { margin-top: auto; display: flex; justify-content: space-between; gap: 24px; padding: 0 12px 10px; font-size: 13px; }
 .ppt-sign { flex: 1; padding-bottom: 20px; border-bottom: 1px solid #000; font-weight: 700; }
+
+.reports-scope { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; border: 1px solid var(--line, #d0d5dd); border-radius: 8px; padding: 0.5rem 0.75rem; margin: 0; }
+.reports-scope legend { padding: 0 0.25rem; font-size: 0.85rem; }
+.reports-scope label { display: inline-flex; align-items: center; gap: 0.35rem; flex-direction: row; }
+.reports-scope input { width: auto; min-height: 0; }

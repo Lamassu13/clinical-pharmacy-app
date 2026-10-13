@@ -127,6 +127,8 @@ test('GET /api/reports: managers only, valid scope, and at most 120 days', async
   assert.equal((await user.get('/api/reports?scope=5&from=2026-05-01&to=2026-05-05')).status, 403)
   const supervisor = await loginAs({ role: 'supervisor' })
   assert.equal((await supervisor.get('/api/reports?scope=5&from=2026-05-01&to=2026-05-05')).status, 200)
+  assert.equal((await supervisor.get('/api/reports?scope=5,ردهة العناية المركزة&from=2026-05-01&to=2026-05-05')).status, 200, 'several floors/wards at once')
+  assert.equal((await supervisor.get('/api/reports?scope=5,7&from=2026-05-01&to=2026-05-05')).status, 400, 'one unknown entry rejects')
   assert.equal((await supervisor.get('/api/reports?scope=7&from=2026-05-01&to=2026-05-05')).status, 400)
   assert.equal((await supervisor.get('/api/reports?scope=all&from=2026-01-01&to=2026-06-01')).status, 400)
   assert.equal((await supervisor.get('/api/reports?scope=all&from=2026-05-05&to=2026-05-01')).status, 400)
