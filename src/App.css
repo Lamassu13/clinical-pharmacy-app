@@ -1437,6 +1437,7 @@ button.topbar-user:hover { color: var(--primary); }
 .chart-lock-banner--free { background: var(--success-tint); color: var(--success); }
 /* A quiet "you have the pen" mark in the dark meta bar — a shade greener than its other pills. */
 .chart-meta > span.chart-lock-mark { background: var(--green-600); }
+.chart-meta > span.card-status--done { background: var(--green-600); border-color: #ffffff4d; color: #fff; }
 
 /* While another device is editing the grid is inert; this scrim says so without touching the
    dose numbers' contrast (an earlier opacity:.55 dropped them below AA). grayscale pulls the
@@ -1862,6 +1863,18 @@ button.topbar-user:hover { color: var(--primary); }
 .date-controls input { width: 150px; padding: 6px 8px; border: 0; background: var(--surface); color: var(--text); font-size: var(--text-xs); border-radius: var(--radius-sm); }
 .date-controls button { padding: 6px 12px; border: 1px solid #ffffff4d; background: transparent; color: #fff; font-size: var(--text-xs); border-radius: var(--radius-sm); transition: background var(--dur-fast) var(--ease); }
 .date-controls button:hover { background: #ffffff1f; }
+.tb-glyph { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; flex: none; opacity: .9; }
+.date-controls .date-field { padding: 0 10px; height: 40px; background: var(--surface); border-radius: var(--radius-sm); }
+.date-controls .date-field input { width: 130px; padding: 0; background: transparent; font-weight: 700; }
+.date-controls .meta-button { position: relative; width: 40px; height: 40px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+.date-controls .meta-button .tb-glyph { width: 24px; height: 24px; opacity: 1; }
+.date-controls .meta-button:disabled { opacity: .45; cursor: not-allowed; }
+.date-controls .meta-button::after {
+  content: attr(data-tip); position: absolute; top: calc(100% + 8px); left: 50%; transform: translateX(-50%);
+  white-space: nowrap; background: #0d1f1b; color: #fff; font-size: 13px; padding: 6px 10px; border-radius: 8px;
+  opacity: 0; pointer-events: none; transition: opacity .12s; z-index: 5;
+}
+.date-controls .meta-button:hover::after, .date-controls .meta-button:focus-visible::after, .date-controls .meta-button:active::after { opacity: 1; }
 
 /* vertical medicine headers (tuned — do not reorder) */
 /* hospital logo as a faint watermark filling the info cell, behind the text */
