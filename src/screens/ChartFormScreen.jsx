@@ -9,7 +9,7 @@ import { medicineKey, medicineMatches, toEnglishDigits } from '../helpers.js'
 const blankLine = () => ({ id: Math.random().toString(36).slice(2), med: '', qty: '1' })
 
 export default function ChartFormScreen({
-  usedRows, wardLabel, roomLabel, slot, onSlotChange, onClose, medicines, chartReady, lockState, lockHolder, chartSaveStatus, isOnline, loadError,
+  usedRows, wardLabel, roomLabel, slot, onSlotChange, onClose, medicines, columnMedicines = [], chartReady, lockState, lockHolder, chartSaveStatus, isOnline, loadError,
   onSubmit, onFindPrevious, askConfirm,
 }) {
   const [name, setName] = useState('')
@@ -25,6 +25,19 @@ export default function ChartFormScreen({
   const canEdit = chartReady && !readOnly && !loadError
 
   const canonical = (text) => medicines.find((item) => medicineKey(item) === medicineKey(text)) || ''
+  // The chart's own medicine columns, as a checklist: ticking one is just a dose line for that
+  // medicine, so submit/validation are unchanged. Lines for anything else stay in the manual list.
+  const chartMeds = [...new Set(columnMedicines.map(canonical).filter(Boolean))]
+  const chartKeys = new Set(chartMeds.map(medicineKey))
+  const isChartLine = (line) => chartKeys.has(medicineKey(line.med))
+  const lineFor = (med) => lines.find((line) => medicineKey(line.med) === medicineKey(med))
+  const toggleMed = (med) => {
+    setError('')
+    setLines((current) => (current.some((line) => medicineKey(line.med) === medicineKey(med))
+      ? current.filter((line) => medicineKey(line.med) !== medicineKey(med))
+      : [...current, { ...blankLine(), med, qty: '1' }]))
+  }
+  const manualLines = lines.filter((line) => !isChartLine(line))
   const setLine = (lineId, patch) => { setError(''); setLines((current) => current.map((line) => (line.id === lineId ? { ...line, ...patch } : line))) }
 
   // Same rules as the grid: asked once per match, and any failure just means no offer.
@@ -110,9 +123,32 @@ export default function ChartFormScreen({
       </div>
 
       <div className="entry-form-card">
-        <h2>الأدوية</h2>
+        <h2>الأدوية{chartMeds.length > 0 && <span className="entry-count">{lines.filter(isChartLine).length} مختارة</span>}</h2>
+        {chartMeds.length > 0 && <>
+          <p className="entry-sub">أدوية هذا الجارت — علّم ما يأخذه المريض</p>
+          <ul className="entry-checks">
+            {chartMeds.map((med) => {
+              const line = lineFor(med)
+              return <li key={med} className={`entry-check${line ? ' entry-check--on' : ''}`}>
+                <label>
+                  <input type="checkbox" checked={Boolean(line)} disabled={!canEdit} onChange={() => toggleMed(med)} />
+                  <span className="entry-check-box" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg></span>
+                  <bdi dir="auto" className="entry-check-name">{med}</bdi>
+                </label>
+                {line && <div className="entry-stepper" role="group" aria-label={`الكمية ${med}`}>
+                  <button type="button" aria-label="زيادة" disabled={!canEdit || Number(line.qty) >= 9999} onClick={() => setLine(line.id, { qty: String(Math.min(9999, (Number(line.qty) || 0) + 1)) })}>+</button>
+                  <input value={line.qty} inputMode="numeric" aria-label={`الكمية ${med}`} autoComplete="off" disabled={!canEdit}
+                    onChange={(e) => setLine(line.id, { qty: toEnglishDigits(e.target.value).replace(/\D/g, '').slice(0, 4) })}
+                    onBlur={() => !Number(line.qty) && setLine(line.id, { qty: '1' })} />
+                  <button type="button" aria-label="إنقاص" disabled={!canEdit || Number(line.qty) <= 1} onClick={() => setLine(line.id, { qty: String(Math.max(1, (Number(line.qty) || 2) - 1)) })}>−</button>
+                </div>}
+              </li>
+            })}
+          </ul>
+          <p className="entry-sub entry-extra">دواء غير موجود في الجارت</p>
+        </>}
         <ul className="entry-lines">
-          {lines.map((line, index) => (
+          {manualLines.map((line, index) => (
             <li key={line.id} className="entry-line">
               <div className="entry-line-med">
                 <input value={line.med} aria-label={`الدواء ${index + 1}`} placeholder="ابحث عن دواء" autoComplete="off" disabled={!canEdit}
@@ -137,7 +173,7 @@ export default function ChartFormScreen({
                 <button type="button" aria-label="إنقاص" disabled={!canEdit || Number(line.qty) <= 1} onClick={() => setLine(line.id, { qty: String(Math.max(1, (Number(line.qty) || 2) - 1)) })}>−</button>
               </div>
               <button type="button" className="entry-line-remove" aria-label={`حذف الدواء ${index + 1}`}
-                onClick={() => setLines((current) => (current.length > 1 ? current.filter((item) => item.id !== line.id) : [blankLine()]))}>
+                onClick={() => setLines((current) => { const next = current.filter((item) => item.id !== line.id); return next.some((item) => !isChartLine(item)) ? next : [...next, blankLine()] })}>
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
               </button>
             </li>
