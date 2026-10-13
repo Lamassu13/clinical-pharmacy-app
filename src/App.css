@@ -2425,11 +2425,14 @@ button.topbar-user:hover { color: var(--primary); }
   .admin-menu { width: auto; }
   .admin-menu > summary { display: inline-flex; }
   .admin-menu-chevron { display: none; }
-  .admin-menu-list { position: absolute; inset-inline-start: 0; inset-inline-end: auto; min-width: 220px; margin-top: 0; box-shadow: var(--shadow-md); border-radius: var(--radius-md); }
-  .account-menu { display: block; position: relative; }
+  /* The menus hang from the whole bar, not from their own small button, so a list opened from
+     the middle of the row can never run past the screen edge. */
+  .topbar { position: relative; }
+  .admin-menu, .account-menu { position: static; }
+  .admin-menu-list { position: absolute; inset-inline: var(--space-3); top: calc(100% + var(--space-1)); min-width: 0; margin-top: 0; box-shadow: var(--shadow-md); border-radius: var(--radius-md); }
+  .account-menu { display: block; }
   .account-menu > summary { display: inline-flex; list-style: none; cursor: pointer; background: var(--primary); border-color: var(--primary); color: #fff; font-weight: 700; font-size: var(--text-base); }
   .account-menu > summary::-webkit-details-marker { display: none; }
-  .account-menu .admin-menu-list { inset-inline-start: 0; }
   .offline-badge { order: 9; flex: 1 0 100%; }
 
   .section-heading--date { flex-direction: row; align-items: center; justify-content: space-between; gap: var(--space-3); }
