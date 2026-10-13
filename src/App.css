@@ -201,6 +201,26 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 .chart-extra-button { background: transparent; color: var(--text-muted); border-color: var(--border-strong); }
 .chart-extra-button:hover:not(:disabled) { background: var(--surface-alt); border-color: var(--green-300); color: var(--primary-hover); }
 .compact { white-space: nowrap; }
+
+/* Chart toolbar: icon-only 46px buttons. The name shows instantly on hover, keyboard focus and
+   press-and-hold (data-tip) and is the aria-label. */
+.tb-button { position: relative; width: 46px; height: 46px; padding: 0; }
+.tb-button svg { width: 28px; height: 28px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.tb-button.primary-button { --btn: var(--primary); }
+.tb-button.secondary-button { --btn: var(--green-50); }
+.tb-t { fill: currentColor; fill-opacity: .18; stroke: none; }
+.tb-t2 { fill: currentColor; fill-opacity: .34; stroke: none; }
+.tb-f, .tb-bd { fill: currentColor; stroke: none; }
+.tb-bp { stroke: var(--btn); stroke-width: 1.8; }
+.tb-sep { width: 1px; align-self: stretch; margin: 4px 2px; background: var(--green-200); }
+.tb-button::after {
+  content: attr(data-tip); position: absolute; top: calc(100% + 8px); left: 50%; transform: translateX(-50%);
+  white-space: nowrap; background: #132a27; color: #fff; font-size: 13px; padding: 6px 10px; border-radius: 8px;
+  opacity: 0; pointer-events: none; transition: opacity .12s; z-index: 5;
+}
+.tb-button:hover::after, .tb-button:focus-visible::after, .tb-button:active::after { opacity: 1; }
+.tb-button .spinner { width: 20px; height: 20px; border-width: 2px; border-color: #fff6; border-top-color: #fff; }
+
 .theme-toggle { display: inline-grid; place-items: center; width: 34px; height: 34px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-alt); color: var(--heading); font-size: 15px; line-height: 1; transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease); }
 .theme-toggle:hover { background: var(--green-50); border-color: var(--green-300); }
 
