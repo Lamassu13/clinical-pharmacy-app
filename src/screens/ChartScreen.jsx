@@ -2,8 +2,7 @@ import { useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import hospitalLogo from '../assets/hospital-logo.png'
 import ChartDoseRow from '../components/ChartDoseRow.jsx'
-import { StatusCheck } from '../components/WardGlyph.jsx'
-import ToolbarButton from '../components/ToolbarIcons.jsx'
+import ToolbarButton, { Glyph } from '../components/ToolbarIcons.jsx'
 import MedicineSuggest from '../components/MedicineSuggest.jsx'
 import { medicineMatches } from '../helpers.js'
 
@@ -112,14 +111,14 @@ export default function ChartScreen({
     <div className="chart-meta">
       {selected.slot === 'extra' && <span className="chart-slot-flag">جارت إضافي</span>}
       {lockState === 'editing' && <span className="chart-lock-mark">أنت تُحرّر</span>}
-      {chartCompleted && <span className="card-status card-status--done"><StatusCheck /> اكتمل{completedByName ? ` — ${completedByName}` : ''}</span>}
-      {selected.floor && <span>الطابق: <b>{selected.floor}</b></span>}
-      <span>الفرع: <b>{selected.ward}</b></span>
-      <span>التاريخ: <b>{today}</b> — <b>{todayWeekday}</b></span>
+      {chartCompleted && <span className="card-status card-status--done" title="اكتمل" aria-label={`اكتمل${completedByName ? ` — ${completedByName}` : ''}`}><Glyph icon="done" />{completedByName}</span>}
+      {selected.floor && <span title="الطابق" aria-label={`الطابق ${selected.floor}`}><Glyph icon="floor" /><b>{selected.floor}</b></span>}
+      <span title="الفرع" aria-label={`الفرع: ${selected.ward}`}><Glyph icon="ward" /><b>{selected.ward}</b></span>
+      <span title="تاريخ اليوم" aria-label={`تاريخ اليوم: ${today} ${todayWeekday}`}><Glyph icon="today" /><b>{today}</b> — <b>{todayWeekday}</b></span>
       <span className="date-controls">
-        <label>التاريخ <input type="date" aria-label="تاريخ الجارت" value={selectedDate} onChange={(event) => onChangeDate(event.target.value)} /></label>
-        {!readOnly && <button type="button" onClick={onCopyToNextDay}>نسخ إلى اليوم التالي</button>}
-        {!readOnly && <button type="button" onClick={onOpenTemplates} disabled={!isOnline} title={isOnline ? undefined : 'القوالب تحتاج اتصالًا'}>القوالب</button>}
+        <label className="date-field" title="تاريخ الجارت"><input type="date" aria-label="تاريخ الجارت" value={selectedDate} onChange={(event) => onChangeDate(event.target.value)} /></label>
+        {!readOnly && <button type="button" className="meta-button" data-tip="نسخ إلى اليوم التالي" aria-label="نسخ إلى اليوم التالي" onClick={onCopyToNextDay}><Glyph icon="copy-next" /></button>}
+        {!readOnly && <button type="button" className="meta-button" data-tip={isOnline ? 'القوالب' : 'القوالب تحتاج اتصالًا'} aria-label="القوالب" onClick={onOpenTemplates} disabled={!isOnline}><Glyph icon="templates" /></button>}
       </span>
     </div>
 
