@@ -1,5 +1,6 @@
 import DashboardWidgets from '../components/DashboardWidgets.jsx'
 import { WardGlyph, ChevronStart, StatusCheck, CardStatus } from '../components/WardGlyph.jsx'
+import { Glyph } from '../components/ToolbarIcons.jsx'
 import WardActions from '../components/WardActions.jsx'
 import PatientSearch from '../components/PatientSearch.jsx'
 import LongAntibioticPatients from '../components/LongAntibioticPatients.jsx'
@@ -37,15 +38,15 @@ export default function FloorPickerScreen({
   const nothingAssigned = !isManager && floors.length === 0 && specialWards.length === 0
 
   return <section className="dashboard">
-    <div className="section-heading">
+    <div className="section-heading section-heading--date">
       <div><h1>اختر الطابق أو الردهة</h1></div>
-      <div className="date-chip"><span>اليوم</span><strong>{today}</strong></div>
+      <div className="date-chip"><Glyph icon="today" /><span>اليوم</span><strong>{today}</strong></div>
     </div>
 
     {resumeDraft && (
       <button type="button" className="resume-draft-card" onClick={onResume}>
-        <span className="resume-draft-label">لديك تعديلات لم تُحفظ</span>
-        <strong>{resumeDraft.floor ? `الطابق ${resumeDraft.floor} — ${resumeDraft.ward}` : resumeDraft.ward}{resumeDraft.slot === 'extra' ? ' — إضافي' : ''} · {resumeDraft.date}</strong>
+        <Glyph icon="warn" /><span className="resume-draft-text"><span className="resume-draft-label">لديك تعديلات لم تُحفظ</span>
+        <strong>{resumeDraft.floor ? `الطابق ${resumeDraft.floor} — ${resumeDraft.ward}` : resumeDraft.ward}{resumeDraft.slot === 'extra' ? ' — إضافي' : ''} · {resumeDraft.date}</strong></span>
         <span className="resume-draft-go">المتابعة ←</span>
       </button>
     )}

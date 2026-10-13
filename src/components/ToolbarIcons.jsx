@@ -40,6 +40,9 @@ const ICONS = {
   done: <><circle className="tb-t" cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="9" /><path d="M8 12.3l2.7 2.7 5.3-5.6" /></>,
   'copy-next': <><rect className="tb-t" x="3.5" y="5" width="13" height="14" rx="2" /><rect x="3.5" y="5" width="13" height="14" rx="2" /><path d="M3.5 9h13M7.5 3v3.5M12.5 3v3.5M14 17h7M18.2 13.8 21.4 17l-3.2 3.2" /></>,
   templates: <><rect className="tb-t" x="7.5" y="3.5" width="13" height="14" rx="2" /><rect x="7.5" y="3.5" width="13" height="14" rx="2" /><path d="M4.5 7v11.5a2 2 0 0 0 2 2H17M11 8h6M11 11.5h6M11 15h3.5" /></>,
+  admin: <><rect className="tb-t" x="3.5" y="3.5" width="7.5" height="7.5" rx="2" /><rect className="tb-t" x="13" y="3.5" width="7.5" height="7.5" rx="2" /><rect className="tb-t" x="3.5" y="13" width="7.5" height="7.5" rx="2" /><rect className="tb-t" x="13" y="13" width="7.5" height="7.5" rx="2" /><rect x="3.5" y="3.5" width="7.5" height="7.5" rx="2" /><rect x="13" y="3.5" width="7.5" height="7.5" rx="2" /><rect x="3.5" y="13" width="7.5" height="7.5" rx="2" /><rect x="13" y="13" width="7.5" height="7.5" rx="2" /></>,
+  forms: <><rect className="tb-t" x="5" y="4.5" width="14" height="16" rx="2" /><rect x="5" y="4.5" width="14" height="16" rx="2" /><path d="M9 4.5V3.5h6v1M8.5 10h.01M11 10h4.5M8.5 13.5h.01M11 13.5h4.5M8.5 17h.01M11 17h4.5" /></>,
+  warn: <><path className="tb-t" d="M12 3.5 2.8 19.5h18.4z" /><path d="M12 3.5 2.8 19.5h18.4zM12 10v4.5M12 17h.01" /></>,
   order: <>
     <path className="tb-t2" d="M12 3 3.6 7.2 12 11.4l8.4-4.2z" />
     <path className="tb-t" d="M3.6 7.2v9.4L12 21v-9.6zM12 21l8.4-4.4V7.2L12 11.4z" />
