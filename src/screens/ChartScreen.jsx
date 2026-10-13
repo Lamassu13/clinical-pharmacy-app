@@ -3,6 +3,7 @@ import { flushSync } from 'react-dom'
 import hospitalLogo from '../assets/hospital-logo.png'
 import ChartDoseRow from '../components/ChartDoseRow.jsx'
 import { StatusCheck } from '../components/WardGlyph.jsx'
+import ToolbarButton from '../components/ToolbarIcons.jsx'
 import MedicineSuggest from '../components/MedicineSuggest.jsx'
 import { medicineMatches } from '../helpers.js'
 
@@ -98,12 +99,13 @@ export default function ChartScreen({
       <button className="back-button" onClick={onBack}>→ العودة للردهات</button>
       <div><h1>{wardLabel}</h1></div>
       <div className="toolbar-actions">
-        {!readOnly && <button className="primary-button compact" onClick={onOpenForm}>+ إدخال مريض</button>}
-        {!readOnly && <button className="secondary-button compact" onClick={onAddColumn} disabled={!canAddColumn} title={canAddColumn ? undefined : `الحد الأقصى لعدد الأعمدة`}>+ عمود</button>}
-        {!readOnly && <button type="button" className="secondary-button compact" onClick={onToggleComplete}>{chartCompleted ? '✓ اكتمل — إلغاء' : 'اكتمل الجارت'}</button>}
-        <button className="primary-button compact" onClick={onExportPdf} disabled={pdfBusy}>{pdfBusy ? 'جارٍ التحضير…' : 'طباعة A4 / PDF'}</button>
-        <button className="secondary-button compact go-pills" onClick={onGoToPills}>استمارة الحبوب ←</button>
-        <button className="secondary-button compact" onClick={onGoToOrder}>الطلبية ←</button>
+        {!readOnly && <ToolbarButton icon="patient" primary label="إدخال مريض" onClick={onOpenForm} />}
+        {!readOnly && <ToolbarButton icon="column" label={canAddColumn ? 'إضافة عمود' : 'الحد الأقصى لعدد الأعمدة'} onClick={onAddColumn} disabled={!canAddColumn} />}
+        {!readOnly && <ToolbarButton icon="complete" primary={chartCompleted} label={chartCompleted ? 'إلغاء الاكتمال' : 'اكتمل الجارت'} aria-pressed={chartCompleted} onClick={onToggleComplete} />}
+        <span className="tb-sep" aria-hidden="true" />
+        <ToolbarButton icon="print" primary label={pdfBusy ? 'جارٍ التحضير…' : 'طباعة A4 / PDF'} busy={pdfBusy} onClick={onExportPdf} disabled={pdfBusy} />
+        <ToolbarButton icon="pills" label="استمارة الحبوب" onClick={onGoToPills} />
+        <ToolbarButton icon="order" label="الطلبية" onClick={onGoToOrder} />
       </div>
     </div>
 
