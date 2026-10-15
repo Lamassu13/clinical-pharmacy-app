@@ -146,3 +146,46 @@ export const hydrateStorage = async ({ idb = globalThis.indexedDB, ls = globalTh
     return 'local'
   } finally { clearTimeout(timer) }
 }
+
+// One offline queue for small last-write-wins writes (ward note, course day, chart complete),
+// modelled on the extra-pills queue. An entry is only added after the online request itself
+// failed to reach the server. `key` names what is written: a newer entry for the same key (and
+// user) replaces the older one. `user` keeps a shared iPad from sending one pharmacist's queued
+// change under the next one's session.
+const WRITE_QUEUE_KEY = 'cpa-write-queue'
+const readWrites = () => { try { return JSON.parse(storage.getItem(WRITE_QUEUE_KEY) || '[]') } catch { return [] } }
+const saveWrites = (queue) => {
+  try { if (queue.length) storage.setItem(WRITE_QUEUE_KEY, JSON.stringify(queue)); else storage.removeItem(WRITE_QUEUE_KEY) } catch { /* best effort */ }
+}
+let writeSeq = 0
+export const queueWrite = (entry) => {
+  writeSeq += 1
+  saveWrites([...readWrites().filter((item) => item.key !== entry.key || item.user !== entry.user), { ...entry, id: `${Date.now()}-${writeSeq}` }])
+}
+// An online save of the same thing succeeded: an older queued copy must not overwrite it later.
+export const forgetWrite = (key) => { const queue = readWrites(); if (queue.some((item) => item.key === key)) saveWrites(queue.filter((item) => item.key !== key)) }
+export const pendingWrites = (user) => readWrites().filter((item) => item.user === user)
+
+// Sends this user's queued writes in order with `send(entry)` (a fetch Response). A network
+// error, 401 (signed out) or 5xx stops the run and keeps the rest; another 4xx means the server
+// refused it for good, so it is dropped and returned for the caller to surface.
+let flushing = false
+export const flushWrites = async (user, send) => {
+  if (flushing) return { sent: 0, dropped: [] }
+  flushing = true
+  try { return await sendWrites(user, send) } finally { flushing = false }
+}
+const sendWrites = async (user, send) => {
+  const sent = []
+  const dropped = []
+  for (const entry of pendingWrites(user)) {
+    let response
+    try { response = await send(entry) } catch { break }
+    if (response.status === 401 || response.status >= 500) break
+    if (response.ok) sent.push(entry.id)
+    else { sent.push(entry.id); dropped.push(entry) }
+  }
+  // Re-read: a write queued while this ran stays (it has a new id, even for the same key).
+  if (sent.length) saveWrites(readWrites().filter((item) => !sent.includes(item.id)))
+  return { sent: sent.length, dropped }
+}

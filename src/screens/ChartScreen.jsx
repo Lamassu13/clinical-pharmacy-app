@@ -117,7 +117,7 @@ export default function ChartScreen({
       <span title="تاريخ اليوم" aria-label={`تاريخ اليوم: ${today} ${todayWeekday}`}><Glyph icon="today" /><b>{today}</b> — <b>{todayWeekday}</b></span>
       <span className="date-controls">
         <label className="date-field" title="تاريخ الجارت"><input type="date" aria-label="تاريخ الجارت" value={selectedDate} onChange={(event) => onChangeDate(event.target.value)} /></label>
-        {!readOnly && <button type="button" className="meta-button" data-tip="نسخ إلى اليوم التالي" aria-label="نسخ إلى اليوم التالي" onClick={onCopyToNextDay}><Glyph icon="copy-next" /></button>}
+        {!readOnly && <button type="button" className="meta-button" data-tip={isOnline ? 'نسخ إلى اليوم التالي' : 'النسخ يحتاج اتصالًا'} aria-label="نسخ إلى اليوم التالي" onClick={onCopyToNextDay} disabled={!isOnline}><Glyph icon="copy-next" /></button>}
         {!readOnly && <button type="button" className="meta-button" data-tip={isOnline ? 'القوالب' : 'القوالب تحتاج اتصالًا'} aria-label="القوالب" onClick={onOpenTemplates} disabled={!isOnline}><Glyph icon="templates" /></button>}
       </span>
     </div>
@@ -135,6 +135,7 @@ export default function ChartScreen({
       </label>
       <p className="ward-note-status" role="status">{wardNote.status === 'saving' ? 'جارٍ الحفظ…'
         : wardNote.status === 'save-error' ? 'لم تُحفظ الملاحظة — تحقّق من الاتصال ثم اخرج من المربع مرة أخرى.'
+        : wardNote.status === 'queued' ? 'محفوظة على هذا الجهاز — تُرفع عند عودة الاتصال.'
         : wardNote.note ? `محفوظة${wardNote.note.by ? ` — ${wardNote.note.by}` : ''}` : ''}</p>
     </details>}
 

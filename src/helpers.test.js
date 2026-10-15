@@ -364,7 +364,7 @@ const fakeIndexedDB = ({ data = new Map(), failWrites = false } = {}) => {
   fake.open = () => { const request = {}; later(() => { request.result = database; request.onupgradeneeded?.(); request.onsuccess() }); return request }
   return fake
 }
-const { storage, hydrateStorage, planHydrate } = await import('./storage.js')
+const { storage, hydrateStorage, planHydrate, queueWrite, forgetWrite, pendingWrites, flushWrites } = await import('./storage.js')
 
 test('storage plan: IndexedDB entries, minus fallback removals, overridden by localStorage', () => {
   const plan = planHydrate([['cpa-a', 'old'], ['cpa-b', 'saved'], ['cpa-c', 'keep']], [['cpa-a', 'new']], ['cpa-b'])
@@ -419,4 +419,36 @@ test('storage falls back to localStorage, copying everything, when an IndexedDB 
   assert.equal(ls.getItem('cpa-chart-copy:y'), 'copy')
   storage.setItem('cpa-chart-draft:x', 'draft 2') // now straight to localStorage
   assert.equal(ls.getItem('cpa-chart-draft:x'), 'draft 2')
+})
+
+test('write queue: last write per key, per user, sent in order; offline/401/5xx keep, other 4xx drop', async () => {
+  await hydrateStorage({ idb: undefined, ls: fakeLocalStorage({}) })
+  queueWrite({ key: 'ward-note:a', user: 1, body: 'first' })
+  queueWrite({ key: 'course-day:b', user: 1, body: 'day' })
+  queueWrite({ key: 'ward-note:a', user: 1, body: 'second' }) // replaces the first, moves to the end
+  queueWrite({ key: 'ward-note:a', user: 2, body: 'other user' })
+  assert.deepEqual(pendingWrites(1).map((entry) => entry.body), ['day', 'second'])
+
+  assert.deepEqual(await flushWrites(1, async () => { throw new TypeError('offline') }), { sent: 0, dropped: [] })
+  assert.deepEqual((await flushWrites(1, async () => ({ ok: false, status: 401 }))).sent, 0)
+  assert.deepEqual((await flushWrites(1, async () => ({ ok: false, status: 503 }))).sent, 0)
+  assert.equal(pendingWrites(1).length, 2)
+
+  const seen = []
+  const result = await flushWrites(1, async (entry) => { seen.push(entry.body); return entry.body === 'day' ? { ok: false, status: 403 } : { ok: true, status: 200 } })
+  assert.deepEqual(seen, ['day', 'second'])
+  assert.deepEqual(result.dropped.map((entry) => entry.body), ['day'])
+  assert.equal(pendingWrites(1).length, 0)
+  assert.equal(pendingWrites(2).length, 1) // another user's change waits for that user
+
+  queueWrite({ key: 'chart-complete:c', user: 2, body: true })
+  forgetWrite('chart-complete:c') // an online save of the same thing succeeded
+  assert.deepEqual(pendingWrites(2).map((entry) => entry.body), ['other user'])
+})
+
+test('write queue: a write queued while a flush runs is kept', async () => {
+  await hydrateStorage({ idb: undefined, ls: fakeLocalStorage({}) })
+  queueWrite({ key: 'ward-note:a', user: 1, body: 'old' })
+  await flushWrites(1, async () => { queueWrite({ key: 'ward-note:a', user: 1, body: 'new' }); return { ok: true, status: 200 } })
+  assert.deepEqual(pendingWrites(1).map((entry) => entry.body), ['new'])
 })
