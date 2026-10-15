@@ -332,7 +332,7 @@ router.get('/reports', requireManager, async (request, response) => {
   const multiple = []
   const reserve = []
   antibioticPatients.forEach(({ days: byDay, reserve: reserveDrugs, ...who }) => {
-    const crowded = [...byDay.values()].filter((drugs) => drugs.size > 1)
+    const crowded = [...byDay.values()].filter((drugs) => drugs.size > 2)
     if (crowded.length) multiple.push({ ...who, maxConcurrent: Math.max(...crowded.map((drugs) => drugs.size)), days: crowded.length, drugs: [...new Set(crowded.flatMap((drugs) => [...drugs]))].sort() })
     reserveDrugs.forEach((dates, drug) => reserve.push({ ...who, drug, days: dates.size }))
   })

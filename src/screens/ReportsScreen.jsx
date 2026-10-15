@@ -9,7 +9,6 @@ const MAX_DAYS = 120
 const DAY_MS = 86400000
 
 const formatDate = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString('ar-IQ')
-const weekday = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString('ar-IQ', { weekday: 'long' })
 const wardName = (row, scopedToFloor) => (row.floor === null ? row.ward : scopedToFloor ? row.ward : `الطابق ${row.floor} — ${row.ward}`)
 const allKeys = [...floors.map((item) => String(item.number)), ...specialWards]
 const keyLabel = (key) => (specialWards.includes(key) ? key : `الطابق ${key}`)
@@ -106,7 +105,7 @@ export default function ReportsScreen({ adminHeader, isExpired }) {
     ) : !report ? (
       <div className="report-start">
         <strong>اختر الطابق والمدة ثم اضغط «عرض التقرير»</strong>
-        <span>يشمل التقرير: عدد المرضى والدخول والخروج، مدة البقاء، استهلاك كل دواء مقارنةً بالمدة السابقة، ومتابعة المضادات الحيوية، ونشاط الصيادلة.</span>
+        <span>يشمل التقرير: عدد المرضى والدخول والخروج، مدة البقاء، استهلاك كل دواء مقارنةً بالمدة السابقة، ومتابعة المضادات الحيوية.</span>
       </div>
     ) : <ReportDocument report={report} stale={loading} />}
   </section></main>
@@ -142,46 +141,8 @@ function ReportDocument({ report, stale }) {
         <div><dt>متوسط الأدوية لكل مريض</dt><dd>{orDash(summary.averageMedicines)}</dd></div>
       </dl>
 
-      {!scopedToFloor && (
-        <Section title="مقارنة الطوابق" note="الجرعات لا تشمل المستلزمات (IV set، كانيولا، سرنجات، سوائل وريدية).">
-          <div className="table-frame"><table className="requests-table report-table">
-            <thead><tr><th>الطابق / الردهة</th><th>أيام المرضى</th><th>الجرعات</th><th>جرعات لكل مريض يوميًا</th></tr></thead>
-            <tbody>{report.floors.map((row) => <tr key={row.floor ?? row.ward}>
-              <td>{row.floor === null ? row.ward : `الطابق ${row.floor}`}</td>
-              <td className="num">{row.patientDays}</td>
-              <td className="num">{row.doses}</td>
-              <td className="num">{orDash(row.dosesPerPatient)}</td>
-            </tr>)}</tbody>
-          </table></div>
-        </Section>
-      )}
 
-      <Section title="المرضى حسب الردهة" note="الدخول: اسم ظهر اليوم ولم يكن أمس. الخروج: اسم كان أمس ولم يظهر اليوم. يُحتسبان فقط بين يومين فيهما جارت، حتى لا يُقرأ يوم بلا جارت خروجًا لكل المرضى.">
-        <div className="table-frame"><table className="requests-table report-table">
-          <thead><tr><th>الردهة</th><th>أيام المرضى</th><th>المدة السابقة</th><th>مرضى فعليون</th><th>دخول</th><th>خروج</th><th>متوسط البقاء (يوم)</th></tr></thead>
-          <tbody>{report.wards.map((row) => <tr key={`${row.floor}|${row.ward}`}>
-            <td>{wardName(row, scopedToFloor)}</td>
-            <td className="num">{row.patientDays}</td>
-            <td className="num">{row.previousPatientDays}</td>
-            <td className="num">{row.distinctPatients}</td>
-            <td className="num">{row.admissions}</td>
-            <td className="num">{row.discharges}</td>
-            <td className="num">{orDash(row.averageStay)}</td>
-          </tr>)}</tbody>
-        </table></div>
-      </Section>
 
-      <Section title="الحركة اليومية">
-        <div className="table-frame"><table className="requests-table report-table">
-          <thead><tr><th>التاريخ</th><th>المرضى</th><th>دخول</th><th>خروج</th></tr></thead>
-          <tbody>{report.daily.map((row) => <tr key={row.date}>
-            <td>{formatDate(row.date)} <small className="report-weekday">{weekday(row.date)}</small></td>
-            <td className="num">{row.patients}</td>
-            <td className="num">{row.admissions}</td>
-            <td className="num">{row.discharges}</td>
-          </tr>)}</tbody>
-        </table></div>
-      </Section>
 
       <Section title={`الإقامة الطويلة (${thresholds.longStay} أيام فأكثر)`} note="مرضى ما زالوا في الردهة في آخر يوم من المدة. النقل إلى ردهة أخرى يبدأ إقامة جديدة.">
         {report.longStays.length === 0 ? <Empty>لا يوجد مريض بقي {thresholds.longStay} أيام متتالية حتى آخر يوم من المدة.</Empty> : (
@@ -241,8 +202,8 @@ function ReportDocument({ report, stale }) {
         )}
       </Section>
 
-      <Section title="أكثر من مضاد حيوي في اليوم نفسه" note="مرضى أُعطوا مضادين مختلفين أو أكثر في يوم واحد. المضاد المركّب (مثل Tazocin) يُحتسب دواءً مستقلًا عن مكوّنه.">
-        {report.antibiotics.multiple.length === 0 ? <Empty>لا يوجد مريض أخذ أكثر من مضاد حيوي في يوم واحد.</Empty> : (
+      <Section title="أكثر من مضاد حيوي في اليوم نفسه" note="مرضى أُعطوا ثلاثة مضادات مختلفة أو أكثر في يوم واحد. المضاد المركّب (مثل Tazocin) يُحتسب دواءً مستقلًا عن مكوّنه.">
+        {report.antibiotics.multiple.length === 0 ? <Empty>لا يوجد مريض أخذ ثلاثة مضادات حيوية أو أكثر في يوم واحد.</Empty> : (
           <div className="table-frame"><table className="requests-table report-table">
             <thead><tr><th>المريض</th><th>الردهة</th><th>أعلى عدد في يوم</th><th>أيام</th><th>المضادات</th></tr></thead>
             <tbody>{report.antibiotics.multiple.map((row) => <tr key={`${row.floor}|${row.ward}|${row.patientId}|${row.patient}`}>
@@ -258,20 +219,6 @@ function ReportDocument({ report, stale }) {
             <thead><tr><th>المريض</th><th>الردهة</th><th>الدواء</th><th>الأيام</th></tr></thead>
             <tbody>{report.antibiotics.reserve.map((row) => <tr key={`${row.floor}|${row.ward}|${row.patientId}|${row.patient}|${row.drug}`}>
               <td>{row.patient}{row.patientId && <span className="report-patient-id"> · {row.patientId}</span>}</td><td>{wardName(row, scopedToFloor)}</td><td lang="en" dir="ltr">{row.drug}</td><td className="num">{row.days}</td>
-            </tr>)}</tbody>
-          </table></div>
-        )}
-      </Section>
-      <Section title="نشاط الصيادلة" note="للجارتات المؤرّخة في هذه المدة (الرئيسي والإضافي). لا يوجد سجل لكل تعديل، فالجارت يعرف فقط من أنشأه ومن أكمله ومن حفظه آخر مرة.">
-        {report.staff.length === 0 ? <Empty>لا يوجد نشاط مسجّل في هذه المدة.</Empty> : (
-          <div className="table-frame"><table className="requests-table report-table">
-            <thead><tr><th>الصيدلي</th><th>جارتات أنشأها</th><th>جارتات أكملها</th><th>آخر من حفظ</th><th>استمارات حبوب إضافية</th></tr></thead>
-            <tbody>{report.staff.map((row) => <tr key={row.userId}>
-              <td>{row.name}</td>
-              <td className="num">{row.started}</td>
-              <td className="num">{row.completed}</td>
-              <td className="num">{row.lastEdited}</td>
-              <td className="num">{row.extraForms}</td>
             </tr>)}</tbody>
           </table></div>
         )}
