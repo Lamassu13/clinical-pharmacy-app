@@ -329,3 +329,94 @@ test('averagePatients divides by the days a chart was made, not the days in the 
   assert.deepEqual(total, { chartedDays: 3, patientDays: 40, average: 13.3 })
   assert.equal(averagePatients([], [5]).total.average, null)
 })
+
+// --- src/storage.js: IndexedDB-backed device storage with a localStorage fallback ---
+const fakeLocalStorage = (entries = {}) => {
+  const store = new Map(Object.entries(entries))
+  return { store, get length() { return store.size }, key: (i) => [...store.keys()][i] ?? null, getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, String(v)), removeItem: (k) => store.delete(k) }
+}
+// Just enough of IndexedDB for storage.js: one object store, put/delete/openCursor, async events.
+const fakeIndexedDB = ({ data = new Map(), failWrites = false } = {}) => {
+  const fake = { data, failWrites }
+  const later = (fn) => setTimeout(fn, 0)
+  const database = {
+    createObjectStore() {},
+    transaction() {
+      const pending = []
+      const tx = {
+        objectStore: () => ({
+          put: (value, key) => pending.push(() => data.set(key, value)),
+          delete: (key) => pending.push(() => data.delete(key)),
+          openCursor() {
+            const request = {}
+            const rows = [...data.entries()]
+            let i = 0
+            const step = () => later(() => { request.result = i < rows.length ? { key: rows[i][0], value: rows[i][1], continue() { i += 1; step() } } : null; request.onsuccess() })
+            step()
+            return request
+          },
+        }),
+      }
+      later(() => { if (fake.failWrites && pending.length) { tx.onabort?.(); return } pending.forEach((run) => run()); tx.oncomplete?.() })
+      return tx
+    },
+  }
+  fake.open = () => { const request = {}; later(() => { request.result = database; request.onupgradeneeded?.(); request.onsuccess() }); return request }
+  return fake
+}
+const { storage, hydrateStorage, planHydrate } = await import('./storage.js')
+
+test('storage plan: IndexedDB entries, minus fallback removals, overridden by localStorage', () => {
+  const plan = planHydrate([['cpa-a', 'old'], ['cpa-b', 'saved'], ['cpa-c', 'keep']], [['cpa-a', 'new']], ['cpa-b'])
+  assert.deepEqual([...plan.entries()], [['cpa-a', 'new'], ['cpa-c', 'keep']])
+})
+
+test('storage migrates localStorage drafts into IndexedDB, then clears them (theme stays)', async () => {
+  const ls = fakeLocalStorage({ 'cpa-chart-draft:x': 'draft', 'cpa-session-cache': 'me', 'cpa-theme': 'dark', other: 'keep' })
+  const idb = fakeIndexedDB({ data: new Map([['cpa-chart-copy:y', 'copy']]) })
+  assert.equal(await hydrateStorage({ idb, ls }), 'indexeddb')
+  assert.deepEqual([...idb.data.keys()].sort(), ['cpa-chart-copy:y', 'cpa-chart-draft:x', 'cpa-session-cache'])
+  assert.deepEqual([...ls.store.keys()].sort(), ['cpa-theme', 'other'])
+  assert.equal(storage.getItem('cpa-chart-draft:x'), 'draft')
+  storage.setItem('cpa-pills-draft:z', 'p')
+  storage.removeItem('cpa-chart-draft:x')
+  assert.equal(storage.getItem('cpa-chart-draft:x'), null)
+  assert.deepEqual(storage.keys().sort(), ['cpa-chart-copy:y', 'cpa-pills-draft:z', 'cpa-session-cache'])
+  await new Promise((resolve) => setTimeout(resolve, 5))
+  assert.equal(idb.data.get('cpa-pills-draft:z'), 'p')
+  assert.equal(idb.data.has('cpa-chart-draft:x'), false)
+})
+
+test('storage keeps localStorage untouched when the IndexedDB migration write fails', async () => {
+  const ls = fakeLocalStorage({ 'cpa-chart-draft:x': 'draft' })
+  assert.equal(await hydrateStorage({ idb: fakeIndexedDB({ failWrites: true }), ls }), 'local')
+  assert.equal(ls.getItem('cpa-chart-draft:x'), 'draft')
+  assert.equal(storage.getItem('cpa-chart-draft:x'), 'draft')
+})
+
+test('storage fallback remembers removals so the next IndexedDB boot does not resurrect them', async () => {
+  const ls = fakeLocalStorage({})
+  const idb = fakeIndexedDB({ data: new Map([['cpa-chart-draft:x', 'stale']]) })
+  assert.equal(await hydrateStorage({ idb: undefined, ls }), 'local')
+  assert.equal(storage.getItem('cpa-chart-draft:x'), null)
+  storage.removeItem('cpa-chart-draft:x') // saved while IndexedDB was unavailable
+  storage.setItem('cpa-pills-draft:z', 'new')
+  assert.equal(await hydrateStorage({ idb, ls }), 'indexeddb')
+  assert.equal(storage.getItem('cpa-chart-draft:x'), null)
+  assert.equal(storage.getItem('cpa-pills-draft:z'), 'new')
+  assert.equal(idb.data.has('cpa-chart-draft:x'), false)
+  assert.equal(ls.length, 0)
+})
+
+test('storage falls back to localStorage, copying everything, when an IndexedDB write fails later', async () => {
+  const ls = fakeLocalStorage({})
+  const idb = fakeIndexedDB({ data: new Map([['cpa-chart-copy:y', 'copy']]) })
+  assert.equal(await hydrateStorage({ idb, ls }), 'indexeddb')
+  idb.failWrites = true // as when iOS drops the connection in the background
+  storage.setItem('cpa-chart-draft:x', 'draft')
+  await new Promise((resolve) => setTimeout(resolve, 5))
+  assert.equal(ls.getItem('cpa-chart-draft:x'), 'draft')
+  assert.equal(ls.getItem('cpa-chart-copy:y'), 'copy')
+  storage.setItem('cpa-chart-draft:x', 'draft 2') // now straight to localStorage
+  assert.equal(ls.getItem('cpa-chart-draft:x'), 'draft 2')
+})

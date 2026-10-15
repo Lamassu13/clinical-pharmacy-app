@@ -23,6 +23,7 @@ import MeropenemOrderScreen from './screens/MeropenemOrderScreen.jsx'
 import InteractionsScreen from './screens/InteractionsScreen.jsx'
 import RenalDoseScreen from './screens/RenalDoseScreen.jsx'
 import { INTERACTION_RULES } from './interactions.js'
+import { storage } from './storage.js'
 import ExtraPillsScreen from './screens/ExtraPillsScreen.jsx'
 import FloorPickerScreen from './screens/FloorPickerScreen.jsx'
 import WardPickerScreen from './screens/WardPickerScreen.jsx'
@@ -64,9 +65,9 @@ function useOnlineStatus() {
 // per form is ever queued at a time (see enqueueExtraPillsOp), stored here keyed by ward so a
 // reload before reconnecting doesn't lose it.
 const extraPillsQueueKey = (floorValue, ward) => `cpa-extra-pills-queue:${floorValue || 'special'}-${ward}`
-const readExtraPillsQueue = (key) => { try { return JSON.parse(localStorage.getItem(key) || '[]') } catch { return [] } }
+const readExtraPillsQueue = (key) => { try { return JSON.parse(storage.getItem(key) || '[]') } catch { return [] } }
 const writeExtraPillsQueue = (key, queue) => {
-  try { if (queue.length) localStorage.setItem(key, JSON.stringify(queue)); else localStorage.removeItem(key) } catch { /* best effort */ }
+  try { if (queue.length) storage.setItem(key, JSON.stringify(queue)); else storage.removeItem(key) } catch { /* best effort */ }
 }
 // Identifies one ward/day/slot — the loaded-chart/pills guards and localStorage draft keys.
 // The user asked for clopidogrel + PPI to stay off the chart badge: the pair is common and
@@ -311,7 +312,7 @@ function App() {
     setSessionExpired(true)
     // A real 401, not a network failure — the offline auth-bootstrap fallback (App boot effect)
     // must not resurrect this identity on the next cold, offline reopen.
-    try { localStorage.removeItem('cpa-session-cache') } catch { /* best effort */ }
+    try { storage.removeItem('cpa-session-cache') } catch { /* best effort */ }
     return true
   }, [])
   const today = new Date(`${selectedDate}T12:00:00`).toLocaleDateString('ar-IQ')
@@ -463,7 +464,7 @@ function App() {
         if (!result.user) return
         setCurrentUser(result.user)
         setIsLoggedIn(true)
-        try { localStorage.setItem('cpa-session-cache', JSON.stringify(result.user)) } catch { /* best effort */ }
+        try { storage.setItem('cpa-session-cache', JSON.stringify(result.user)) } catch { /* best effort */ }
         // Restore the ward/date open before a refresh or iOS tab-kill (only once we know the
         // session is still good — otherwise a 401 chart-load would flash the expiry screen).
         landFromNav()
@@ -475,7 +476,7 @@ function App() {
         // past without a connection. A real 401 (session actually gone) still logs out — that
         // response reaches the .then() branch above, not here.
         try {
-          const cached = JSON.parse(localStorage.getItem('cpa-session-cache') || 'null')
+          const cached = JSON.parse(storage.getItem('cpa-session-cache') || 'null')
           if (!cached) return
           setCurrentUser(cached)
           setIsLoggedIn(true)
@@ -533,7 +534,7 @@ function App() {
       const result = await response.json()
       if (!response.ok) throw new Error(result.message || 'تعذر حفظ التغييرات')
       setCurrentUser(result.user)
-      try { localStorage.setItem('cpa-session-cache', JSON.stringify(result.user)) } catch { /* best effort */ }
+      try { storage.setItem('cpa-session-cache', JSON.stringify(result.user)) } catch { /* best effort */ }
       setProfileSuccess('تم حفظ التغييرات')
     } catch (error) { setProfileError(error.message || 'تعذر الاتصال بالخادم') } finally { setBusy(false) }
   }
@@ -1220,7 +1221,7 @@ function App() {
           lastSyncedChartRef.current = saved
         }
         rememberChart(chartKey, selectedDate, result.version, saved)
-        try { localStorage.removeItem(`cpa-chart-draft:${chartKey}`) } catch { /* best effort */ }
+        try { storage.removeItem(`cpa-chart-draft:${chartKey}`) } catch { /* best effort */ }
       })
       .catch(() => { /* the debounced autosave or next visit will retry */ })
   }, [buildChartBody, columnMedicines, isLoggedIn, loadedChartKey, lockState, patientIds, patientNames, quantities, selected, selectedDate])
@@ -1265,7 +1266,7 @@ function App() {
         // resumes after this flush lands treats its own already-saved edits as still dirty.
         lastSyncedPillsRef.current = { entries: pillEntries, rooms: pillRooms }
         rememberPills(pillsKey, selectedDate, lastSyncedPillsRef.current)
-        try { localStorage.removeItem(`cpa-pills-draft:${pillsKey}`) } catch { /* best effort */ }
+        try { storage.removeItem(`cpa-pills-draft:${pillsKey}`) } catch { /* best effort */ }
       })
       .catch(() => { /* the debounced autosave or next visit will retry */ })
   }, [isLoggedIn, loadedPillsKey, pillEntries, pillRooms, pillsData, selected, selectedDate])
@@ -1300,7 +1301,7 @@ function App() {
     if (unsaved && !(await askConfirm('لا يزال هناك ما لم يُحفَظ على الخادم. إن سجّلت الخروج الآن يبقى على هذا الجهاز ويُعاد حفظه فور دخولك من جديد. متابعة تسجيل الخروج؟'))) return
     try { await fetch(`${apiUrl}/auth/logout`, { method: 'POST', credentials: 'include' }) } catch { /* ignore network errors on logout */ }
     didAutoLandRef.current = false
-    try { sessionStorage.removeItem('cpa-nav'); localStorage.removeItem('cpa-session-cache') } catch { /* storage unavailable */ }
+    try { sessionStorage.removeItem('cpa-nav'); storage.removeItem('cpa-session-cache') } catch { /* storage unavailable */ }
     // Ward iPads are shared between pharmacists — the next person to sign in on this device
     // shouldn't be able to see this session's cached chart/pills/extra-pills responses if they
     // go offline before their own first successful load. Name must match sw.js's API_CACHE.
@@ -1547,7 +1548,7 @@ function App() {
           if (cancelled || navigator.onLine) throw networkError
           const blank = parseChartRows(null)
           let draft = null
-          try { draft = JSON.parse(localStorage.getItem(draftKey) || 'null') } catch { /* corrupt — start blank */ }
+          try { draft = JSON.parse(storage.getItem(draftKey) || 'null') } catch { /* corrupt — start blank */ }
           if (openFromDeviceCopy(draft, blank)) return
           const base = draft ? { ...draft.base, patientIds: draft.base.patientIds ?? blank.patientIds } : blank
           const next = draft ? mergeChartSnapshots(base, draft.current, base) : blank
@@ -1576,7 +1577,7 @@ function App() {
         // up on yet.
         let draft = null
         try {
-          const raw = localStorage.getItem(draftKey)
+          const raw = storage.getItem(draftKey)
           if (raw) draft = JSON.parse(raw)
         } catch { /* storage unavailable or the draft was corrupt — fall back to the server state */ }
         // The service worker answered from its cache (weak link / no signal): that copy is only as
@@ -1615,7 +1616,7 @@ function App() {
           // Kept in localStorage until the merged grid is saved (the mirror rewrites it meanwhile).
           setChartClashNote(`أُضيف ما كُتب دون اتصال إلى جارت الخادم كمرضى جدد${offlineAdd.unplaced ? ` — ${offlineAdd.unplaced} مريض لم يتّسع له الجارت، راجعه` : ''}. راجِع الجارت.`)
         } else if (draft) {
-          try { localStorage.removeItem(draftKey) } catch { /* best effort */ }
+          try { storage.removeItem(draftKey) } catch { /* best effort */ }
           // Same reporting as a live save conflict (mergeAfterConflict) — a recovered draft is
           // exactly that, just discovered on load instead of on a 409, and was previously
           // applied in total silence: any field this tab's own draft happened to also touch
@@ -1674,7 +1675,7 @@ function App() {
       // `meta` lets the picker's resume card name the ward/date without parsing the key
       // (which contains dashes from the ISO date). The load effect ignores it.
       const meta = { floor: selected.floor ?? null, ward: selected.ward, date: selectedDate, slot: selected.slot || 'main' }
-      localStorage.setItem(`cpa-chart-draft:${chartKey}`, JSON.stringify({ meta, base: lastSyncedChartRef.current, current: { patientNames, patientIds, columnMedicines, quantities }, offline: offlineChartKeyRef.current === chartKey }))
+      storage.setItem(`cpa-chart-draft:${chartKey}`, JSON.stringify({ meta, base: lastSyncedChartRef.current, current: { patientNames, patientIds, columnMedicines, quantities }, offline: offlineChartKeyRef.current === chartKey }))
     } catch { /* storage unavailable or full — the network autosave is still the source of truth */ }
     return undefined
   }, [columnMedicines, loadedChartKey, patientIds, patientNames, quantities, selected, selectedDate])
@@ -1685,21 +1686,17 @@ function App() {
   const resumeDraft = useMemo(() => {
     if (!isLoggedIn || floor || selected || adminView) return null
     try {
-      const keys = []
-      for (let i = 0; i < localStorage.length; i += 1) {
-        const key = localStorage.key(i)
-        if (key && key.startsWith('cpa-chart-draft:')) keys.push(key)
-      }
+      const keys = storage.keys().filter((key) => key.startsWith('cpa-chart-draft:'))
       const todayIso = isoDate(new Date())
       forgetChartCopies(todayIso)
       let found = null
       for (const key of keys) {
-        const meta = JSON.parse(localStorage.getItem(key) || 'null')?.meta
+        const meta = JSON.parse(storage.getItem(key) || 'null')?.meta
         if (!meta?.ward) continue
         // A draft from a past date never got a successful flush to clear it (tab killed, app
         // force-quit) — it would otherwise resurface every login forever. Garbage-collect it
         // here instead of just skipping past it.
-        if (isDraftStale(meta, todayIso)) { try { localStorage.removeItem(key) } catch { /* best effort */ } continue }
+        if (isDraftStale(meta, todayIso)) { try { storage.removeItem(key) } catch { /* best effort */ } continue }
         if (found) continue
         // Shared iPads carry drafts across logins: a different ward's account may have left an
         // unsynced chart in this same browser's storage. Only offer to resume what the current
@@ -1763,7 +1760,7 @@ function App() {
         rememberChart(chartKey, selectedDate, result.version, saved)
         // Everything the localStorage mirror was protecting has now actually reached the
         // server — an empty draft is indistinguishable from no draft, so just drop it.
-        try { localStorage.removeItem(`cpa-chart-draft:${chartKey}`) } catch { /* best effort */ }
+        try { storage.removeItem(`cpa-chart-draft:${chartKey}`) } catch { /* best effort */ }
         // Switched to another chart while this PUT was in flight: its refs belong to that one now.
         if (openChartKeyRef.current !== chartKey) return
         chartVersionRef.current = result.version
@@ -1875,7 +1872,7 @@ function App() {
         // recovered-draft path: draft.base is what that earlier tab last knew the server had.
         let draft = null
         try {
-          const raw = localStorage.getItem(draftKey)
+          const raw = storage.getItem(draftKey)
           if (raw) draft = JSON.parse(raw)
         } catch { /* storage unavailable or the draft was corrupt — fall back to the server state */ }
         if (fromCache) {
@@ -1906,7 +1903,7 @@ function App() {
         lastSyncedPillsRef.current = { entries: seed, rooms: freshRooms }
         rememberPills(pillsKey, selectedDate, lastSyncedPillsRef.current)
         if (draft) {
-          try { localStorage.removeItem(draftKey) } catch { /* best effort */ }
+          try { storage.removeItem(draftKey) } catch { /* best effort */ }
           const { adopted, dropped } = diffKeyedMergeOutcome(nextEntries, draft.current.entries, seed)
           if (adopted || dropped) {
             const parts = []
@@ -1937,7 +1934,7 @@ function App() {
     const pillsKey = selected ? wardKey(selected, selectedDate) : null
     if (!selected || selected.mode !== 'pills' || loadedPillsKey !== pillsKey) return undefined
     try {
-      localStorage.setItem(`cpa-pills-draft:${pillsKey}`, JSON.stringify({ base: lastSyncedPillsRef.current, current: { entries: pillEntries, rooms: pillRooms } }))
+      storage.setItem(`cpa-pills-draft:${pillsKey}`, JSON.stringify({ base: lastSyncedPillsRef.current, current: { entries: pillEntries, rooms: pillRooms } }))
     } catch { /* storage unavailable or full — the network autosave is still the source of truth */ }
   }, [loadedPillsKey, pillEntries, pillRooms, selected, selectedDate])
 
@@ -1962,7 +1959,7 @@ function App() {
         if (!response.ok) throw new Error('save failed')
         lastSyncedPillsRef.current = { entries: pillEntries, rooms: pillRooms }
         rememberPills(pillsKey, selectedDate, lastSyncedPillsRef.current)
-        try { localStorage.removeItem(`cpa-pills-draft:${pillsKey}`) } catch { /* best effort */ }
+        try { storage.removeItem(`cpa-pills-draft:${pillsKey}`) } catch { /* best effort */ }
         setPillsSaveStatus('saved')
       } catch {
         setPillsSaveStatus('error')

@@ -10,6 +10,7 @@ import '@fontsource/ibm-plex-sans-arabic/latin-600.css'
 import '@fontsource/ibm-plex-sans-arabic/latin-700.css'
 import './index.css'
 import App from './App.jsx'
+import { hydrateStorage } from './storage.js'
 
 // Facebook (fbclid), Google (gclid/…), Mailchimp (mc_*), utm_* etc. append click-tracking
 // params when the link is opened from their platforms. The app never reads its own query
@@ -25,11 +26,17 @@ try {
   if (url.search !== original) window.history.replaceState(null, '', url.pathname + url.search + url.hash)
 } catch { /* opaque or unsupported URL — leave the bar as-is */ }
 
-createRoot(document.getElementById('root')).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-)
+// Drafts and offline copies load from IndexedDB before the first render, so the app can keep
+// reading them synchronously. hydrateStorage() never rejects (it falls back to localStorage).
+hydrateStorage().then(() => {
+  createRoot(document.getElementById('root')).render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
+  )
+})
+// Ask the browser not to evict this device's drafts under storage pressure (no-op where unsupported).
+try { navigator.storage?.persist?.().catch(() => {}) } catch { /* unsupported */ }
 
 // Registered only in production: a dev-mode service worker would cache Vite's dev
 // assets and fight with hot-reload the next time the code changes.
