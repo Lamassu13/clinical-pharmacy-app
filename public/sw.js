@@ -1,6 +1,12 @@
 // Basic offline app shell: reopening the tab with no signal shows the last-loaded app
 // instead of the browser's own offline error page.
-const SHELL_CACHE = 'cpa-shell-v1'
+// Both placeholders are filled by vite.config.js (precacheServiceWorker) at build time: every
+// hashed file in dist/assets, and a hash of that list naming this build's shell cache. Unfilled,
+// this falls back to the old fixed cache and cache-on-first-use only.
+const PRECACHE = '__PRECACHE__'
+const BUILD_HASH = '__BUILD_HASH__'
+const PRECACHE_LIST = Array.isArray(PRECACHE) ? PRECACHE : []
+const SHELL_CACHE = BUILD_HASH === '__BUILD' + '_HASH__' ? 'cpa-shell-v1' : `cpa-shell-${BUILD_HASH}`
 const APP_SHELL = ['/', '/index.html', '/favicon.png']
 // Chart/pills/extra-pills data: network-first like everything else below, but on failure
 // served from this separate cache instead of failing outright — the one thing that makes
@@ -23,7 +29,11 @@ const API_CACHE = 'cpa-api-v1'
 const CACHEABLE_API_PATHS = ['/api/chart', '/api/pills', '/api/extra-pills', '/api/medicines']
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(SHELL_CACHE).then((cache) => cache.addAll(APP_SHELL)))
+  // The page itself is required, as before. The precache is best effort, one file at a time: a
+  // file that fails on a weak link is just fetched and cached on first use later, instead of
+  // failing the whole install (addAll is all-or-nothing).
+  event.waitUntil(caches.open(SHELL_CACHE).then((cache) => cache.addAll(APP_SHELL)
+    .then(() => Promise.all(['/theme.js', ...PRECACHE_LIST].map((url) => cache.add(url).catch(() => {}))))))
   self.skipWaiting()
 })
 
