@@ -26,7 +26,11 @@ const API_CACHE = 'cpa-api-v1'
 // /api/medicines too: the shared catalogue (identical for every user, nothing personal in it). A
 // chart column only accepts a catalogue name, so without it a chart opened offline could take no
 // medicines at all.
-const CACHEABLE_API_PATHS = ['/api/chart', '/api/pills', '/api/extra-pills', '/api/medicines']
+// The rest are read-only screens and lookups (templates, interactions, patient search/history,
+// the ward note, antibiotic follow-up), so they still show their last copy offline. All are
+// dropped with this cache at logout.
+const CACHEABLE_API_PATHS = ['/api/chart', '/api/pills', '/api/extra-pills', '/api/medicines',
+  '/api/templates', '/api/interactions', '/api/patients/search', '/api/patients/history', '/api/ward-note', '/api/antibiotics']
 
 self.addEventListener('install', (event) => {
   // The page itself is required, as before. The precache is best effort, one file at a time: a

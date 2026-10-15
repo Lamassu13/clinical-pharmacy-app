@@ -82,14 +82,15 @@ function AccountMenu({ theme, onToggleTheme, currentUser, onLogout, onMyWard, on
   </details>
 }
 
-export default function AppHeader({ theme, onToggleTheme, currentUser, onLogout, onHome, onMyWard, onOpenProfile, isAdmin, isManager, adminView, onNavigate, isOnline }) {
+export default function AppHeader({ theme, onToggleTheme, currentUser, onLogout, onHome, onMyWard, onOpenProfile, isAdmin, isManager, adminView, onNavigate, isOnline, pendingWrites = 0 }) {
   return <header className="topbar">
     <TopBarBrand onClick={onHome} />
     <nav className="user-menu" aria-label="أدوات الحساب">
       {/* One clear top-level state instead of a per-screen chip: chart/pills/extra-pills each
           already say "not saved yet" on their own, this just names *why* when it's connectivity
           rather than a slow save. */}
-      {isOnline === false && <span className="offline-badge" role="status">○ غير متصل — سيُرفع تلقائيًا</span>}
+      {isOnline === false ? <span className="offline-badge" role="status">○ غير متصل — سيُرفع تلقائيًا</span>
+        : pendingWrites > 0 && <span className="offline-badge" role="status">↻ {pendingWrites} بانتظار الرفع</span>}
       {onMyWard && <button type="button" className="secondary-button compact my-ward-button desktop-only" onClick={onMyWard}>ردهتي اليوم</button>}
       <button type="button" className="secondary-button compact forms-button" aria-label="استمارات العلاج" aria-current={adminView === 'forms' || undefined} onClick={() => onNavigate('forms')}><Glyph icon="forms" /><span className="tb-label">استمارات العلاج</span></button>
       {isManager && <AdminMenu isAdmin={isAdmin} adminView={adminView} onNavigate={onNavigate} />}

@@ -23,7 +23,7 @@ import MeropenemOrderScreen from './screens/MeropenemOrderScreen.jsx'
 import InteractionsScreen from './screens/InteractionsScreen.jsx'
 import RenalDoseScreen from './screens/RenalDoseScreen.jsx'
 import { INTERACTION_RULES } from './interactions.js'
-import { storage } from './storage.js'
+import { storage, queueWrite, forgetWrite, pendingWrites, flushWrites } from './storage.js'
 import ExtraPillsScreen from './screens/ExtraPillsScreen.jsx'
 import FloorPickerScreen from './screens/FloorPickerScreen.jsx'
 import WardPickerScreen from './screens/WardPickerScreen.jsx'
@@ -331,30 +331,45 @@ function App() {
   const totals = useMemo(() => quantities[0].map((_, columnIndex) => quantities.reduce((sum, row) => sum + (Number(row[columnIndex]) || 0), 0)), [quantities])
   // «ملاحظة التسليم»: the ward's note for this day (one per ward, shared by the main and extra
   // charts) and the previous one. `draft` is what the box shows; it saves on blur.
-  // ponytail: a save that fails offline is reported, not queued — add a queue if notes get lost.
+  // A save that cannot reach the server is queued on the device (storage.js queueWrite) and
+  // shown as «queued» until the write queue below sends it.
   const [wardNote, setWardNote] = useState({ key: '', note: null, previous: null, draft: '', status: 'idle' })
+  const [writesFlushed, setWritesFlushed] = useState(0)
+  const userId = currentUser?.id
   const wardNoteKey = selected && selected.mode === 'chart' ? `${selected.floor ?? ''}|${selected.ward}|${selectedDate}` : ''
   useEffect(() => {
     if (!wardNoteKey) return undefined
     let cancelled = false
+    const pending = pendingWrites(userId).find((item) => item.key === `ward-note:${wardNoteKey}`)
     setWardNote({ key: wardNoteKey, note: null, previous: null, draft: '', status: 'loading' })
     fetch(`${apiUrl}/ward-note?${new URLSearchParams({ floor: selected.floor || '', ward: selected.ward, date: selectedDate })}`, { credentials: 'include' })
       .then((response) => (response.ok ? response.json() : Promise.reject(new Error('load failed'))))
-      .then((result) => { if (!cancelled) setWardNote({ key: wardNoteKey, note: result.note, previous: result.previous, draft: result.note?.body || '', status: 'idle' }) })
-      .catch(() => { if (!cancelled) setWardNote((current) => ({ ...current, status: 'load-error' })) })
+      .then((result) => { if (!cancelled) setWardNote({ key: wardNoteKey, note: result.note, previous: result.previous, draft: pending ? pending.body.body : result.note?.body || '', status: pending ? 'queued' : 'idle' }) })
+      .catch(() => { if (!cancelled) setWardNote((current) => (pending ? { ...current, draft: pending.body.body, status: 'queued' } : { ...current, status: 'load-error' })) })
     return () => { cancelled = true }
-  }, [wardNoteKey, selected?.floor, selected?.ward, selectedDate])
+  }, [wardNoteKey, selected?.floor, selected?.ward, selectedDate, userId, writesFlushed])
   const saveWardNote = useCallback(async () => {
     const { key, draft, note } = wardNote
-    if (!selected || key !== wardNoteKey || draft.trim() === (note?.body || '')) return
+    const queueKey = `ward-note:${key}`
+    if (!selected || key !== wardNoteKey) return
+    if (draft.trim() === (note?.body || '') && !pendingWrites(userId).some((item) => item.key === queueKey)) return
     setWardNote((current) => ({ ...current, status: 'saving' }))
+    const body = { floor: selected.floor || '', ward: selected.ward, date: selectedDate, body: draft }
+    let response
     try {
-      const response = await fetch(`${apiUrl}/ward-note`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ floor: selected.floor || '', ward: selected.ward, date: selectedDate, body: draft }) })
+      response = await fetch(`${apiUrl}/ward-note`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body) })
+    } catch {
+      queueWrite({ key: queueKey, user: userId, method: 'PUT', path: '/ward-note', body, label: 'ملاحظة التسليم' })
+      setWardNote((current) => (current.key === key ? { ...current, status: 'queued' } : current))
+      return
+    }
+    try {
       if (!response.ok) throw new Error('save failed')
+      forgetWrite(queueKey)
       const result = await response.json()
       setWardNote((current) => (current.key === key ? { ...current, note: result.note, status: 'idle' } : current))
     } catch { setWardNote((current) => (current.key === key ? { ...current, status: 'save-error' } : current)) }
-  }, [selected, selectedDate, wardNote, wardNoteKey])
+  }, [selected, selectedDate, wardNote, wardNoteKey, userId])
   // Safety flags on the open chart: the same check as «التداخلات الدوائية», shown as a ⚠ on the
   // patient's row for major interactions and duplicate therapy only (moderate/minor would badge
   // half the ward). The reference pairs are fetched once per set of medicines given.
@@ -812,9 +827,11 @@ function App() {
     // mid-session (lock already 'editing') must still clear on the very next edit after that.
     if (chartCompleted) {
       setChartCompleted(false); setCompletedByName(null)
-      fetch(`${apiUrl}/chart/complete`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ floor: selected.floor || '', ward: selected.ward, slot: selected.slot || 'main', date: selectedDate, completed: false }) })
-        .catch(() => undefined)
+      const completeBody = { floor: selected.floor || '', ward: selected.ward, slot: selected.slot || 'main', date: selectedDate, completed: false }
+      const completeKey = `chart-complete:${completeBody.floor}|${completeBody.ward}|${completeBody.slot}|${completeBody.date}`
+      fetch(`${apiUrl}/chart/complete`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(completeBody) })
+        .then((response) => { if (response.ok) forgetWrite(completeKey) })
+        .catch(() => queueWrite({ key: completeKey, user: userId, method: 'PATCH', path: '/chart/complete', body: completeBody, label: 'اكتمال الجارت' }))
     }
     if (claimingLockRef.current) return
     if (lockState !== 'idle' && lockState !== 'available') return
@@ -833,7 +850,7 @@ function App() {
       })
       .catch(() => setLockState('editing'))
       .finally(() => { claimingLockRef.current = false })
-  }, [chartCompleted, lockState, selected, selectedDate, isExpired])
+  }, [chartCompleted, lockState, selected, selectedDate, isExpired, userId])
   const updateQuantity = useCallback((rowIndex, columnIndex, value) => { noteChartEdit()
     // Editing a cell that still carries a post-merge "كان: X" tag resolves it — the pharmacist
     // has now made a deliberate call on that dose.
@@ -1242,15 +1259,26 @@ function App() {
   const toggleChartComplete = useCallback(async () => {
     if (!selected || selected.mode !== 'chart') return
     const next = !chartCompleted
+    const body = { floor: selected.floor || '', ward: selected.ward, slot: selected.slot || 'main', date: selectedDate, completed: next }
+    const queueKey = `chart-complete:${body.floor}|${body.ward}|${body.slot}|${body.date}`
+    let response
     try {
-      const response = await fetch(`${apiUrl}/chart/complete`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ floor: selected.floor || '', ward: selected.ward, slot: selected.slot || 'main', date: selectedDate, completed: next }) })
+      response = await fetch(`${apiUrl}/chart/complete`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body) })
+    } catch {
+      // Offline: shown at once, sent by the write queue when the connection is back.
+      queueWrite({ key: queueKey, user: userId, method: 'PATCH', path: '/chart/complete', body, label: 'اكتمال الجارت' })
+      setChartCompleted(next)
+      if (!next) setCompletedByName(null)
+      return
+    }
+    try {
       if (isExpired(response) || !response.ok) return
+      forgetWrite(queueKey)
       const result = await response.json()
       setChartCompleted(!!result.completedAt)
       setCompletedByName(result.completedByName ?? null)
     } catch { /* the button stays clickable to retry */ }
-  }, [chartCompleted, selected, selectedDate, isExpired])
+  }, [chartCompleted, selected, selectedDate, isExpired, userId])
   const flushPills = useCallback(() => {
     if (!selected || selected.mode !== 'pills' || !isLoggedIn || !pillsData) return
     const pillsKey = wardKey(selected, selectedDate)
@@ -2028,12 +2056,32 @@ function App() {
   }, [selected, selectedDate, isExpired, meropenemNonce])
   // Retype a course's first shown day on the follow-up forms; the days after it count on from it.
   const saveCourseDay = useCallback(async (patient, anchorDate, n) => {
+    const body = { floor: selected.floor || '', ward: selected.ward, date: selectedDate, patientKey: patient.key, drugKey: patient.drugKey, anchorDate, n }
+    const queueKey = `course-day:${body.floor}|${body.ward}|${body.patientKey}|${body.drugKey}`
     try {
-      const response = await fetch(`${apiUrl}/course-day`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ floor: selected.floor || '', ward: selected.ward, date: selectedDate, patientKey: patient.key, drugKey: patient.drugKey, anchorDate, n }) })
-      isExpired(response)
-    } catch { /* the reload below shows what is really saved */ }
+      const response = await fetch(`${apiUrl}/course-day`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body) })
+      if (!isExpired(response) && response.ok) forgetWrite(queueKey)
+    } catch {
+      // Offline: kept on the device and sent when the connection is back (the header counts it).
+      queueWrite({ key: queueKey, user: userId, method: 'PUT', path: '/course-day', body, label: 'يوم الكورس' })
+    }
     setMeropenemNonce((value) => value + 1)
-  }, [selected, selectedDate, isExpired])
+  }, [selected, selectedDate, isExpired, userId])
+  // Sends the device's queued writes (ward note, course day, chart complete) whenever the app is
+  // online: on reconnect, at sign-in, and every 30 s while any are waiting (a weak link can stay
+  // «online» while requests fail). A change the server refuses for good is dropped and shown.
+  useEffect(() => {
+    if (!isLoggedIn || !isOnline || userId == null) return undefined
+    const run = async () => {
+      if (!pendingWrites(userId).length) return
+      const { sent, dropped } = await flushWrites(userId, (entry) => fetch(`${apiUrl}${entry.path}`, { method: entry.method, headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(entry.body) }))
+      if (sent) { setWritesFlushed((value) => value + 1); setMeropenemNonce((value) => value + 1) }
+      if (dropped.length) askConfirm('رفض الخادم تغييرًا حُفظ على هذا الجهاز دون اتصال، فلم يُحفظ.', { confirmLabel: 'حسنًا', detail: dropped.map((entry) => entry.label).join('، ') })
+    }
+    run()
+    const timer = setInterval(run, 30000)
+    return () => clearInterval(timer)
+  }, [isLoggedIn, isOnline, userId, askConfirm])
   // «التداخلات الدوائية»: the ward's main and extra charts for the day, checked in the browser
   // against the DDInter reference pairs and the bundled rule list — read-only, nothing is saved.
   useEffect(() => {
@@ -2414,7 +2462,7 @@ function App() {
 
   if (sessionExpired) return <SessionExpiredScreen credentials={credentials} setCredentials={setCredentials} loginError={loginError} busy={busy} onSubmit={submitLogin} onLogout={logout} confirmModal={confirmModal} />
 
-  const appHeader = <AppHeader theme={theme} onToggleTheme={toggleTheme} currentUser={currentUser} onLogout={logout} onHome={goHome} onMyWard={!isManager && assignedFloorObj ? goToMyWard : undefined} onOpenProfile={openProfile} isAdmin={isAdmin} isManager={isManager} adminView={adminView} onNavigate={setAdminView} isOnline={isOnline} />
+  const appHeader = <AppHeader theme={theme} onToggleTheme={toggleTheme} currentUser={currentUser} onLogout={logout} onHome={goHome} onMyWard={!isManager && assignedFloorObj ? goToMyWard : undefined} onOpenProfile={openProfile} isAdmin={isAdmin} isManager={isManager} adminView={adminView} onNavigate={setAdminView} isOnline={isOnline} pendingWrites={userId == null ? 0 : pendingWrites(userId).length} />
 
   if (adminView === 'profile') return <ProfileScreen adminHeader={appHeader} profileForm={profileForm} setProfileForm={setProfileForm} profileError={profileError} profileSuccess={profileSuccess} busy={busy} onSubmit={submitProfile} />
 
