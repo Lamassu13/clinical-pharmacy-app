@@ -12,6 +12,11 @@ const router = express.Router()
 export const MAX_REPORT_DAYS = 120
 const POLYPHARMACY_MIN = 10
 const LONG_STAY_DAYS = 7
+const READMIT_DAYS = 30 // a return after at most this many days off the ward counts as a readmission
+const RESTART_DAYS = 7 // the same antibiotic again after at most this many days off it
+const STAY_BUCKETS = [[1, 2], [3, 6], [7, 13], [14, Infinity]]
+const median = (list) => { const sorted = [...list].sort((a, b) => a - b); const mid = sorted.length >> 1; return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2 }
+const round1 = (value) => Math.round(value * 10) / 10
 
 const DAY_MS = 86400000
 const toDay = (iso) => Date.parse(`${iso}T00:00:00Z`) / DAY_MS
@@ -50,7 +55,7 @@ router.get('/reports', requireManager, async (request, response) => {
   const params = [previousFrom, to, scope.value, SUPPLY_MATCH, SUPPLY_EXCEPT]
 
   const antibioticList = [...new Set((await antibioticNames()).map((name) => name.toLowerCase()))]
-  const [patientRows, consumptionRows, chartRows, extraFormRows, antibioticRows, longCourseBody, staffRows] = await Promise.all([
+  const [patientRows, consumptionRows, chartRows, extraFormRows, antibioticRows, longCourseBody, staffRows, weeklyRows] = await Promise.all([
     // One row per patient per ward per day, main and extra charts merged, with how many distinct
     // non-supply medicines they had a quantity of that day.
     query(
@@ -141,6 +146,18 @@ router.get('/reports', requireManager, async (request, response) => {
        GROUP BY u.id, u.full_name`,
       [from, to, scope.value],
     ),
+    // Weekly quantity per medicine (week 0 starts on `from`), for the trend table.
+    query(
+      `SELECT COALESCE(m.name, cc.custom_name) AS name, ((dc.chart_date - $1::date) / 7)::int AS week, SUM(cq.quantity)::int AS quantity
+       FROM chart_quantities cq
+       JOIN chart_columns cc ON cc.chart_id = cq.chart_id AND cc.column_number = cq.column_number
+       JOIN daily_charts dc ON dc.id = cq.chart_id
+       JOIN wards w ON w.id = dc.ward_id
+       LEFT JOIN medicines m ON m.id = cc.medicine_id
+       WHERE cq.quantity > 0 AND dc.chart_date BETWEEN $1::date AND $2::date AND ${scope.sql}
+       GROUP BY 1, 2`,
+      [from, to, scope.value],
+    ),
   ])
 
   const inRange = (date) => date >= from && date <= to
@@ -187,6 +204,8 @@ router.get('/reports', requireManager, async (request, response) => {
 
   const daily = new Map(rangeDates.map((date) => [date, { date, patients: 0, admissions: 0, discharges: 0 }]))
   const longStays = []
+  const stayRows = [] // per ward: stay lengths in days
+  const readmissions = []
   const polypharmacy = new Map() // `${wardKey}|${patient}` -> entry
   const allPatients = new Set()
   const allPreviousPatients = new Set()
@@ -247,22 +266,33 @@ router.get('/reports', requireManager, async (request, response) => {
       daysByPatient.get(patient).push(toDay(date))
     }))
     let wardStays = 0
+    const lengths = []
     let wardStaySum = 0
     daysByPatient.forEach((dayList, patient) => {
       dayList.sort((a, b) => a - b)
       let start = dayList[0]
+      const runs = []
       dayList.forEach((day, index) => {
         const next = dayList[index + 1]
         if (next === day + 1) return
         const length = day - start + 1
+        runs.push([start, day])
         // Only stays that overlap the report range count.
         if (day >= toDay(from)) {
-          wardStays += 1; wardStaySum += length
+          wardStays += 1; wardStaySum += length; lengths.push(length)
           if (day === toDay(to) && length >= LONG_STAY_DAYS) longStays.push({ floor, ward, ...labelOf(patient), days: length, since: toIso(start) })
         }
         start = next
       })
+      // Back on this ward after a gap in which every day was charted and the patient was absent.
+      const returns = runs.slice(1).map(([back], i) => ({ back, gap: back - runs[i][1] - 1 }))
+        .filter(({ back, gap }) => back >= toDay(from) && gap <= READMIT_DAYS && Array.from({ length: gap }, (_, k) => chartedDays.has(toIso(back - 1 - k))).every(Boolean))
+      if (returns.length) readmissions.push({ floor, ward, ...labelOf(patient), count: returns.length, returns: returns.map(({ back, gap }) => ({ date: toIso(back), gap })) })
     })
+    if (lengths.length) {
+      stayRows.push({ floor, ward, stays: lengths.length, median: median(lengths), max: Math.max(...lengths), average: round1(lengths.reduce((a, b) => a + b, 0) / lengths.length),
+        buckets: STAY_BUCKETS.map(([low, high]) => lengths.filter((length) => length >= low && length <= high).length) })
+    }
     stayCount += wardStays; staySum += wardStaySum
     const chartedInRange = rangeDates.filter((date) => chartedDays.has(date))
     return {
@@ -308,6 +338,20 @@ router.get('/reports', requireManager, async (request, response) => {
     ...entry, dosesPerPatient: entry.patientDays ? Math.round((entry.doses / entry.patientDays) * 10) / 10 : null,
   }))
 
+  // Weekly trend: one row per medicine (supplies included), quantities by week since `from`.
+  const weekCount = Math.ceil(days / 7)
+  const trendMap = new Map()
+  weeklyRows.rows.forEach((row) => {
+    const key = row.name.trim().replace(/\s+/g, ' ').toLowerCase()
+    const line = trendMap.get(key) || { name: row.name, weeks: Array(weekCount).fill(0) }
+    line.weeks[row.week] += row.quantity
+    trendMap.set(key, line)
+  })
+  const trend = {
+    weeks: Array.from({ length: weekCount }, (_, i) => ({ from: toIso(toDay(from) + i * 7), to: toIso(Math.min(toDay(from) + i * 7 + 6, toDay(to))) })),
+    medicines: [...trendMap.values()].sort((a, b) => a.name.localeCompare(b.name)),
+  }
+
   const sum = (field) => wards.reduce((total, row) => total + row[field], 0)
   const patientDays = sum('patientDays')
 
@@ -336,6 +380,44 @@ router.get('/reports', requireManager, async (request, response) => {
     if (crowded.length) multiple.push({ ...who, maxConcurrent: Math.max(...crowded.map((drugs) => drugs.size)), days: crowded.length, drugs: [...new Set(crowded.flatMap((drugs) => [...drugs]))].sort() })
     reserveDrugs.forEach((dates, drug) => reserve.push({ ...who, drug, days: dates.size }))
   })
+  // Courses: per patient per drug, runs of consecutive days. A run that began before the range is cut at `from`.
+  const courseDays = new Map() // drug -> Map(entryKey -> sorted day numbers)
+  const courseOwner = new Map()
+  antibioticPatients.forEach((entry, key) => entry.days.forEach((drugs, date) => drugs.forEach((drug) => {
+    if (!courseDays.has(drug)) courseDays.set(drug, new Map())
+    if (!courseDays.get(drug).has(key)) courseDays.get(drug).set(key, [])
+    courseDays.get(drug).get(key).push(toDay(date))
+    courseOwner.set(key, entry)
+  })))
+  const courseStats = []
+  const restarts = []
+  courseDays.forEach((patients, drug) => {
+    const lengths = []
+    patients.forEach((dayList, key) => {
+      dayList.sort((a, b) => a - b)
+      const runs = []
+      dayList.forEach((day, i) => { if (day - dayList[i - 1] === 1) runs[runs.length - 1][1] = day; else runs.push([day, day]) })
+      runs.forEach(([start, end]) => lengths.push(end - start + 1))
+      const { floor, ward, patient, patientId } = courseOwner.get(key)
+      runs.slice(1).forEach(([start], i) => {
+        const gap = start - runs[i][1] - 1
+        if (gap <= RESTART_DAYS) restarts.push({ floor, ward, patient, patientId, drug, stoppedOn: toIso(runs[i][1]), restartedOn: toIso(start), gap })
+      })
+    })
+    courseStats.push({ drug, courses: lengths.length, average: round1(lengths.reduce((a, b) => a + b, 0) / lengths.length), median: median(lengths), max: Math.max(...lengths), long: lengths.filter((length) => length > longCourseBody.threshold).length })
+  })
+  courseStats.sort((a, b) => b.courses - a.courses || a.drug.localeCompare(b.drug))
+  restarts.sort((a, b) => a.gap - b.gap || a.patient.localeCompare(b.patient, 'ar'))
+
+  // DDD per 100 patient-days for each ward.
+  const antibioticByWard = wards.map((ward) => {
+    const lines = consumptionRows.rows.filter((row) => row.name && !row.is_supply && row.floor === ward.floor && row.ward === ward.ward)
+      .map((row) => dddLine(row.name, row.quantity)).filter((line) => line?.ddds !== undefined)
+    const ddds = lines.reduce((total, line) => total + line.ddds, 0)
+    const share = (group) => (ddds ? Math.round((lines.filter((line) => line.aware === group).reduce((total, line) => total + line.ddds, 0) / ddds) * 100) : null)
+    return { floor: ward.floor, ward: ward.ward, patientDays: ward.patientDays, ddds: round1(ddds), dddPer100: ward.patientDays ? Math.round((ddds / ward.patientDays) * 1000) / 10 : null, aware: { Access: share('Access'), Watch: share('Watch'), Reserve: share('Reserve') } }
+  }).filter((row) => row.ddds > 0).sort((a, b) => (b.dddPer100 ?? -1) - (a.dddPer100 ?? -1))
+
   const byName = (a, b) => a.patient.localeCompare(b.patient, 'ar')
   multiple.sort((a, b) => b.maxConcurrent - a.maxConcurrent || b.days - a.days || byName(a, b))
   reserve.sort((a, b) => b.days - a.days || byName(a, b))
@@ -356,7 +438,7 @@ router.get('/reports', requireManager, async (request, response) => {
     notCounted: antibioticLines.filter((line) => line.ddds === undefined).map(({ name, quantity, reason }) => ({ name, quantity, reason })),
     totalDdds: Math.round(totalDdds * 10) / 10,
     dddPer100: per100(totalDdds),
-    longCourseDays: longCourseBody.threshold, longCourses: longCoursePatients, multiple, reserve,
+    longCourseDays: longCourseBody.threshold, longCourses: longCoursePatients, multiple, reserve, courseStats, restarts, restartDays: RESTART_DAYS, byWard: antibioticByWard,
     aware: Object.fromEntries(['Access', 'Watch', 'Reserve'].map((group) => [group,
       totalDdds ? Math.round((counted.filter((line) => line.aware === group).reduce((total, line) => total + line.ddds, 0) / totalDdds) * 100) : null])),
   }
@@ -365,7 +447,7 @@ router.get('/reports', requireManager, async (request, response) => {
 
   response.json({
     range: { from, to, days, previousFrom, previousTo },
-    thresholds: { polypharmacy: POLYPHARMACY_MIN, longStay: LONG_STAY_DAYS },
+    thresholds: { polypharmacy: POLYPHARMACY_MIN, longStay: LONG_STAY_DAYS, readmit: READMIT_DAYS },
     summary: {
       patientDays, previousPatientDays: sum('previousPatientDays'),
       distinctPatients: allPatients.size, previousDistinctPatients: allPreviousPatients.size,
@@ -387,6 +469,10 @@ router.get('/reports', requireManager, async (request, response) => {
     polypharmacy: polypharmacyPatients,
     staff: staffRows.rows.sort((a, b) => (b.started + b.completed + b.lastEdited + b.extraForms) - (a.started + a.completed + a.lastEdited + a.extraForms) || a.name.localeCompare(b.name, 'ar')),
     consumption,
+    trend,
+    stayRows: stayRows.sort((a, b) => b.median - a.median || b.max - a.max),
+    stayBuckets: STAY_BUCKETS.map(([low, high]) => (high === Infinity ? `${low}+` : low === high ? `${low}` : `${low}–${high}`)),
+    readmissions: readmissions.sort((a, b) => b.count - a.count || a.patient.localeCompare(b.patient, 'ar')),
     antibiotics,
   })
 })
