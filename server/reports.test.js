@@ -182,3 +182,24 @@ test('GET /api/reports: antibiotic DDD per 100 patient-days with the AWaRe split
   assert.deepEqual([antibiotics.totalDdds, antibiotics.dddPer100, antibiotics.aware], [4, 50, { Access: 50, Watch: 50, Reserve: 0 }])
   assert.deepEqual(antibiotics.notCounted.map((line) => line.name), ['Amoxil 250mg/5ml Susp'])
 })
+
+test('GET /api/reports: course length, restarts, ward DDD, weekly trend, stay lengths and readmissions', async () => {
+  const admin = await loginAs({ role: 'admin' })
+  await pool.query('INSERT INTO medicines (name) VALUES ($1)', ['Meronem 1000gm Vial'])
+  const mero = { 1: 2, 2: 2, 3: 2, 5: 2, 6: 2, 8: 4 } // days on meropenem; 05-04 and 05-07 are gaps
+  for (let day = 1; day <= 8; day += 1) {
+    const patients = [{ name: 'هادي', meds: mero[day] ? { 'Meronem 1000gm Vial': mero[day] } : { 'Aspirin 100mg Tab': 1 } }]
+    if (day !== 3) patients.push({ name: 'سامي', meds: { 'Aspirin 100mg Tab': 1 } }) // away on day 3 only
+    await saveChart(admin, 2, `2026-05-0${day}`, patients)
+  }
+  const { body } = await admin.get('/api/reports?scope=2&from=2026-05-01&to=2026-05-09')
+  const { antibiotics } = body
+  assert.deepEqual(antibiotics.courseStats.map((row) => [row.drug, row.courses, row.average, row.median, row.max]), [['Meropenem', 3, 2, 2, 3]])
+  assert.deepEqual(antibiotics.restarts.map((row) => [row.patient, row.stoppedOn, row.restartedOn, row.gap]), [['هادي', '2026-05-03', '2026-05-05', 1], ['هادي', '2026-05-06', '2026-05-08', 1]])
+  const ward = antibiotics.byWard.find((row) => row.ward === WARD)
+  assert.deepEqual([ward.patientDays, ward.ddds > 0, ward.dddPer100 > 0], [15, true, true])
+  assert.deepEqual(body.trend.medicines.find((line) => line.name === 'Meronem 1000gm Vial').weeks, [10, 4])
+  assert.deepEqual(body.readmissions.map((row) => [row.patient, row.count, row.returns]), [['سامي', 1, [{ date: '2026-05-04', gap: 1 }]]])
+  const stays = body.stayRows.find((row) => row.ward === WARD)
+  assert.deepEqual([stays.stays, stays.median, stays.max, stays.buckets], [3, 5, 8, [1, 1, 1, 0]])
+})

@@ -2472,3 +2472,8 @@ button.topbar-user:hover { color: var(--primary); }
   .long-abx-day b { display: block; }
   .long-abx-meta { grid-column: 1; font-size: var(--text-xs); font-weight: 400; }
 }
+
+/* Reports: weekly trend picker and bars */
+.report-trend-pick { display: flex; gap: 0.5rem; align-items: center; margin-block: 0.5rem; }
+.report-bar-cell { width: 40%; }
+.report-bar { display: block; height: 0.75rem; min-width: 1px; border-radius: 2px; background: currentColor; opacity: 0.55; }

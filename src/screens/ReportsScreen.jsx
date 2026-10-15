@@ -112,7 +112,10 @@ export default function ReportsScreen({ adminHeader, isExpired }) {
 }
 
 function ReportDocument({ report, stale }) {
-  const { summary, range, thresholds } = report
+  const [trendDrug, setTrendDrug] = useState('')
+  const { summary, range, thresholds, trend } = report
+  const trendLine = trend.medicines.find((line) => line.name === trendDrug)
+  const trendMax = trendLine ? Math.max(...trendLine.weeks, 1) : 1
   const scopedToFloor = report.scope !== 'all' && !report.scope.includes(',')
   const generatedAt = new Date().toLocaleString('ar-IQ', { dateStyle: 'medium', timeStyle: 'short' })
 
@@ -150,6 +153,50 @@ function ReportDocument({ report, stale }) {
             <thead><tr><th>المريض</th><th>الردهة</th><th>الأيام</th><th>منذ</th></tr></thead>
             <tbody>{report.longStays.map((row) => <tr key={`${row.floor}|${row.ward}|${row.patientId}|${row.patient}`}>
               <td>{row.patient}{row.patientId && <span className="report-patient-id"> · {row.patientId}</span>}</td><td>{wardName(row, scopedToFloor)}</td><td className="num">{row.days}</td><td>{formatDate(row.since)}</td>
+            </tr>)}</tbody>
+          </table></div>
+        )}
+      </Section>
+
+
+      <Section title="مدة بقاء المرضى حسب الردهة" note="عدد الإقامات حسب طولها بالأيام (إقامة = أيام متتالية بالاسم نفسه في الردهة). الإقامات الجارية عند طرفي المدة تُحتسب بما ظهر منها فقط.">
+        {report.stayRows.length === 0 ? <Empty>لا توجد إقامات في هذه المدة.</Empty> : (
+          <div className="table-frame"><table className="requests-table report-table">
+            <thead><tr><th>الردهة</th><th>الإقامات</th>{report.stayBuckets.map((label) => <th key={label}>{label} يوم</th>)}<th>الوسيط</th><th>الأقصى</th></tr></thead>
+            <tbody>{report.stayRows.map((row) => <tr key={`${row.floor}|${row.ward}`}>
+              <td>{wardName(row, scopedToFloor)}</td><td className="num">{row.stays}</td>
+              {row.buckets.map((count, i) => <td key={i} className="num">{count}</td>)}
+              <td className="num">{row.median}</td><td className="num">{row.max}</td>
+            </tr>)}</tbody>
+          </table></div>
+        )}
+      </Section>
+
+      <Section title="المرضى العائدون إلى الردهة" note={`مريض غادر الردهة ثم عاد إليها خلال ${thresholds.readmit} يومًا أو أقل. تُحتسب العودة فقط إذا كان للردهة جارت في كل يوم غيابه.`}>
+        {report.readmissions.length === 0 ? <Empty>لا يوجد مريض عاد إلى الردهة في هذه المدة.</Empty> : (
+          <div className="table-frame"><table className="requests-table report-table">
+            <thead><tr><th>المريض</th><th>الردهة</th><th>مرات العودة</th><th>تاريخ العودة (بعد كم يومًا)</th></tr></thead>
+            <tbody>{report.readmissions.map((row) => <tr key={`${row.floor}|${row.ward}|${row.patientId}|${row.patient}`}>
+              <td>{row.patient}{row.patientId && <span className="report-patient-id"> · {row.patientId}</span>}</td><td>{wardName(row, scopedToFloor)}</td><td className="num">{row.count}</td><td>{row.returns.map((item) => `${formatDate(item.date)} (${item.gap})`).join('، ')}</td>
+            </tr>)}</tbody>
+          </table></div>
+        )}
+      </Section>
+
+      <Section title="اتجاه استهلاك دواء" note="الكمية الأسبوعية في الجارت للدواء المختار، تبدأ الأسابيع من أول يوم في المدة.">
+        <label className="report-trend-pick">الدواء
+          <select value={trendDrug} onChange={(event) => setTrendDrug(event.target.value)}>
+            <option value="">اختر دواءً…</option>
+            {trend.medicines.map((line) => <option key={line.name} value={line.name}>{line.name}</option>)}
+          </select>
+        </label>
+        {trendLine && (
+          <div className="table-frame"><table className="requests-table report-table">
+            <thead><tr><th>الأسبوع</th><th>الكمية</th><th aria-hidden="true" /></tr></thead>
+            <tbody>{trend.weeks.map((week, i) => <tr key={week.from}>
+              <td>{formatDate(week.from)} – {formatDate(week.to)}</td>
+              <td className="num">{trendLine.weeks[i]}</td>
+              <td className="report-bar-cell" aria-hidden="true"><span className="report-bar" style={{ width: `${(trendLine.weeks[i] / trendMax) * 100}%` }} /></td>
             </tr>)}</tbody>
           </table></div>
         )}
@@ -208,6 +255,40 @@ function ReportDocument({ report, stale }) {
             <thead><tr><th>المريض</th><th>الردهة</th><th>أعلى عدد في يوم</th><th>أيام</th><th>المضادات</th></tr></thead>
             <tbody>{report.antibiotics.multiple.map((row) => <tr key={`${row.floor}|${row.ward}|${row.patientId}|${row.patient}`}>
               <td>{row.patient}{row.patientId && <span className="report-patient-id"> · {row.patientId}</span>}</td><td>{wardName(row, scopedToFloor)}</td><td className="num">{row.maxConcurrent}</td><td className="num">{row.days}</td><td lang="en" dir="ltr">{row.drugs.join(', ')}</td>
+            </tr>)}</tbody>
+          </table></div>
+        )}
+      </Section>
+
+      <Section title="مدة كورسات المضادات الحيوية" note="الكورس = أيام متتالية لمضاد واحد عند المريض نفسه. الكورس الذي بدأ قبل المدة يُحتسب من أول يوم فيها.">
+        {report.antibiotics.courseStats.length === 0 ? <Empty>لا توجد كورسات في هذه المدة.</Empty> : (
+          <div className="table-frame"><table className="requests-table report-table">
+            <thead><tr><th>المضاد</th><th>الكورسات</th><th>المتوسط (يوم)</th><th>الوسيط</th><th>الأطول</th><th>أكثر من {report.antibiotics.longCourseDays} يومًا</th></tr></thead>
+            <tbody>{report.antibiotics.courseStats.map((row) => <tr key={row.drug}>
+              <td lang="en" dir="ltr">{row.drug}</td><td className="num">{row.courses}</td><td className="num">{row.average}</td><td className="num">{row.median}</td><td className="num">{row.max}</td><td className="num">{row.long}</td>
+            </tr>)}</tbody>
+          </table></div>
+        )}
+      </Section>
+
+      <Section title="إعادة المضاد نفسه" note={`مريض أُوقف عنه مضاد ثم أُعطي المضاد نفسه خلال ${report.antibiotics.restartDays} أيام أو أقل.`}>
+        {report.antibiotics.restarts.length === 0 ? <Empty>لا توجد إعادة لمضاد في هذه المدة.</Empty> : (
+          <div className="table-frame"><table className="requests-table report-table">
+            <thead><tr><th>المريض</th><th>الردهة</th><th>المضاد</th><th>توقف في</th><th>أُعيد في</th><th>أيام التوقف</th></tr></thead>
+            <tbody>{report.antibiotics.restarts.map((row) => <tr key={`${row.floor}|${row.ward}|${row.patientId}|${row.patient}|${row.drug}|${row.restartedOn}`}>
+              <td>{row.patient}{row.patientId && <span className="report-patient-id"> · {row.patientId}</span>}</td><td>{wardName(row, scopedToFloor)}</td><td lang="en" dir="ltr">{row.drug}</td><td>{formatDate(row.stoppedOn)}</td><td>{formatDate(row.restartedOn)}</td><td className="num">{row.gap}</td>
+            </tr>)}</tbody>
+          </table></div>
+        )}
+      </Section>
+
+      <Section title="استهلاك المضادات الحيوية حسب الردهة" note="DDD لكل 100 يوم مريض في كل ردهة، ونسبة كل فئة AWaRe من DDD الردهة.">
+        {report.antibiotics.byWard.length === 0 ? <Empty>لا توجد مضادات حيوية محسوبة في هذه المدة.</Empty> : (
+          <div className="table-frame"><table className="requests-table report-table">
+            <thead><tr><th>الردهة</th><th>أيام المرضى</th><th>DDD</th><th>DDD/100</th><th lang="en" dir="ltr">Access</th><th lang="en" dir="ltr">Watch</th><th lang="en" dir="ltr">Reserve</th></tr></thead>
+            <tbody>{report.antibiotics.byWard.map((row) => <tr key={`${row.floor}|${row.ward}`}>
+              <td>{wardName(row, scopedToFloor)}</td><td className="num">{row.patientDays}</td><td className="num">{row.ddds}</td><td className="num">{orDash(row.dddPer100)}</td>
+              {['Access', 'Watch', 'Reserve'].map((group) => <td key={group} className="num">{orDash(row.aware[group])}٪</td>)}
             </tr>)}</tbody>
           </table></div>
         )}
