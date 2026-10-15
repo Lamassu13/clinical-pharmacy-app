@@ -1,6 +1,7 @@
 // Pure helpers with no React and no I/O, so they can be read — and reasoned about — without
 // the component around them.
 import { floors, specialWards, PATIENT_ROWS, CHART_COLUMNS, MAX_CHART_COLUMNS } from './constants.js'
+import { storage } from './storage.js'
 
 // Shared by the two places a chart snapshot from elsewhere (the server, after a save
 // conflict; or localStorage, after a killed tab) has to be combined with what is on screen:
@@ -561,11 +562,11 @@ export const isDraftStale = (meta, todayIso) => !meta?.date || meta.date < isoDa
 // every copy of another day.
 const COPY_PREFIXES = { chart: 'cpa-chart-copy:', pills: 'cpa-pills-copy:' }
 const rememberCopy = (kind, key, date, version, state) => {
-  try { localStorage.setItem(`${COPY_PREFIXES[kind]}${key}`, JSON.stringify({ date, version, state })) } catch { /* storage full or unavailable — the draft/SW cache still cover */ }
+  try { storage.setItem(`${COPY_PREFIXES[kind]}${key}`, JSON.stringify({ date, version, state })) } catch { /* storage full or unavailable — the draft/SW cache still cover */ }
 }
 const recallCopy = (kind, key) => {
   try {
-    const copy = JSON.parse(localStorage.getItem(`${COPY_PREFIXES[kind]}${key}`) || 'null')
+    const copy = JSON.parse(storage.getItem(`${COPY_PREFIXES[kind]}${key}`) || 'null')
     return copy?.state && (kind === 'chart' ? copy.state.patientNames && copy.state.quantities : copy.state.entries && copy.state.rooms) ? copy : null
   } catch { return null }
 }
@@ -576,15 +577,14 @@ export const rememberPills = (key, date, state) => rememberCopy('pills', key, da
 export const recallPills = (key) => recallCopy('pills', key)
 export const forgetChartCopies = (todayIso) => {
   try {
-    for (let i = localStorage.length - 1; i >= 0; i -= 1) {
-      const key = localStorage.key(i)
+    for (const key of storage.keys()) {
       if (!key || !Object.values(COPY_PREFIXES).some((prefix) => key.startsWith(prefix))) continue
       if (todayIso) {
         let date = null
-        try { date = JSON.parse(localStorage.getItem(key) || 'null')?.date } catch { /* corrupt — drop it */ }
+        try { date = JSON.parse(storage.getItem(key) || 'null')?.date } catch { /* corrupt — drop it */ }
         if (date === todayIso) continue // a copy is patient data on a shared iPad: today's only, unlike a draft
       }
-      localStorage.removeItem(key)
+      storage.removeItem(key)
     }
   } catch { /* storage unavailable */ }
 }
