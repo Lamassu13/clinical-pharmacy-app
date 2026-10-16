@@ -17,6 +17,9 @@ const OPEN_TIMEOUT_MS = 2000
 
 let memory = null // Map while IndexedDB is in use; null = localStorage fallback
 let db = null
+// Deletes sent to IndexedDB but not yet committed. If that transaction fails, fallBack() records
+// them in REMOVED_KEY — otherwise the next boot would read them back from IndexedDB.
+const pendingRemovals = new Set()
 let hydratedLocal = null
 // Read lazily, not at import: before hydrateStorage() (and in node tests) this is whatever
 // localStorage the page has.
@@ -48,13 +51,19 @@ const fallBack = () => {
   memory = null
   db = null
   for (const [key, value] of entries) { try { local().setItem(key, value) } catch { /* full — as before */ } }
+  if (pendingRemovals.size) {
+    const ls = local()
+    try { ls.setItem(REMOVED_KEY, JSON.stringify([...new Set([...readRemoved(ls), ...pendingRemovals])].slice(-500))) } catch { /* best effort */ }
+    pendingRemovals.clear()
+  }
 }
 
-const persist = (run) => {
+const persist = (run, done) => {
   try {
     const tx = db.transaction(STORE, 'readwrite')
     tx.onerror = fallBack
     tx.onabort = fallBack
+    if (done) tx.oncomplete = done
     run(tx.objectStore(STORE))
   } catch { fallBack() }
 }
@@ -66,14 +75,19 @@ export const storage = {
   },
   setItem(key, value) {
     const text = String(value)
-    if (memory) { memory.set(key, text); persist((store) => store.put(text, key)); return }
+    if (memory) { memory.set(key, text); pendingRemovals.delete(key); persist((store) => store.put(text, key)); return }
     const ls = local()
     ls.setItem(key, text)
     const removed = readRemoved(ls)
     if (removed.includes(key)) ls.setItem(REMOVED_KEY, JSON.stringify(removed.filter((item) => item !== key)))
   },
   removeItem(key) {
-    if (memory) { memory.delete(key); persist((store) => store.delete(key)); return }
+    if (memory) {
+      memory.delete(key)
+      pendingRemovals.add(key)
+      persist((store) => store.delete(key), () => pendingRemovals.delete(key))
+      return
+    }
     const ls = local()
     ls.removeItem(key)
     // ponytail: capped at 500 keys; a device that never gets IndexedDB back only ever trims it.
@@ -167,7 +181,7 @@ export const forgetWrite = (key) => { const queue = readWrites(); if (queue.some
 export const pendingWrites = (user) => readWrites().filter((item) => item.user === user)
 
 // Sends this user's queued writes in order with `send(entry)` (a fetch Response). A network
-// error, 401 (signed out) or 5xx stops the run and keeps the rest; another 4xx means the server
+// error, 401 (signed out), 408, 429 or 5xx stops the run and keeps the rest; another 4xx means the server
 // refused it for good, so it is dropped and returned for the caller to surface.
 let flushing = false
 export const flushWrites = async (user, send) => {
@@ -181,7 +195,9 @@ const sendWrites = async (user, send) => {
   for (const entry of pendingWrites(user)) {
     let response
     try { response = await send(entry) } catch { break }
-    if (response.status === 401 || response.status >= 500) break
+    // 408/429 (timeout, rate limit — the reconnect burst can hit the server's per-user limit) are
+    // "try again later", not a refusal.
+    if (response.status === 401 || response.status === 408 || response.status === 429 || response.status >= 500) break
     if (response.ok) sent.push(entry.id)
     else { sent.push(entry.id); dropped.push(entry) }
   }
