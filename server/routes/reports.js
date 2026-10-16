@@ -15,6 +15,11 @@ const LONG_STAY_DAYS = 7
 const READMIT_DAYS = 30 // a return after at most this many days off the ward counts as a readmission
 const RESTART_DAYS = 7 // the same antibiotic again after at most this many days off it
 const STAY_BUCKETS = [[1, 2], [3, 6], [7, 13], [14, Infinity]]
+// Wards make no chart on Friday — Thursday's chart carries the doses for it. A day without a
+// chart says nothing, so a patient on the last charted day before such a gap and on the next
+// charted day was on the ward through it: not discharged, and the days count. Up to this many
+// days in a row (Friday, a Friday + holiday); a longer silence is not bridged.
+const MAX_BRIDGE_DAYS = 3
 const median = (list) => { const sorted = [...list].sort((a, b) => a - b); const mid = sorted.length >> 1; return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2 }
 const round1 = (value) => Math.round(value * 10) / 10
 
@@ -86,16 +91,17 @@ router.get('/reports', requireManager, async (request, response) => {
        GROUP BY 1, 2, 3`,
       [...params, previousTo],
     ),
-    // "Charted" means what the dashboard's startedWards means: a named patient and a quantity.
+    // "Charted": a patient (by name or by ID alone) and a quantity. From the start of the fetched
+    // window, so a return whose absence began before the range can be checked.
     query(
       `SELECT w.floor_number AS floor, w.name AS ward, dc.chart_date::text AS date, dc.slot,
               dc.completed_at IS NOT NULL AS completed,
-              (EXISTS (SELECT 1 FROM chart_patients cp WHERE cp.chart_id = dc.id AND cp.patient_name <> '')
+              (EXISTS (SELECT 1 FROM chart_patients cp WHERE cp.chart_id = dc.id AND (cp.patient_name <> '' OR cp.patient_id <> ''))
                AND EXISTS (SELECT 1 FROM chart_quantities cq WHERE cq.chart_id = dc.id AND cq.quantity > 0)) AS started
        FROM daily_charts dc
        JOIN wards w ON w.id = dc.ward_id
        WHERE dc.chart_date BETWEEN $1::date AND $2::date AND ${scope.sql}`,
-      [previousTo, to, scope.value],
+      [previousFrom, to, scope.value],
     ),
     // extra_pill_forms carries its own floor/ward (no wards row), so it's filtered directly. Its
     // timestamp is bucketed by the hospital's day (Baghdad, UTC+3), not the database's UTC one,
@@ -206,6 +212,7 @@ router.get('/reports', requireManager, async (request, response) => {
   const longStays = []
   const stayRows = [] // per ward: stay lengths in days
   const readmissions = []
+  const knownByWard = new Map() // wardKey -> Set(day number) with a chart or a patient row
   const polypharmacy = new Map() // `${wardKey}|${patient}` -> entry
   const allPatients = new Set()
   const allPreviousPatients = new Set()
@@ -215,9 +222,26 @@ router.get('/reports', requireManager, async (request, response) => {
 
   const wards = scope.wards.map(({ floor, ward }) => {
     const key = wardKey(floor, ward)
-    const dates = byWard.get(key) || new Map()
-    const namesOn = (date) => dates.get(date) || new Map()
+    const charts = byWard.get(key) || new Map()
+    const namesOn = (date) => charts.get(date) || new Map()
     const chartedDays = charted.get(key) || new Set()
+    // Days this ward said anything about; any other day (Friday) is a gap with no information.
+    const known = new Set([...chartedDays, ...charts.keys()].map(toDay))
+    knownByWard.set(key, known)
+    const knownDays = [...known].sort((a, b) => a - b)
+    // `dates`: the charted days plus the bridged gaps (see MAX_BRIDGE_DAYS), each bridged day
+    // holding the patients on both sides with the earlier day's medicine count.
+    const dates = new Map(charts)
+    knownDays.forEach((day, index) => {
+      const next = knownDays[index + 1]
+      if (next === undefined || next - day - 1 < 1 || next - day - 1 > MAX_BRIDGE_DAYS) return
+      const before = namesOn(toIso(day))
+      const after = namesOn(toIso(next))
+      for (let gap = day + 1; gap < next; gap += 1) {
+        const bridged = new Map([...before].filter(([patient]) => after.has(patient)))
+        if (bridged.size) dates.set(toIso(gap), bridged)
+      }
+    })
     let patientDays = 0
     let previousPatientDays = 0
     let admissions = 0
@@ -241,13 +265,16 @@ router.get('/reports', requireManager, async (request, response) => {
         patients.forEach((_, patient) => { previousDistinct.add(patient); allPreviousPatients.add(patient) })
       }
     })
-    // Admissions/discharges only across two consecutive charted days — a day with no chart at
-    // all would otherwise read as every patient discharged, then re-admitted the day after.
+    // Admissions/discharges: each charted day against the previous charted day, across a bridged
+    // gap (Saturday against Thursday). A longer silence is skipped — it would otherwise read as
+    // every patient discharged, then re-admitted.
     rangeDates.forEach((date) => {
-      const yesterday = toIso(toDay(date) - 1)
-      if (!chartedDays.has(date) || !chartedDays.has(yesterday)) return
+      if (!chartedDays.has(date)) return
+      let previous = toDay(date) - 1
+      while (previous >= toDay(date) - 1 - MAX_BRIDGE_DAYS && !chartedDays.has(toIso(previous))) previous -= 1
+      if (!chartedDays.has(toIso(previous))) return
       const today = namesOn(date)
-      const before = namesOn(yesterday)
+      const before = namesOn(toIso(previous))
       let admitted = 0
       let discharged = 0
       today.forEach((_, patient) => { if (!before.has(patient)) admitted += 1 })
@@ -256,8 +283,10 @@ router.get('/reports', requireManager, async (request, response) => {
       daily.get(date).admissions += admitted
       daily.get(date).discharges += discharged
     })
-    // Stays: runs of consecutive days with the same name on this ward. The fetched window starts
-    // a full period early, so a stay already running on `from` keeps its earlier days.
+    // Stays: runs of consecutive days (bridged gaps included) with the same patient on this ward.
+    // The fetched window starts a full period early, so a stay already running on `from` keeps
+    // its earlier days. Still there "at the end" = on the ward's last charted day up to `to`.
+    const lastKnown = knownDays.filter((day) => day <= toDay(to)).pop()
     // ponytail: a transfer to another ward starts a new stay there; matching patients across
     // wards (same name, adjacent days) is the upgrade if that ever matters.
     const daysByPatient = new Map()
@@ -280,13 +309,22 @@ router.get('/reports', requireManager, async (request, response) => {
         // Only stays that overlap the report range count.
         if (day >= toDay(from)) {
           wardStays += 1; wardStaySum += length; lengths.push(length)
-          if (day === toDay(to) && length >= LONG_STAY_DAYS) longStays.push({ floor, ward, ...labelOf(patient), days: length, since: toIso(start) })
+          if (day === lastKnown && length >= LONG_STAY_DAYS) longStays.push({ floor, ward, ...labelOf(patient), days: length, since: toIso(start) })
         }
         start = next
       })
-      // Back on this ward after a gap in which every day was charted and the patient was absent.
-      const returns = runs.slice(1).map(([back], i) => ({ back, gap: back - runs[i][1] - 1 }))
-        .filter(({ back, gap }) => back >= toDay(from) && gap <= READMIT_DAYS && Array.from({ length: gap }, (_, k) => chartedDays.has(toIso(back - 1 - k))).every(Boolean))
+      // Back on this ward after a real absence: the gap had charted days without the patient, and
+      // no stretch of it longer than MAX_BRIDGE_DAYS went uncharted (where nothing is known).
+      const absent = (first, last) => {
+        let silent = 0
+        for (let day = first; day <= last; day += 1) {
+          if (known.has(day)) silent = 0
+          else if ((silent += 1) > MAX_BRIDGE_DAYS) return false
+        }
+        return true
+      }
+      const returns = runs.slice(1).map(([back], i) => ({ back, gap: back - runs[i][1] - 1, left: runs[i][1] }))
+        .filter(({ back, gap, left }) => back >= toDay(from) && gap <= READMIT_DAYS && absent(left + 1, back - 1))
       if (returns.length) readmissions.push({ floor, ward, ...labelOf(patient), count: returns.length, returns: returns.map(({ back, gap }) => ({ date: toIso(back), gap })) })
     })
     if (lengths.length) {
@@ -394,11 +432,14 @@ router.get('/reports', requireManager, async (request, response) => {
   courseDays.forEach((patients, drug) => {
     const lengths = []
     patients.forEach((dayList, key) => {
+      const { floor, ward, patient, patientId } = courseOwner.get(key)
+      const known = knownByWard.get(wardKey(floor, ward)) || new Set()
+      // Same course across a gap of uncharted days only (Friday), as the follow-up forms count it.
+      const bridged = (last, day) => { for (let gap = last + 1; gap < day; gap += 1) if (known.has(gap)) return false; return day - last - 1 <= MAX_BRIDGE_DAYS }
       dayList.sort((a, b) => a - b)
       const runs = []
-      dayList.forEach((day, i) => { if (day - dayList[i - 1] === 1) runs[runs.length - 1][1] = day; else runs.push([day, day]) })
+      dayList.forEach((day, i) => { if (i && bridged(dayList[i - 1], day)) runs[runs.length - 1][1] = day; else runs.push([day, day]) })
       runs.forEach(([start, end]) => lengths.push(end - start + 1))
-      const { floor, ward, patient, patientId } = courseOwner.get(key)
       runs.slice(1).forEach(([start], i) => {
         const gap = start - runs[i][1] - 1
         if (gap <= RESTART_DAYS) restarts.push({ floor, ward, patient, patientId, drug, stoppedOn: toIso(runs[i][1]), restartedOn: toIso(start), gap })

@@ -47,6 +47,9 @@ test('doseText: the catalogue\'s "gm" means mg, and a quantity divisible by 3 re
   assert.equal(doseText('Meronem 1000gm Vial', 2), '1g × 2')
   assert.equal(doseText('Meropenem 1g vial', 3), '1g × 3')
   assert.equal(doseText('Vancomycin 500mg vial', 4, 2), '1g × 2') // twice-daily drug
+  // A small number with gm is grams, like g: no vial here is under 10 mg.
+  assert.equal(doseText('Tazocin 4.5gm Vial', 3), '4.5g × 3')
+  assert.equal(doseText('Rocephin 1gm Vial', 2, 2), '1g × 2')
 })
 
 test('meropenem: consecutive days count D1…D3 and the patient is active', () => {
@@ -228,4 +231,18 @@ test('GET /api/antibiotics/long?floor=: a floor user sees only their own floor; 
   assert.equal((await user.get('/api/antibiotics/long?date=2026-09-26')).status, 403) // hospital-wide is for managers
   const manager = await loginAs({ role: 'supervisor' })
   assert.equal((await manager.get('/api/antibiotics/long?date=2026-09-26')).body.patients.length, 2)
+})
+
+test('GET /api/meropenem: on a ward that types only patient numbers, a stopped course ends like a named one', async () => {
+  const seeder = await createUser({ role: 'admin' })
+  const medicineId = (await pool.query("INSERT INTO medicines (name) VALUES ('Meronem 1000gm Vial') RETURNING id")).rows[0].id
+  const wardId = (await pool.query('INSERT INTO wards (floor_number, name, is_special) VALUES ($1, $2, false) RETURNING id', [FLOOR, WARD])).rows[0].id
+  const patients = [{ row: 1, name: '', id: '777' }]
+  await seedDay({ wardId, createdBy: seeder.id, date: '2026-09-21', patients, meronemRows: [1], medicineId })
+  await seedDay({ wardId, createdBy: seeder.id, date: '2026-09-22', patients, meronemRows: [1], medicineId })
+  await seedDay({ wardId, createdBy: seeder.id, date: '2026-09-23', patients, meronemRows: [], medicineId }) // charted, no Meronem
+  const client = await loginAs({ role: 'user', floor: FLOOR })
+  const res = await client.get(`/api/meropenem?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=2026-09-23`)
+  assert.equal(res.status, 200)
+  assert.notEqual(res.body.form.patients[0]?.status.kind, 'active', JSON.stringify(res.body.form.patients))
 })
