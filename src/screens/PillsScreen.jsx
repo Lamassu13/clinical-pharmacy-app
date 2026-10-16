@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import hospitalLogo from '../assets/hospital-logo.png'
 import PillSelect from '../components/PillSelect.jsx'
+import PillNote from '../components/PillNote.jsx'
 import MedicineSuggest from '../components/MedicineSuggest.jsx'
 import useCatalogueSuggest from '../components/useCatalogueSuggest.js'
-import { usageMethods, noteOptions, doseTimeGroups } from '../constants.js'
+import { usageMethods, noteOptions, MAX_NOTE_LENGTH, doseTimeGroups } from '../constants.js'
 import { pillSheetPlan, scheduleFor } from '../helpers.js'
 import PillsPrintTemplate from '../components/PillsPrintTemplate.jsx'
 import usePdfSheets from '../usePdfSheets.js'
@@ -191,7 +192,7 @@ export default function PillsScreen({
                     <td className="pill-qty-cell"><input inputMode="numeric" aria-label={`كمية الحبوب — ${chartName}`} value={qtyValue} onChange={(event) => { const next = event.target.value.replace(/\D/g, ''); setPillEntries((current) => ({ ...current, [key]: { ...entry, pillQty: next } })) }} /></td>
                     <td><PillSelect value={entry.doseTime} groups={doseTimeGroups} label={`وقت الجرعة — ${medName}`} onChange={(nextValue) => setPillEntries((current) => ({ ...current, [key]: { ...entry, doseTime: nextValue } }))} /></td>
                     <td><PillSelect value={entry.usageMethod} options={usageMethods} label={`طريقة الاستخدام — ${medName}`} onChange={(nextValue) => setPillEntries((current) => ({ ...current, [key]: { ...entry, usageMethod: nextValue } }))} /></td>
-                    <td><PillSelect value={entry.note} options={noteOptions} label={`الملاحظات — ${medName}`} onChange={(nextValue) => setPillEntries((current) => ({ ...current, [key]: { ...entry, note: nextValue } }))} /></td>
+                    <td><PillNote value={entry.note} presets={noteOptions} maxLength={MAX_NOTE_LENGTH} label={`الملاحظات — ${medName}`} onChange={(nextValue) => setPillEntries((current) => ({ ...current, [key]: { ...entry, note: nextValue } }))} /></td>
                   </tr>
                 })}{lastPage && extraRowsFor(extraCount).map((extra) => {
                   const key = `${patient.rowNumber}:${extra.key}`
@@ -209,7 +210,7 @@ export default function PillsScreen({
                     <td className="pill-qty-cell"><input inputMode="numeric" aria-label={`${extra.label} — كمية الحبوب`} value={entry.pillQty} onChange={(event) => { const next = event.target.value.replace(/\D/g, ''); setPillEntries((current) => ({ ...current, [key]: { ...entry, pillQty: next } })) }} /></td>
                     <td><PillSelect value={entry.doseTime} groups={doseTimeGroups} label={`${extra.label} — وقت الجرعة`} onChange={(nextValue) => setPillEntries((current) => ({ ...current, [key]: { ...entry, doseTime: nextValue } }))} /></td>
                     <td><PillSelect value={entry.usageMethod} options={usageMethods} label={`${extra.label} — طريقة الاستخدام`} onChange={(nextValue) => setPillEntries((current) => ({ ...current, [key]: { ...entry, usageMethod: nextValue } }))} /></td>
-                    <td><PillSelect value={entry.note} options={noteOptions} label={`${extra.label} — الملاحظات`} onChange={(nextValue) => setPillEntries((current) => ({ ...current, [key]: { ...entry, note: nextValue } }))} /></td>
+                    <td><PillNote value={entry.note} presets={noteOptions} maxLength={MAX_NOTE_LENGTH} label={`${extra.label} — الملاحظات`} onChange={(nextValue) => setPillEntries((current) => ({ ...current, [key]: { ...entry, note: nextValue } }))} /></td>
                   </tr>
                 })}{lastPage && <tr className="pill-add-extra-row"><td colSpan={6}>
                   {/* Screen-only row (hidden in print): this patient's shortcuts. */}

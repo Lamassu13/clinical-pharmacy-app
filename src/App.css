@@ -2477,3 +2477,13 @@ button.topbar-user:hover { color: var(--primary); }
 .report-trend-pick { display: flex; gap: 0.5rem; align-items: center; margin-block: 0.5rem; }
 .report-bar-cell { width: 40%; }
 .report-bar { display: block; height: 0.75rem; min-width: 1px; border-radius: 2px; background: currentColor; opacity: 0.55; }
+
+/* Pill form ملاحظات: editable text + a dropdown of stock notes; paper shows the text only. */
+.pill-note { display: grid; gap: 4px; }
+.pill-note textarea { width: 100%; min-height: 44px; resize: vertical; font: inherit; line-height: 1.5; }
+.pill-note select { width: 100%; font-size: 0.85em; }
+.pill-note-print { display: none; }
+@media print {
+  .pill-note textarea, .pill-note select { display: none; }
+  .pill-note-print { display: block; white-space: pre-wrap; overflow-wrap: anywhere; color: #000; }
+}
