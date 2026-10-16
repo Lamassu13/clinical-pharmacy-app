@@ -22,7 +22,9 @@ export const MAX_CHART_COLUMNS = 80
 // Fixed pill-form option lists. Keep in sync with server/index.js.
 export const doseTimes = ['٨ صباحًا', '٩ صباحًا', '١٠ صباحًا', '١١ صباحًا', '١٢ ظهرًا', '٢ ظهرًا', '٣ ظهرًا', '٤ عصرًا', '٥ عصرًا', '٦ مساءً', '٨ ليلًا', '٩ ليلًا', '١٠ ليلًا', '١٠ صباحًا - ١٠ مساءً', '١٢ ظهرًا - ١٢ ليلًا', '١٢ ظهرًا - ٨ ليلًا', '٨ صباحًا - ٤ عصرًا - ١٢ ليلًا', '٦ صباحًا - ١٢ ظهرًا - ٦ مساءً - ١٢ ليلًا']
 export const usageMethods = ['حبة بعد الطعام مباشرة', 'حبة قبل الطعام بساعة أو بعده بساعتين', '٢ حبة بعد الطعام مباشرة', '٣ حبة بعد الطعام مباشرة', 'نصف حبة قبل الطعام', 'نصف حبة بعد الطعام', 'حبة قبل الفطور بساعة', 'كبسولة قبل الطعام بساعة أو بعده بساعتين', 'كبسولة بعد الطعام مباشرة', 'حبة مع الطعام', 'حبة تحت اللسان عند الحاجة', 'حبة ونصف بعد الطعام']
-export const MAX_NOTE_LENGTH = 300 // keep in sync with server/validation.js
+// What one note cell of the printed pills sheet holds (26 mm row): ~110 chars at 12px, 150 at
+// 11px (PillsPrintTemplate shrinks a long note). Keep in sync with server/validation.js.
+export const MAX_NOTE_LENGTH = 150
 export const noteOptions = ['الامتناع عن تناول منتجات الأجبان والألبان قبل وبعد الحبة بساعتين', 'لا يؤخذ مع الخضراوات الورقية الخضراء']
 // The 18 dose times are a flat list; grouped once here (rather than in each pill-form screen)
 // so a single "٨ صباحًا" isn't buried among the "٨ صباحًا - ٤ عصرًا - ١٢ ليلًا" schedules.

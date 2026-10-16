@@ -1203,9 +1203,10 @@ function App() {
     if (!selected) return
     const params = new URLSearchParams({ floor: selected.floor || '', ward: selected.ward, slot: selected.slot || 'main', date })
     const response = await fetch(`${apiUrl}/chart?${params}`, { credentials: 'include' })
-    if (!response.ok) return
-    // A cached copy is not the server's state (see the load effect): throwing hands the save to
-    // its normal 4 s error retry instead of merging stale names over saved ones.
+    // A failed re-fetch, or a cached copy (not the server's state, see the load effect): throwing
+    // hands the save to its normal 4 s error retry — instead of re-sending the same stale save
+    // every 400 ms, or merging stale names over saved ones.
+    if (!response.ok) throw new Error('conflict re-fetch failed')
     if (response.headers.get('x-from-cache') === '1') throw new Error('stale chart copy')
     const result = await response.json()
     const fresh = parseChartRows(result.chart)

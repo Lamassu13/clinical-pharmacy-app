@@ -24,10 +24,13 @@ const ChartDoseRow = memo(function ChartDoseRow({ rowIndex, patientName, quantit
       ? (activeColumn < 0 ? columnIndex === 0 : activeColumn === columnIndex)
       : (gridInactive && rowIndex === 0 && columnIndex === 0)
     // cell-active = the one focused cell; col-active = the rest of that medicine's column
-    return <td key={columnIndex} data-col={columnIndex} role="gridcell" aria-colindex={columnIndex + 1} className={isActiveCell ? 'cell-active' : activeColumn === columnIndex ? 'col-active' : undefined}>
+    const hasWas = droppedValue != null && droppedValue !== false
+    // has-was: the cell anchors its «كان» flag (a class, not td:has(), which iOS 14 lacks).
+    const cellClass = [isActiveCell ? 'cell-active' : activeColumn === columnIndex && 'col-active', hasWas && 'has-was'].filter(Boolean).join(' ') || undefined
+    return <td key={columnIndex} data-col={columnIndex} role="gridcell" aria-colindex={columnIndex + 1} className={cellClass}>
       <input inputMode="numeric" pattern="[0-9]*" maxLength={4} tabIndex={roving ? 0 : -1} value={quantity} onChange={(event) => onUpdateQuantity(rowIndex, columnIndex, event.target.value)} aria-label={`الكمية — ${patientName.trim() || `مريض ${rowIndex + 1}`} — ${columnMedicines[columnIndex].trim() || `دواء ${columnIndex + 1}`}${droppedValue ? ` — قيمة جهاز آخر: ${droppedValue}` : ''}`} />
       {isActiveCell && activeMedicineName && <span className={labelBelow ? 'cell-medicine below' : 'cell-medicine'}>{activeMedicineName}</span>}
-      {droppedValue != null && droppedValue !== false && <span className="cell-was" title="قيمة الجهاز الآخر — عدّل الخلية لتثبيت قيمتك">كان: {droppedValue}</span>}
+      {hasWas && <span className="cell-was" title="قيمة الجهاز الآخر — عدّل الخلية لتثبيت قيمتك">كان: {droppedValue}</span>}
     </td>
   })}</tr>
 })

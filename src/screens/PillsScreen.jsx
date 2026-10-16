@@ -152,7 +152,7 @@ export default function PillsScreen({
             key={`${patient.rowNumber}-${pageIndex}`}>
             {suggest.target?.cardKey === `${patient.rowNumber}-${pageIndex}` && <MedicineSuggest {...suggest.listProps} />}
             <div className="pill-form-head">
-              <label className="pill-pick"><input type="checkbox" checked={pillSelection.has(patient.rowNumber)} onChange={() => onTogglePatient(patient.rowNumber)} /><span>تحديد للطباعة</span></label>
+              <label className={pillSelection.has(patient.rowNumber) ? 'pill-pick is-checked' : 'pill-pick'}><input type="checkbox" checked={pillSelection.has(patient.rowNumber)} onChange={() => onTogglePatient(patient.rowNumber)} /><span>تحديد للطباعة</span></label>
               <div className="pill-form-patient"><strong>{patient.name}</strong><span>{today}</span></div>
               <label className="pill-room">{roomLabel} <input inputMode="numeric" value={pillRooms[patient.rowNumber] || ''} onChange={(event) => setPillRooms((current) => ({ ...current, [patient.rowNumber]: event.target.value }))} /></label>
               <div className="pill-form-brand">

@@ -35,7 +35,7 @@ function ExtraPillFormCard({ form, catalogue, floorLabel, today, editTime, selec
   return <article className="pill-form">
     {suggest.target && <MedicineSuggest {...suggest.listProps} />}
     <div className="pill-form-head">
-      <label className="pill-pick"><input type="checkbox" checked={selected} onChange={() => onToggleSelect(form.id)} /><span>تحديد للطباعة</span></label>
+      <label className={selected ? 'pill-pick is-checked' : 'pill-pick'}><input type="checkbox" checked={selected} onChange={() => onToggleSelect(form.id)} /><span>تحديد للطباعة</span></label>
       <div className="pill-form-patient">
         {/* An <input> never shrinks to its value's width the way the real form's plain
             <strong>{patient.name}</strong> does — left at that, this field stayed as wide as

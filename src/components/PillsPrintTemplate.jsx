@@ -8,6 +8,10 @@ import { SHEETS_PER_CANVAS } from '../usePdfSheets.js'
 // Arabic letters joined (see ChartPrintTemplate). sheets: [{ key, patientName, today, room,
 // roomLabel, wardLabel, editTime, rows: [{ name, doseTime, usageMethod, note }] }]; the spare
 // rows are just blank entries in `rows`.
+// A note typed over several lines prints as one line joined with «، »: each line break would
+// otherwise cost a partly empty line, and the 26 mm row only holds MAX_NOTE_LENGTH as a paragraph.
+const noteText = (note) => (note || '').split('\n').map((line) => line.trim()).filter(Boolean).join('، ')
+
 const PillsPrintTemplate = forwardRef(function PillsPrintTemplate({ sheets }, ref) {
   const chunks = Array.from({ length: Math.ceil(sheets.length / SHEETS_PER_CANVAS) }, (_, index) => sheets.slice(index * SHEETS_PER_CANVAS, (index + 1) * SHEETS_PER_CANVAS))
   return <div ref={ref} className="ppt-root">{chunks.map((chunk) => <div key={chunk[0].key} className="ppt-chunk">{chunk.map((sheet) => <section key={sheet.key} className="ppt-sheet">
@@ -23,7 +27,7 @@ const PillsPrintTemplate = forwardRef(function PillsPrintTemplate({ sheets }, re
       <table className="ppt-table">
         <thead><tr><th></th><th>العلاج</th><th>وقت الجرعة</th><th>طريقة الاستخدام</th><th>الملاحظات</th></tr></thead>
         <tbody>{sheet.rows.map((row, index) => <tr key={index}>
-          <td></td><td className="ppt-name">{row.name}</td><td>{row.doseTime}</td><td>{row.usageMethod}</td><td>{row.note}</td>
+          <td></td><td className="ppt-name">{row.name}</td><td>{row.doseTime}</td><td>{row.usageMethod}</td><td className={row.note && row.note.length > 110 ? 'ppt-note-long' : undefined}>{noteText(row.note)}</td>
         </tr>)}</tbody>
       </table>
       <div className="ppt-foot"><span className="ppt-sign">توقيع الصيدلاني السريري</span><span>وقت التحرير: {sheet.editTime}</span></div>
