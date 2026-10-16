@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import hospitalLogo from '../assets/hospital-logo.png'
 import PillSelect from '../components/PillSelect.jsx'
+import PillNote from '../components/PillNote.jsx'
 import MedicineSuggest from '../components/MedicineSuggest.jsx'
 import useCatalogueSuggest from '../components/useCatalogueSuggest.js'
-import { usageMethods, noteOptions, doseTimeGroups } from '../constants.js'
+import { usageMethods, noteOptions, MAX_NOTE_LENGTH, doseTimeGroups } from '../constants.js'
 import PillsPrintTemplate from '../components/PillsPrintTemplate.jsx'
 import usePdfSheets from '../usePdfSheets.js'
 
@@ -76,7 +77,7 @@ function ExtraPillFormCard({ form, catalogue, floorLabel, today, editTime, selec
             <td className="pill-qty-cell"><input inputMode="numeric" aria-label={`كمية الحبوب — ${medName}`} value={entry.pillQty} onChange={(event) => setEntry(entry.slot, { pillQty: event.target.value.replace(/\D/g, '') })} /></td>
             <td><PillSelect value={entry.doseTime} groups={doseTimeGroups} label={`وقت الجرعة — ${medName}`} onChange={(nextValue) => setEntry(entry.slot, { doseTime: nextValue })} /></td>
             <td><PillSelect value={entry.usageMethod} options={usageMethods} label={`طريقة الاستخدام — ${medName}`} onChange={(nextValue) => setEntry(entry.slot, { usageMethod: nextValue })} /></td>
-            <td><PillSelect value={entry.note} options={noteOptions} label={`الملاحظات — ${medName}`} onChange={(nextValue) => setEntry(entry.slot, { note: nextValue })} /></td>
+            <td><PillNote value={entry.note} presets={noteOptions} maxLength={MAX_NOTE_LENGTH} label={`الملاحظات — ${medName}`} onChange={(nextValue) => setEntry(entry.slot, { note: nextValue })} /></td>
           </tr>
         })}</tbody>
       </table>

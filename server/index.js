@@ -12,7 +12,7 @@ import { checkDatabase, pool, query } from './db.js'
 import { authenticateUser, requireAdmin, requireAuth, requireManager } from './auth.js'
 import {
   ALLOWED_FLOORS, MAX_PATIENT_ROWS, SPECIAL_WARDS, PILL_FORM,
-  DOSE_TIMES, USAGE_METHODS, NOTE_OPTIONS, clampInt, isIsoDate, cleanText,
+  DOSE_TIMES, USAGE_METHODS, MAX_NOTE_LENGTH, clampInt, isIsoDate, cleanText,
   normalizeMedicineKey, medicineKeySql, SUPPLY_MATCH, SUPPLY_EXCEPT,
 } from './validation.js'
 import chartRoutes, { resolveChartId, readLocation } from './routes/chart.js'
@@ -732,7 +732,7 @@ app.put('/api/pills', requireAuth, async (request, response) => {
       patientRowNumber, medicineKey,
       doseTime: DOSE_TIMES.includes(entry?.doseTime) ? entry.doseTime : '',
       usageMethod: USAGE_METHODS.includes(entry?.usageMethod) ? entry.usageMethod : '',
-      note: NOTE_OPTIONS.includes(entry?.note) ? entry.note : '',
+      note: cleanText(entry?.note, MAX_NOTE_LENGTH),
       pillQty: String(entry?.pillQty ?? '').replace(/\D/g, '').slice(0, 9),
       pillName: cleanText(entry?.pillName, 200).trim(),
     }

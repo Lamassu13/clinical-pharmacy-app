@@ -1,7 +1,7 @@
 import express from 'express'
 import { pool, query } from '../db.js'
 import { requireAuth } from '../auth.js'
-import { canAccessLocation, isKnownWard, clampInt, cleanText, DOSE_TIMES, USAGE_METHODS, NOTE_OPTIONS } from '../validation.js'
+import { canAccessLocation, isKnownWard, clampInt, cleanText, DOSE_TIMES, USAGE_METHODS, MAX_NOTE_LENGTH } from '../validation.js'
 
 const router = express.Router()
 
@@ -91,7 +91,7 @@ router.put('/extra-pills/:id', requireAuth, async (request, response) => {
       pillQty: String(entry?.pillQty ?? '').replace(/\D/g, '').slice(0, 9),
       doseTime: DOSE_TIMES.includes(entry?.doseTime) ? entry.doseTime : '',
       usageMethod: USAGE_METHODS.includes(entry?.usageMethod) ? entry.usageMethod : '',
-      note: NOTE_OPTIONS.includes(entry?.note) ? entry.note : '',
+      note: cleanText(entry?.note, MAX_NOTE_LENGTH),
     })
   })
   const rows = SLOTS.map((slot) => ({ slot, ...(bySlot.get(slot) || { medicineName: '', pillQty: '', doseTime: '', usageMethod: '', note: '' }) }))

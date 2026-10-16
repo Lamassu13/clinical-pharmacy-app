@@ -112,6 +112,9 @@ test('extra-pills: PUT replaces the patient/room and all 7 slots; a second PUT f
   // An unrecognized dose-time/usage/note value is dropped rather than stored verbatim.
   const bogus = await client.put(`/api/extra-pills/${id}`, { patientName: 'أحمد', roomNumber: '', entries: [{ slot: 1, medicineName: 'x', pillQty: '', doseTime: 'ليس وقتًا حقيقيًا', usageMethod: '', note: '' }] })
   assert.equal(bogus.body.form.entries[0].doseTime, '')
+  // A note is free text; «٣ حبة بعد الطعام مباشرة» is a valid usage method.
+  const typed = await client.put(`/api/extra-pills/${id}`, { patientName: 'أحمد', roomNumber: '', entries: [{ slot: 1, medicineName: 'x', pillQty: '', doseTime: '', usageMethod: '٣ حبة بعد الطعام مباشرة', note: 'يؤخذ مع كوب ماء' }] })
+  assert.deepEqual([typed.body.form.entries[0].usageMethod, typed.body.form.entries[0].note], ['٣ حبة بعد الطعام مباشرة', 'يؤخذ مع كوب ماء'])
 })
 
 test('extra-pills: DELETE removes the form and its entries; a second delete is 404', async () => {

@@ -4,7 +4,7 @@ import { requireAuth, requireManager } from '../auth.js'
 import {
   ALLOWED_FLOORS, MAX_PATIENT_ROWS, MAX_CHART_COLUMNS, SPECIAL_WARDS, isKnownWard,
   canAccessLocation, clampInt, isIsoDate, cleanText,
-  normalizeMedicineKey, medicineKeySql, DOSE_TIMES, USAGE_METHODS, NOTE_OPTIONS,
+  normalizeMedicineKey, medicineKeySql, DOSE_TIMES, USAGE_METHODS, MAX_NOTE_LENGTH,
 } from '../validation.js'
 import { numberToArabicWords } from '../arabic-number.js'
 import { buildMeropenemForm, activeCourseDay, monthStart, windowStart, doseText, strengthMg, wardKeyOf, MEROPENEM_SQL_PATTERN } from '../meropenem.js'
@@ -488,7 +488,7 @@ router.post('/chart/expand-row', requireAuth, async (request, response) => {
       medicineKey: normalizeMedicineKey(cleanText(entry?.medicineKey, 200)),
       doseTime: DOSE_TIMES.includes(entry?.doseTime) ? entry.doseTime : '',
       usageMethod: USAGE_METHODS.includes(entry?.usageMethod) ? entry.usageMethod : '',
-      note: NOTE_OPTIONS.includes(entry?.note) ? entry.note : '',
+      note: cleanText(entry?.note, MAX_NOTE_LENGTH),
       pillQty: String(entry?.pillQty ?? '').replace(/\D/g, '').slice(0, 9),
       pillName: cleanText(entry?.pillName, 200).trim(),
     }))
