@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { roleLabels, PATIENT_ROWS, CHART_COLUMNS, MAX_CHART_COLUMNS, apiUrl, floors, specialWards } from './constants.js'
-import { interactionsForChart, applyTemplateColumns,yesterdaySchedules, mergePreviousDayDoses, addPatientToChart, mergeChartSnapshots, diffMergeOutcome, addOfflineRows, mergeKeyedSnapshots, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, blankExtraPillForm, parseChartRows, toEnglishDigits, medicineKey, patientNameKey, nearestMedicine, UNIT_ONE, isSyringe, VIAL_AMP, SYRINGE_EXCLUDE, isoDate, isDraftStale, rememberChart, recallChart, rememberPills, recallPills, forgetChartCopies, locationBody, pillChanges } from './helpers.js'
+import { interactionsForChart, applyTemplateColumns,yesterdaySchedules, mergePreviousDayDoses, addPatientToChart, mergeChartSnapshots, diffMergeOutcome, addOfflineRows, mergeKeyedSnapshots, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, settleExtraPillsOp, sameOp, blankExtraPillForm, parseChartRows, toEnglishDigits, medicineKey, patientNameKey, nearestMedicine, UNIT_ONE, isSyringe, VIAL_AMP, SYRINGE_EXCLUDE, isoDate, isDraftStale, rememberChart, recallChart, rememberPills, recallPills, forgetChartCopies, locationBody, pillChanges } from './helpers.js'
 import ConfirmDialog from './components/ConfirmDialog.jsx'
 import CopyChartDialog from './components/CopyChartDialog.jsx'
 import TemplatesDialog from './components/TemplatesDialog.jsx'
@@ -315,6 +315,15 @@ function App() {
     try { storage.removeItem('cpa-session-cache') } catch { /* best effort */ }
     return true
   }, [])
+  // What a shared iPad must not keep once this session is over (logout, a lapsed session, or a
+  // different pharmacist signing in): the remembered identity, the last server copies of
+  // charts/pills, and the service worker's cached API answers. Drafts stay — they are unsaved
+  // ward work and re-save on the next sign-in. Cache name must match sw.js's API_CACHE.
+  const forgetSessionData = useCallback(async () => {
+    try { storage.removeItem('cpa-session-cache') } catch { /* storage unavailable */ }
+    forgetChartCopies()
+    try { await caches.delete('cpa-api-v1') } catch { /* Cache API unavailable — nothing cached */ }
+  }, [])
   const today = new Date(`${selectedDate}T12:00:00`).toLocaleDateString('ar-IQ')
   // The weekday the chart is for. Noon-anchored like `today` so it cannot slip a day.
   const todayWeekday = new Date(`${selectedDate}T12:00:00`).toLocaleDateString('ar-IQ', { weekday: 'long' })
@@ -341,13 +350,28 @@ function App() {
     if (!wardNoteKey) return undefined
     let cancelled = false
     const pending = pendingWrites(userId).find((item) => item.key === `ward-note:${wardNoteKey}`)
-    setWardNote({ key: wardNoteKey, note: null, previous: null, draft: '', status: 'loading' })
+    // Same ward/day again (a refresh after the write queue sent something): keep what is on
+    // screen — the note box saves on blur, so it may hold text being typed right now.
+    setWardNote((current) => (current.key === wardNoteKey ? current : { key: wardNoteKey, note: null, previous: null, draft: '', status: 'loading' }))
+    const typing = (current) => current.key === wardNoteKey && ['idle', 'saving', 'save-error'].includes(current.status) && current.draft !== (current.note?.body || '')
     fetch(`${apiUrl}/ward-note?${new URLSearchParams({ floor: selected.floor || '', ward: selected.ward, date: selectedDate })}`, { credentials: 'include' })
-      .then((response) => (response.ok ? response.json() : Promise.reject(new Error('load failed'))))
-      .then((result) => { if (!cancelled) setWardNote({ key: wardNoteKey, note: result.note, previous: result.previous, draft: pending ? pending.body.body : result.note?.body || '', status: pending ? 'queued' : 'idle' }) })
-      .catch(() => { if (!cancelled) setWardNote((current) => (pending ? { ...current, draft: pending.body.body, status: 'queued' } : { ...current, status: 'load-error' })) })
+      .then((response) => { isExpired(response); return response.ok ? response.json() : Promise.reject(new Error('load failed')) })
+      .then((result) => {
+        if (cancelled) return
+        setWardNote((current) => (typing(current)
+          ? { ...current, note: result.note, previous: result.previous }
+          : { key: wardNoteKey, note: result.note, previous: result.previous, draft: pending ? pending.body.body : result.note?.body || '', status: pending ? 'queued' : 'idle' }))
+      })
+      .catch(() => {
+        if (cancelled) return
+        setWardNote((current) => {
+          if (pending) return { ...current, draft: pending.body.body, status: 'queued' }
+          // A failed refresh of a note already on screen leaves it usable.
+          return current.key === wardNoteKey && current.status !== 'loading' ? current : { ...current, status: 'load-error' }
+        })
+      })
     return () => { cancelled = true }
-  }, [wardNoteKey, selected?.floor, selected?.ward, selectedDate, userId, writesFlushed])
+  }, [wardNoteKey, selected?.floor, selected?.ward, selectedDate, userId, writesFlushed, isExpired])
   const saveWardNote = useCallback(async () => {
     const { key, draft, note } = wardNote
     const queueKey = `ward-note:${key}`
@@ -363,13 +387,14 @@ function App() {
       setWardNote((current) => (current.key === key ? { ...current, status: 'queued' } : current))
       return
     }
+    if (isExpired(response)) { setWardNote((current) => (current.key === key ? { ...current, status: 'idle' } : current)); return }
     try {
       if (!response.ok) throw new Error('save failed')
       forgetWrite(queueKey)
       const result = await response.json()
       setWardNote((current) => (current.key === key ? { ...current, note: result.note, status: 'idle' } : current))
     } catch { setWardNote((current) => (current.key === key ? { ...current, status: 'save-error' } : current)) }
-  }, [selected, selectedDate, wardNote, wardNoteKey, userId])
+  }, [selected, selectedDate, wardNote, wardNoteKey, userId, isExpired])
   // Safety flags on the open chart: the same check as «التداخلات الدوائية», shown as a ⚠ on the
   // patient's row for major interactions and duplicate therapy only (moderate/minor would badge
   // half the ward). The reference pairs are fetched once per set of medicines given.
@@ -476,7 +501,9 @@ function App() {
     fetch(`${apiUrl}/auth/me`, { credentials: 'include' })
       .then((response) => response.json())
       .then((result) => {
-        if (!result.user) return
+        // The server is reachable and this session is gone (lapsed overnight, not logged out):
+        // don't let a later offline cold start bring the old identity or its data back.
+        if (!result.user) { forgetSessionData(); return }
         setCurrentUser(result.user)
         setIsLoggedIn(true)
         try { storage.setItem('cpa-session-cache', JSON.stringify(result.user)) } catch { /* best effort */ }
@@ -499,7 +526,7 @@ function App() {
         } catch { /* storage unavailable or corrupt — start on the picker */ }
       })
       .finally(() => { navRestoreAttemptedRef.current = true })
-  }, [])
+  }, [forgetSessionData])
 
   const submitLogin = async (event) => {
     event.preventDefault()
@@ -509,8 +536,11 @@ function App() {
       const response = await fetch(`${apiUrl}/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(credentials) })
       const result = await response.json()
       if (!response.ok) throw new Error(result.message || 'تعذر تسجيل الدخول')
+      if (currentUser && String(currentUser.id) !== String(result.user.id)) await forgetSessionData()
       setCurrentUser(result.user)
       setIsLoggedIn(true)
+      // Without this a fresh sign-in could not reopen offline until an online reload had run /auth/me.
+      try { storage.setItem('cpa-session-cache', JSON.stringify(result.user)) } catch { /* best effort */ }
       // A manual login doesn't go through the /auth/me effect above, so if that background
       // check is still in flight (or never settles), its ref would otherwise keep gating the
       // nav-persist effect forever, silently breaking "resume after a refresh" for this whole
@@ -1329,12 +1359,11 @@ function App() {
     if (unsaved && !(await askConfirm('لا يزال هناك ما لم يُحفَظ على الخادم. إن سجّلت الخروج الآن يبقى على هذا الجهاز ويُعاد حفظه فور دخولك من جديد. متابعة تسجيل الخروج؟'))) return
     try { await fetch(`${apiUrl}/auth/logout`, { method: 'POST', credentials: 'include' }) } catch { /* ignore network errors on logout */ }
     didAutoLandRef.current = false
-    try { sessionStorage.removeItem('cpa-nav'); storage.removeItem('cpa-session-cache') } catch { /* storage unavailable */ }
+    try { sessionStorage.removeItem('cpa-nav') } catch { /* storage unavailable */ }
     // Ward iPads are shared between pharmacists — the next person to sign in on this device
     // shouldn't be able to see this session's cached chart/pills/extra-pills responses if they
-    // go offline before their own first successful load. Name must match sw.js's API_CACHE.
-    forgetChartCopies()
-    try { await caches.delete('cpa-api-v1') } catch { /* Cache API unavailable — nothing cached to worry about either */ }
+    // go offline before their own first successful load.
+    await forgetSessionData()
     setIsLoggedIn(false)
     setCurrentUser(null)
     setAdminView(null)
@@ -1349,7 +1378,7 @@ function App() {
     setRegisterForm({ fullName: '', username: '', phone: '', email: '', fingerprintNumber: '', password: '' })
     setAdminSuccess('')
     setRegistrationsError('')
-  }, [selected, flushChart, flushPills, chartSaveStatus, pillsSaveStatus, askConfirm])
+  }, [selected, flushChart, flushPills, chartSaveStatus, pillsSaveStatus, askConfirm, forgetSessionData])
   // There is no router, so the tab title is the only cue for which screen is open.
   useEffect(() => {
     const base = 'وحدة الصيدلة السريرية'
@@ -2111,30 +2140,6 @@ function App() {
     return () => { cancelled = true }
   }, [selected, selectedDate, isExpired])
 
-  // استمارة الحبوب الإضافي: one standing list per ward — no date scoping, since these aren't a
-  // daily/reset artifact like the chart or the real pills form. `applyExtraPillsQueue` layers
-  // in whatever create/edit/delete didn't reach the server yet (see the callbacks below), so a
-  // pending offline change still shows right after this GET — including one served from the
-  // service worker's cache while genuinely offline.
-  useEffect(() => {
-    if (!selected || selected.mode !== 'extra-pills') return undefined
-    let cancelled = false
-    setExtraPillsLoading(true)
-    setExtraPillsError(false)
-    const params = new URLSearchParams({ floor: selected.floor || '', ward: selected.ward })
-    const queueKey = extraPillsQueueKey(selected.floor, selected.ward)
-    fetch(`${apiUrl}/extra-pills?${params}`, { credentials: 'include' })
-      .then((response) => { isExpired(response); return response.ok ? response.json() : null })
-      .then((result) => {
-        if (cancelled) return
-        if (result) { setExtraPillsForms(applyExtraPillsQueue(result.forms, readExtraPillsQueue(queueKey))); setExtraPillsError(false); setEditedAt(new Date()) }
-        else { setExtraPillsForms([]); setExtraPillsError(true) }
-        setExtraPillsLoading(false)
-      })
-      .catch(() => { if (!cancelled) { setExtraPillsError(true); setExtraPillsLoading(false) } })
-    return () => { cancelled = true }
-  }, [selected, isExpired])
-
   const createExtraPillForm = useCallback(async () => {
     if (!selected || selected.mode !== 'extra-pills') return
     setExtraPillsBusy(true)
@@ -2152,12 +2157,12 @@ function App() {
         const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
         setExtraPillsForms((current) => [...current, { id: tempId, ...blankExtraPillForm(selected.floor, selected.ward) }])
         const queueKey = extraPillsQueueKey(selected.floor, selected.ward)
-        writeExtraPillsQueue(queueKey, enqueueExtraPillsOp(readExtraPillsQueue(queueKey), { key: tempId, op: 'create', floor: selected.floor, ward: selected.ward, patch: null }))
+        writeExtraPillsQueue(queueKey, enqueueExtraPillsOp(readExtraPillsQueue(queueKey), { key: tempId, op: 'create', floor: selected.floor, ward: selected.ward, patch: null, user: userId }))
       } else {
         setExtraPillsActionError('تعذّر إنشاء الاستمارة — حاول مرة أخرى')
       }
     } finally { setExtraPillsBusy(false) }
-  }, [selected, isExpired])
+  }, [selected, isExpired, userId])
 
   const saveExtraPillForm = useCallback(async (id, patch) => {
     const isTemp = typeof id === 'string' && id.startsWith('temp-')
@@ -2168,7 +2173,7 @@ function App() {
       setExtraPillsForms((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)))
       if (form) {
         const queueKey = extraPillsQueueKey(form.floor, form.ward)
-        writeExtraPillsQueue(queueKey, enqueueExtraPillsOp(readExtraPillsQueue(queueKey), { key: id, op: 'create', floor: form.floor, ward: form.ward, patch }))
+        writeExtraPillsQueue(queueKey, enqueueExtraPillsOp(readExtraPillsQueue(queueKey), { key: id, op: 'create', floor: form.floor, ward: form.ward, patch, user: userId }))
       }
       return
     }
@@ -2185,13 +2190,13 @@ function App() {
         setExtraPillsForms((current) => current.map((item) => (item.id === id ? { ...item, ...patch, pending: true } : item)))
         if (form) {
           const queueKey = extraPillsQueueKey(form.floor, form.ward)
-          writeExtraPillsQueue(queueKey, enqueueExtraPillsOp(readExtraPillsQueue(queueKey), { key: String(id), op: 'update', id, patch }))
+          writeExtraPillsQueue(queueKey, enqueueExtraPillsOp(readExtraPillsQueue(queueKey), { key: String(id), op: 'update', id, patch, user: userId }))
         }
       } else {
         setExtraPillsActionError('تعذّر حفظ الاستمارة — حاول مرة أخرى')
       }
     } finally { setExtraPillsBusy(false) }
-  }, [isExpired, extraPillsForms])
+  }, [isExpired, extraPillsForms, userId])
 
   const deleteExtraPillForm = useCallback(async (id) => {
     if (!(await askConfirm('حذف هذه الاستمارة؟', { danger: true }))) return
@@ -2202,7 +2207,7 @@ function App() {
       setExtraPillsForms((current) => (current ?? []).filter((item) => item.id !== id))
       if (form) {
         const queueKey = extraPillsQueueKey(form.floor, form.ward)
-        writeExtraPillsQueue(queueKey, enqueueExtraPillsOp(readExtraPillsQueue(queueKey), { key: id, op: 'delete', id: null }))
+        writeExtraPillsQueue(queueKey, enqueueExtraPillsOp(readExtraPillsQueue(queueKey), { key: id, op: 'delete', id: null, user: userId }))
       }
       return
     }
@@ -2218,54 +2223,101 @@ function App() {
         setExtraPillsForms((current) => (current ?? []).filter((item) => item.id !== id))
         if (form) {
           const queueKey = extraPillsQueueKey(form.floor, form.ward)
-          writeExtraPillsQueue(queueKey, enqueueExtraPillsOp(readExtraPillsQueue(queueKey), { key: String(id), op: 'delete', id }))
+          writeExtraPillsQueue(queueKey, enqueueExtraPillsOp(readExtraPillsQueue(queueKey), { key: String(id), op: 'delete', id, user: userId }))
         }
       } else {
         setExtraPillsActionError('تعذّر حذف الاستمارة — حاول مرة أخرى')
       }
     } finally { setExtraPillsBusy(false) }
-  }, [askConfirm, isExpired, extraPillsForms])
+  }, [askConfirm, isExpired, extraPillsForms, userId])
 
   // Replays queued extra-pills writes in order once the network is back — there's no fixed
   // retry timer for this screen (see the constant above), so reconnecting is the trigger.
-  const flushExtraPillsQueue = useCallback(async (floorValue, ward) => {
+  // Only this user's ops (and untagged ones queued before ops carried a user) are sent, so a
+  // shared iPad never posts one pharmacist's offline edits under the next one's session. The
+  // queue is re-read after every request: an edit made while a request was in flight replaced
+  // that op, and must stay queued rather than be overwritten by a stale copy. One flush per ward
+  // at a time — a second caller (the loader, a reconnect) waits for the running one.
+  const extraPillsFlushes = useRef(new Map())
+  const flushExtraPillsQueue = useCallback((floorValue, ward) => {
     const queueKey = extraPillsQueueKey(floorValue, ward)
-    let queue = readExtraPillsQueue(queueKey)
-    for (const entry of queue) {
-      try {
-        if (entry.op === 'create') {
-          const response = await fetch(`${apiUrl}/extra-pills`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ floor: floorValue, ward }) })
-          if (isExpired(response)) return
-          if (!response.ok) throw new Error()
-          let { form } = await response.json()
-          if (entry.patch) {
-            const putResponse = await fetch(`${apiUrl}/extra-pills/${form.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(entry.patch) })
-            if (putResponse.ok) form = (await putResponse.json()).form
+    if (extraPillsFlushes.current.has(queueKey)) return extraPillsFlushes.current.get(queueKey)
+    const mine = (item) => item.user == null || item.user === userId
+    const run = async () => {
+      // ponytail: 100 ops per flush is far above one ward's offline backlog; the rest go next time.
+      for (let step = 0; step < 100; step += 1) {
+        const entry = readExtraPillsQueue(queueKey).find(mine)
+        if (!entry) return
+        let created = null
+        let patchSent = true
+        try {
+          if (entry.op === 'create') {
+            const response = await fetch(`${apiUrl}/extra-pills`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ floor: floorValue, ward }) })
+            if (isExpired(response)) return
+            if (!response.ok) throw new Error()
+            created = (await response.json()).form
+            if (entry.patch) {
+              const putResponse = await fetch(`${apiUrl}/extra-pills/${created.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(entry.patch) })
+              if (putResponse.ok) created = (await putResponse.json()).form
+              else patchSent = false
+            }
+          } else if (entry.op === 'update') {
+            const response = await fetch(`${apiUrl}/extra-pills/${entry.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(entry.patch) })
+            if (isExpired(response)) return
+            if (!response.ok) throw new Error()
+            const { form } = await response.json()
+            // An edit queued while this PUT was in flight is newer than the server's answer.
+            if (sameOp(readExtraPillsQueue(queueKey).find((item) => item.key === entry.key), entry)) {
+              setExtraPillsForms((current) => current.map((item) => (item.id === entry.id ? form : item)))
+            }
+          } else if (entry.op === 'delete' && entry.id) {
+            const response = await fetch(`${apiUrl}/extra-pills/${entry.id}`, { method: 'DELETE', credentials: 'include' })
+            if (isExpired(response)) return
+            if (!response.ok && response.status !== 404) throw new Error()
           }
-          setExtraPillsForms((current) => current.map((item) => (item.id === entry.key ? form : item)))
-        } else if (entry.op === 'update') {
-          const response = await fetch(`${apiUrl}/extra-pills/${entry.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(entry.patch) })
-          if (isExpired(response)) return
-          if (!response.ok) throw new Error()
-          const { form } = await response.json()
-          setExtraPillsForms((current) => current.map((item) => (item.id === entry.id ? form : item)))
-        } else if (entry.op === 'delete' && entry.id) {
-          const response = await fetch(`${apiUrl}/extra-pills/${entry.id}`, { method: 'DELETE', credentials: 'include' })
-          if (isExpired(response)) return
-          if (!response.ok && response.status !== 404) throw new Error()
+        } catch {
+          return // still offline / still failing — leave the rest queued for next time
         }
-        queue = queue.filter((item) => item.key !== entry.key)
-        writeExtraPillsQueue(queueKey, queue)
-      } catch {
-        return // still offline / still failing — leave the rest queued for next time
+        const { queue: next, card } = settleExtraPillsOp(readExtraPillsQueue(queueKey), entry, created, patchSent)
+        writeExtraPillsQueue(queueKey, next)
+        if (card) setExtraPillsForms((current) => current.map((item) => (item.id === entry.key ? card : item)))
       }
     }
-  }, [isExpired])
+    const flush = run().finally(() => extraPillsFlushes.current.delete(queueKey))
+    extraPillsFlushes.current.set(queueKey, flush)
+    return flush
+  }, [isExpired, userId])
 
   useEffect(() => {
     if (!selected || selected.mode !== 'extra-pills' || !isOnline) return undefined
     flushExtraPillsQueue(selected.floor, selected.ward)
   }, [selected, isOnline, flushExtraPillsQueue])
+
+  // استمارة الحبوب الإضافي: one standing list per ward — no date scoping, since these aren't a
+  // daily/reset artifact like the chart or the real pills form. `applyExtraPillsQueue` layers
+  // in whatever create/edit/delete didn't reach the server yet (see the callbacks below), so a
+  // pending offline change still shows right after this GET — including one served from the
+  // service worker's cache while genuinely offline.
+  useEffect(() => {
+    if (!selected || selected.mode !== 'extra-pills') return undefined
+    let cancelled = false
+    setExtraPillsLoading(true)
+    setExtraPillsError(false)
+    const params = new URLSearchParams({ floor: selected.floor || '', ward: selected.ward })
+    const queueKey = extraPillsQueueKey(selected.floor, selected.ward)
+    const mine = (item) => item.user == null || item.user === userId
+    ;(navigator.onLine ? flushExtraPillsQueue(selected.floor, selected.ward) : Promise.resolve())
+      .then(() => fetch(`${apiUrl}/extra-pills?${params}`, { credentials: 'include' }))
+      .then((response) => { isExpired(response); return response.ok ? response.json() : null })
+      .then((result) => {
+        if (cancelled) return
+        if (result) { setExtraPillsForms(applyExtraPillsQueue(result.forms, readExtraPillsQueue(queueKey).filter(mine))); setExtraPillsError(false); setEditedAt(new Date()) }
+        else { setExtraPillsForms([]); setExtraPillsError(true) }
+        setExtraPillsLoading(false)
+      })
+      .catch(() => { if (!cancelled) { setExtraPillsError(true); setExtraPillsLoading(false) } })
+    return () => { cancelled = true }
+  }, [selected, isExpired, userId, flushExtraPillsQueue])
 
   const changeDate = useCallback((nextDate) => {
     flushChart()

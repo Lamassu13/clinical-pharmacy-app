@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { averagePatients, pillChanges, interactionsForChart, mergeKeyedSnapshots, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, EXTRA_PILL_SLOTS, isDraftStale, rememberChart, recallChart, forgetChartCopies, mergePreviousDayDoses, addPatientToChart, medicineMatches, pillSheetPlan, yesterdaySchedules, scheduleFor, applyTemplateColumns, catalogueMatches, RENAL_EQUATIONS, renalGuidance, SCR_UMOL_PER_MGDL } from './helpers.js'
+import { averagePatients, pillChanges, interactionsForChart, mergeKeyedSnapshots, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, settleExtraPillsOp, EXTRA_PILL_SLOTS, isDraftStale, rememberChart, recallChart, forgetChartCopies, mergePreviousDayDoses, addPatientToChart, medicineMatches, pillSheetPlan, yesterdaySchedules, scheduleFor, applyTemplateColumns, catalogueMatches, RENAL_EQUATIONS, renalGuidance, SCR_UMOL_PER_MGDL } from './helpers.js'
 
 test('mergeKeyedSnapshots keeps a local edit and adopts an unrelated server change', () => {
   const base = { a: '1', b: '2' }
@@ -446,9 +446,52 @@ test('write queue: last write per key, per user, sent in order; offline/401/5xx 
   assert.deepEqual(pendingWrites(2).map((entry) => entry.body), ['other user'])
 })
 
+test('storage: a delete whose IndexedDB transaction fails is not brought back on the next boot', async () => {
+  const ls = fakeLocalStorage({})
+  const idb = fakeIndexedDB({ data: new Map([['cpa-write-queue', '[old]'], ['cpa-chart-copy:y', 'copy']]) })
+  assert.equal(await hydrateStorage({ idb, ls }), 'indexeddb')
+  idb.failWrites = true // the connection drops just as the emptied queue is removed
+  storage.removeItem('cpa-write-queue')
+  await new Promise((resolve) => setTimeout(resolve, 5))
+  assert.equal(idb.data.has('cpa-write-queue'), true) // the delete never reached IndexedDB
+  idb.failWrites = false
+  assert.equal(await hydrateStorage({ idb, ls }), 'indexeddb')
+  assert.equal(storage.getItem('cpa-write-queue'), null) // so it must not come back
+  assert.equal(storage.getItem('cpa-chart-copy:y'), 'copy')
+})
+
+test('write queue: 408 and 429 are "try again later", not a refusal', async () => {
+  await hydrateStorage({ idb: undefined, ls: fakeLocalStorage({}) })
+  queueWrite({ key: 'ward-note:a', user: 1, body: 'note' })
+  for (const status of [408, 429]) assert.deepEqual(await flushWrites(1, async () => ({ ok: false, status })), { sent: 0, dropped: [] })
+  assert.equal(pendingWrites(1).length, 1)
+})
+
 test('write queue: a write queued while a flush runs is kept', async () => {
   await hydrateStorage({ idb: undefined, ls: fakeLocalStorage({}) })
   queueWrite({ key: 'ward-note:a', user: 1, body: 'old' })
   await flushWrites(1, async () => { queueWrite({ key: 'ward-note:a', user: 1, body: 'new' }); return { ok: true, status: 200 } })
   assert.deepEqual(pendingWrites(1).map((entry) => entry.body), ['new'])
+})
+
+test('settleExtraPillsOp keeps an extra-pills edit made while its op was in flight', () => {
+  const create = { key: 'temp-1', op: 'create', floor: 9, ward: 'w', patch: { patientName: 'a' }, user: '2' }
+  const other = { key: '7', op: 'update', id: 7, patch: { roomNumber: '3' }, user: '2' }
+  const server = { id: 41, patientName: 'a' }
+  // Nothing changed meanwhile: the create is done, the card becomes the server's form.
+  assert.deepEqual(settleExtraPillsOp([create, other], create, server), { queue: [other], card: server })
+  // Edited meanwhile: the newer patch is queued as an update of the new form, and shown.
+  const edited = { ...create, patch: { patientName: 'ab' } }
+  assert.deepEqual(settleExtraPillsOp([edited, other], create, server), {
+    queue: [other, { key: '41', op: 'update', id: 41, patch: { patientName: 'ab' }, user: '2' }],
+    card: { id: 41, patientName: 'ab', pending: true },
+  })
+  // Deleted meanwhile (the create was cancelled): delete the form the server just made.
+  assert.deepEqual(settleExtraPillsOp([other], create, server), { queue: [other, { key: '41', op: 'delete', id: 41, user: '2' }], card: null })
+  // The follow-up PUT failed: the patch stays queued instead of being lost.
+  assert.deepEqual(settleExtraPillsOp([create], create, { id: 41 }, false).queue, [{ key: '41', op: 'update', id: 41, patch: { patientName: 'a' }, user: '2' }])
+  // An update replaced while in flight stays queued as it now is; an unchanged one is done.
+  const newer = { ...other, patch: { roomNumber: '4' } }
+  assert.deepEqual(settleExtraPillsOp([newer], other, null).queue, [newer])
+  assert.deepEqual(settleExtraPillsOp([other], other, null).queue, [])
 })

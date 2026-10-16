@@ -181,6 +181,27 @@ export const applyExtraPillsQueue = (forms, queue) => {
   return order.map((key) => byKey.get(key)).filter(Boolean)
 }
 
+export const sameOp = (a, b) => JSON.stringify(a) === JSON.stringify(b)
+
+// After one queued extra-pills op was sent: what stays queued, and (for a create) the card that
+// replaces the temporary one. `latest` is the queue re-read after the request, so it holds any
+// edit made while the request was in flight — that edit is newer and must not be dropped:
+// - a create edited meanwhile → an update of the form the server just made;
+// - a create deleted meanwhile → a delete of it (the server has it now);
+// - a create whose follow-up PUT failed → its patch queued as an update;
+// - any other op changed meanwhile → left queued as it now is.
+export const settleExtraPillsOp = (latest, entry, created, patchSent = true) => {
+  const now = latest.find((item) => item.key === entry.key)
+  const rest = latest.filter((item) => item.key !== entry.key)
+  const changed = Boolean(now) && !sameOp(now, entry)
+  if (entry.op !== 'create' || !created) return { queue: changed ? latest : rest, card: null }
+  const id = String(created.id)
+  if (!now) return { queue: [...rest, { key: id, op: 'delete', id: created.id, user: entry.user }], card: null }
+  const patch = changed ? now.patch : (patchSent ? null : entry.patch)
+  if (!patch) return { queue: rest, card: created }
+  return { queue: [...rest, { key: id, op: 'update', id: created.id, patch, user: now.user }], card: { ...created, ...patch, pending: true } }
+}
+
 // GET /api/chart's row-per-cell shape, expanded to the grid the UI keeps in state — at least
 // CHART_COLUMNS wide, wider if a manual "+ عمود" (src/App.jsx addColumn) previously grew this
 // particular chart past that and it was saved, so reopening it shows every column it actually
