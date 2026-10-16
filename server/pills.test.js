@@ -235,3 +235,24 @@ test('POST /api/chart/expand-row undoes collapse-row: every row\'s pill data is 
   const rooms = await pool.query('SELECT patient_row_number, room_number FROM pill_patient_meta ORDER BY patient_row_number')
   assert.deepEqual(rooms.rows, [{ patient_row_number: 2, room_number: 'A' }, { patient_row_number: 3, room_number: 'B' }])
 })
+
+test('PUT /api/pills: two devices saving the same entry at the same moment both succeed', async () => {
+  const client = await loginAs({ role: 'user', floor: FLOOR })
+  await client.put('/api/chart', chartBody())
+  const save = (doseTime, room) => client.put('/api/pills', {
+    floor: FLOOR, ward: WARD, date: DATE,
+    changes: { entries: [{ patientRowNumber: 1, medicineKey: KEY, doseTime }], rooms: { 1: room } },
+  })
+  for (let round = 0; round < 15; round += 1) {
+    const results = await Promise.all([save('٨ صباحًا', '3'), save('٩ صباحًا', '4')])
+    assert.deepEqual(results.map((res) => res.status), [200, 200], `round ${round}`)
+  }
+  const pills = await client.get(`/api/pills?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=${DATE}`)
+  assert.ok(['٨ صباحًا', '٩ صباحًا'].includes(pills.body.pills.entries.find((e) => e.medicineKey === KEY).doseTime))
+})
+
+test('an impossible date (2026-02-31) is a 400, not a server error', async () => {
+  const client = await loginAs({ role: 'admin' })
+  assert.equal((await client.get(`/api/pills?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=2026-02-31`)).status, 400)
+  assert.equal((await client.get('/api/reports?scope=all&from=2026-02-01&to=2026-02-31')).status, 400)
+})
