@@ -30,7 +30,8 @@ const API_CACHE = 'cpa-api-v1'
 // the ward note, antibiotic follow-up), so they still show their last copy offline. All are
 // dropped with this cache at logout.
 const CACHEABLE_API_PATHS = ['/api/chart', '/api/pills', '/api/extra-pills', '/api/medicines',
-  '/api/templates', '/api/interactions', '/api/patients/search', '/api/patients/history', '/api/ward-note', '/api/antibiotics']
+  '/api/templates', '/api/interactions', '/api/patients/search', '/api/patients/history', '/api/ward-note', '/api/antibiotics',
+  '/api/antibiotics/long', '/api/meropenem']
 
 self.addEventListener('install', (event) => {
   // The page itself is required, as before. The precache is best effort, one file at a time: a
@@ -42,8 +43,15 @@ self.addEventListener('install', (event) => {
 })
 
 self.addEventListener('activate', (event) => {
+  // Keep the previous build's shell too (caches.keys() is in creation order): a tab left open
+  // across a deploy still runs that build, and its lazily loaded files (the PDF export) are gone
+  // from the server. Anything older is dropped.
   event.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== SHELL_CACHE && key !== API_CACHE).map((key) => caches.delete(key)))),
+    caches.keys().then((keys) => {
+      const previousShell = keys.filter((key) => key.startsWith('cpa-shell-') && key !== SHELL_CACHE).pop()
+      const keep = new Set([SHELL_CACHE, API_CACHE, previousShell])
+      return Promise.all(keys.filter((key) => !keep.has(key)).map((key) => caches.delete(key)))
+    }),
   )
   self.clients.claim()
 })
@@ -86,12 +94,19 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
+  // ignoreVary: the server answers with `Vary: Origin`, and a module import() sends an Origin
+  // header that the precache request didn't, so without it a lazily loaded chunk (the PDF
+  // export) never matched its cached copy — offline, or in a tab left open across a deploy.
+  // Safe here: these files are content-hashed and never change.
   event.respondWith(
-    caches.match(request).then((cached) => cached || fetch(request).then((response) => {
+    caches.match(request, { ignoreVary: true }).then((cached) => cached || fetch(request).then((response) => {
       // clone() must run synchronously, before the body is read anywhere else — deferring
       // it into the .then() below (after caches.open() resolves) clones an already-consumed
       // stream and throws "Response body is already used".
-      const responseToCache = response.ok ? response.clone() : null
+      // A missing /assets/ file gets the SPA's index.html with a 200 — never store that page
+      // under a script's URL, or the bad copy would be served from cache from then on.
+      const isPage = (response.headers.get('content-type') || '').includes('text/html')
+      const responseToCache = response.ok && !(isPage && url.pathname.startsWith('/assets/')) ? response.clone() : null
       if (responseToCache) event.waitUntil(caches.open(SHELL_CACHE).then((cache) => cache.put(request, responseToCache)))
       return response
     })),
