@@ -53,5 +53,7 @@ export const clampInt = (value, min, max) => {
   const parsed = Math.trunc(Number(value))
   return Number.isFinite(parsed) && parsed >= min && parsed <= max ? parsed : null
 }
-export const isIsoDate = (value) => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value))
+// A real calendar day: Date.parse alone accepts 2026-02-31 (rolling it to 3 March), which Postgres
+// then rejects — a 500 instead of a 400.
+export const isIsoDate = (value) => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value
 export const cleanText = (value, maxLength) => String(value ?? '').slice(0, maxLength)

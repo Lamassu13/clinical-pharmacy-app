@@ -774,13 +774,16 @@ app.put('/api/pills', requireAuth, async (request, response) => {
     }
     if (rows.length) {
       await client.query(
-        'INSERT INTO pill_entries (chart_id, patient_row_number, medicine_key, dose_time, usage_method, note, pill_qty, pill_name) SELECT $1, prn, mk, dt, um, nt, pq, pn FROM UNNEST($2::int[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::text[]) AS u(prn, mk, dt, um, nt, pq, pn)',
+        'INSERT INTO pill_entries (chart_id, patient_row_number, medicine_key, dose_time, usage_method, note, pill_qty, pill_name) SELECT $1, prn, mk, dt, um, nt, pq, pn FROM UNNEST($2::int[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::text[]) AS u(prn, mk, dt, um, nt, pq, pn) ' +
+          // Another device saving the same entry at the same moment: the later save wins instead of failing.
+          'ON CONFLICT (chart_id, patient_row_number, medicine_key) DO UPDATE SET dose_time = EXCLUDED.dose_time, usage_method = EXCLUDED.usage_method, note = EXCLUDED.note, pill_qty = EXCLUDED.pill_qty, pill_name = EXCLUDED.pill_name',
         [chartId, rows.map((row) => row.patientRowNumber), rows.map((row) => row.medicineKey), rows.map((row) => row.doseTime), rows.map((row) => row.usageMethod), rows.map((row) => row.note), rows.map((row) => row.pillQty), rows.map((row) => row.pillName)],
       )
     }
     if (roomRows.length) {
       await client.query(
-        'INSERT INTO pill_patient_meta (chart_id, patient_row_number, room_number) SELECT $1, prn, rn FROM UNNEST($2::int[], $3::text[]) AS u(prn, rn)',
+        'INSERT INTO pill_patient_meta (chart_id, patient_row_number, room_number) SELECT $1, prn, rn FROM UNNEST($2::int[], $3::text[]) AS u(prn, rn) ' +
+          'ON CONFLICT (chart_id, patient_row_number) DO UPDATE SET room_number = EXCLUDED.room_number',
         [chartId, roomRows.map((room) => room.patientRowNumber), roomRows.map((room) => room.roomNumber)],
       )
     }

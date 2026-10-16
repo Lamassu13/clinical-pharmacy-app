@@ -72,6 +72,10 @@ test('isIsoDate: only a zero-padded, real calendar date passes', () => {
   assert.equal(isIsoDate(''), false)
   assert.equal(isIsoDate(null), false)
   assert.equal(isIsoDate(20260831), false)
+  // Shaped right but not a real day: Date.parse rolls these over, Postgres rejects them.
+  assert.equal(isIsoDate('2026-02-31'), false)
+  assert.equal(isIsoDate('2026-02-29'), false)
+  assert.equal(isIsoDate('2028-02-29'), true)
 })
 
 test('cleanText: truncates at the limit and never returns a non-string', () => {
