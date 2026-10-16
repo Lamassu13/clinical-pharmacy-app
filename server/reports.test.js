@@ -25,10 +25,10 @@ const loginAs = async (options) => {
 }
 
 // patients: [{ name, id?, meds: { 'Aspirin 100mg Tab': 2, ... } }]
-const saveChart = async (client, floor, date, patients) => {
+const saveChart = async (client, floor, date, patients, ward = WARD) => {
   const columns = [...new Set(patients.flatMap((patient) => Object.keys(patient.meds)))]
   const response = await client.put('/api/chart', {
-    floor, ward: WARD, date, expectedVersion: 0,
+    floor, ward, date, expectedVersion: 0,
     patients: patients.map((patient, index) => ({ rowNumber: index + 1, name: patient.name, patientId: patient.id || '' })),
     columns: columns.map((medicineName, index) => ({ columnNumber: index + 1, medicineName })),
     quantities: patients.flatMap((patient, row) => Object.entries(patient.meds).map(([name, quantity]) => ({ rowNumber: row + 1, columnNumber: columns.indexOf(name) + 1, quantity }))),
@@ -45,19 +45,19 @@ test('GET /api/reports: census, admissions/discharges, stays, polypharmacy, cons
   await saveChart(admin, 5, '2026-05-01', [ali, omar])
   await saveChart(admin, 5, '2026-05-02', [ali, omar])
   await saveChart(admin, 5, '2026-05-03', [ali])
-  // 05-04: no chart at all — must not read as Ali discharged and re-admitted.
+  // 05-04: no chart at all (as on a Friday) — Ali, there on 05-03 and 05-05, was there on 05-04 too.
   await saveChart(admin, 5, '2026-05-05', [ali, { name: 'سارة', meds: { 'Panadol 500mg Tab': 1 } }])
   await admin.patch('/api/chart/complete', { floor: 5, ward: WARD, date: '2026-05-01', completed: true })
 
   const { status, body } = await admin.get(`/api/reports?scope=5&from=2026-05-01&to=2026-05-05`)
   assert.equal(status, 200)
   const ward = body.wards.find((row) => row.ward === WARD)
-  assert.equal(ward.patientDays, 7)
+  assert.equal(ward.patientDays, 8, 'Ali\'s uncharted 05-04 is bridged')
   assert.equal(ward.distinctPatients, 3)
   assert.equal(ward.previousPatientDays, 1)
-  assert.equal(ward.admissions, 1, 'Omar on 05-01; Sara on 05-05 follows an uncharted day')
+  assert.equal(ward.admissions, 2, 'Omar on 05-01; Sara on 05-05, compared with 05-03 across the uncharted day')
   assert.equal(ward.discharges, 1, 'Omar after 05-02')
-  assert.equal(ward.averageStay, 2, 'stays of 4 (from 04-30), 2, 1 and 1 days')
+  assert.equal(ward.averageStay, 3, 'stays of 6 (Ali, 04-30 to 05-05), 2 and 1 days')
   assert.equal(ward.chartedDays, 4)
   assert.equal(ward.completedDays, 1)
   assert.deepEqual(ward.missedDates, ['2026-05-04'])
@@ -202,4 +202,34 @@ test('GET /api/reports: course length, restarts, ward DDD, weekly trend, stay le
   assert.deepEqual(body.readmissions.map((row) => [row.patient, row.count, row.returns]), [['سامي', 1, [{ date: '2026-05-04', gap: 1 }]]])
   const stays = body.stayRows.find((row) => row.ward === WARD)
   assert.deepEqual([stays.stays, stays.median, stays.max, stays.buckets], [3, 5, 8, [1, 1, 1, 0]])
+})
+
+test('GET /api/reports: no chart on Friday — stays, courses, admissions and returns bridge it; ID-only rows count as charted', async () => {
+  const admin = await loginAs({ role: 'admin' })
+  await pool.query('INSERT INTO medicines (name) VALUES ($1)', ['Tazocin 4.5gm Vial'])
+  const tazocin = { 'Tazocin 4.5gm Vial': 3 }
+  const aspirin = { 'Aspirin 100mg Tab': 1 }
+  // September 2026: the 18th and 25th are Fridays, with no chart at all.
+  for (let day = 13; day <= 30; day += 1) {
+    if (day === 18 || day === 25) continue
+    const patients = []
+    if (day >= 15) patients.push({ name: 'بكر', id: '102', meds: day >= 22 ? tazocin : aspirin })
+    if ((day >= 14 && day <= 17) || day >= 24) patients.push({ name: 'جمال', id: '103', meds: aspirin }) // away 18–23
+    await saveChart(admin, 5, `2026-09-${day}`, patients)
+  }
+  const { body } = await admin.get('/api/reports?scope=5&from=2026-09-22&to=2026-09-30')
+  const ward = body.wards.find((row) => row.ward === WARD)
+  assert.equal(ward.patientDays, 16, 'بكر 22–30 and جمال 24–30, Friday 25 included')
+  assert.equal(ward.admissions, 1, 'جمال on the 24th')
+  assert.deepEqual(body.longStays.map((row) => [row.patient, row.days, row.since]), [['بكر', 16, '2026-09-15'], ['جمال', 7, '2026-09-24']])
+  assert.deepEqual(body.readmissions.map((row) => [row.patient, row.returns]), [['جمال', [{ date: '2026-09-24', gap: 6 }]]], 'absence began before the range')
+  assert.deepEqual(body.antibiotics.courseStats.map((row) => [row.drug, row.courses, row.max]), [['Piperacillin/tazobactam', 1, 9]])
+  assert.deepEqual(body.antibiotics.restarts, [])
+  // 4.5gm is grams: 8 days × 3 vials × 4 g piperacillin = 96 g = 6.9 DDD.
+  assert.equal(body.antibiotics.lines[0].ddds, 6.9)
+
+  // A ward that types only the patient number is charted, not "missed".
+  for (const day of [22, 23, 24]) await saveChart(admin, 5, `2026-09-${day}`, [{ name: '', id: '901', meds: aspirin }], 'ردهة النساء')
+  const ids = (await admin.get('/api/reports?scope=5&from=2026-09-22&to=2026-09-24')).body.wards.find((row) => row.ward === 'ردهة النساء')
+  assert.deepEqual([ids.chartedDays, ids.missedDates, ids.patientDays], [3, [], 3])
 })

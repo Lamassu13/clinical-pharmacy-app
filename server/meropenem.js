@@ -16,12 +16,13 @@ export const monthStart = (iso) => `${iso.slice(0, 8)}01`
 export const windowStart = (iso) => toIso(toDay(monthStart(iso)) - LOOKBACK_DAYS)
 
 // Vial strength in mg: "Meronem 1000gm Vial" → 1000, "Meronem 500gm Vial" → 500. The catalogue
-// writes gm where it means mg, so only a small number with a plain "g" ("1g") is read as grams.
+// writes gm where it means mg, so a small number with "g" or "gm" ("1g", "Tazocin 4.5gm",
+// "Rocephin 1gm") is read as grams — no vial here is under 10 mg.
 export const strengthMg = (medicine) => {
   const match = String(medicine).match(/(\d+(?:\.\d+)?)\s*(mg|gm|g)\b/i)
   if (!match) return 0
   const value = Number(match[1])
-  return match[2].toLowerCase() === 'g' && value < 10 ? value * 1000 : value
+  return match[2].toLowerCase() !== 'mg' && value < 10 ? value * 1000 : value
 }
 const formatMg = (mg) => (mg >= 1000 ? `${mg / 1000}g` : `${mg}mg`)
 

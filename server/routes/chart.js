@@ -635,12 +635,13 @@ const loadCourseRows = async ({ floor, wardName, chartDate }, { pattern, names, 
       allWards ? [from, chartDate, ids, cellNames] : [from, chartDate, floor, wardName, ids],
     ),
     // The days each ward has a chart at all — a day with no chart (Friday) never ends a course.
+    // A patient typed by number alone counts, as in the presence rows above.
     query(
       `SELECT DISTINCT dc.chart_date::text AS date, w.floor_number AS floor, w.name AS ward
        FROM daily_charts dc
        JOIN wards w ON w.id = dc.ward_id
        WHERE dc.chart_date BETWEEN $1::date AND $2::date
-         AND EXISTS (SELECT 1 FROM chart_patients cp WHERE cp.chart_id = dc.id AND cp.patient_name <> '')`,
+         AND EXISTS (SELECT 1 FROM chart_patients cp WHERE cp.chart_id = dc.id AND (cp.patient_name <> '' OR cp.patient_id <> ''))`,
       [from, chartDate],
     ),
   ])
