@@ -180,6 +180,22 @@ router.put('/ward-note', requireAuth, async (request, response) => {
   response.json({ note: { date: location.chartDate, body, by: request.session.user.fullName || '', at: new Date().toISOString() } })
 })
 
+// One consistent view for a multi-query read. The queries of a chart GET used to run on separate
+// pooled connections, so a save committing between them returned old names beside new quantities.
+// REPEATABLE READ pins every query to one snapshot.
+const readSnapshot = async (run) => {
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY')
+    const result = await run((sql, params) => client.query(sql, params))
+    await client.query('COMMIT')
+    return result
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {})
+    throw error
+  } finally { client.release() }
+}
+
 router.get('/chart', requireAuth, async (request, response) => {
   const location = readLocation(request.query, request.session.user)
   if (location.status) return response.status(location.status).json({ message: location.message })
@@ -192,13 +208,13 @@ router.get('/chart', requireAuth, async (request, response) => {
   const chartResult = await query('SELECT id FROM daily_charts WHERE ward_id = $1 AND chart_date = $2 AND slot = $3', [wardId, chartDate, slot])
   if (!chartResult.rows[0]) return response.json({ chart: null, lock })
   const chartId = chartResult.rows[0].id
-  const [patients, columns, quantities, chartRow, roomRows] = await Promise.all([
-    query('SELECT row_number, patient_name, patient_id FROM chart_patients WHERE chart_id = $1 ORDER BY row_number', [chartId]),
-    query('SELECT cc.column_number, cc.medicine_id, COALESCE(m.name, cc.custom_name) AS medicine_name FROM chart_columns cc LEFT JOIN medicines m ON m.id = cc.medicine_id WHERE cc.chart_id = $1 ORDER BY cc.column_number', [chartId]),
-    query('SELECT row_number, column_number, quantity FROM chart_quantities WHERE chart_id = $1', [chartId]),
-    query('SELECT dc.version, dc.completed_at, dc.completed_by, u.full_name AS completed_by_name FROM daily_charts dc LEFT JOIN users u ON u.id = dc.completed_by WHERE dc.id = $1', [chartId]),
-    query("SELECT patient_row_number, room_number FROM pill_patient_meta WHERE chart_id = $1 AND room_number <> ''", [chartId]),
-  ])
+  const [patients, columns, quantities, chartRow, roomRows] = await readSnapshot((q) => Promise.all([
+    q('SELECT row_number, patient_name, patient_id FROM chart_patients WHERE chart_id = $1 ORDER BY row_number', [chartId]),
+    q('SELECT cc.column_number, cc.medicine_id, COALESCE(m.name, cc.custom_name) AS medicine_name FROM chart_columns cc LEFT JOIN medicines m ON m.id = cc.medicine_id WHERE cc.chart_id = $1 ORDER BY cc.column_number', [chartId]),
+    q('SELECT row_number, column_number, quantity FROM chart_quantities WHERE chart_id = $1', [chartId]),
+    q('SELECT dc.version, dc.completed_at, dc.completed_by, u.full_name AS completed_by_name FROM daily_charts dc LEFT JOIN users u ON u.id = dc.completed_by WHERE dc.id = $1', [chartId]),
+    q("SELECT patient_row_number, room_number FROM pill_patient_meta WHERE chart_id = $1 AND room_number <> ''", [chartId]),
+  ]))
   response.json({ chart: {
     patients: patients.rows, columns: columns.rows, quantities: quantities.rows,
     rooms: Object.fromEntries(roomRows.rows.map((row) => [row.patient_row_number, row.room_number])),
