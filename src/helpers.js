@@ -65,6 +65,16 @@ export const addOfflineRows = (fresh, offline) => {
   return { merged, unplaced }
 }
 
+// True when `current` is a chart emptied in one step — no named patient, ID or dose left — over a
+// `synced` copy that held three or more patients. Real deletions happen row by row, each saved in
+// between, so by the last row `synced` is down to one or two; a whole grid blanking at once is a
+// bug, and saving it would wipe the server's copy (then "كان" tags show what it used to hold).
+export const looksWiped = (synced, current) => {
+  const named = (chart) => chart.patientNames.filter((name) => name?.trim()).length
+  const anyData = (chart) => chart.patientIds?.some(Boolean) || chart.quantities.some((row) => row.some(Boolean))
+  return named(synced) >= 3 && named(current) === 0 && !anyData(current)
+}
+
 // Reports what a merge (mergeChartSnapshots above) actually did, relative to `mine` (this
 // tab's pre-merge state) and `fresh` (the other side's state) — so neither call site can
 // silently drop a real edit without telling the pharmacist. `adopted` lists fields fresh won

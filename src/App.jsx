@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { roleLabels, PATIENT_ROWS, CHART_COLUMNS, MAX_CHART_COLUMNS, apiUrl, floors, specialWards } from './constants.js'
-import { interactionsForChart, applyTemplateColumns,yesterdaySchedules, mergePreviousDayDoses, addPatientToChart, mergeChartSnapshots, diffMergeOutcome, addOfflineRows, mergeKeyedSnapshots, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, settleExtraPillsOp, sameOp, blankExtraPillForm, parseChartRows, toEnglishDigits, medicineKey, patientNameKey, nearestMedicine, UNIT_ONE, isSyringe, VIAL_AMP, SYRINGE_EXCLUDE, isoDate, isDraftStale, rememberChart, recallChart, rememberPills, recallPills, forgetChartCopies, locationBody, pillChanges } from './helpers.js'
+import { interactionsForChart, applyTemplateColumns,yesterdaySchedules, mergePreviousDayDoses, addPatientToChart, mergeChartSnapshots, diffMergeOutcome, addOfflineRows, looksWiped, mergeKeyedSnapshots, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, settleExtraPillsOp, sameOp, blankExtraPillForm, parseChartRows, toEnglishDigits, medicineKey, patientNameKey, nearestMedicine, UNIT_ONE, isSyringe, VIAL_AMP, SYRINGE_EXCLUDE, isoDate, isDraftStale, rememberChart, recallChart, rememberPills, recallPills, forgetChartCopies, locationBody, pillChanges } from './helpers.js'
 import ConfirmDialog from './components/ConfirmDialog.jsx'
 import CopyChartDialog from './components/CopyChartDialog.jsx'
 import TemplatesDialog from './components/TemplatesDialog.jsx'
@@ -1252,6 +1252,7 @@ function App() {
     if (lockState === 'readonly' || lockState === 'available') return // only viewing — nothing of ours to flush
     const chartKey = wardKey(selected, selectedDate)
     if (loadedChartKey !== chartKey) return
+    if (looksWiped(lastSyncedChartRef.current, { patientNames, patientIds, columnMedicines, quantities })) return
     fetch(`${apiUrl}/chart`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', keepalive: true, body: JSON.stringify(buildChartBody(selectedDate)) })
       .then((response) => (response.ok ? response.json() : null))
       .then((result) => {
@@ -1796,6 +1797,13 @@ function App() {
     // shaped dep changes): don't re-PUT identical data — it would only bump the row version
     // and make other open tabs 409 for no reason.
     if (!dirty) return undefined
+    // The whole grid blanked in one step: never save that over the server's copy — put back what
+    // the server has (the blank state is on screen only) and say so.
+    if (looksWiped(synced, { patientNames, patientIds, columnMedicines, quantities })) {
+      setPatientNames(synced.patientNames); setPatientIds(synced.patientIds); setColumnMedicines(synced.columnMedicines); setQuantities(synced.quantities)
+      setChartClashNote('اختفت بيانات الجارت فجأة على هذه الشاشة، فلم تُحفظ فارغة وأُعيدت آخر نسخة محفوظة. راجِع الجارت.')
+      return undefined
+    }
     setChartSaveStatus('pending')
     let retryTimer
     const save = async () => {
