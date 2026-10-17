@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { averagePatients, pillChanges, interactionsForChart, mergeKeyedSnapshots, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, settleExtraPillsOp, EXTRA_PILL_SLOTS, isDraftStale, rememberChart, recallChart, forgetChartCopies, mergePreviousDayDoses, addPatientToChart, medicineMatches, pillSheetPlan, yesterdaySchedules, scheduleFor, applyTemplateColumns, catalogueMatches, RENAL_EQUATIONS, renalGuidance, SCR_UMOL_PER_MGDL } from './helpers.js'
+import { averagePatients, pillChanges, interactionsForChart, mergeKeyedSnapshots, looksWiped, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, settleExtraPillsOp, EXTRA_PILL_SLOTS, isDraftStale, rememberChart, recallChart, forgetChartCopies, mergePreviousDayDoses, addPatientToChart, medicineMatches, pillSheetPlan, yesterdaySchedules, scheduleFor, applyTemplateColumns, catalogueMatches, RENAL_EQUATIONS, renalGuidance, SCR_UMOL_PER_MGDL } from './helpers.js'
 
 test('mergeKeyedSnapshots keeps a local edit and adopts an unrelated server change', () => {
   const base = { a: '1', b: '2' }
@@ -494,4 +494,13 @@ test('settleExtraPillsOp keeps an extra-pills edit made while its op was in flig
   const newer = { ...other, patch: { roomNumber: '4' } }
   assert.deepEqual(settleExtraPillsOp([newer], other, null).queue, [newer])
   assert.deepEqual(settleExtraPillsOp([other], other, null).queue, [])
+})
+
+test('looksWiped: a whole grid blanking at once is flagged, a normal row-by-row delete is not', () => {
+  const chart = (names, qty = '') => ({ patientNames: names, patientIds: names.map(() => ''), columnMedicines: ['A'], quantities: names.map((name) => [name ? qty : '']) })
+  assert.equal(looksWiped(chart(['a', 'b', 'c', '']), chart(['', '', '', ''])), true)
+  assert.equal(looksWiped(chart(['a', 'b', 'c', '']), chart(['', '', '', ''], '2')), true)
+  assert.equal(looksWiped(chart(['a', 'b', 'c', '']), { ...chart(['', '', '', '']), quantities: [['2'], [''], [''], ['']] }), false)
+  assert.equal(looksWiped(chart(['a', 'b', '', '']), chart(['', '', '', ''])), false)
+  assert.equal(looksWiped(chart(['a', 'b', 'c', '']), chart(['a', 'b', '', ''])), false)
 })
