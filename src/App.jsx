@@ -76,6 +76,11 @@ const CLOPIDOGREL = /clopidogrel|plavix/i
 const PPI = /prazole|risek|nexium|losec|controloc|pantoloc/i
 const isClopidogrelPpi = ({ a, b }) => (CLOPIDOGREL.test(a) && PPI.test(b)) || (CLOPIDOGREL.test(b) && PPI.test(a))
 const wardKey = (selected, date) => `${selected.floor || 'special'}-${selected.ward}-${date}-${selected.slot || 'main'}`
+// The last few places that replaced the whole chart grid, newest last — named in the wipe-guard
+// note so a blanked grid says what blanked it.
+const gridTrace = []
+const traceGrid = (source) => { gridTrace.push(`${source} ${new Date().toLocaleTimeString('en-GB')}`); if (gridTrace.length > 6) gridTrace.shift() }
+
 function App() {
   const documentVisible = useDocumentVisible()
   const isOnline = useOnlineStatus()
@@ -875,7 +880,7 @@ function App() {
           setLockState('readonly')
           setLockHolder(result.holder || null)
           const synced = lastSyncedChartRef.current
-          setPatientNames(synced.patientNames); setPatientIds(synced.patientIds); setColumnMedicines(synced.columnMedicines); setQuantities(synced.quantities)
+          traceGrid('lock-refused-revert'); setPatientNames(synced.patientNames); setPatientIds(synced.patientIds); setColumnMedicines(synced.columnMedicines); setQuantities(synced.quantities)
         }
       })
       .catch(() => setLockState('editing'))
@@ -1048,7 +1053,7 @@ function App() {
     const result = addPatientToChart(latestChartRef.current, patient, latestChartRef.current.medicines)
     if (!result.ok) return result
     noteChartEdit()
-    setPatientNames(result.chart.patientNames); setPatientIds(result.chart.patientIds)
+    traceGrid('patient-form'); setPatientNames(result.chart.patientNames); setPatientIds(result.chart.patientIds)
     setColumnMedicines(result.chart.columnMedicines); setQuantities(result.chart.quantities)
     // The room is saved on its own after the chart's save (syncChartRooms), like one typed in the grid.
     const room = String(patient.room ?? '').trim().slice(0, 40)
@@ -1151,7 +1156,7 @@ function App() {
       }).then((response) => (response.ok ? response.json() : null)).catch(() => null)
       : Promise.resolve(null)
     offerUndo(`حُذف صف «${label}»`, () => {
-      noteChartEdit(); setPatientNames(prevNames); setPatientIds(prevIds); setQuantities(prevQuantities)
+      noteChartEdit(); traceGrid('undo-row-delete'); setPatientNames(prevNames); setPatientIds(prevIds); setQuantities(prevQuantities)
       setChartRooms(prevRooms)
       chartRoomsSyncedRef.current = prevSyncedRooms
       // Push the pill rows back down and restore the deleted row's own — only once the collapse
@@ -1214,7 +1219,7 @@ function App() {
     // Opened blank offline: this grid's rows are not the server's rows — add them, don't overlay.
     if (offlineChartKey === wardKey(selected, date)) {
       const { merged, unplaced } = addOfflineRows(fresh, mine)
-      setPatientNames(merged.patientNames); setPatientIds(merged.patientIds); setColumnMedicines(merged.columnMedicines); setQuantities(merged.quantities)
+      traceGrid('offline-merge'); setPatientNames(merged.patientNames); setPatientIds(merged.patientIds); setColumnMedicines(merged.columnMedicines); setQuantities(merged.quantities)
       setDroppedCells({})
       chartVersionRef.current = result.chart ? result.chart.version : 0
       lastSyncedChartRef.current = fresh
@@ -1226,7 +1231,7 @@ function App() {
     }
     const merged = mergeChartSnapshots(lastSyncedChartRef.current, mine, fresh)
     const { adopted, dropped, droppedOther } = diffMergeOutcome(merged, mine, fresh)
-    setPatientNames(merged.patientNames)
+    traceGrid('conflict-merge'); setPatientNames(merged.patientNames)
     setPatientIds(merged.patientIds)
     setColumnMedicines(merged.columnMedicines)
     setQuantities(merged.quantities)
@@ -1581,7 +1586,7 @@ function App() {
       if (!copy || draft?.offline) return false
       const pick = (snapshot) => ({ ...snapshot, patientIds: snapshot.patientIds ?? fallback.patientIds })
       const shown = pick(draft ? draft.current : copy.state)
-      setPatientNames(shown.patientNames); setPatientIds(shown.patientIds); setQuantities(shown.quantities); setColumnMedicines(shown.columnMedicines)
+      traceGrid('device-copy'); setPatientNames(shown.patientNames); setPatientIds(shown.patientIds); setQuantities(shown.quantities); setColumnMedicines(shown.columnMedicines)
       chartVersionRef.current = copy.version
       lastSyncedChartRef.current = pick(draft ? draft.base : copy.state)
       setChartClashNote('الاتصال ضعيف أو مقطوع — عُرضت آخر نسخة حُفظت من هذا الجهاز. ما تكتبه يُحفظ ويُدمج تلقائيًا عند عودة الاتصال.')
@@ -1611,7 +1616,7 @@ function App() {
           if (openFromDeviceCopy(draft, blank)) return
           const base = draft ? { ...draft.base, patientIds: draft.base.patientIds ?? blank.patientIds } : blank
           const next = draft ? mergeChartSnapshots(base, draft.current, base) : blank
-          setPatientNames(next.patientNames); setPatientIds(next.patientIds); setQuantities(next.quantities); setColumnMedicines(next.columnMedicines)
+          traceGrid('offline-blank-open'); setPatientNames(next.patientNames); setPatientIds(next.patientIds); setQuantities(next.quantities); setColumnMedicines(next.columnMedicines)
           chartVersionRef.current = 0
           lastSyncedChartRef.current = base
           setOfflineChartKey(chartKey)
@@ -1648,7 +1653,7 @@ function App() {
         if (response.headers.get('x-from-cache') === '1') {
           if (openFromDeviceCopy(draft, fresh)) return
           const shown = draft ? { ...draft.current, patientIds: draft.current.patientIds ?? fresh.patientIds } : fresh
-          setPatientNames(shown.patientNames); setPatientIds(shown.patientIds); setQuantities(shown.quantities); setColumnMedicines(shown.columnMedicines)
+          traceGrid('cached-open'); setPatientNames(shown.patientNames); setPatientIds(shown.patientIds); setQuantities(shown.quantities); setColumnMedicines(shown.columnMedicines)
           chartVersionRef.current = draft?.offline ? 0 : result.chart ? result.chart.version : 0
           lastSyncedChartRef.current = draft ? { ...draft.base, patientIds: draft.base.patientIds ?? fresh.patientIds } : fresh
           if (draft?.offline) setOfflineChartKey(chartKey)
@@ -1661,7 +1666,7 @@ function App() {
         // A draft typed on a chart opened blank offline is added row by row, never overlaid.
         const offlineAdd = draft?.offline ? addOfflineRows(fresh, draft.current) : null
         const next = offlineAdd ? offlineAdd.merged : draft ? mergeChartSnapshots(draft.base, draft.current, fresh) : fresh
-        setPatientNames(next.patientNames); setPatientIds(next.patientIds); setQuantities(next.quantities); setColumnMedicines(next.columnMedicines)
+        traceGrid('load'); setPatientNames(next.patientNames); setPatientIds(next.patientIds); setQuantities(next.quantities); setColumnMedicines(next.columnMedicines)
         chartVersionRef.current = result.chart ? result.chart.version : 0
         setChartCompleted(!!result.chart?.completedAt)
         setCompletedByName(result.chart?.completedByName ?? null)
@@ -1800,8 +1805,8 @@ function App() {
     // The whole grid blanked in one step: never save that over the server's copy — put back what
     // the server has (the blank state is on screen only) and say so.
     if (looksWiped(synced, { patientNames, patientIds, columnMedicines, quantities })) {
-      setPatientNames(synced.patientNames); setPatientIds(synced.patientIds); setColumnMedicines(synced.columnMedicines); setQuantities(synced.quantities)
-      setChartClashNote('اختفت بيانات الجارت فجأة على هذه الشاشة، فلم تُحفظ فارغة وأُعيدت آخر نسخة محفوظة. راجِع الجارت.')
+      traceGrid('wipe-guard'); setPatientNames(synced.patientNames); setPatientIds(synced.patientIds); setColumnMedicines(synced.columnMedicines); setQuantities(synced.quantities)
+      setChartClashNote(`اختفت بيانات الجارت فجأة على هذه الشاشة، فلم تُحفظ فارغة وأُعيدت آخر نسخة محفوظة. راجِع الجارت. (${gridTrace.join(' ← ') || 'بلا أثر'})`)
       return undefined
     }
     setChartSaveStatus('pending')
@@ -1871,7 +1876,7 @@ function App() {
       .then((result) => {
         if (cancelled || !result) return
         const fresh = parseChartRows(result.chart)
-        setPatientNames(fresh.patientNames); setPatientIds(fresh.patientIds); setColumnMedicines(fresh.columnMedicines); setQuantities(fresh.quantities)
+        traceGrid('readonly-poll'); setPatientNames(fresh.patientNames); setPatientIds(fresh.patientIds); setColumnMedicines(fresh.columnMedicines); setQuantities(fresh.quantities)
         lastSyncedChartRef.current = fresh
         chartVersionRef.current = result.chart ? result.chart.version : 0
         setChartCompleted(!!result.chart?.completedAt)
