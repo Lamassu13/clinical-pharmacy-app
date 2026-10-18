@@ -74,6 +74,12 @@ test('patient history: one patient across dates and wards, newest first; manager
     [B.ward, 'extra', '2025-03-05', '2025-03-05', 1],
     [A.ward, 'main', '2025-03-01', '2025-03-02', 2],
   ])
+  assert.deepEqual(ali.stays.map((stay) => stay.medicines), [
+    [{ name: 'Amoxicillin Cap', quantity: 1, days: 1 }],
+    [{ name: 'Amoxicillin Cap', quantity: 2, days: 2 }],
+  ])
+  const omar = (await history('عمر')).body.patients[0]
+  assert.deepEqual(omar.stays[0].medicines, [])
   assert.deepEqual((await history('علي')).body.patients.map((patient) => patient.name).sort(), ['علي حسن جاسم', 'عمر علي'].sort())
   assert.deepEqual((await history('ع')).body.patients, []) // under 2 characters
 
