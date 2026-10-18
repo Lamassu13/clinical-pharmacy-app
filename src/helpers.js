@@ -65,6 +65,12 @@ export const addOfflineRows = (fresh, offline) => {
   return { merged, unplaced }
 }
 
+// Whether `current` differs from `synced` (what the server last confirmed) anywhere in the grid.
+export const chartDiffers = (synced, current) => JSON.stringify(current.patientNames) !== JSON.stringify(synced.patientNames)
+  || JSON.stringify(current.patientIds) !== JSON.stringify(synced.patientIds)
+  || JSON.stringify(current.columnMedicines) !== JSON.stringify(synced.columnMedicines)
+  || JSON.stringify(current.quantities) !== JSON.stringify(synced.quantities)
+
 // True when `current` is a chart emptied in one step — no named patient, ID or dose left — over a
 // `synced` copy that held three or more patients. Real deletions happen row by row, each saved in
 // between, so by the last row `synced` is down to one or two; a whole grid blanking at once is a

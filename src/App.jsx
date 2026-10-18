@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { roleLabels, PATIENT_ROWS, CHART_COLUMNS, MAX_CHART_COLUMNS, apiUrl, floors, specialWards } from './constants.js'
-import { interactionsForChart, applyTemplateColumns,yesterdaySchedules, mergePreviousDayDoses, addPatientToChart, mergeChartSnapshots, diffMergeOutcome, addOfflineRows, looksWiped, mergeKeyedSnapshots, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, settleExtraPillsOp, sameOp, blankExtraPillForm, parseChartRows, toEnglishDigits, medicineKey, patientNameKey, nearestMedicine, UNIT_ONE, isSyringe, VIAL_AMP, SYRINGE_EXCLUDE, isoDate, isDraftStale, rememberChart, recallChart, rememberPills, recallPills, forgetChartCopies, locationBody, pillChanges } from './helpers.js'
+import { interactionsForChart, applyTemplateColumns,yesterdaySchedules, mergePreviousDayDoses, addPatientToChart, mergeChartSnapshots, diffMergeOutcome, addOfflineRows, looksWiped, chartDiffers, mergeKeyedSnapshots, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, settleExtraPillsOp, sameOp, blankExtraPillForm, parseChartRows, toEnglishDigits, medicineKey, patientNameKey, nearestMedicine, UNIT_ONE, isSyringe, VIAL_AMP, SYRINGE_EXCLUDE, isoDate, isDraftStale, rememberChart, recallChart, rememberPills, recallPills, forgetChartCopies, locationBody, pillChanges } from './helpers.js'
 import ConfirmDialog from './components/ConfirmDialog.jsx'
 import CopyChartDialog from './components/CopyChartDialog.jsx'
 import TemplatesDialog from './components/TemplatesDialog.jsx'
@@ -1252,12 +1252,18 @@ function App() {
   }, [columnMedicines, offlineChartKey, patientIds, patientNames, quantities, selected])
   // Fire an immediate save (survives navigation / tab close) — only once the grid is loaded,
   // so we never overwrite unknown server state with a blank grid.
+  const flushedAtRef = useRef(0) // when the last flush PUT went out; a settled-late (or never) response must not block flushing for good
   const flushChart = useCallback(() => {
     if (!selected || selected.mode !== 'chart' || !isLoggedIn) return
     if (lockState === 'readonly' || lockState === 'available') return // only viewing — nothing of ours to flush
     const chartKey = wardKey(selected, selectedDate)
     if (loadedChartKey !== chartKey) return
-    if (looksWiped(lastSyncedChartRef.current, { patientNames, patientIds, columnMedicines, quantities })) return
+    const current = { patientNames, patientIds, columnMedicines, quantities }
+    // Nothing unsaved: a PUT would only bump the version (making every other open tab 409) — and
+    // backgrounding fires this up to three times in a row (beforeunload, pagehide, visibilitychange).
+    if (!chartDiffers(lastSyncedChartRef.current, current) || looksWiped(lastSyncedChartRef.current, current)) return
+    if (Date.now() - flushedAtRef.current < 4000) return
+    flushedAtRef.current = Date.now()
     fetch(`${apiUrl}/chart`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', keepalive: true, body: JSON.stringify(buildChartBody(selectedDate)) })
       .then((response) => (response.ok ? response.json() : null))
       .then((result) => {
