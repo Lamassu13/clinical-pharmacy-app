@@ -870,13 +870,37 @@ router.get('/patients/history', requireAuth, async (request, response) => {
      GROUP BY 1, w.floor_number, w.name, dc.slot`,
     [pattern],
   )
+  // Treatment per stay: each medicine's total charted quantity and the days it was charted (as
+  // charted — Thursday already holds Friday's doses). Same match as above, one row per medicine.
+  const treatment = await query(
+    `SELECT CASE WHEN cp.patient_id <> '' THEN 'id:' || cp.patient_id ELSE 'name:' || btrim(cp.patient_name) END AS key,
+            w.floor_number AS floor, w.name AS ward, dc.slot, COALESCE(m.name, cc.custom_name) AS medicine,
+            sum(cq.quantity)::int AS quantity, count(DISTINCT dc.chart_date)::int AS days
+     FROM chart_patients cp
+     JOIN daily_charts dc ON dc.id = cp.chart_id
+     JOIN wards w ON w.id = dc.ward_id
+     JOIN chart_quantities cq ON cq.chart_id = dc.id AND cq.row_number = cp.row_number AND cq.quantity > 0
+     JOIN chart_columns cc ON cc.chart_id = dc.id AND cc.column_number = cq.column_number
+     LEFT JOIN medicines m ON m.id = cc.medicine_id
+     WHERE ${byId ? 'cp.patient_id LIKE $1' : "cp.patient_name ILIKE $1 AND btrim(cp.patient_name) <> ''"}
+       AND COALESCE(m.name, cc.custom_name, '') <> ''
+     GROUP BY 1, 2, 3, 4, 5
+     ORDER BY 6 DESC, 5`,
+    [pattern],
+  )
+  const medicinesOf = new Map()
+  treatment.rows.forEach((row) => {
+    const stayKey = `${row.key}|${row.floor}|${row.ward}|${row.slot}`
+    medicinesOf.set(stayKey, [...(medicinesOf.get(stayKey) || []), { name: row.medicine, quantity: row.quantity, days: row.days }])
+  })
   const patients = new Map()
   result.rows.forEach((row) => {
     const patient = patients.get(row.key) || { name: '', patientId: row.patient_id, first: row.first, last: '', days: 0, stays: [] }
     if (row.last > patient.last) { patient.last = row.last; patient.name = row.name.trim() }
     if (row.first < patient.first) patient.first = row.first
     patient.days += row.days // a day on two wards counts twice — rare (a transfer day)
-    patient.stays.push({ floor: row.floor, ward: row.ward, slot: row.slot, first: row.first, last: row.last, days: row.days })
+    patient.stays.push({ floor: row.floor, ward: row.ward, slot: row.slot, first: row.first, last: row.last, days: row.days,
+      medicines: medicinesOf.get(`${row.key}|${row.floor}|${row.ward}|${row.slot}`) || [] })
     patients.set(row.key, patient)
   })
   response.json({ patients: [...patients.values()]

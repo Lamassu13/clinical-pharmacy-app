@@ -66,6 +66,9 @@ export default function PatientSearch({ floor = null, date, onOpen, isExpired })
                 <span>{wardText(stay)}</span>
                 <span className="patient-search-stay-dates">{stay.first === stay.last ? formatDay(stay.last) : `${formatDay(stay.first)} – ${formatDay(stay.last)}`}</span>
               </button>
+              {stay.medicines.length > 0
+                ? <span className="patient-search-meds">{stay.medicines.map((medicine) => <span className="patient-search-med" key={medicine.name} dir="ltr">{medicine.name} <b>× {medicine.quantity}</b>{stay.days > 1 && <> · {medicine.days} يوم</>}</span>)}</span>
+                : <span className="patient-search-meds patient-search-meds--none">لا أدوية مسجّلة</span>}
             </li>)}
           </ul>
         </li>
