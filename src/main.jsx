@@ -41,5 +41,31 @@ try { navigator.storage?.persist?.().catch(() => {}) } catch { /* unsupported */
 // Registered only in production: a dev-mode service worker would cache Vite's dev
 // assets and fight with hot-reload the next time the code changes.
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
-  window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'))
+  let registration
+  window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').then((reg) => { registration = reg }).catch(() => {}))
+
+  // An app on the home screen is resumed, not reopened, so the browser never looks for a new
+  // sw.js and a deploy stayed unseen until the app was closed. Look every time it comes back to
+  // the front, and every 30 minutes while it stays open.
+  const checkForUpdate = () => { registration?.update().catch(() => {}) }
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkForUpdate() })
+  setInterval(checkForUpdate, 30 * 60 * 1000)
+
+  // The new worker takes over by itself (sw.js skipWaiting + clients.claim), but this page keeps
+  // running the old build until it reloads. Reload once, and never while a field has focus: the
+  // reload's pagehide still saves, but not under the pharmacist's fingers. The first takeover
+  // (the very first install) is not an update.
+  let controlled = !!navigator.serviceWorker.controller
+  let reloading = false
+  const reloadWhenNotTyping = () => {
+    const el = document.activeElement
+    if (el && (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable)) { setTimeout(reloadWhenNotTyping, 3000); return }
+    window.location.reload()
+  }
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!controlled) { controlled = true; return }
+    if (reloading) return
+    reloading = true
+    reloadWhenNotTyping()
+  })
 }
