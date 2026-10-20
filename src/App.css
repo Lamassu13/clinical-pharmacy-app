@@ -2515,6 +2515,4 @@ button.topbar-user:hover { color: var(--primary); }
   .bottom-nav button[aria-current="page"] { color: var(--primary); box-shadow: inset 0 3px 0 var(--primary); background: var(--green-50); }
   .bottom-nav button:focus-visible { outline: 2px solid var(--primary); outline-offset: -4px; }
   body.has-bottom-nav { padding-bottom: calc(60px + env(safe-area-inset-bottom)); }
-  /* the tabs now carry these two */
-  .topbar .forms-button { display: none; }
 }
