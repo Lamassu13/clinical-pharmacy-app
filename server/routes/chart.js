@@ -9,6 +9,7 @@ import {
 import { numberToArabicWords } from '../arabic-number.js'
 import { buildMeropenemForm, activeCourseDay, monthStart, windowStart, doseText, strengthMg, wardKeyOf, MEROPENEM_SQL_PATTERN } from '../meropenem.js'
 import { antibioticOf } from '../ddd.js'
+import { notifyLater, todayInBaghdad, MANAGER_ROLES } from '../push.js'
 
 const router = express.Router()
 
@@ -361,7 +362,7 @@ router.put('/chart', requireAuth, async (request, response) => {
        ON CONFLICT (ward_id, chart_date, slot) DO UPDATE
          SET updated_by = EXCLUDED.updated_by, updated_at = NOW(), version = daily_charts.version + 1
          WHERE daily_charts.version = $4
-       RETURNING id, version`,
+       RETURNING id, version, started_notified_at`,
       [wardRow.id, chartDate, request.session.user.id, expectedVersion, slot],
     )
     if (!chartResult.rows[0]) {
@@ -432,8 +433,20 @@ router.put('/chart', requireAuth, async (request, response) => {
     if (quantityList.length) {
       await client.query('INSERT INTO chart_quantities (chart_id, row_number, column_number, quantity) SELECT $1, rn, cn, qty FROM UNNEST($2::int[], $3::int[], $4::int[]) AS u(rn, cn, qty)', [chartId, quantityList.map((entry) => entry.rowNumber), quantityList.map((entry) => entry.columnNumber), quantityList.map((entry) => entry.quantity)])
     }
+    // «بدأ الجارت» for managers, once per chart: the dashboard's own rule for started (a named
+    // patient and a quantity — opening a ward alone writes an empty row), and only for today's
+    // chart, so copying a chart forward to tomorrow does not announce tomorrow's ward early.
+    let startedNow = false
+    if (!chartResult.rows[0].started_notified_at && chartDate === todayInBaghdad()
+      && patients.some((patient) => patient.name.trim()) && quantityList.some((entry) => entry.quantity > 0)) {
+      startedNow = (await client.query('UPDATE daily_charts SET started_notified_at = NOW() WHERE id = $1 AND started_notified_at IS NULL', [chartId])).rowCount === 1
+    }
     await client.query('COMMIT')
     response.json({ ok: true, chartId, version: chartResult.rows[0].version })
+    if (startedNow) {
+      const where = floor === null ? wardName : `الطابق ${floor} — ${wardName}`
+      notifyLater({ roles: MANAGER_ROLES, body: `بدأ الجارت: ${where}${slot === 'extra' ? ' (الجارت الإضافي)' : ''}`, tag: `chart-${chartId}`, ttl: 3600 })
+    }
   } catch (error) {
     await client.query('ROLLBACK')
     console.error('chart save failed:', error)

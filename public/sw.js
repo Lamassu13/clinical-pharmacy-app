@@ -112,3 +112,24 @@ self.addEventListener('fetch', (event) => {
     })),
   )
 })
+
+// Web push (server/push.js). Safari cancels a subscription whose pushes show nothing, so every
+// push shows something — the generic text if the payload cannot be read.
+self.addEventListener('push', (event) => {
+  let data = {}
+  try { data = event.data ? event.data.json() : {} } catch { /* unreadable payload: generic text below */ }
+  event.waitUntil(self.registration.showNotification(data.title || 'وحدة الصيدلة السريرية', {
+    body: data.body || 'لديك إشعار جديد',
+    tag: data.tag || undefined,
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-192.png',
+    dir: 'rtl',
+    lang: 'ar',
+  }))
+})
+
+// The app has no router, so a tap just brings the app forward (or opens it).
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+  event.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windows) => (windows[0] ? windows[0].focus() : self.clients.openWindow('/'))))
+})
