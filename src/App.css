@@ -2499,7 +2499,8 @@ button.topbar-user:hover { color: var(--primary); }
    Bottom navigation — phones and iPads (screen only; never prints)
    ============================================================ */
 .bottom-nav { display: none; }
-@media screen and (max-width: 1024px) {
+/* Phones, iPads in portrait, and any touch tablet up to a 12.9" iPad Pro in landscape (1366px). */
+@media screen and (max-width: 1024px), screen and (pointer: coarse) and (max-width: 1400px) {
   .bottom-nav {
     position: fixed; inset-inline: 0; bottom: 0; z-index: 30;
     display: flex; padding: 0 var(--space-2) env(safe-area-inset-bottom);
@@ -2514,5 +2515,5 @@ button.topbar-user:hover { color: var(--primary); }
   .bottom-nav span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .bottom-nav button[aria-current="page"] { color: var(--primary); box-shadow: inset 0 3px 0 var(--primary); background: var(--green-50); }
   .bottom-nav button:focus-visible { outline: 2px solid var(--primary); outline-offset: -4px; }
-  body.has-bottom-nav { padding-bottom: calc(60px + env(safe-area-inset-bottom)); }
+  body.has-bottom-nav { padding-bottom: calc(66px + env(safe-area-inset-bottom)); }
 }
