@@ -82,18 +82,18 @@ function AccountMenu({ theme, onToggleTheme, currentUser, onLogout, onMyWard, on
   </details>
 }
 
-// Phone / iPad only (CSS shows it ≤1024px): the four places a pharmacist moves between, in the
+// Phone / iPad only (CSS shows it ≤1024px): the places a pharmacist moves between, in the
 // thumb zone instead of the top corner. The top bar keeps brand, status and the admin sections.
 function BottomNav({ adminView, isManager, onHome, onMyWard, onNavigate, onOpenProfile }) {
   useEffect(() => {
     document.body.classList.add('has-bottom-nav')
     return () => document.body.classList.remove('has-bottom-nav')
   }, [])
-  const adminActive = isManager && adminView && adminView !== 'forms' && adminView !== 'profile'
+  const adminActive = isManager && adminView && adminView !== 'forms' && adminView !== 'profile' && adminView !== 'reports'
   const tabs = [
     { key: 'home', icon: 'home', label: 'الرئيسية', active: !adminView, onClick: onHome },
     onMyWard && { key: 'ward', icon: 'ward', label: 'ردهتي', onClick: onMyWard },
-    { key: 'forms', icon: 'forms', label: 'الاستمارات', active: adminView === 'forms', onClick: () => onNavigate('forms') },
+    isManager && { key: 'reports', icon: 'reports', label: 'التقارير', active: adminView === 'reports', onClick: () => onNavigate('reports') },
     isManager && { key: 'admin', icon: 'admin', label: 'الإدارة', active: adminActive, onClick: () => onNavigate(adminActive ? adminView : 'dashboard') },
     { key: 'profile', icon: 'account', label: 'حسابي', active: adminView === 'profile', onClick: onOpenProfile },
   ].filter(Boolean)
