@@ -3,6 +3,7 @@
 // for a file to own the pool/server lifecycle end-to-end in its own before/after hooks.
 import bcrypt from 'bcryptjs'
 import { pool } from './db.js'
+import { medicineCatalogue } from './medicine-catalogue.js'
 
 // A test run pointed at the wrong database would TRUNCATE real patient data. The name
 // is the only signal available here, so refuse anything that isn't obviously a test DB
@@ -20,7 +21,8 @@ export const startServer = (app) => new Promise((resolve) => {
 
 // `session` is created lazily by connect-pg-simple on the app's first request, so it
 // may not exist yet the first time a test file resets the database.
-export const resetDatabase = () => pool.query(`
+export const resetDatabase = async () => {
+  await pool.query(`
   TRUNCATE TABLE chart_quantities, chart_columns, chart_patients, pill_entries,
     pill_patient_meta, chart_locks, daily_charts, wards, medicines, treatment_forms,
     extra_pill_forms, course_day_overrides, ward_notes, user_floor_access, user_ward_access, users RESTART IDENTITY CASCADE;
@@ -28,6 +30,9 @@ export const resetDatabase = () => pool.query(`
     IF to_regclass('public.session') IS NOT NULL THEN EXECUTE 'TRUNCATE TABLE session'; END IF;
   END $$;
 `)
+  // The app's catalogue cache lives in this same process: a wiped table must not be served from it.
+  medicineCatalogue.invalidate()
+}
 
 let userCounter = 0
 // Inserts a ready-to-log-in user directly (bypassing /api/auth/register, which always

@@ -23,6 +23,7 @@ import templatesRoutes from './routes/templates.js'
 import interactionsRoutes from './routes/interactions.js'
 import pushRoutes from './routes/push.js'
 import { notifyLater } from './push.js'
+import { medicineCatalogue } from './medicine-catalogue.js'
 
 const app = express()
 const port = Number(process.env.PORT || 3001)
@@ -185,8 +186,7 @@ app.put('/api/auth/me', requireAuth, async (request, response) => {
 })
 
 app.get('/api/medicines', requireAuth, async (_request, response) => {
-  const result = await query('SELECT id, name, arabic_name, is_supply, no_thursday_double FROM medicines ORDER BY name ASC')
-  response.json({ medicines: result.rows })
+  response.json({ medicines: await medicineCatalogue.get() })
 })
 // Admin-only: the medicines catalogue is shared, and PUT/DELETE on it are already
 // admin-only, so a normal user must not be able to write rows they cannot clean up.
@@ -205,6 +205,7 @@ app.post('/api/medicines', requireManager, async (request, response) => {
     const existing = await findMedicineByName(name)
     if (existing.rows[0]) return response.status(409).json({ message: `"${existing.rows[0].name}" موجود في القائمة أصلًا`, medicine: existing.rows[0] })
     const result = await query('INSERT INTO medicines (name, created_by, is_supply) VALUES ($1, $2, $1 ~* $3 AND $1 !~* $4) RETURNING id, name, arabic_name, is_supply, no_thursday_double', [name, request.session.user.id, SUPPLY_MATCH, SUPPLY_EXCEPT])
+    medicineCatalogue.invalidate()
     response.status(201).json({ medicine: result.rows[0] })
   } catch (error) {
     if (error.code === '23505') return response.status(409).json({ message: `"${name}" موجود في القائمة أصلًا` })
@@ -246,6 +247,7 @@ app.put('/api/medicines/:id', requireManager, async (request, response) => {
       )
     }
     await client.query('COMMIT')
+    medicineCatalogue.invalidate()
     response.json({ medicine: result.rows[0] })
   } catch (error) {
     await client.query('ROLLBACK')
@@ -271,6 +273,7 @@ app.delete('/api/medicines/:id', requireManager, async (request, response) => {
     // and usage methods on every past form survive the catalogue row going away.
     await client.query('DELETE FROM medicines WHERE id = $1', [id])
     await client.query('COMMIT')
+    medicineCatalogue.invalidate()
     response.json({ ok: true })
   } catch (error) {
     await client.query('ROLLBACK')
