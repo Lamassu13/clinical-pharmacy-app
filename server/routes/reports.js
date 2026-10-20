@@ -3,6 +3,7 @@ import { query } from '../db.js'
 import { dddLine, antibioticOf } from '../ddd.js'
 import { antibioticNames, longCourses } from './chart.js'
 import { requireManager } from '../auth.js'
+import { MAX_BRIDGE_DAYS } from '../dashboard-bridge.js'
 import { ALLOWED_FLOORS, FLOOR_WARDS, SPECIAL_WARDS, SUPPLY_MATCH, SUPPLY_EXCEPT, isIsoDate } from '../validation.js'
 
 const router = express.Router()
@@ -15,11 +16,6 @@ const LONG_STAY_DAYS = 7
 const READMIT_DAYS = 30 // a return after at most this many days off the ward counts as a readmission
 const RESTART_DAYS = 7 // the same antibiotic again after at most this many days off it
 const STAY_BUCKETS = [[1, 2], [3, 6], [7, 13], [14, Infinity]]
-// Wards make no chart on Friday — Thursday's chart carries the doses for it. A day without a
-// chart says nothing, so a patient on the last charted day before such a gap and on the next
-// charted day was on the ward through it: not discharged, and the days count. Up to this many
-// days in a row (Friday, a Friday + holiday); a longer silence is not bridged.
-const MAX_BRIDGE_DAYS = 3
 const median = (list) => { const sorted = [...list].sort((a, b) => a - b); const mid = sorted.length >> 1; return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2 }
 const round1 = (value) => Math.round(value * 10) / 10
 

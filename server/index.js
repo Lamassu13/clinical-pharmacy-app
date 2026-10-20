@@ -19,6 +19,7 @@ import chartRoutes, { resolveChartId, readLocation } from './routes/chart.js'
 import treatmentFormsRoutes from './routes/treatment-forms.js'
 import extraPillsRoutes from './routes/extra-pills.js'
 import reportsRoutes from './routes/reports.js'
+import { bridgedDailyCounts, MAX_BRIDGE_DAYS } from './dashboard-bridge.js'
 import templatesRoutes from './routes/templates.js'
 import interactionsRoutes from './routes/interactions.js'
 import pushRoutes from './routes/push.js'
@@ -475,6 +476,8 @@ const timeQuery = (label, promise) => {
     return result
   })
 }
+const addDays = (iso, n) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10)
+const minIso = (a, b) => (a < b ? a : b)
 app.get('/api/dashboard', requireAuth, async (request, response) => {
   const date = request.query.date
   if (!isIsoDate(date)) return response.status(400).json({ message: 'التاريخ مطلوب' })
@@ -563,18 +566,15 @@ app.get('/api/dashboard', requireAuth, async (request, response) => {
     // risks an off-by-one on the client).
     isManager
       ? timeQuery('dailyPatientsByFloor', query(
-        `SELECT w.floor_number AS floor,
-                CASE WHEN w.floor_number IS NULL THEN w.name END AS ward,
-                dc.chart_date::text AS date, COUNT(*)::int AS count
-         FROM chart_patients cp
-         JOIN daily_charts dc ON dc.id = cp.chart_id
+        `SELECT w.id AS "wardId", w.floor_number AS floor, w.name AS ward, dc.chart_date::text AS date,
+                btrim(regexp_replace(cp.patient_name, '\\s+', ' ', 'g')) AS patient
+         FROM daily_charts dc
          JOIN wards w ON w.id = dc.ward_id
-         WHERE cp.patient_name <> ''
-           AND (w.floor_number IS NOT NULL OR w.name = ANY($2::text[]))
-           AND dc.chart_date > ($1::date - 6) AND dc.chart_date <= $1::date
-         GROUP BY w.floor_number, CASE WHEN w.floor_number IS NULL THEN w.name END, dc.chart_date
-         ORDER BY w.floor_number NULLS LAST, ward, dc.chart_date`,
-        [date, SPECIAL_WARDS],
+         LEFT JOIN chart_patients cp ON cp.chart_id = dc.id AND cp.patient_name <> ''
+         WHERE (w.floor_number IS NOT NULL OR w.name = ANY($2::text[]))
+           AND dc.chart_date BETWEEN ($1::date - 5 - $3::int) AND ($1::date + $3::int)
+         GROUP BY 1, 2, 3, 4, 5`,
+        [date, SPECIAL_WARDS, MAX_BRIDGE_DAYS],
       ))
       : Promise.resolve({ rows: [] }),
     // The floor×date range table on لوحة التحكم — same shape as dailyPatientsByFloor above,
@@ -585,18 +585,15 @@ app.get('/api/dashboard', requireAuth, async (request, response) => {
     // absent/invalid range just comes back empty rather than 400ing the whole dashboard.
     isManager && isIsoDate(request.query.rangeFrom) && isIsoDate(request.query.rangeTo)
       ? timeQuery('patientsByFloorRange', query(
-        `SELECT w.floor_number AS floor,
-                CASE WHEN w.floor_number IS NULL THEN w.name END AS ward,
-                dc.chart_date::text AS date, COUNT(*)::int AS count
-         FROM chart_patients cp
-         JOIN daily_charts dc ON dc.id = cp.chart_id
+        `SELECT w.id AS "wardId", w.floor_number AS floor, w.name AS ward, dc.chart_date::text AS date,
+                btrim(regexp_replace(cp.patient_name, '\\s+', ' ', 'g')) AS patient
+         FROM daily_charts dc
          JOIN wards w ON w.id = dc.ward_id
-         WHERE cp.patient_name <> ''
-           AND (w.floor_number IS NOT NULL OR w.name = ANY($3::text[]))
-           AND dc.chart_date >= $1::date AND dc.chart_date <= LEAST($2::date, $1::date + 119)
-         GROUP BY w.floor_number, CASE WHEN w.floor_number IS NULL THEN w.name END, dc.chart_date
-         ORDER BY w.floor_number NULLS LAST, ward, dc.chart_date`,
-        [request.query.rangeFrom, request.query.rangeTo, SPECIAL_WARDS],
+         LEFT JOIN chart_patients cp ON cp.chart_id = dc.id AND cp.patient_name <> ''
+         WHERE (w.floor_number IS NOT NULL OR w.name = ANY($2::text[]))
+           AND dc.chart_date BETWEEN ($1::date - $4::int) AND (LEAST($3::date, $1::date + 119) + $4::int)
+         GROUP BY 1, 2, 3, 4, 5`,
+        [request.query.rangeFrom, SPECIAL_WARDS, request.query.rangeTo, MAX_BRIDGE_DAYS],
       ))
       : Promise.resolve({ rows: [] }),
   ]
@@ -612,8 +609,10 @@ app.get('/api/dashboard', requireAuth, async (request, response) => {
     patientsByFloor: patientsByFloor.rows.map((row) => ({ floor: row.floor, count: row.count })),
     totalPatients: totalPatients.rows[0]?.count ?? 0,
     patientsPeriod: isManager ? (PERIOD_DAYS[request.query.patientsPeriod] ? request.query.patientsPeriod : 'month') : 'today',
-    dailyPatientsByFloor: dailyPatientsByFloor.rows.map((row) => ({ floor: row.floor, ward: row.ward, date: row.date, count: row.count })),
-    patientsByFloorRange: patientsByFloorRange.rows.map((row) => ({ floor: row.floor, ward: row.ward, date: row.date, count: row.count })),
+    dailyPatientsByFloor: bridgedDailyCounts(dailyPatientsByFloor.rows, addDays(date, -5), date),
+    patientsByFloorRange: isManager && isIsoDate(request.query.rangeFrom) && isIsoDate(request.query.rangeTo)
+      ? bridgedDailyCounts(patientsByFloorRange.rows, request.query.rangeFrom, minIso(request.query.rangeTo, addDays(request.query.rangeFrom, 119)))
+      : [],
   })
 })
 
