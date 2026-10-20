@@ -24,6 +24,7 @@ import InteractionsScreen from './screens/InteractionsScreen.jsx'
 import RenalDoseScreen from './screens/RenalDoseScreen.jsx'
 import { INTERACTION_RULES } from './interactions.js'
 import { storage, queueWrite, forgetWrite, pendingWrites, flushWrites } from './storage.js'
+import { syncPushSubscription } from './push.js'
 import ExtraPillsScreen from './screens/ExtraPillsScreen.jsx'
 import FloorPickerScreen from './screens/FloorPickerScreen.jsx'
 import WardPickerScreen from './screens/WardPickerScreen.jsx'
@@ -1488,6 +1489,8 @@ function App() {
   }, [selected, flushChart, flushPills])
 
   useEffect(() => { if (isLoggedIn) loadMedicines() }, [isLoggedIn, loadMedicines])
+  // A device that already allowed notifications re-registers for whoever signs in on it now.
+  useEffect(() => { if (isLoggedIn) syncPushSubscription() }, [isLoggedIn])
   useEffect(() => {
     if (!selected || selected.mode !== 'chart' || !documentVisible) return undefined
     loadMedicines()
@@ -2536,7 +2539,7 @@ function App() {
 
   const appHeader = <AppHeader theme={theme} onToggleTheme={toggleTheme} currentUser={currentUser} onLogout={logout} onHome={goHome} onMyWard={!isManager && assignedFloorObj ? goToMyWard : undefined} onOpenProfile={openProfile} isAdmin={isAdmin} isManager={isManager} adminView={adminView} onNavigate={setAdminView} isOnline={isOnline} pendingWrites={userId == null ? 0 : pendingWrites(userId).length} />
 
-  if (adminView === 'profile') return <ProfileScreen adminHeader={appHeader} profileForm={profileForm} setProfileForm={setProfileForm} profileError={profileError} profileSuccess={profileSuccess} busy={busy} onSubmit={submitProfile} />
+  if (adminView === 'profile') return <ProfileScreen isManager={isManager} adminHeader={appHeader} profileForm={profileForm} setProfileForm={setProfileForm} profileError={profileError} profileSuccess={profileSuccess} busy={busy} onSubmit={submitProfile} />
 
   if (adminView === 'dashboard' && isManager) return <AdminDashboardScreen adminHeader={appHeader} isAdmin={isAdmin} onNavigate={setAdminView} onOpenWard={(target) => { setAdminView(null); openTarget(target) }} registrations={registrations} allUsers={allUsers} adminMedicines={adminMedicines} treatmentForms={treatmentForms} dashboard={dashboardData} dashboardLoading={dashboardData === null && !dashboardError} dashboardError={dashboardError} onRetryDashboard={retryDashboard} rangeFrom={rangeFrom} setRangeFrom={setRangeFrom} rangeTo={rangeTo} setRangeTo={setRangeTo} pendingFloor={pendingFloor} setPendingFloor={setPendingFloor} busy={busy} onApprove={approveRegistration} onReject={rejectRegistration} registrationsError={registrationsError} adminSuccess={adminSuccess} confirmModal={confirmModal} />
 

@@ -21,6 +21,8 @@ import extraPillsRoutes from './routes/extra-pills.js'
 import reportsRoutes from './routes/reports.js'
 import templatesRoutes from './routes/templates.js'
 import interactionsRoutes from './routes/interactions.js'
+import pushRoutes from './routes/push.js'
+import { notifyLater } from './push.js'
 
 const app = express()
 const port = Number(process.env.PORT || 3001)
@@ -127,6 +129,7 @@ app.post('/api/auth/login', loginIpLimiter, loginLimiter, async (request, respon
     response.json({ user })
   } catch (error) { console.error('login failed:', error); response.status(500).json({ message: 'تعذر تسجيل الدخول' }) }
 })
+let lastJoinPush = 0
 app.post('/api/auth/register', registerLimiter, async (request, response) => {
   const fullName = String(request.body.fullName || '').trim()
   const username = String(request.body.username || '').trim()
@@ -146,6 +149,8 @@ app.post('/api/auth/register', registerLimiter, async (request, response) => {
   try {
     const passwordHash = await bcrypt.hash(password, BCRYPT_COST)
     await query('INSERT INTO users (full_name, username, phone, email, fingerprint_number, password_hash) VALUES ($1, $2, $3, $4, $5, $6)', [fullName, username, phone, email, fingerprintNumber, passwordHash])
+    // Generic text (no applicant name), and at most one alert per ten minutes: this route is public.
+    if (Date.now() - lastJoinPush > 10 * 60 * 1000) { lastJoinPush = Date.now(); notifyLater({ roles: ['admin'], body: 'طلب انضمام جديد بانتظار الموافقة', tag: 'join-request', ttl: 12 * 3600 }) }
     response.status(201).json({ message: 'تم إنشاء الحساب، بانتظار موافقة المدير' })
   } catch (error) {
     if (error.code === '23505') return response.status(409).json({ message: 'اسم المستخدم أو البريد الإلكتروني مستخدم بالفعل' })
@@ -153,7 +158,11 @@ app.post('/api/auth/register', registerLimiter, async (request, response) => {
     response.status(500).json({ message: 'تعذر إنشاء الحساب' })
   }
 })
-app.post('/api/auth/logout', (request, response) => request.session.destroy(() => response.status(204).end()))
+app.post('/api/auth/logout', async (request, response) => {
+  // This device's push subscription ends with the login that made it (shared ward iPads).
+  try { await query('DELETE FROM push_subscriptions WHERE sid = $1', [request.sessionID]) } catch (error) { console.error('push cleanup on logout failed:', error) }
+  request.session.destroy(() => response.status(204).end())
+})
 app.get('/api/auth/me', (request, response) => response.json({ user: request.session.user || null }))
 app.put('/api/auth/me', requireAuth, async (request, response) => {
   const fullName = String(request.body.fullName || '').trim()
@@ -619,6 +628,7 @@ app.post('/api/announcements', requireManager, async (request, response) => {
     'INSERT INTO announcements (message, created_by) VALUES ($1, $2) RETURNING id, message, created_at',
     [message, request.session.user.id],
   )
+  notifyLater({ exceptUserId: request.session.user.id, body: 'إعلان جديد', tag: 'announcement', ttl: 12 * 3600 })
   response.status(201).json({ announcement: result.rows[0] })
 })
 app.patch('/api/announcements/:id', requireManager, async (request, response) => {
@@ -647,6 +657,7 @@ app.use('/api', extraPillsRoutes)
 app.use('/api', reportsRoutes)
 app.use('/api', templatesRoutes)
 app.use('/api', interactionsRoutes)
+app.use('/api', pushRoutes)
 
 app.get('/api/pills', requireAuth, async (request, response) => {
   const location = readLocation(request.query, request.session.user)

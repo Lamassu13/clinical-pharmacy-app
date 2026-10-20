@@ -339,3 +339,28 @@ CREATE TABLE IF NOT EXISTS ward_notes (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   PRIMARY KEY (ward_key, note_date)
 );
+
+-- Web push. One row per browser/device a signed-in user turned notifications on for. `sid` ties
+-- it to the login session that registered it: a push is sent only while that session is still
+-- alive, so a shared ward iPad stops delivering the previous person's alerts the moment they sign
+-- out or the 8-hour cookie lapses, even if nobody pressed "sign out" (see server/push.js).
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id BIGSERIAL PRIMARY KEY,
+  user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  sid TEXT NOT NULL,
+  endpoint TEXT NOT NULL UNIQUE,
+  p256dh TEXT NOT NULL,
+  auth TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS push_subscriptions_user_idx ON push_subscriptions (user_id);
+CREATE INDEX IF NOT EXISTS push_subscriptions_sid_idx ON push_subscriptions (sid);
+
+-- "Chart started" is announced once per chart. Backfilled the one time the column is added, so
+-- charts already under way at deploy do not all notify on their next save.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'daily_charts' AND column_name = 'started_notified_at') THEN
+    ALTER TABLE daily_charts ADD COLUMN started_notified_at TIMESTAMPTZ;
+    UPDATE daily_charts SET started_notified_at = NOW();
+  END IF;
+END $$;

@@ -25,3 +25,12 @@ services:
         generateValue: true
       - key: CLIENT_ORIGIN
         sync: false
+      # Web push (server/push.js). Generate once with `npx web-push generate-vapid-keys` and set all
+      # three in the dashboard. Never change the keys afterwards: every device's subscription is
+      # tied to the public key, so a new pair silently ends them all. Unset = notifications off.
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_SUBJECT
+        sync: false
