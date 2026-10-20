@@ -82,8 +82,32 @@ function AccountMenu({ theme, onToggleTheme, currentUser, onLogout, onMyWard, on
   </details>
 }
 
+// Phone / iPad only (CSS shows it ≤1024px): the four places a pharmacist moves between, in the
+// thumb zone instead of the top corner. The top bar keeps brand, status and the admin sections.
+function BottomNav({ adminView, isManager, onHome, onMyWard, onNavigate, onOpenProfile }) {
+  useEffect(() => {
+    document.body.classList.add('has-bottom-nav')
+    return () => document.body.classList.remove('has-bottom-nav')
+  }, [])
+  const adminActive = isManager && adminView && adminView !== 'forms' && adminView !== 'profile'
+  const tabs = [
+    { key: 'home', icon: 'home', label: 'الرئيسية', active: !adminView, onClick: onHome },
+    onMyWard && { key: 'ward', icon: 'ward', label: 'ردهتي', onClick: onMyWard },
+    { key: 'forms', icon: 'forms', label: 'الاستمارات', active: adminView === 'forms', onClick: () => onNavigate('forms') },
+    isManager && { key: 'admin', icon: 'admin', label: 'الإدارة', active: adminActive, onClick: () => onNavigate(adminActive ? adminView : 'dashboard') },
+    { key: 'profile', icon: 'account', label: 'حسابي', active: adminView === 'profile', onClick: onOpenProfile },
+  ].filter(Boolean)
+  return <nav className="bottom-nav" aria-label="التنقل الرئيسي">
+    {tabs.map((tab) => (
+      <button key={tab.key} type="button" aria-current={tab.active ? 'page' : undefined} onClick={tab.onClick}>
+        <Glyph icon={tab.icon} /><span>{tab.label}</span>
+      </button>
+    ))}
+  </nav>
+}
+
 export default function AppHeader({ theme, onToggleTheme, currentUser, onLogout, onHome, onMyWard, onOpenProfile, isAdmin, isManager, adminView, onNavigate, isOnline, pendingWrites = 0 }) {
-  return <header className="topbar">
+  return <><header className="topbar">
     <TopBarBrand onClick={onHome} />
     <nav className="user-menu" aria-label="أدوات الحساب">
       {/* One clear top-level state instead of a per-screen chip: chart/pills/extra-pills each
@@ -101,4 +125,6 @@ export default function AppHeader({ theme, onToggleTheme, currentUser, onLogout,
       <AccountMenu theme={theme} onToggleTheme={onToggleTheme} currentUser={currentUser} onLogout={onLogout} onMyWard={onMyWard} onOpenProfile={onOpenProfile} adminView={adminView} />
     </nav>
   </header>
+  <BottomNav adminView={adminView} isManager={isManager} onHome={onHome} onMyWard={onMyWard} onNavigate={onNavigate} onOpenProfile={onOpenProfile} />
+  </>
 }
