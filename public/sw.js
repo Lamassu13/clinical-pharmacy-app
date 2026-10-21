@@ -12,8 +12,8 @@ const APP_SHELL = ['/', '/index.html', '/favicon.png']
 // served from this separate cache instead of failing outright — the one thing that makes
 // offline viewing/editing possible at all (see the app's own retry-on-failure autosave for
 // what happens after that: it queues locally and flushes on reconnect). Every other /api/ GET
-// (dashboard, medicines, announcements, treatment-forms, …) and every non-GET request stays
-// untouched — nothing there is ever cached or served stale.
+// (auth/me, users, admin lists, …) and every non-GET request stays untouched — nothing there is
+// ever cached or served stale.
 //
 // Deliberately NOT /api/auth/me: the Cache API keys purely by URL, with no notion of *whose*
 // session produced a cached response. On the shared ward iPads this app runs on, caching that
@@ -31,14 +31,15 @@ const API_CACHE = 'cpa-api-v1'
 // dropped with this cache at logout.
 const CACHEABLE_API_PATHS = ['/api/chart', '/api/pills', '/api/extra-pills', '/api/medicines',
   '/api/templates', '/api/interactions', '/api/patients/search', '/api/patients/history', '/api/ward-note', '/api/antibiotics',
-  '/api/antibiotics/long', '/api/meropenem']
+  '/api/antibiotics/long', '/api/meropenem', '/api/dashboard', '/api/announcements', '/api/treatment-forms',
+  '/api/order', '/api/meropenem-order', '/api/renal-doses']
 
 self.addEventListener('install', (event) => {
   // The page itself is required, as before. The precache is best effort, one file at a time: a
   // file that fails on a weak link is just fetched and cached on first use later, instead of
   // failing the whole install (addAll is all-or-nothing).
   event.waitUntil(caches.open(SHELL_CACHE).then((cache) => cache.addAll(APP_SHELL)
-    .then(() => Promise.all(['/theme.js', ...PRECACHE_LIST].map((url) => cache.add(url).catch(() => {}))))))
+    .then(() => Promise.all(['/theme.js', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/apple-touch-icon.png', ...PRECACHE_LIST].map((url) => cache.add(url).catch(() => {}))))))
   self.skipWaiting()
 })
 
