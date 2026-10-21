@@ -87,7 +87,20 @@ function AccountMenu({ theme, onToggleTheme, currentUser, onLogout, onMyWard, on
 function BottomNav({ adminView, isManager, onHome, onMyWard, onNavigate, onOpenProfile }) {
   useEffect(() => {
     document.body.classList.add('has-bottom-nav')
-    return () => document.body.classList.remove('has-bottom-nav')
+    // iOS home-screen apps can leave a fixed bar floating mid-screen after the keyboard closes
+    // (the layout viewport keeps its shrunken height). A 1px scroll nudge, a frame apart, makes
+    // WebKit re-lay it out. Harmless elsewhere.
+    let timer
+    const nudge = () => {
+      clearTimeout(timer)
+      timer = setTimeout(() => {
+        if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName)) return
+        window.scrollBy(0, 1)
+        requestAnimationFrame(() => window.scrollBy(0, -1))
+      }, 300)
+    }
+    document.addEventListener('focusout', nudge)
+    return () => { clearTimeout(timer); document.removeEventListener('focusout', nudge); document.body.classList.remove('has-bottom-nav') }
   }, [])
   const adminActive = isManager && adminView && adminView !== 'forms' && adminView !== 'profile' && adminView !== 'reports'
   const tabs = [
