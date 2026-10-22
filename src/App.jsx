@@ -1880,16 +1880,23 @@ function App() {
     if (!selected || selected.mode !== 'chart' || lockState !== 'readonly' || !documentVisible) return undefined
     const params = new URLSearchParams({ floor: selected.floor || '', ward: selected.ward, slot: selected.slot || 'main', date: selectedDate })
     let cancelled = false
-    const poll = () => fetch(`${apiUrl}/chart?${params}`, { credentials: 'include' })
-      .then((response) => { isExpired(response); return response.ok && response.headers.get('x-from-cache') !== '1' ? response.json() : null })
+    // The token of the grid this effect last drew. The server answers { unchanged } while it still
+    // matches, so a quiet chart costs the database a tiny read instead of the whole grid.
+    let token = ''
+    const poll = () => fetch(`${apiUrl}/chart/poll?${new URLSearchParams({ ...Object.fromEntries(params), since: token })}`, { credentials: 'include' })
+      .then((response) => { isExpired(response); return response.ok ? response.json() : null })
       .then((result) => {
         if (cancelled || !result) return
-        const fresh = parseChartRows(result.chart)
-        traceGrid('readonly-poll'); setPatientNames(fresh.patientNames); setPatientIds(fresh.patientIds); setColumnMedicines(fresh.columnMedicines); setQuantities(fresh.quantities)
-        lastSyncedChartRef.current = fresh
-        chartVersionRef.current = result.chart ? result.chart.version : 0
-        setChartCompleted(!!result.chart?.completedAt)
-        setCompletedByName(result.chart?.completedByName ?? null)
+        if (!result.unchanged) {
+          const fresh = parseChartRows(result.chart)
+          traceGrid('readonly-poll'); setPatientNames(fresh.patientNames); setPatientIds(fresh.patientIds); setColumnMedicines(fresh.columnMedicines); setQuantities(fresh.quantities)
+          setChartRooms(result.chart?.rooms || {})
+          lastSyncedChartRef.current = fresh
+          chartVersionRef.current = result.chart ? result.chart.version : 0
+          setChartCompleted(!!result.chart?.completedAt)
+          setCompletedByName(result.chart?.completedByName ?? null)
+          token = result.chart?.token || ''
+        }
         const lock = result.lock || {}
         if (!lock.held) setLockState('available')
         else if (lock.mine) setLockState('editing')
