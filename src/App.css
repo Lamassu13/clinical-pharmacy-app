@@ -1430,6 +1430,11 @@ button.topbar-user:hover { color: var(--primary); }
 .save-state-pending { color: var(--warning-text); font-weight: 700; }
 .save-state-device { color: var(--warning-text); font-weight: 700; }
 .save-state-saving { color: var(--text-muted); font-weight: 400; }
+/* The one acknowledgement the round needs: the line turns green for a beat when a save lands, then
+   settles to muted. Colour only (no movement), and it re-runs only when the state changes to saved
+   — a class swap, not a remount, so the aria-live announcement is untouched. */
+.save-state-saved { animation: saved-in .7s var(--ease); }
+@keyframes saved-in { from { color: var(--success); } }
 
 /* Per-session edit-lock banner — a flat one-line strip above the toolbar. Word first, colour
    reinforces (Worded-Status Rule): amber = another device has it / heartbeat lost, green =
@@ -1440,7 +1445,9 @@ button.topbar-user:hover { color: var(--primary); }
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
   font-weight: 700;
+  animation: banner-in var(--dur) var(--ease);
 }
+@keyframes banner-in { from { opacity: 0; transform: translateY(-4px); } }
 .chart-lock-banner--held, .chart-lock-banner--stale { background: var(--warning-tint); color: var(--warning-text); }
 .chart-lock-banner--free { background: var(--success-tint); color: var(--success); }
 /* A quiet "you have the pen" mark in the dark meta bar — a shade greener than its other pills. */
