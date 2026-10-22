@@ -197,7 +197,16 @@ const readSnapshot = async (run) => {
   } finally { client.release() }
 }
 
-router.get('/chart', requireAuth, async (request, response) => {
+// What the read-only device's poll compares: every field a chart GET returns that is not
+// versioned with the grid. Completing a chart and a room number are saved on their own routes and
+// never bump `version`, so `version` alone would hide them from a device that is only watching.
+// The chart id leads because a deleted-then-recreated chart can land on the same version number.
+const chartToken = (chartId, chartRow, roomRows) => JSON.stringify([chartId, chartRow.version, chartRow.completed_at, chartRow.completed_by, roomRows.map((row) => [row.patient_row_number, row.room_number])])
+
+// `since` (poll only): the token of the copy the caller already holds. When it still matches,
+// answer with just the lock instead of re-reading and re-sending the whole grid — Neon bills the
+// bytes the database sends the app, and a read-only device polls every 5 s.
+const readChart = (allowSince) => async (request, response) => {
   const location = readLocation(request.query, request.session.user)
   if (location.status) return response.status(location.status).json({ message: location.message })
   const { floor, wardName, chartDate, slot } = location
@@ -209,20 +218,33 @@ router.get('/chart', requireAuth, async (request, response) => {
   const chartResult = await query('SELECT id FROM daily_charts WHERE ward_id = $1 AND chart_date = $2 AND slot = $3', [wardId, chartDate, slot])
   if (!chartResult.rows[0]) return response.json({ chart: null, lock })
   const chartId = chartResult.rows[0].id
+  const since = allowSince && typeof request.query.since === 'string' ? request.query.since : ''
+  if (since) {
+    const [versionRow, rooms] = await Promise.all([
+      query('SELECT version, completed_at, completed_by FROM daily_charts WHERE id = $1', [chartId]),
+      query("SELECT patient_row_number, room_number FROM pill_patient_meta WHERE chart_id = $1 AND room_number <> '' ORDER BY patient_row_number", [chartId]),
+    ])
+    if (versionRow.rows[0] && chartToken(chartId, versionRow.rows[0], rooms.rows) === since) return response.json({ unchanged: true, lock })
+  }
   const [patients, columns, quantities, chartRow, roomRows] = await readSnapshot((q) => Promise.all([
     q('SELECT row_number, patient_name, patient_id FROM chart_patients WHERE chart_id = $1 ORDER BY row_number', [chartId]),
     q('SELECT cc.column_number, cc.medicine_id, COALESCE(m.name, cc.custom_name) AS medicine_name FROM chart_columns cc LEFT JOIN medicines m ON m.id = cc.medicine_id WHERE cc.chart_id = $1 ORDER BY cc.column_number', [chartId]),
     q('SELECT row_number, column_number, quantity FROM chart_quantities WHERE chart_id = $1', [chartId]),
     q('SELECT dc.version, dc.completed_at, dc.completed_by, u.full_name AS completed_by_name FROM daily_charts dc LEFT JOIN users u ON u.id = dc.completed_by WHERE dc.id = $1', [chartId]),
-    q("SELECT patient_row_number, room_number FROM pill_patient_meta WHERE chart_id = $1 AND room_number <> ''", [chartId]),
+    q("SELECT patient_row_number, room_number FROM pill_patient_meta WHERE chart_id = $1 AND room_number <> '' ORDER BY patient_row_number", [chartId]),
   ]))
   response.json({ chart: {
+    token: chartToken(chartId, chartRow.rows[0], roomRows.rows),
     patients: patients.rows, columns: columns.rows, quantities: quantities.rows,
     rooms: Object.fromEntries(roomRows.rows.map((row) => [row.patient_row_number, row.room_number])),
     version: chartRow.rows[0].version,
     completedAt: chartRow.rows[0].completed_at, completedBy: chartRow.rows[0].completed_by, completedByName: chartRow.rows[0].completed_by_name,
   }, lock })
-})
+}
+router.get('/chart', requireAuth, readChart(false))
+// Not in the service worker's cached API paths, so a poll's "unchanged" reply can never replace
+// the offline copy of the full chart that GET /chart keeps.
+router.get('/chart/poll', requireAuth, readChart(true))
 
 // «رقم الغرفة» typed on the chart: the same per-row room the pills form uses (pill_patient_meta),
 // saved on its own, one row at a time, so it never goes through the versioned chart save. An

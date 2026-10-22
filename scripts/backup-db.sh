@@ -38,7 +38,10 @@ fi
 echo "Dumping to $target"
 # pg_dump refuses to read a server newer than itself. The Homebrew default on this
 # machine is older than the production server, so name the newer binary explicitly.
-if ! "$pg_dump_bin" -Fc --no-owner --no-privileges "$DATABASE_URL" -f "$target"; then
+# drug_interactions is the static DDInter import (see README "Backups"): its rows are rebuilt by
+# server/import-ddinter.js, so leaving them out keeps ~18 MB off every dump (and off Neon's
+# network-transfer bill). The table itself is still in the dump.
+if ! "$pg_dump_bin" -Fc --no-owner --no-privileges --exclude-table-data=drug_interactions "$DATABASE_URL" -f "$target"; then
   rm -f "$target"
   echo >&2
   echo "Backup failed. If the error mentions a server version mismatch, run:" >&2

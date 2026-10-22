@@ -113,7 +113,7 @@ automatically by `render.yaml`.
 
 ## Backups
 
-The production database is backed up automatically once a day by
+The production database is backed up automatically every 3 days by
 [`.github/workflows/backup.yml`](.github/workflows/backup.yml), which runs
 `scripts/backup-db.sh` and uploads the resulting dump to a **private** Backblaze B2 bucket
 (`clinical-pharmacy-db-backup`). This repo is public, so backups never touch the repo itself
@@ -137,5 +137,10 @@ a backup on demand from the Actions tab ("Backup database" → Run workflow).
 pg_restore --clean --if-exists --no-owner -d "$DATABASE_URL" cpa-YYYYMMDD.dump
 ```
 
-For a manual, ad-hoc backup from your own machine instead of waiting for the daily job, see
+Dumps leave out the *rows* of `drug_interactions` (the static DDInter import, ~18 MB) to keep
+Neon's network transfer down; after a restore, refill it with `node server/import-ddinter.js`
+(see that file for its input). Until then, interaction checks return nothing. The input CSVs
+live in the gitignored `data/ddinter/`, so keep a copy somewhere other than one laptop.
+
+For a manual, ad-hoc backup from your own machine instead of waiting for the next scheduled one, see
 `npm run db:backup` (`scripts/backup-db.sh`).

@@ -337,3 +337,28 @@ test('PUT /api/chart/room: a room typed on the chart is the pills form\'s room, 
   const outsider = await loginAs({ role: 'user', floor: OTHER_FLOOR })
   assert.equal((await outsider.put('/api/chart/room', { floor: FLOOR, ward: WARD, date: DATE, rowNumber: 1, room: 'x' })).status, 403)
 })
+
+test('GET /api/chart/poll: answers {unchanged} until the grid, a room or completion changes', async () => {
+  const client = await loginAs({ role: 'user', floor: FLOOR })
+  const target = { floor: FLOOR, ward: WARD, date: DATE }
+  const path = `floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=${DATE}`
+  assert.equal((await client.put('/api/chart', buildChartBody())).status, 200)
+
+  const first = await client.get(`/api/chart/poll?${path}`)
+  assert.ok(first.body.chart.token && first.body.chart.patients.length, 'no token yet: the full chart comes back')
+  const poll = async (token) => (await client.get(`/api/chart/poll?${path}&since=${encodeURIComponent(token)}`)).body
+
+  const quiet = await poll(first.body.chart.token)
+  assert.equal(quiet.unchanged, true)
+  assert.equal(quiet.chart, undefined)
+  assert.ok(quiet.lock, 'the lock still rides along')
+
+  await client.put('/api/chart/room', { ...target, rowNumber: 1, room: '12' })
+  const afterRoom = await poll(first.body.chart.token)
+  assert.equal(afterRoom.chart.rooms[1], '12')
+
+  const roomToken = afterRoom.chart.token
+  assert.equal((await poll(roomToken)).unchanged, true)
+  await client.patch('/api/chart/complete', { ...target, completed: true })
+  assert.ok((await poll(roomToken)).chart.completedAt)
+})
