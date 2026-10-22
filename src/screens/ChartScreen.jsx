@@ -57,7 +57,7 @@ export default function ChartScreen({
     : onDeviceOnly ? 'save-state save-state-device'
     : chartSaveStatus === 'saving' ? 'save-state save-state-saving'
     : chartSaveStatus === 'pending' ? 'save-state save-state-pending'
-    : 'save-state'
+    : 'save-state save-state-saved'
 
   // Another device holds the edit lock: the grid goes inert (below) and the view polls the
   // holder's edits in. The toolbar/meta/status bars stay readable — an SR user still needs the
