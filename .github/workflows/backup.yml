@@ -1,6 +1,6 @@
 name: Backup database
 
-# Off-site backup (every 3 days: each dump is read over the wire from Neon, which bills transfer) of the production Postgres database to a private Backblaze B2
+# Off-site backup (on the 1st and 16th, ~every 15 days: each dump is read over the wire from Neon, which bills transfer) of the production Postgres database to a private Backblaze B2
 # bucket. This repo is public, so a dump must never land in the repo or in a workflow
 # artifact — both are publicly downloadable on a public repo. B2 is the only destination
 # here, reached with an application key scoped to just the one backup bucket.
@@ -13,7 +13,7 @@ name: Backup database
 
 on:
   schedule:
-    - cron: '0 2 */3 * *'
+    - cron: '0 2 1,16 * *'
   workflow_dispatch: {}
 
 permissions:
