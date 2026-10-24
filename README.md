@@ -71,7 +71,7 @@ npm run build && npm run server
 | Apply a schema change | `npm run db:init` — safe to re-run; every statement is additive (`CREATE ... IF NOT EXISTS` / `ALTER ... ADD COLUMN IF NOT EXISTS`), nothing destructive |
 | Run the test suite | `npm test` — see **Tests** below for one-time local setup |
 | Lint | `npm run lint` |
-| Manual, on-demand database backup | `npm run db:backup` — see **Backups** below for the automatic daily one |
+| Manual, on-demand database backup | `npm run db:backup` — see **Backups** below for the automatic twice-monthly one |
 
 ## Tests
 
@@ -113,7 +113,7 @@ automatically by `render.yaml`.
 
 ## Backups
 
-The production database is backed up automatically every 3 days by
+The production database is backed up automatically on the 1st and 16th of each month (~every 15 days) by
 [`.github/workflows/backup.yml`](.github/workflows/backup.yml), which runs
 `scripts/backup-db.sh` and uploads the resulting dump to a **private** Backblaze B2 bucket
 (`clinical-pharmacy-db-backup`). This repo is public, so backups never touch the repo itself
