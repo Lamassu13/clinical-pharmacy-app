@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import app from './index.js'
 import { pool } from './db.js'
-import { diffChart } from './chart-history.js'
+import { diffChart, pruneChartChanges } from './chart-history.js'
 import { startServer, resetDatabase, createUser, ApiClient } from './test-helpers.js'
 
 let server, baseUrl
@@ -93,4 +93,14 @@ test('history: adding an ID or fixing a typo is one change, not a remove + add w
   const [rename, addId] = (await client.get(HISTORY)).body.saves
   assert.deepEqual(addId.changes.map((c) => [c.kind, c.from, c.to]), [['patient_id', '', '55']])
   assert.deepEqual(rename.changes.map((c) => [c.kind, c.from, c.to]), [['patient', 'Ali', 'Aly']])
+})
+
+test('history: entries older than 90 days are pruned, newer ones kept', async () => {
+  const { client } = await loginAs({ role: 'user', floor: FLOOR })
+  await save(client, 0, [patient(1, 'A')], [dose(1, 1, 1)])
+  await pool.query("INSERT INTO chart_changes (chart_id, version, kind, at) SELECT chart_id, 99, 'qty', NOW() - INTERVAL '91 days' FROM chart_changes LIMIT 1")
+  await pool.query("INSERT INTO chart_changes (chart_id, version, kind, at) SELECT chart_id, 98, 'qty', NOW() - INTERVAL '89 days' FROM chart_changes LIMIT 1")
+  await pruneChartChanges(pool)
+  const versions = (await pool.query('SELECT version FROM chart_changes ORDER BY version')).rows.map((row) => row.version)
+  assert.deepEqual(versions, [1, 98])
 })

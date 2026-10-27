@@ -3,6 +3,9 @@
 // extra round-trip). Patients are matched by patient ID (else name), not by row number — deleting
 // a patient pulls every row below it up one, and a row-by-row diff would log all of them as edits.
 
+const KEEP_DAYS = 90
+const PRUNE_EVERY_MS = 24 * 3600 * 1000
+let lastPrune = 0 // per process; a deploy restart simply prunes once more
 const MAX_STORED = 3000 // a whole-grid wipe is ~2000 cells; anything bigger is not a real edit
 const nameKey = (name) => String(name || '').trim().toLowerCase().replace(/\s+/g, ' ')
 
@@ -91,6 +94,10 @@ export const diffChart = (oldState, newState) => {
   return changes
 }
 
+// Piggybacks on a save that wrote history — no timer, so an idle API never wakes Neon.
+// ponytail: no index on `at`, so this scans the (≤ 90 days of) table once a day; add one if it grows.
+export const pruneChartChanges = (executor) => executor.query(`DELETE FROM chart_changes WHERE at < NOW() - INTERVAL '${KEEP_DAYS} days'`)
+
 // Runs inside PUT /chart's transaction, after the save itself. Never throws into the caller's
 // save: a history failure rolls back to the savepoint and is logged, the chart still saves.
 export const recordChartChanges = async (client, { chartId, version, user, oldState, newState }) => {
@@ -115,6 +122,7 @@ export const recordChartChanges = async (client, { chartId, version, user, oldSt
           column((c) => (c.kind === 'medicine' ? nameOf(c.fromRef) : String(c.from ?? ''))),
           column((c) => (c.kind === 'medicine' ? nameOf(c.toRef) : String(c.to ?? '')))],
       )
+      if (Date.now() - lastPrune > PRUNE_EVERY_MS) { await pruneChartChanges(client); lastPrune = Date.now() }
     }
     await client.query('RELEASE SAVEPOINT chart_history')
   } catch (error) {
