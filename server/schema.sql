@@ -377,3 +377,23 @@ CREATE TABLE IF NOT EXISTS user_activity (
   last_seen TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   PRIMARY KEY (user_id, day)
 );
+
+-- Chart change history (server/chart-history.js): one row per changed field per accepted
+-- PUT /api/chart, written in the same transaction as the save. `version` is the chart version
+-- that save produced. user_name is a snapshot, not a users(id) reference, so deleting an account
+-- (which DELETE /users reassigns by hand) neither breaks nor scans this table.
+CREATE TABLE IF NOT EXISTS chart_changes (
+  id BIGSERIAL PRIMARY KEY,
+  chart_id BIGINT NOT NULL REFERENCES daily_charts(id) ON DELETE CASCADE,
+  version INTEGER NOT NULL,
+  user_name TEXT NOT NULL DEFAULT '',
+  at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  kind TEXT NOT NULL,
+  row_number INTEGER,
+  column_number INTEGER,
+  patient TEXT NOT NULL DEFAULT '',
+  medicine TEXT NOT NULL DEFAULT '',
+  old_value TEXT NOT NULL DEFAULT '',
+  new_value TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS chart_changes_chart_idx ON chart_changes (chart_id, version DESC);

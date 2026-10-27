@@ -4,6 +4,7 @@ import hospitalLogo from '../assets/hospital-logo.png'
 import ChartDoseRow from '../components/ChartDoseRow.jsx'
 import ToolbarButton, { Glyph } from '../components/ToolbarIcons.jsx'
 import MedicineSuggest from '../components/MedicineSuggest.jsx'
+import ChartHistoryDialog from '../components/ChartHistoryDialog.jsx'
 import { medicineMatches } from '../helpers.js'
 
 // Presentational only: every piece of chart state, and the autosave/lock/draft logic that
@@ -25,6 +26,7 @@ export default function ChartScreen({
   const columnFocusValue = useRef('')
   // The header cell being typed in ({ column, input }) and the highlighted suggestion.
   const [suggestFor, setSuggestFor] = useState(null)
+  const [historyOpen, setHistoryOpen] = useState(false)
   const [suggestHighlight, setSuggestHighlight] = useState(0)
   const suggestOptions = suggestFor ? medicineMatches(columnMedicines[suggestFor.column] || '', medicines)
     .filter((name) => name !== columnMedicines[suggestFor.column])
@@ -84,6 +86,7 @@ export default function ChartScreen({
     : ''
 
   return <section className="chart-page">
+    <ChartHistoryDialog open={historyOpen} selected={selected} selectedDate={selectedDate} onClose={() => setHistoryOpen(false)} />
     {readOnly && <div className="chart-lock-banner chart-lock-banner--held" role="status">
       قيد التعديل — {lockHolder?.name || 'جهاز آخر'}{since && ` · منذ ${since}`}
     </div>}
@@ -118,6 +121,7 @@ export default function ChartScreen({
       <span className="date-controls">
         <label className="date-field" title="تاريخ الجارت"><input type="date" aria-label="تاريخ الجارت" value={selectedDate} onChange={(event) => onChangeDate(event.target.value)} /></label>
         {!readOnly && <button type="button" className="meta-button" data-tip={isOnline ? 'نسخ إلى اليوم التالي' : 'النسخ يحتاج اتصالًا'} aria-label="نسخ إلى اليوم التالي" onClick={onCopyToNextDay} disabled={!isOnline}><Glyph icon="copy-next" /></button>}
+        <button type="button" className="meta-button" data-tip={isOnline ? 'سجل التعديلات' : 'السجل يحتاج اتصالًا'} aria-label="سجل التعديلات" onClick={() => setHistoryOpen(true)} disabled={!isOnline}><Glyph icon="history" /></button>
         {!readOnly && <button type="button" className="meta-button" data-tip={isOnline ? 'القوالب' : 'القوالب تحتاج اتصالًا'} aria-label="القوالب" onClick={onOpenTemplates} disabled={!isOnline}><Glyph icon="templates" /></button>}
       </span>
     </div>
