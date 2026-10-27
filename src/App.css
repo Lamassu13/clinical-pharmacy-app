@@ -1524,6 +1524,15 @@ button.topbar-user:hover { color: var(--primary); }
 .chart-clash-note { background: var(--warning-tint); }
 .chart-clash-note > span { flex: 1 1 auto; }
 .id-clash-line { display: block; }
+.timeline-id { color: var(--text-muted); font-size: var(--text-sm); font-weight: 400; }
+.timeline-list { margin: 0 0 var(--space-4); padding: 0; list-style: none; border: 1px solid var(--border); border-radius: var(--radius-md); max-height: 52vh; max-height: 52svh; overflow-y: auto; }
+.timeline-list > li { padding: var(--space-3) var(--space-4); }
+.timeline-list > li + li { border-top: 1px solid var(--border); }
+.timeline-day { margin: 0 0 var(--space-2); color: var(--heading); font-size: var(--text-sm); font-weight: 700; }
+.timeline-gap { margin: 0 0 var(--space-2); padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); background: var(--surface-alt); color: var(--text-muted); font-size: var(--text-xs); }
+.timeline-entry { display: grid; gap: var(--space-1); padding: var(--space-1) 0; }
+.timeline-ward { color: var(--text); font-size: var(--text-sm); }
+.patient-search-timeline { margin-block: var(--space-2); min-height: 44px; }
 
 /* A new chart's blank grid otherwise reads like a dismissed load failure. Floats over the
    grid (position: relative on .chart-frame) so it never shifts the cells when it clears. */

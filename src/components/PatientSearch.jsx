@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { apiUrl } from '../constants.js'
 import { toEnglishDigits } from '../helpers.js'
+import PatientTimelineDialog from './PatientTimelineDialog.jsx'
 
 // Find a patient by name or «رقم الطبلة» across one day's main and extra charts — the
 // pharmacist's own floor (`floor`), or the whole unit for a manager (`floor` null).
@@ -15,6 +16,7 @@ export default function PatientSearch({ floor = null, date, onOpen, isExpired })
   const history = allDates && !floor
   const [results, setResults] = useState(null)
   const [error, setError] = useState('')
+  const [timelineOf, setTimelineOf] = useState(null)
   const term = toEnglishDigits(q).trim()
   const active = term.length >= 2
 
@@ -38,6 +40,7 @@ export default function PatientSearch({ floor = null, date, onOpen, isExpired })
 
   const shown = results && results.history === history ? results.patients : null
   return <div className="patient-search">
+    <PatientTimelineDialog patient={timelineOf} onClose={() => setTimelineOf(null)} />
     {!floor && <div className="filter-chips patient-search-scope" role="group" aria-label="نطاق البحث">
       <button type="button" className="filter-chip" aria-pressed={!allDates} onClick={() => setAllDates(false)}>هذا اليوم</button>
       <button type="button" className="filter-chip" aria-pressed={allDates} onClick={() => setAllDates(true)}>كل التواريخ</button>
@@ -60,6 +63,7 @@ export default function PatientSearch({ floor = null, date, onOpen, isExpired })
             {patient.patientId && <span className="patient-search-id">رقم الطبلة <bdi>{patient.patientId}</bdi></span>}
           </span>
           <span className="patient-search-where">من {formatDay(patient.first)} إلى {formatDay(patient.last)} · {patient.days} {patient.days === 1 ? 'يوم' : 'أيام'}</span>
+          <button type="button" className="secondary-button compact patient-search-timeline" onClick={() => setTimelineOf(patient)}>التسلسل اليومي</button>
           <ul className="patient-search-stays">
             {patient.stays.map((stay) => <li key={`${stay.floor}|${stay.ward}|${stay.slot}`}>
               <button type="button" className="patient-search-stay" onClick={() => onOpen({ floor: stay.floor, ward: stay.ward, mode: 'chart', slot: stay.slot, date: stay.last })}>
