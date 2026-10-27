@@ -17,6 +17,7 @@ import TreatmentFormsScreen from './screens/TreatmentFormsScreen.jsx'
 import ProfileScreen from './screens/ProfileScreen.jsx'
 import ReportsScreen from './screens/ReportsScreen.jsx'
 import AdminUsageScreen from './screens/AdminUsageScreen.jsx'
+import AdminAuditScreen from './screens/AdminAuditScreen.jsx'
 import PillsScreen from './screens/PillsScreen.jsx'
 import OrderScreen from './screens/OrderScreen.jsx'
 import MeropenemScreen from './screens/MeropenemScreen.jsx'
@@ -1407,6 +1408,7 @@ function App() {
     else if (adminView === 'medicines') screen = 'إدارة الأدوية'
     else if (adminView === 'reports') screen = 'التقارير'
     else if (adminView === 'usage') screen = 'استخدام المستخدمين'
+    else if (adminView === 'audit') screen = 'سجل الإدارة'
     else if (selected?.mode === 'pills') screen = `الحبوب — ${ward}`
     else if (selected?.mode === 'order') screen = `الطلبية — ${ward}`
     else if (selected?.mode === 'meropenem-order') screen = `طلبية الميرونيم — ${ward}`
@@ -2558,6 +2560,7 @@ function App() {
 
   if (adminView === 'reports' && isManager) return <ReportsScreen adminHeader={appHeader} isExpired={isExpired} />
   if (adminView === 'usage' && isManager) return <AdminUsageScreen adminHeader={appHeader} isExpired={isExpired} />
+  if (adminView === 'audit' && isAdmin) return <AdminAuditScreen adminHeader={appHeader} isExpired={isExpired} />
 
   if (adminView === 'floors' && isManager) return <AdminFloorsScreen adminHeader={appHeader} purgeFrom={purgeFrom} setPurgeFrom={setPurgeFrom} purgeTo={purgeTo} setPurgeTo={setPurgeTo} purgeAll={purgeAll} setPurgeAll={setPurgeAll} purgeKinds={purgeKinds} setPurgeKinds={setPurgeKinds} purgeTargets={purgeTargets} onToggleTarget={togglePurgeTarget} busy={busy} registrationsError={registrationsError} adminSuccess={adminSuccess} onPurge={purgeCharts} confirmModal={confirmModal} />
 

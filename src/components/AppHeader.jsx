@@ -15,6 +15,7 @@ const ADMIN_SECTIONS = [
   { view: 'reports', label: 'التقارير' },
   { view: 'users', label: 'جميع المستخدمين' },
   { view: 'usage', label: 'استخدام المستخدمين' },
+  { view: 'audit', label: 'سجل الإدارة', adminOnly: true },
 ]
 
 function Chevron() {

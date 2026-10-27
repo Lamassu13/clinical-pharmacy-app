@@ -397,3 +397,16 @@ CREATE TABLE IF NOT EXISTS chart_changes (
   new_value TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS chart_changes_chart_idx ON chart_changes (chart_id, version DESC);
+
+-- Admin audit log (server/audit.js): consequential admin actions — account decisions, role and
+-- access changes, user deletions, medicine catalogue edits, data purges. actor_name is a snapshot
+-- (no users FK), so deleting an account neither breaks nor erases its trail. Pruned after a year.
+CREATE TABLE IF NOT EXISTS audit_log (
+  id BIGSERIAL PRIMARY KEY,
+  at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  actor_id BIGINT,
+  actor_name TEXT NOT NULL DEFAULT '',
+  action TEXT NOT NULL,
+  target TEXT NOT NULL DEFAULT '',
+  detail TEXT NOT NULL DEFAULT ''
+);

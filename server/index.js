@@ -25,6 +25,7 @@ import interactionsRoutes from './routes/interactions.js'
 import pushRoutes from './routes/push.js'
 import { notifyLater } from './push.js'
 import { usageMiddleware, usageReport, flushUsage } from './usage.js'
+import { recordAudit, readAudit, ROLE_AR } from './audit.js'
 import { medicineCatalogue } from './medicine-catalogue.js'
 
 const app = express()
@@ -209,6 +210,7 @@ app.post('/api/medicines', requireManager, async (request, response) => {
     if (existing.rows[0]) return response.status(409).json({ message: `"${existing.rows[0].name}" موجود في القائمة أصلًا`, medicine: existing.rows[0] })
     const result = await query('INSERT INTO medicines (name, created_by, is_supply) VALUES ($1, $2, $1 ~* $3 AND $1 !~* $4) RETURNING id, name, arabic_name, is_supply, no_thursday_double', [name, request.session.user.id, SUPPLY_MATCH, SUPPLY_EXCEPT])
     medicineCatalogue.invalidate()
+    await recordAudit(request, 'medicine.created', result.rows[0].name)
     response.status(201).json({ medicine: result.rows[0] })
   } catch (error) {
     if (error.code === '23505') return response.status(409).json({ message: `"${name}" موجود في القائمة أصلًا` })
@@ -231,7 +233,7 @@ app.put('/api/medicines/:id', requireManager, async (request, response) => {
       const clash = await findMedicineByName(name, id)
       if (clash.rows[0]) { await client.query('ROLLBACK'); return response.status(409).json({ message: `"${clash.rows[0].name}" موجود في القائمة أصلًا`, medicine: clash.rows[0] }) }
     }
-    const existing = await client.query('SELECT name FROM medicines WHERE id = $1', [id])
+    const existing = await client.query('SELECT name, arabic_name, is_supply, no_thursday_double FROM medicines WHERE id = $1', [id])
     if (!existing.rows[0]) { await client.query('ROLLBACK'); return response.status(404).json({ message: 'الدواء غير موجود' }) }
     const result = await client.query('UPDATE medicines SET name = COALESCE($2, name), arabic_name = COALESCE($3, arabic_name), is_supply = COALESCE($4, is_supply), no_thursday_double = COALESCE($5, no_thursday_double) WHERE id = $1 RETURNING id, name, arabic_name, is_supply, no_thursday_double', [id, name, arabicName, isSupply, noThursdayDouble])
     // pill_entries are keyed by the medicine's *normalized name text* (see GET/PUT /api/pills'
@@ -251,6 +253,15 @@ app.put('/api/medicines/:id', requireManager, async (request, response) => {
     }
     await client.query('COMMIT')
     medicineCatalogue.invalidate()
+    // What actually changed — the client sends every field on every edit.
+    const before = existing.rows[0]
+    const after = result.rows[0]
+    const changes = []
+    if (before.name !== after.name) changes.push(`الاسم: ${before.name} ← ${after.name}`)
+    if ((before.arabic_name || '') !== (after.arabic_name || '')) changes.push(`الاسم العربي: ${after.arabic_name || '—'}`)
+    if (before.is_supply !== after.is_supply) changes.push(`مستلزم: ${after.is_supply ? 'نعم' : 'لا'}`)
+    if (before.no_thursday_double !== after.no_thursday_double) changes.push(`لا يُضاعف يوم الخميس: ${after.no_thursday_double ? 'نعم' : 'لا'}`)
+    await recordAudit(request, 'medicine.updated', result.rows[0].name, changes.join(' · '))
     response.json({ medicine: result.rows[0] })
   } catch (error) {
     await client.query('ROLLBACK')
@@ -277,6 +288,7 @@ app.delete('/api/medicines/:id', requireManager, async (request, response) => {
     await client.query('DELETE FROM medicines WHERE id = $1', [id])
     await client.query('COMMIT')
     medicineCatalogue.invalidate()
+    await recordAudit(request, 'medicine.deleted', target.rows[0].name)
     response.json({ ok: true })
   } catch (error) {
     await client.query('ROLLBACK')
@@ -299,7 +311,7 @@ app.put('/api/registrations/:id', requireAdmin, async (request, response) => {
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
-    const result = await client.query("UPDATE users SET account_status = $1, approved_at = NOW(), approved_by = $2 WHERE id = $3 AND account_status = 'pending' RETURNING id", [status, request.session.user.id, id])
+    const result = await client.query("UPDATE users SET account_status = $1, approved_at = NOW(), approved_by = $2 WHERE id = $3 AND account_status = 'pending' RETURNING id, username", [status, request.session.user.id, id])
     if (!result.rows[0]) { await client.query('ROLLBACK'); return response.status(404).json({ message: 'الطلب غير موجود أو تمت معالجته' }) }
     if (status === 'active') {
       await client.query('DELETE FROM user_floor_access WHERE user_id = $1', [id])
@@ -312,6 +324,7 @@ app.put('/api/registrations/:id', requireAdmin, async (request, response) => {
     }
     await client.query('COMMIT')
     if (status === 'rejected') await revokeUserSessions(pool, id)
+    await recordAudit(request, status === 'active' ? 'registration.approved' : 'registration.rejected', result.rows[0].username, status === 'active' ? (location.floor !== null ? `الطابق ${location.floor}` : location.ward) : '')
     response.json({ ok: true })
   } catch (error) {
     await client.query('ROLLBACK')
@@ -320,6 +333,10 @@ app.put('/api/registrations/:id', requireAdmin, async (request, response) => {
   } finally { client.release() }
 })
 
+app.get('/api/audit', requireAdmin, async (request, response) => {
+  const before = /^\d{1,18}$/.test(String(request.query.before ?? '')) ? request.query.before : null
+  response.json(await readAudit(before))
+})
 app.get('/api/usage', requireManager, async (request, response) => {
   const days = [7, 30, 90].includes(Number(request.query.days)) ? Number(request.query.days) : 30
   response.json({ days, users: await usageReport(days) })
@@ -338,7 +355,7 @@ app.delete('/api/users/:id', requireAdmin, async (request, response) => {
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
-    const target = await client.query('SELECT role FROM users WHERE id = $1', [id])
+    const target = await client.query('SELECT role, username FROM users WHERE id = $1', [id])
     if (!target.rows[0]) { await client.query('ROLLBACK'); return response.status(404).json({ message: 'المستخدم غير موجود' }) }
     if (target.rows[0].role === 'admin') {
       // FOR UPDATE locks every admin row for the rest of this transaction: a second request
@@ -362,6 +379,7 @@ app.delete('/api/users/:id', requireAdmin, async (request, response) => {
     await client.query('DELETE FROM users WHERE id = $1', [id])
     await client.query('COMMIT')
     await revokeUserSessions(pool, id)
+    await recordAudit(request, 'user.deleted', target.rows[0].username, ROLE_AR[target.rows[0].role] || '')
     response.json({ ok: true })
   } catch (error) {
     await client.query('ROLLBACK')
@@ -384,7 +402,7 @@ app.put('/api/users/:id/role', requireAdmin, async (request, response) => {
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
-    const target = await client.query('SELECT role FROM users WHERE id = $1', [id])
+    const target = await client.query('SELECT role, username FROM users WHERE id = $1', [id])
     if (!target.rows[0]) { await client.query('ROLLBACK'); return response.status(404).json({ message: 'المستخدم غير موجود' }) }
     if (target.rows[0].role === role) { await client.query('ROLLBACK'); return response.json({ ok: true, role }) }
     if (target.rows[0].role === 'admin') {
@@ -397,6 +415,7 @@ app.put('/api/users/:id/role', requireAdmin, async (request, response) => {
     // The role lives in the session snapshot, so without this a demoted admin keeps admin
     // rights until their cookie expires — up to eight hours.
     await revokeUserSessions(pool, id)
+    await recordAudit(request, 'user.role', target.rows[0].username, `${ROLE_AR[target.rows[0].role] || target.rows[0].role} ← ${ROLE_AR[role]}`)
     response.json({ ok: true, role })
   } catch (error) {
     await client.query('ROLLBACK')
@@ -440,11 +459,12 @@ app.put('/api/access/by-username', requireManager, async (request, response) => 
   if (!location) return response.status(400).json({ message: 'الطابق أو الردهة غير مسموح' })
   // Email is stored lowercase (register normalizes it) but typed here in whatever case the
   // manager enters — same case-insensitivity fix as login, see auth.js.
-  const userResult = await query('SELECT id, role FROM users WHERE username = $1 OR LOWER(email) = LOWER($1)', [String(request.body.username || '').trim()])
+  const userResult = await query('SELECT id, role, username FROM users WHERE username = $1 OR LOWER(email) = LOWER($1)', [String(request.body.username || '').trim()])
   if (!userResult.rows[0]) return response.status(404).json({ message: 'المستخدم غير موجود' })
   if (!canReassign(request.session.user, userResult.rows[0])) return response.status(403).json({ message: 'صلاحية المدير مطلوبة' })
   await setUserAccess(userResult.rows[0].id, location, request.session.user.id)
   await revokeUserSessions(pool, userResult.rows[0].id)
+  await recordAudit(request, 'user.access', userResult.rows[0].username, location.floor !== null ? `الطابق ${location.floor}` : location.ward)
   response.json({ ok: true })
 })
 app.put('/api/access/:userId', requireManager, async (request, response) => {
@@ -452,11 +472,12 @@ app.put('/api/access/:userId', requireManager, async (request, response) => {
   const userId = Number(request.params.userId)
   if (!location) return response.status(400).json({ message: 'الطابق أو الردهة غير مسموح' })
   if (!Number.isInteger(userId) || userId < 1) return response.status(400).json({ message: 'معرّف غير صحيح' })
-  const userResult = await query('SELECT id, role FROM users WHERE id = $1', [userId])
+  const userResult = await query('SELECT id, role, username FROM users WHERE id = $1', [userId])
   if (!userResult.rows[0]) return response.status(404).json({ message: 'المستخدم غير موجود' })
   if (!canReassign(request.session.user, userResult.rows[0])) return response.status(403).json({ message: 'صلاحية المدير مطلوبة' })
   await setUserAccess(userId, location, request.session.user.id)
   await revokeUserSessions(pool, userId)
+  await recordAudit(request, 'user.access', userResult.rows[0].username, location.floor !== null ? `الطابق ${location.floor}` : location.ward)
   response.json({ ok: true })
 })
 
