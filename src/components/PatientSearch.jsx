@@ -18,10 +18,13 @@ export default function PatientSearch({ floor = null, date, onOpen, isExpired })
   const [error, setError] = useState('')
   const [timelineOf, setTimelineOf] = useState(null)
   const term = toEnglishDigits(q).trim()
-  const active = term.length >= 2
+  // All dates scans every saved chart: a name needs 3 characters (an ID prefix 2), and it waits a
+  // little longer before sending, so typing a name is one search, not one per letter.
+  const minLength = history && !/^\d+$/.test(term) ? 3 : 2
+  const active = term.length >= minLength
 
   useEffect(() => {
-    if (term.length < 2) return undefined
+    if (term.length < minLength) return undefined
     let cancelled = false
     const timer = setTimeout(async () => {
       try {
@@ -34,9 +37,9 @@ export default function PatientSearch({ floor = null, date, onOpen, isExpired })
       } catch (caught) {
         if (!cancelled) { setResults(null); setError(navigator.onLine ? (caught.message || 'تعذّر البحث') : 'البحث يحتاج اتصالاً') }
       }
-    }, 300)
+    }, history ? 600 : 300)
     return () => { cancelled = true; clearTimeout(timer) }
-  }, [term, floor, date, isExpired, history])
+  }, [term, minLength, floor, date, isExpired, history])
 
   const shown = results && results.history === history ? results.patients : null
   return <div className="patient-search">
@@ -53,6 +56,7 @@ export default function PatientSearch({ floor = null, date, onOpen, isExpired })
         autoComplete="off" enterKeyHint="search"
       />
     </label>
+    {history && term.length > 0 && !active && <p className="patient-search-note">اكتب 3 أحرف على الأقل للبحث بالاسم في كل التواريخ</p>}
     {active && error && <p className="patient-search-note" role="alert">{error}</p>}
     {active && !error && shown && shown.length === 0 && <p className="patient-search-note">{history ? 'لا يوجد مريض بهذا الاسم أو الرقم في أي جارت محفوظ' : 'لا يوجد مريض بهذا الاسم أو الرقم في جارتات هذا اليوم'}</p>}
     {active && !error && history && shown && shown.length > 0 && <ul className="patient-search-results">

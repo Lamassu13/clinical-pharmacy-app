@@ -997,21 +997,31 @@ router.get('/patients/history', requireAuth, async (request, response) => {
   const user = request.session.user
   if (user.role !== 'admin' && user.role !== 'supervisor') return response.status(403).json({ message: 'للمسؤولين فقط' })
   const q = cleanText(request.query.q, 60).trim()
-  if (q.length < 2) return response.json({ patients: [] })
   const byId = /^\d+$/.test(q)
+  // A name needs 3 characters: `%ab%` matches a large share of every chart ever saved. The 30
+  // patients are picked in SQL (most recently seen first), so Neon never sends more than their
+  // stays and medicines to the app, however common the term.
+  if (q.length < (byId ? 2 : 3)) return response.json({ patients: [] })
   const pattern = byId ? `${q}%` : `%${q.replace(/[\\%_]/g, '\\$&')}%`
   const result = await query(
-    `SELECT CASE WHEN cp.patient_id <> '' THEN 'id:' || cp.patient_id ELSE 'name:' || btrim(cp.patient_name) END AS key,
-            (array_agg(cp.patient_name ORDER BY dc.chart_date DESC))[1] AS name, max(cp.patient_id) AS patient_id,
-            w.floor_number AS floor, w.name AS ward, dc.slot,
-            min(dc.chart_date)::text AS first, max(dc.chart_date)::text AS last, count(DISTINCT dc.chart_date)::int AS days
-     FROM chart_patients cp
-     JOIN daily_charts dc ON dc.id = cp.chart_id
-     JOIN wards w ON w.id = dc.ward_id
-     WHERE ${byId ? 'cp.patient_id LIKE $1' : "cp.patient_name ILIKE $1 AND btrim(cp.patient_name) <> ''"}
-     GROUP BY 1, w.floor_number, w.name, dc.slot`,
+    `WITH hits AS (
+       SELECT CASE WHEN cp.patient_id <> '' THEN 'id:' || cp.patient_id ELSE 'name:' || btrim(cp.patient_name) END AS key,
+              cp.patient_name, cp.patient_id, w.floor_number AS floor, w.name AS ward, dc.slot, dc.chart_date
+       FROM chart_patients cp
+       JOIN daily_charts dc ON dc.id = cp.chart_id
+       JOIN wards w ON w.id = dc.ward_id
+       WHERE ${byId ? 'cp.patient_id LIKE $1' : "cp.patient_name ILIKE $1 AND btrim(cp.patient_name) <> ''"}
+     ), top AS (
+       SELECT key FROM hits GROUP BY key ORDER BY max(chart_date) DESC, key LIMIT ${HISTORY_LIMIT}
+     )
+     SELECT key, (array_agg(patient_name ORDER BY chart_date DESC))[1] AS name, max(patient_id) AS patient_id,
+            floor, ward, slot,
+            min(chart_date)::text AS first, max(chart_date)::text AS last, count(DISTINCT chart_date)::int AS days
+     FROM hits WHERE key IN (SELECT key FROM top)
+     GROUP BY key, floor, ward, slot`,
     [pattern],
   )
+  const keys = [...new Set(result.rows.map((row) => row.key))]
   // Treatment per stay: each medicine's total charted quantity and the days it was charted (as
   // charted — Thursday already holds Friday's doses). Same match as above, one row per medicine.
   const treatment = await query(
@@ -1026,9 +1036,10 @@ router.get('/patients/history', requireAuth, async (request, response) => {
      LEFT JOIN medicines m ON m.id = cc.medicine_id
      WHERE ${byId ? 'cp.patient_id LIKE $1' : "cp.patient_name ILIKE $1 AND btrim(cp.patient_name) <> ''"}
        AND COALESCE(m.name, cc.custom_name, '') <> ''
+       AND (CASE WHEN cp.patient_id <> '' THEN 'id:' || cp.patient_id ELSE 'name:' || btrim(cp.patient_name) END) = ANY($2::text[])
      GROUP BY 1, 2, 3, 4, 5
      ORDER BY 6 DESC, 5`,
-    [pattern],
+    [pattern, keys],
   )
   const medicinesOf = new Map()
   treatment.rows.forEach((row) => {
