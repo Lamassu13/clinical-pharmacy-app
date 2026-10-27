@@ -946,6 +946,45 @@ router.get('/patients/search', requireAuth, async (request, response) => {
   })) })
 })
 
+// One patient, day by day (managers only, like the all-dates search it opens from): for each charted
+// date the ward(s) and every medicine with its quantity, newest first. Matched by ID, else by exact
+// name. A day with no chart is simply absent — the client marks the gap so a Friday (no chart; Thursday
+// holds its doses) never reads as a discharge.
+const TIMELINE_DAYS = 120
+router.get('/patients/timeline', requireAuth, async (request, response) => {
+  const user = request.session.user
+  if (user.role !== 'admin' && user.role !== 'supervisor') return response.status(403).json({ message: 'للمسؤولين فقط' })
+  const patientId = String(request.query.id ?? '').replace(/\D/g, '').slice(0, 20)
+  const name = cleanText(request.query.name, 200).trim()
+  if (!patientId && !name) return response.status(400).json({ message: 'رقم الطبلة أو الاسم مطلوب' })
+  const result = await query(
+    `SELECT dc.chart_date::text AS date, w.floor_number AS floor, w.name AS ward, dc.slot,
+            COALESCE(m.name, cc.custom_name) AS medicine, cq.quantity
+     FROM chart_patients cp
+     JOIN daily_charts dc ON dc.id = cp.chart_id
+     JOIN wards w ON w.id = dc.ward_id
+     LEFT JOIN chart_quantities cq ON cq.chart_id = dc.id AND cq.row_number = cp.row_number AND cq.quantity > 0
+     LEFT JOIN chart_columns cc ON cc.chart_id = dc.id AND cc.column_number = cq.column_number
+     LEFT JOIN medicines m ON m.id = cc.medicine_id
+     WHERE ${patientId ? 'cp.patient_id = $1' : "btrim(cp.patient_name) = $1"}
+     ORDER BY dc.chart_date DESC, w.floor_number NULLS LAST, w.name, dc.slot = 'extra', cc.column_number`,
+    [patientId || name],
+  )
+  const days = []
+  for (const row of result.rows) {
+    let day = days[days.length - 1]
+    if (!day || day.date !== row.date) {
+      if (days.length === TIMELINE_DAYS) return response.json({ days, truncated: true })
+      day = { date: row.date, entries: [] }
+      days.push(day)
+    }
+    let entry = day.entries.find((item) => item.floor === row.floor && item.ward === row.ward && item.slot === row.slot)
+    if (!entry) { entry = { floor: row.floor, ward: row.ward, slot: row.slot, medicines: [] }; day.entries.push(entry) }
+    if (row.medicine && row.quantity) entry.medicines.push({ name: row.medicine, quantity: row.quantity })
+  }
+  response.json({ days, truncated: false })
+})
+
 // Patient search across every saved date — managers only, from the floor list's «كل التواريخ».
 // One row per patient (by ID, else by name) with each ward stay's first and last charted date, so
 // an old patient is found without knowing the day. Read-only; most recently seen first.
