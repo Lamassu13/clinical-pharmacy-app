@@ -243,6 +243,27 @@ const readChart = (allowSince) => async (request, response) => {
   }, lock })
 }
 router.get('/chart', requireAuth, readChart(false))
+// Patient IDs on this chart that are also on a chart of a DIFFERENT ward the same day — a
+// transfer nobody recorded, or a mistyped ID. Only the other ward's label is returned (never its
+// patient names), so a pharmacist learns "also on ward X", not X's chart. The same ward's main and
+// extra charts are one place, so they never clash with each other.
+router.get('/chart/id-clashes', requireAuth, async (request, response) => {
+  const location = readLocation(request.query, request.session.user)
+  if (location.status) return response.status(location.status).json({ message: location.message })
+  const result = await query(
+    `SELECT DISTINCT cp.patient_id, w2.floor_number AS floor, w2.name AS ward
+     FROM daily_charts dc
+     JOIN wards w ON w.id = dc.ward_id
+     JOIN chart_patients cp ON cp.chart_id = dc.id AND cp.patient_id <> ''
+     JOIN chart_patients cp2 ON cp2.patient_id = cp.patient_id AND cp2.chart_id <> dc.id
+     JOIN daily_charts dc2 ON dc2.id = cp2.chart_id AND dc2.chart_date = dc.chart_date
+     JOIN wards w2 ON w2.id = dc2.ward_id AND (w2.floor_number IS DISTINCT FROM w.floor_number OR w2.name <> w.name)
+     WHERE w.floor_number IS NOT DISTINCT FROM $1 AND w.name = $2 AND dc.chart_date = $3 AND dc.slot = $4
+     ORDER BY cp.patient_id, w2.floor_number NULLS LAST, w2.name`,
+    [location.floor, location.wardName, location.chartDate, location.slot],
+  )
+  response.json({ clashes: result.rows.map((row) => ({ patientId: row.patient_id, floor: row.floor, ward: row.ward })) })
+})
 // «سجل التعديلات»: the last 30 saves that changed something, newest first, each capped at 200
 // lines (the rest as a count) — a whole-grid wipe is one save with ~2000 changes.
 router.get('/chart/history', requireAuth, async (request, response) => {

@@ -5,6 +5,7 @@ import ChartDoseRow from '../components/ChartDoseRow.jsx'
 import ToolbarButton, { Glyph } from '../components/ToolbarIcons.jsx'
 import MedicineSuggest from '../components/MedicineSuggest.jsx'
 import ChartHistoryDialog from '../components/ChartHistoryDialog.jsx'
+import IdClashNote, { useIdClashes } from '../components/IdClashNote.jsx'
 import { medicineMatches } from '../helpers.js'
 
 // Presentational only: every piece of chart state, and the autosave/lock/draft logic that
@@ -27,6 +28,7 @@ export default function ChartScreen({
   // The header cell being typed in ({ column, input }) and the highlighted suggestion.
   const [suggestFor, setSuggestFor] = useState(null)
   const [historyOpen, setHistoryOpen] = useState(false)
+  const idClashes = useIdClashes(selected, selectedDate, patientIds)
   const [suggestHighlight, setSuggestHighlight] = useState(0)
   const suggestOptions = suggestFor ? medicineMatches(columnMedicines[suggestFor.column] || '', medicines)
     .filter((name) => name !== columnMedicines[suggestFor.column])
@@ -154,6 +156,7 @@ export default function ChartScreen({
         ? <><span className="bar-item"><span className="bar-key">المريض</span><strong>{patientNames[activeRow]?.trim() || 'بلا اسم'}</strong><span className="bar-num">صف {activeRow + 1}</span></span>{activeColumn >= 0 && <span className="bar-item"><span className="bar-key">العلاج</span><strong>{columnMedicines[activeColumn]?.trim() || 'بلا اسم'}</strong><span className="bar-num">عمود {activeColumn + 1}</span></span>}</>
         : <span className="muted">اضغط داخل خلية ليظهر المريض والعلاج هنا</span>}</div>
       {!dateIsToday && <span className="bar-date-warning">⚠ جارت {today} — ليس اليوم</span>}
+      {idClashes.list.length > 0 && <span className="bar-date-warning">⚠ رقم الطبلة {idClashes.list[0].id} مسجّل اليوم أيضًا في {idClashes.list[0].wards[0]}{idClashes.list[0].wards.length > 1 || idClashes.list.length > 1 ? ' …' : ''}</span>}
       {chartReady && <span className={saveClass} aria-live="polite">{saveText}</span>}
     </div>
 
@@ -268,6 +271,8 @@ export default function ChartScreen({
       {copyError && <span>تعذّر نسخ الجارت — أعِد الضغط على «نسخ إلى اليوم التالي».</span>}
       {pdfExportError && <span>{pdfExportError}</span>}
     </div>}
+
+    <IdClashNote list={idClashes.list} dismiss={idClashes.dismiss} patientNames={patientNames} patientIds={patientIds} />
 
     {chartClashNote && <div className="chart-clash-note" role="status">
       <span>{chartClashNote}</span>

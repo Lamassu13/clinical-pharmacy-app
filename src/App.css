@@ -1523,6 +1523,7 @@ button.topbar-user:hover { color: var(--primary); }
 .chart-recover-line { background: var(--danger-tint); }
 .chart-clash-note { background: var(--warning-tint); }
 .chart-clash-note > span { flex: 1 1 auto; }
+.id-clash-line { display: block; }
 
 /* A new chart's blank grid otherwise reads like a dismissed load failure. Floats over the
    grid (position: relative on .chart-frame) so it never shifts the cells when it clears. */
