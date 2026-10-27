@@ -364,3 +364,16 @@ DO $$ BEGIN
     UPDATE daily_charts SET started_notified_at = NOW();
   END IF;
 END $$;
+
+-- Per-user, per-day API usage (server/usage.js): the "who uses the most data" report. Batched
+-- in from memory every few minutes; a row per user per local day, so the table stays tiny.
+CREATE TABLE IF NOT EXISTS user_activity (
+  user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  day DATE NOT NULL,
+  requests INTEGER NOT NULL DEFAULT 0,
+  writes INTEGER NOT NULL DEFAULT 0,
+  bytes_in BIGINT NOT NULL DEFAULT 0,
+  bytes_out BIGINT NOT NULL DEFAULT 0,
+  last_seen TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_id, day)
+);

@@ -24,6 +24,7 @@ import templatesRoutes from './routes/templates.js'
 import interactionsRoutes from './routes/interactions.js'
 import pushRoutes from './routes/push.js'
 import { notifyLater } from './push.js'
+import { usageMiddleware, usageReport, flushUsage } from './usage.js'
 import { medicineCatalogue } from './medicine-catalogue.js'
 
 const app = express()
@@ -104,6 +105,7 @@ const registerLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 30, standar
 const apiLimiter = rateLimit({ windowMs: 60 * 1000, limit: 300, standardHeaders: 'draft-7', legacyHeaders: false,
   keyGenerator: (request) => (request.session?.user?.id ? `user:${request.session.user.id}` : request.ip) })
 app.use('/api/', apiLimiter)
+app.use('/api/', usageMiddleware)
 
 // Session data is a snapshot taken at login, so a demoted, suspended or deleted
 // user would keep their old privileges until the cookie expires. Drop their
@@ -318,6 +320,10 @@ app.put('/api/registrations/:id', requireAdmin, async (request, response) => {
   } finally { client.release() }
 })
 
+app.get('/api/usage', requireManager, async (request, response) => {
+  const days = [7, 30, 90].includes(Number(request.query.days)) ? Number(request.query.days) : 30
+  response.json({ days, users: await usageReport(days) })
+})
 app.get('/api/users', requireManager, async (_request, response) => {
   const result = await query(`SELECT u.id, u.full_name, u.username, u.email, u.phone, u.role, u.account_status,
     COALESCE((SELECT array_agg(floor_number ORDER BY floor_number) FROM user_floor_access WHERE user_id = u.id), '{}') AS floors,
@@ -863,6 +869,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   app.listen(port, () => {
     console.log(`Clinical Pharmacy API listening on http://localhost:${port}`)
   })
+  // A deploy sends SIGTERM: write the not-yet-flushed usage counts before the process goes.
+  process.once('SIGTERM', () => flushUsage().finally(() => process.exit(0)))
 }
 
 export default app

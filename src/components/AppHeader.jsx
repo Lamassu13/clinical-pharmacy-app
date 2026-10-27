@@ -14,6 +14,7 @@ const ADMIN_SECTIONS = [
   { view: 'floors', label: 'إدارة الطوابق' },
   { view: 'reports', label: 'التقارير' },
   { view: 'users', label: 'جميع المستخدمين' },
+  { view: 'usage', label: 'استخدام المستخدمين' },
 ]
 
 function Chevron() {
