@@ -10,6 +10,7 @@ import { numberToArabicWords } from '../arabic-number.js'
 import { buildMeropenemForm, activeCourseDay, monthStart, windowStart, doseText, strengthMg, wardKeyOf, MEROPENEM_SQL_PATTERN } from '../meropenem.js'
 import { antibioticOf } from '../ddd.js'
 import { notifyLater, todayInBaghdad, MANAGER_ROLES } from '../push.js'
+import { recordChartChanges } from '../chart-history.js'
 
 const router = express.Router()
 
@@ -242,6 +243,36 @@ const readChart = (allowSince) => async (request, response) => {
   }, lock })
 }
 router.get('/chart', requireAuth, readChart(false))
+// «سجل التعديلات»: the last 30 saves that changed something, newest first, each capped at 200
+// lines (the rest as a count) — a whole-grid wipe is one save with ~2000 changes.
+router.get('/chart/history', requireAuth, async (request, response) => {
+  const location = readLocation(request.query, request.session.user)
+  if (location.status) return response.status(location.status).json({ message: location.message })
+  const found = await query(
+    `SELECT dc.id FROM daily_charts dc JOIN wards w ON w.id = dc.ward_id
+     WHERE w.floor_number IS NOT DISTINCT FROM $1 AND w.name = $2 AND dc.chart_date = $3 AND dc.slot = $4`,
+    [location.floor, location.wardName, location.chartDate, location.slot],
+  )
+  if (!found.rows[0]) return response.json({ saves: [] })
+  const rows = await query(
+    `SELECT * FROM (
+       SELECT version, at, user_name, kind, row_number, column_number, patient, medicine, old_value, new_value,
+              ROW_NUMBER() OVER (PARTITION BY version ORDER BY id) AS rn, COUNT(*) OVER (PARTITION BY version) AS total
+       FROM chart_changes WHERE chart_id = $1 AND version IN (SELECT DISTINCT version FROM chart_changes WHERE chart_id = $1 ORDER BY version DESC LIMIT 30)
+     ) c WHERE rn <= 200 ORDER BY version DESC, rn`,
+    [found.rows[0].id],
+  )
+  const saves = []
+  for (const row of rows.rows) {
+    let save = saves[saves.length - 1]
+    if (!save || save.version !== row.version) {
+      save = { version: row.version, at: row.at, userName: row.user_name || '—', changes: [], more: Math.max(0, Number(row.total) - 200) }
+      saves.push(save)
+    }
+    save.changes.push({ kind: row.kind, row: row.row_number, column: row.column_number, label: { patient: row.patient, medicine: row.medicine }, from: row.old_value, to: row.new_value })
+  }
+  response.json({ saves })
+})
 // Not in the service worker's cached API paths, so a poll's "unchanged" reply can never replace
 // the offline copy of the full chart that GET /chart keeps.
 router.get('/chart/poll', requireAuth, readChart(true))
@@ -398,11 +429,12 @@ router.put('/chart', requireAuth, async (request, response) => {
     // column whose text doesn't match anything in the *current* catalogue can still be told
     // apart from a genuinely bogus name: "this chart already had exactly this preserved name"
     // vs. "this text has never matched any medicine, drop it" (the backstop two lines down).
-    const existingCustom = await client.query('SELECT column_number, custom_name FROM chart_columns WHERE chart_id = $1 AND custom_name IS NOT NULL', [chartId])
-    const customNameByColumn = new Map(existingCustom.rows.map((row) => [row.column_number, row.custom_name]))
-    await client.query('DELETE FROM chart_patients WHERE chart_id = $1', [chartId])
-    await client.query('DELETE FROM chart_columns WHERE chart_id = $1', [chartId])
-    await client.query('DELETE FROM chart_quantities WHERE chart_id = $1', [chartId])
+    // RETURNING hands back the rows being replaced — the "before" for the change history below.
+    const replacedPatients = await client.query('DELETE FROM chart_patients WHERE chart_id = $1 RETURNING row_number, patient_name, patient_id', [chartId])
+    const replacedColumns = await client.query('DELETE FROM chart_columns WHERE chart_id = $1 RETURNING column_number, medicine_id, custom_name', [chartId])
+    // (the preserved custom names read about above come from these same rows: nothing has been replaced yet)
+    const customNameByColumn = new Map(replacedColumns.rows.filter((row) => row.custom_name !== null).map((row) => [row.column_number, row.custom_name]))
+    const replacedQuantities = await client.query('DELETE FROM chart_quantities WHERE chart_id = $1 RETURNING row_number, column_number, quantity', [chartId])
 
     // Batched set-based inserts (UNNEST) instead of one query per row: a full
     // 36x51 chart is ~8 round-trips instead of ~2000, so the pooled connection
@@ -463,6 +495,17 @@ router.put('/chart', requireAuth, async (request, response) => {
       && patients.some((patient) => patient.name.trim()) && quantityList.some((entry) => entry.quantity > 0)) {
       startedNow = (await client.query('UPDATE daily_charts SET started_notified_at = NOW() WHERE id = $1 AND started_notified_at IS NULL', [chartId])).rowCount === 1
     }
+    // After the save is complete, so nothing here can change what was stored; it cannot fail the
+    // save either (own savepoint, errors logged and swallowed).
+    await recordChartChanges(client, {
+      chartId, version: chartResult.rows[0].version, user: request.session.user,
+      oldState: {
+        patients: replacedPatients.rows.map((row) => ({ rowNumber: row.row_number, name: row.patient_name, patientId: row.patient_id || '' })),
+        columns: replacedColumns.rows.map((row) => ({ columnNumber: row.column_number, medicineId: row.medicine_id, customName: row.custom_name })),
+        quantities: replacedQuantities.rows.map((row) => ({ rowNumber: row.row_number, columnNumber: row.column_number, quantity: row.quantity })),
+      },
+      newState: { patients: [...patientByRow.values()], columns: linkedColumns, quantities: quantityList },
+    })
     await client.query('COMMIT')
     response.json({ ok: true, chartId, version: chartResult.rows[0].version })
     if (startedNow) {
