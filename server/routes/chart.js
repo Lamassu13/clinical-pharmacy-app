@@ -206,7 +206,7 @@ const chartToken = (chartId, chartRow, roomRows) => JSON.stringify([chartId, cha
 
 // `since` (poll only): the token of the copy the caller already holds. When it still matches,
 // answer with just the lock instead of re-reading and re-sending the whole grid — Neon bills the
-// bytes the database sends the app, and a read-only device polls every 5 s.
+// bytes the database sends the app, and a read-only device polls every 15 s.
 const readChart = (allowSince) => async (request, response) => {
   const location = readLocation(request.query, request.session.user)
   if (location.status) return response.status(location.status).json({ message: location.message })

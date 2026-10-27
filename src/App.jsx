@@ -1906,7 +1906,7 @@ function App() {
       })
       .catch(() => { /* transient — next poll retries */ })
     poll() // catch up immediately on (re)focus rather than waiting a full interval
-    const timer = setInterval(poll, 5000)
+    const timer = setInterval(poll, 15000) // was 5 s: a watching device sees another device's save up to 15 s later, at a third of the requests
     return () => { cancelled = true; clearInterval(timer) }
   }, [selected, selectedDate, lockState, isExpired, documentVisible])
 
