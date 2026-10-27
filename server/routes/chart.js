@@ -11,6 +11,7 @@ import { buildMeropenemForm, activeCourseDay, monthStart, windowStart, doseText,
 import { antibioticOf } from '../ddd.js'
 import { notifyLater, todayInBaghdad, MANAGER_ROLES } from '../push.js'
 import { recordChartChanges } from '../chart-history.js'
+import { recordAudit } from '../audit.js'
 
 const router = express.Router()
 
@@ -84,6 +85,7 @@ const resolveChartId = async (floor, wardName, chartDate, slot = 'main') => {
 // cascades to its patients, columns, quantities and both pill tables. Manager-gated, and it
 // only ever touches whole (ward, date) charts inside the given inclusive date range — either
 // every ward (`all`) or a chosen set of numbered floors and/or special wards.
+const purgeScope = (all, floors, wards) => (all ? 'كل الطوابق والردهات' : [...floors.map((floor) => `الطابق ${floor}`), ...wards].join('، '))
 router.post('/charts/purge', requireManager, async (request, response) => {
   const { from, to } = request.body
   if (!isIsoDate(from) || !isIsoDate(to)) return response.status(400).json({ message: 'التاريخ مطلوب' })
@@ -107,6 +109,7 @@ router.post('/charts/purge', requireManager, async (request, response) => {
        AND ($3::boolean OR split_part(ward_key, '|', 1) = ANY($4::text[]) OR (split_part(ward_key, '|', 1) = '' AND split_part(ward_key, '|', 2) = ANY($5::text[])))`,
     [from, to, all, floors.map(String), wards],
   )
+  await recordAudit(request, 'charts.purged', purgeScope(all, floors, wards), `${from} ← ${to} · حُذف ${result.rowCount} جارت`)
   response.json({ deleted: result.rowCount })
 })
 
@@ -144,6 +147,7 @@ router.post('/pills/purge', requireManager, async (request, response) => {
       [from, to, all, floors],
     )).rowCount
   }
+  await recordAudit(request, 'pills.purged', purgeScope(all, floors, wards), `${from} ← ${to} · ${[regular && `استمارات الحبوب: ${deleted.regular}`, extra && `الإضافية: ${deleted.extra}`].filter(Boolean).join(' · ')}`)
   response.json({ deleted })
 })
 
