@@ -2513,6 +2513,17 @@ button.topbar-user:hover { color: var(--primary); }
 /* Reports: weekly trend picker and bars */
 .report-trend-pick { display: flex; gap: 0.5rem; align-items: center; margin-block: 0.5rem; }
 .report-bar-cell { width: 40%; }
+.aware-bar { margin: 12px 0; }
+.aware-track { display: flex; height: 1.5rem; border-radius: 4px; overflow: hidden; background: var(--border, #ddd); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.aware-bar.compact { margin: 0; min-width: 11rem; }
+.aware-bar.compact .aware-track { height: 0.75rem; }
+.aware-seg { display: flex; align-items: center; justify-content: center; min-width: 2px; color: #fff; font-size: var(--text-xs); font-weight: 700; }
+.aware-dot, .aware-seg { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.aware-seg.green, .aware-dot.green { background: #1a8a4a; }
+.aware-seg.orange, .aware-dot.orange { background: #e8860c; }
+.aware-seg.red, .aware-dot.red { background: #c92a33; }
+.aware-key { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 6px 0 0; padding: 0; list-style: none; font-size: var(--text-xs); font-weight: 700; color: var(--text-muted); }
+.aware-dot { display: inline-block; width: 0.7rem; height: 0.7rem; border-radius: 50%; margin-inline-end: 5px; vertical-align: -1px; }
 .report-bar { display: block; height: 0.75rem; min-width: 1px; border-radius: 2px; background: currentColor; opacity: 0.55; }
 
 /* Pill form ملاحظات: editable text + a dropdown of stock notes; paper shows the text only. */
