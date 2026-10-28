@@ -4,6 +4,7 @@
 import bcrypt from 'bcryptjs'
 import { pool } from './db.js'
 import { medicineCatalogue } from './medicine-catalogue.js'
+import { dashboardRows } from './dashboard-rows.js'
 
 // A test run pointed at the wrong database would TRUNCATE real patient data. The name
 // is the only signal available here, so refuse anything that isn't obviously a test DB
@@ -32,6 +33,7 @@ export const resetDatabase = async () => {
 `)
   // The app's catalogue cache lives in this same process: a wiped table must not be served from it.
   medicineCatalogue.invalidate()
+  dashboardRows.clear()
 }
 
 let userCounter = 0

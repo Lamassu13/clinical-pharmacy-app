@@ -25,6 +25,41 @@ pool.on('error', (error) => {
   console.error('idle database client error (connection dropped, pool recovered):', error.message)
 })
 
+// Rows and rough bytes each statement pulled out of Postgres since this process started, so the
+// next "why is Neon's network transfer high" is answered by a table, not a guess. Patched on the
+// Client prototype so pool.query and a checked-out transaction client are both counted.
+// ponytail: bytes are an estimate (string length, 8 per other value), memory only, reset on
+// restart; statements are grouped by their first 70 characters and capped at 300 groups.
+const traffic = new Map()
+const tally = (text, result) => {
+  if (typeof text !== 'string' || !Array.isArray(result?.rows) || !result.rows.length) return
+  const label = text.replace(/\s+/g, ' ').trim().slice(0, 70)
+  let entry = traffic.get(label)
+  if (!entry) {
+    if (traffic.size >= 300) return
+    entry = { calls: 0, rows: 0, bytes: 0 }
+    traffic.set(label, entry)
+  }
+  let bytes = 0
+  for (const row of result.rows) for (const value of Object.values(row)) bytes += typeof value === 'string' ? value.length : 8
+  entry.calls += 1; entry.rows += result.rows.length; entry.bytes += bytes
+}
+const clientQuery = pg.Client.prototype.query
+pg.Client.prototype.query = function (config, ...rest) {
+  const text = typeof config === 'string' ? config : config?.text
+  // pool.query hands the client a callback (and gets undefined back); a transaction client is
+  // awaited. A throw in tally must never skip the callback, or the pool would never get the client back.
+  if (typeof rest.at(-1) === 'function') {
+    const done = rest.pop()
+    return clientQuery.call(this, config, ...rest, (error, result) => { try { if (!error) tally(text, result) } catch { /* measurement only */ } done(error, result) })
+  }
+  const result = clientQuery.call(this, config, ...rest)
+  if (typeof result?.then === 'function') result.then((done) => tally(text, done), () => {})
+  return result
+}
+export const dbTraffic = () => [...traffic].map(([statement, entry]) => ({ statement, ...entry })).sort((a, b) => b.bytes - a.bytes).slice(0, 10)
+export const trafficSince = new Date().toISOString()
+
 export const query = (text, params) => pool.query(text, params)
 
 export const checkDatabase = async () => {

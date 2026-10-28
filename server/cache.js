@@ -32,3 +32,20 @@ export const memoizeAsync = (load, { ttlMs }) => {
 
   return { get, invalidate }
 }
+
+// memoizeAsync per key, for reads that differ by parameters (a date, a range). Same single-flight
+// and TTL; `load` gets the extra arguments of the call that first filled the key.
+// ponytail: when full, the oldest key is dropped (insertion order) — no LRU, the keys are few.
+export const memoizeByKey = (load, { ttlMs, max = 60 }) => {
+  const entries = new Map()
+  const get = (key, ...args) => {
+    let entry = entries.get(key)
+    if (!entry) {
+      if (entries.size >= max) entries.delete(entries.keys().next().value)
+      entry = memoizeAsync(() => load(...args), { ttlMs })
+      entries.set(key, entry)
+    }
+    return entry.get()
+  }
+  return { get, clear: () => entries.clear() }
+}

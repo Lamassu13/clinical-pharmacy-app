@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { memoizeAsync } from './cache.js'
+import { memoizeAsync, memoizeByKey } from './cache.js'
 
 const gate = () => { let open; const wait = new Promise((resolve) => { open = resolve }); return { wait, open } }
 
@@ -56,4 +56,19 @@ test('a failed load is not cached and reaches every waiter; the next read retrie
   assert.deepEqual(await Promise.all(readers), ['db down', 'db down', 'db down'])
   assert.equal(calls, 1)
   assert.equal(await cache.get(), 'ok')
+})
+
+test('memoizeByKey: one load per key, shared while fresh, and clear() starts over', async () => {
+  let calls = 0
+  const cache = memoizeByKey(async (value) => { calls += 1; return value * 2 }, { ttlMs: 60_000, max: 2 })
+  assert.equal(await cache.get('a', 1), 2)
+  assert.equal(await cache.get('a', 1), 2)
+  assert.equal(await cache.get('b', 5), 10)
+  assert.equal(calls, 2)
+  await cache.get('c', 7) // over max: the oldest key ('a') is dropped
+  await cache.get('a', 1)
+  assert.equal(calls, 4)
+  cache.clear()
+  await cache.get('b', 5)
+  assert.equal(calls, 5)
 })

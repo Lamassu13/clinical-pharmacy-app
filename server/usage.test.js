@@ -27,6 +27,8 @@ test('usage report: counts requests, writes and bytes per user; quiet users show
 
   assert.equal((await busy.get('/api/usage')).status, 403)
   const report = await admin.get('/api/usage?days=7')
+  assert.ok(report.body.queries.every((q) => q.statement && q.rows > 0 && q.bytes > 0))
+  assert.ok(report.body.queries.some((q) => q.statement.startsWith('SELECT u.id, u.full_name')), 'a plain pool.query (the usage report itself) is counted')
   assert.equal(report.status, 200)
   const byId = Object.fromEntries(report.body.users.map((row) => [row.id, row]))
   assert.equal(byId[busyUser.id].requests >= 4, true) // login + 2 reads + the write
