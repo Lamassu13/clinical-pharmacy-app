@@ -42,6 +42,23 @@ function Section({ title, note, children }) {
   )
 }
 
+// AWaRe traffic light: Access green, Watch orange, Reserve red. Each segment carries its own
+// percentage so the meaning never rests on colour alone (and survives a black-and-white print).
+const AWARE_LIGHT = { Access: 'green', Watch: 'orange', Reserve: 'red' }
+function AwareBar({ aware, compact }) {
+  if (Object.values(aware).every((value) => value === null)) return null
+  return (
+    <div className={`aware-bar${compact ? ' compact' : ''}`} dir="ltr" role="img" aria-label={Object.keys(AWARE_LIGHT).map((group) => `${group} ${aware[group] ?? 0}%`).join(', ')}>
+      <div className="aware-track">
+        {Object.entries(AWARE_LIGHT).map(([group, light]) => aware[group] > 0 && <span key={group} className={`aware-seg ${light}`} style={{ flexGrow: aware[group] }}>{aware[group] >= 8 && !compact ? `${aware[group]}٪` : ''}</span>)}
+      </div>
+      <ul className="aware-key">
+        {Object.entries(AWARE_LIGHT).map(([group, light]) => <li key={group}><i className={`aware-dot ${light}`} />{group} {orDash(aware[group])}٪</li>)}
+      </ul>
+    </div>
+  )
+}
+
 function Empty({ children }) {
   return <p className="report-empty">{children}</p>
 }
@@ -222,6 +239,7 @@ function ReportDocument({ report, stale }) {
             <div><dt>DDD لكل 100 يوم مريض</dt><dd>{orDash(report.antibiotics.dddPer100)}</dd><span className="report-delta" dir="ltr">{report.antibiotics.totalDdds} DDD</span></div>
             {['Access', 'Watch', 'Reserve'].map((group) => <div key={group}><dt lang="en" dir="ltr">{group}</dt><dd>{orDash(report.antibiotics.aware[group])}٪</dd></div>)}
           </dl>
+          <AwareBar aware={report.antibiotics.aware} />
           {report.antibiotics.lines.length > 0 && <div className="table-frame"><table className="requests-table report-table">
             <thead><tr><th>الدواء</th><th>ATC</th><th>AWaRe</th><th>الكمية</th><th>المجموع</th><th>DDD</th><th>DDD/100</th></tr></thead>
             <tbody>{report.antibiotics.lines.map((line) => <tr key={line.name}>
@@ -285,10 +303,10 @@ function ReportDocument({ report, stale }) {
       <Section title="استهلاك المضادات الحيوية حسب الردهة" note="DDD لكل 100 يوم مريض في كل ردهة، ونسبة كل فئة AWaRe من DDD الردهة.">
         {report.antibiotics.byWard.length === 0 ? <Empty>لا توجد مضادات حيوية محسوبة في هذه المدة.</Empty> : (
           <div className="table-frame"><table className="requests-table report-table">
-            <thead><tr><th>الردهة</th><th>أيام المرضى</th><th>DDD</th><th>DDD/100</th><th lang="en" dir="ltr">Access</th><th lang="en" dir="ltr">Watch</th><th lang="en" dir="ltr">Reserve</th></tr></thead>
+            <thead><tr><th>الردهة</th><th>أيام المرضى</th><th>DDD</th><th>DDD/100</th><th lang="en" dir="ltr">AWaRe</th></tr></thead>
             <tbody>{report.antibiotics.byWard.map((row) => <tr key={`${row.floor}|${row.ward}`}>
               <td>{wardName(row, scopedToFloor)}</td><td className="num">{row.patientDays}</td><td className="num">{row.ddds}</td><td className="num">{orDash(row.dddPer100)}</td>
-              {['Access', 'Watch', 'Reserve'].map((group) => <td key={group} className="num">{orDash(row.aware[group])}٪</td>)}
+              <td className="report-aware-cell"><AwareBar aware={row.aware} compact /></td>
             </tr>)}</tbody>
           </table></div>
         )}
