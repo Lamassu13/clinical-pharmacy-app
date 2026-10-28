@@ -31,6 +31,8 @@ export default function AdminUsageScreen({ adminHeader, isExpired }) {
     return () => { cancelled = true }
   }, [days, reload, isExpired])
 
+  const sum = (pick) => (users || []).reduce((total, row) => total + pick(row), 0)
+
   return <main className="app-shell">{adminHeader}<section className="dashboard reports-page">
     <div className="section-heading"><div><h1>استخدام المستخدمين</h1></div></div>
     <p className="report-note">الأكثر استهلاكًا للبيانات أولًا. «البيانات» مجموع ما أرسله المستخدم وما استلمه من الخادم عبر التطبيق، دون ملفات التطبيق نفسها. «الحفظ» عدد عمليات الحفظ والتعديل.</p>
@@ -46,6 +48,9 @@ export default function AdminUsageScreen({ adminHeader, isExpired }) {
           <td>{row.fullName}</td><td className="num">{formatBytes(row.bytesIn + row.bytesOut)}</td><td className="num">{row.requests}</td><td className="num">{row.writes}</td>
           <td className="num">{row.activeDays}</td><td>{formatSeen(row.lastSeen)}</td><td>{ROLE[row.role] || row.role}</td>
         </tr>)}</tbody>
+        <tfoot><tr>
+          <th>المجموع</th><td className="num">{formatBytes(sum((row) => row.bytesIn + row.bytesOut))}</td><td className="num">{sum((row) => row.requests)}</td><td className="num">{sum((row) => row.writes)}</td><td /><td /><td />
+        </tr></tfoot>
       </table></div>
     )}
   </section></main>
