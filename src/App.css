@@ -2513,6 +2513,7 @@ button.topbar-user:hover { color: var(--primary); }
 /* Reports: weekly trend picker and bars */
 .report-trend-pick { display: flex; gap: 0.5rem; align-items: center; margin-block: 0.5rem; }
 .report-bar-cell { width: 40%; }
+.usage-subhead { margin: 28px 0 4px; font-size: var(--text-lg, 1.1rem); }
 .aware-bar { margin: 12px 0; }
 .aware-track { display: flex; height: 1.5rem; border-radius: 4px; overflow: hidden; background: var(--border, #ddd); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 .aware-bar.compact { margin: 0; min-width: 11rem; }

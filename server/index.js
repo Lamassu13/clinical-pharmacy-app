@@ -8,7 +8,7 @@ import connectPgSimple from 'connect-pg-simple'
 import rateLimit from 'express-rate-limit'
 import bcrypt from 'bcryptjs'
 import 'dotenv/config'
-import { checkDatabase, pool, query } from './db.js'
+import { checkDatabase, dbTraffic, pool, query, trafficSince } from './db.js'
 import { authenticateUser, requireAdmin, requireAuth, requireManager } from './auth.js'
 import {
   ALLOWED_FLOORS, MAX_PATIENT_ROWS, SPECIAL_WARDS, PILL_FORM,
@@ -27,6 +27,7 @@ import { notifyLater } from './push.js'
 import { usageMiddleware, usageReport, flushUsage } from './usage.js'
 import { recordAudit, readAudit, ROLE_AR } from './audit.js'
 import { medicineCatalogue } from './medicine-catalogue.js'
+import { dashboardRows } from './dashboard-rows.js'
 
 const app = express()
 const port = Number(process.env.PORT || 3001)
@@ -339,7 +340,7 @@ app.get('/api/audit', requireAdmin, async (request, response) => {
 })
 app.get('/api/usage', requireManager, async (request, response) => {
   const days = [7, 30, 90].includes(Number(request.query.days)) ? Number(request.query.days) : 30
-  response.json({ days, users: await usageReport(days) })
+  response.json({ days, users: await usageReport(days), queries: dbTraffic(), queriesSince: trafficSince })
 })
 app.get('/api/users', requireManager, async (_request, response) => {
   const result = await query(`SELECT u.id, u.full_name, u.username, u.email, u.phone, u.role, u.account_status,
@@ -592,8 +593,8 @@ app.get('/api/dashboard', requireAuth, async (request, response) => {
     // rather than pg's default Date object (which JSON-serializes as a full UTC timestamp and
     // risks an off-by-one on the client).
     isManager
-      ? timeQuery('dailyPatientsByFloor', query(
-        `SELECT w.id AS "wardId", w.floor_number AS floor, w.name AS ward, dc.chart_date::text AS date,
+      ? timeQuery('dailyPatientsByFloor', dashboardRows.get(`daily|${date}`,
+        `/* dashboard: weekly trend */ SELECT w.id AS "wardId", w.floor_number AS floor, w.name AS ward, dc.chart_date::text AS date,
                 btrim(regexp_replace(cp.patient_name, '\\s+', ' ', 'g')) AS patient
          FROM daily_charts dc
          JOIN wards w ON w.id = dc.ward_id
@@ -611,8 +612,8 @@ app.get('/api/dashboard', requireAuth, async (request, response) => {
     // window at 120 days so a mistyped multi-year range can't blow up the response; an
     // absent/invalid range just comes back empty rather than 400ing the whole dashboard.
     isManager && isIsoDate(request.query.rangeFrom) && isIsoDate(request.query.rangeTo)
-      ? timeQuery('patientsByFloorRange', query(
-        `SELECT w.id AS "wardId", w.floor_number AS floor, w.name AS ward, dc.chart_date::text AS date,
+      ? timeQuery('patientsByFloorRange', dashboardRows.get(`range|${request.query.rangeFrom}|${request.query.rangeTo}`,
+        `/* dashboard: date range */ SELECT w.id AS "wardId", w.floor_number AS floor, w.name AS ward, dc.chart_date::text AS date,
                 btrim(regexp_replace(cp.patient_name, '\\s+', ' ', 'g')) AS patient
          FROM daily_charts dc
          JOIN wards w ON w.id = dc.ward_id

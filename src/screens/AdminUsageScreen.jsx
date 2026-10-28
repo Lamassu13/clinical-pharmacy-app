@@ -11,6 +11,7 @@ const formatSeen = (iso) => (iso ? new Date(iso).toLocaleString('ar-IQ', { dateS
 export default function AdminUsageScreen({ adminHeader, isExpired }) {
   const [days, setDays] = useState(30)
   const [users, setUsers] = useState(null)
+  const [traffic, setTraffic] = useState({ queries: [], since: null })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   const [reload, setReload] = useState(0)
@@ -24,7 +25,7 @@ export default function AdminUsageScreen({ adminHeader, isExpired }) {
         if (isExpired(response)) return
         const result = await response.json()
         if (!response.ok) throw new Error(result.message)
-        if (!cancelled) setUsers(result.users)
+        if (!cancelled) { setUsers(result.users); setTraffic({ queries: result.queries || [], since: result.queriesSince }) }
       })
       .catch((caught) => { if (!cancelled) setError(caught.message || 'تعذّر تحميل الاستخدام — تحقّق من الاتصال وحاول مرة أخرى.') })
       .finally(() => { if (!cancelled) setLoading(false) })
@@ -53,5 +54,15 @@ export default function AdminUsageScreen({ adminHeader, isExpired }) {
         </tr></tfoot>
       </table></div>
     )}
+    {traffic.queries.length > 0 && <>
+      <h2 className="usage-subhead">أكثر الاستعلامات نقلًا للبيانات من قاعدة البيانات</h2>
+      <p className="report-note">منذ آخر تشغيل للخادم ({formatSeen(traffic.since)}). الحجم تقريبي. الاستعلام الأعلى هو الأولى بالتخفيف.</p>
+      <div className="table-frame"><table className="requests-table report-table">
+        <thead><tr><th>الاستعلام</th><th>المرات</th><th>الصفوف</th><th>الحجم</th></tr></thead>
+        <tbody>{traffic.queries.map((row) => <tr key={row.statement}>
+          <td lang="en" dir="ltr">{row.statement}</td><td className="num">{row.calls}</td><td className="num">{row.rows}</td><td className="num">{formatBytes(row.bytes)}</td>
+        </tr>)}</tbody>
+      </table></div>
+    </>}
   </section></main>
 }
