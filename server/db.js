@@ -13,7 +13,10 @@ export const pool = new Pool({
   max: Number(process.env.DATABASE_POOL_SIZE || 10),
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 5_000,
-  ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
+  // Encrypted AND checked: without verifying Neon's certificate (a public CA's), anyone between
+  // Render and Neon could pose as the database. An `sslmode=` in DATABASE_URL takes precedence
+  // over this (pg applies the connection string last); Neon's `sslmode=require` also verifies.
+  ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: true } : undefined,
 })
 
 // A pooled client can fail while it is idle — the managed Postgres closes connections
