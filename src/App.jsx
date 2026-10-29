@@ -547,6 +547,9 @@ function App() {
       const result = await response.json()
       if (!response.ok) throw new Error(result.message || 'تعذر تسجيل الدخول')
       if (currentUser && String(currentUser.id) !== String(result.user.id)) await forgetSessionData()
+      // Someone else — or the same person after a role change — signing in on the expiry card must
+      // not land inside the admin screen the previous session had open.
+      if (currentUser && (String(currentUser.id) !== String(result.user.id) || currentUser.role !== result.user.role)) setAdminView(null)
       setCurrentUser(result.user)
       setIsLoggedIn(true)
       // Without this a fresh sign-in could not reopen offline until an online reload had run /auth/me.
@@ -811,6 +814,9 @@ function App() {
     } catch (error) { if (!expired) setRegistrationsError(error.message || 'تعذر الاتصال بالخادم') } finally { setBusy(false) }
   }, [askConfirm, isExpired, purgeAll, purgeFrom, purgeKinds, purgeTo, purgeTargets])
   useEffect(() => {
+    // Not while the sign-in card is up. Signing back in re-runs this, so a list whose load the
+    // lapsed session refused is fetched again instead of showing a false «nothing here».
+    if (sessionExpired) return
     setRegistrationsError(''); setAdminSuccess('')
     if (adminView === 'requests') loadRegistrations()
     if (adminView === 'users') loadUsers()
@@ -822,7 +828,7 @@ function App() {
       if (isAdmin) loadRegistrations()
       loadUsers(); loadMedicines(); loadTreatmentForms()
     }
-  }, [adminView, isAdmin, loadRegistrations, loadUsers, loadMedicines, loadTreatmentForms])
+  }, [adminView, isAdmin, sessionExpired, loadRegistrations, loadUsers, loadMedicines, loadTreatmentForms])
   // Success notices are transient; errors stay until the next action.
   useEffect(() => {
     if (!adminSuccess) return undefined
@@ -1535,7 +1541,7 @@ function App() {
   useEffect(() => {
     // Also re-runs when adminView clears, so returning from a screen that changed things
     // (a chart purge, an announcement) lands on fresh numbers rather than the stale set.
-    if (!isLoggedIn || floor || selected || (adminView && adminView !== 'dashboard')) return undefined
+    if (!isLoggedIn || sessionExpired || floor || selected || (adminView && adminView !== 'dashboard')) return undefined
     let cancelled = false
     const date = isoDate(new Date())
     const rangeQuery = isManager && rangeFrom && rangeTo ? `&rangeFrom=${rangeFrom}&rangeTo=${rangeTo}` : ''
@@ -1547,19 +1553,19 @@ function App() {
       })
       .catch(() => { if (!cancelled) setDashboardError(true) })
     return () => { cancelled = true }
-  }, [isLoggedIn, floor, selected, adminView, isExpired, isManager, rangeFrom, rangeTo, dashboardReloadKey])
+  }, [isLoggedIn, sessionExpired, floor, selected, adminView, isExpired, isManager, rangeFrom, rangeTo, dashboardReloadKey])
 
   // Announcements: a manager's (and a special-ward-only user's) on the floors list, everyone
   // else's on a single floor's page — loaded each time either opens.
   useEffect(() => {
-    if (!isLoggedIn || selected || adminView) return undefined
+    if (!isLoggedIn || sessionExpired || selected || adminView) return undefined
     let cancelled = false
     fetch(`${apiUrl}/announcements`, { credentials: 'include' })
       .then((response) => { isExpired(response); return response.ok ? response.json() : null })
       .then((result) => { if (!cancelled) setAnnouncements(result ? result.announcements : []) })
       .catch(() => { if (!cancelled) setAnnouncements([]) })
     return () => { cancelled = true }
-  }, [isLoggedIn, floor, selected, adminView, isExpired])
+  }, [isLoggedIn, sessionExpired, floor, selected, adminView, isExpired])
 
   const postAnnouncement = useCallback(async () => {
     const message = announcementDraft.trim()
@@ -2576,7 +2582,7 @@ function App() {
 
   if (!isLoggedIn) return <LoginScreen credentials={credentials} setCredentials={setCredentials} loginError={loginError} busy={busy} onSubmit={submitLogin} onGoToRegister={() => { setAuthView('register'); setLoginError('') }} confirmModal={confirmModal} />
 
-  if (sessionExpired) return <SessionExpiredScreen credentials={credentials} setCredentials={setCredentials} loginError={loginError} busy={busy} onSubmit={submitLogin} onLogout={logout} confirmModal={confirmModal} />
+  if (sessionExpired) return <SessionExpiredScreen reassure={!adminView && ['chart', 'pills'].includes(selected?.mode)} credentials={credentials} setCredentials={setCredentials} loginError={loginError} busy={busy} onSubmit={submitLogin} onLogout={logout} confirmModal={confirmModal} />
 
   const appHeader = <AppHeader theme={theme} onToggleTheme={toggleTheme} currentUser={currentUser} onLogout={logout} onHome={goHome} onMyWard={!isManager && assignedFloorObj ? goToMyWard : undefined} onOpenProfile={openProfile} isAdmin={isAdmin} isManager={isManager} adminView={adminView} onNavigate={setAdminView} isOnline={isOnline} pendingWrites={userId == null ? 0 : pendingWrites(userId).length} />
 
