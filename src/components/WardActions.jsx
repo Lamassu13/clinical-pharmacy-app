@@ -1,8 +1,5 @@
 import { useEffect, useId, useRef } from 'react'
-
-// استمارة الحبوب الإضافي was only built for these four floors' wards — an independent/special
-// ward (floor null) never gets it, same as the server's own floor CHECK constraint.
-const EXTRA_PILLS_FLOORS = [3, 6, 8, 9]
+import { EXTRA_PILL_FLOORS } from '../constants.js'
 
 // The action row on a ward / special-ward card. «الجارت» is the standing daily task, so it is
 // the one prominent button; الإضافي / الحبوب / الطلبية / استمارة الحبوب الإضافي fold behind a
@@ -19,7 +16,7 @@ const GROUPS = [
     { label: 'الحبوب', icon: 'pill', open: { mode: 'pills' } },
     { label: 'الطلبية', icon: 'clipboard', open: { mode: 'order', slot: 'main' } },
     { label: 'طلبية الميرونيم', icon: 'clipboard', open: { mode: 'meropenem-order', slot: 'main' } },
-    { label: 'استمارة الحبوب الإضافي', icon: 'pill-sheet', open: { mode: 'extra-pills' }, show: (floor) => Boolean(floor && EXTRA_PILLS_FLOORS.includes(floor)) },
+    { label: 'استمارة الحبوب الإضافي', icon: 'pill-sheet', open: { mode: 'extra-pills' }, show: (floor) => Boolean(floor && EXTRA_PILL_FLOORS.includes(floor)) },
   ] },
   { id: 'clinical', label: 'المتابعة السريرية', items: [
     { label: 'متابعة الميروبينيم', icon: 'vial', open: { mode: 'meropenem' } },

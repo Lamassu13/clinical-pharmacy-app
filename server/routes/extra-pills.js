@@ -1,14 +1,13 @@
 import express from 'express'
 import { pool, query } from '../db.js'
 import { requireAuth } from '../auth.js'
-import { canAccessLocation, isKnownWard, clampInt, cleanText, DOSE_TIMES, USAGE_METHODS, MAX_NOTE_LENGTH } from '../validation.js'
+import { canAccessLocation, isKnownWard, clampInt, cleanText, DOSE_TIMES, USAGE_METHODS, MAX_NOTE_LENGTH, EXTRA_PILL_FLOORS } from '../validation.js'
 
 const router = express.Router()
 
 // استمارة الحبوب الإضافي — a standalone manual pill form, one per ward, with no chart behind
 // it at all (unlike /api/pills, which is entirely chart-derived). Only the four floors this
 // was built for; see extra_pill_forms' own CHECK constraint in schema.sql.
-const EXTRA_PILL_FLOORS = [3, 6, 8, 9]
 const SLOTS = [1, 2, 3, 4, 5, 6, 7]
 
 const loadForm = async (id) => {

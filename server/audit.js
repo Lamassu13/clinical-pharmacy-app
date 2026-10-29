@@ -7,7 +7,7 @@ const KEEP_DAYS = 365
 const PRUNE_EVERY_MS = 24 * 3600 * 1000
 let lastPrune = 0 // per process; piggybacks on an insert, so an idle API never wakes Neon
 
-export const ROLE_AR = { admin: 'مدير', supervisor: 'مسؤول', user: 'مستخدم' }
+export { ROLE_LABELS as ROLE_AR } from '../shared/options.js'
 
 export const recordAudit = async (request, action, target = '', detail = '') => {
   const actor = request.session?.user

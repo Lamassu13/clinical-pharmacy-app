@@ -392,7 +392,7 @@ app.delete('/api/users/:id', requireAdmin, async (request, response) => {
 
 // Manager-only, never requireManager: a supervisor able to reach this could promote itself to
 // admin, which would make the whole distinction decorative.
-const ASSIGNABLE_ROLES = ['admin', 'supervisor', 'user']
+const ASSIGNABLE_ROLES = Object.keys(ROLE_AR)
 app.put('/api/users/:id/role', requireAdmin, async (request, response) => {
   const id = Number(request.params.id)
   const role = request.body.role

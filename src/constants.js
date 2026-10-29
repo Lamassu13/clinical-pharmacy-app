@@ -1,30 +1,16 @@
-// Fixed option lists and layout limits shared across the app. The ward and pill-form lists
-// are duplicated on the server (server/validation.js) because it validates against them too;
-// keep the two in sync.
-export const floors = [
-  { number: 2, wards: ['ردهة رجال', 'ردهة النساء', 'ردهة الخاص'] },
-  { number: 3, wards: ['الردهة الجراحية', 'ردهة الخاص', 'ردهة CCU'] },
-  { number: 4, wards: ['ردهة الحوامل', 'ردهة الجراحية'] },
-  { number: 5, wards: ['ردهة رجال', 'ردهة النساء', 'ردهة الخاص'] },
-  { number: 6, wards: ['ردهة الخاص', 'الوحدة الأولى', 'الوحدة الثالثة'] },
-  { number: 8, wards: ['الردهة الخامسة', 'ردهة القسطرة', 'ردهة الخاص'] },
-  { number: 9, wards: ['ردهة الخاص', 'الردهة الرابعة', 'الردهة الثانية'] },
-  { number: 10, wards: ['الردهة العصبية', 'ردهة المفاصل', 'الردهة النفسية'] },
-]
-export const specialWards = ['ردهة العناية المركزة']
-// Keep in sync with ASSIGNABLE_ROLES in server/index.js.
-export const roleLabels = { admin: 'مدير', supervisor: 'مسؤول', user: 'مستخدم' }
-export const PATIENT_ROWS = 41
+// Fixed option lists and layout limits used across the app. The ones the server validates too —
+// floors and wards, roles, the pill-form options, the row/column/note caps — come from
+// shared/options.js, the one copy both sides import.
+import { FLOORS, SPECIAL_WARDS, EXTRA_PILL_FLOORS, ROLE_LABELS, PATIENT_ROWS, MAX_CHART_COLUMNS, MAX_NOTE_LENGTH, DOSE_TIMES, USAGE_METHODS } from '../shared/options.js'
+
+export { EXTRA_PILL_FLOORS, PATIENT_ROWS, MAX_CHART_COLUMNS, MAX_NOTE_LENGTH }
+export const floors = FLOORS
+export const specialWards = SPECIAL_WARDS
+export const roleLabels = ROLE_LABELS
+// The grid's starting width; "+ عمود" grows a chart up to MAX_CHART_COLUMNS.
 export const CHART_COLUMNS = 51
-// Safety ceiling for "+ عمود" (src/App.jsx's addColumn) — keep in sync with
-// MAX_CHART_COLUMNS in server/validation.js and the CHECK constraints in server/schema.sql.
-export const MAX_CHART_COLUMNS = 80
-// Fixed pill-form option lists. Keep in sync with server/index.js.
-export const doseTimes = ['٨ صباحًا', '٩ صباحًا', '١٠ صباحًا', '١١ صباحًا', '١٢ ظهرًا', '٢ ظهرًا', '٣ ظهرًا', '٤ عصرًا', '٥ عصرًا', '٦ مساءً', '٨ ليلًا', '٩ ليلًا', '١٠ ليلًا', '١٠ صباحًا - ١٠ مساءً', '١٢ ظهرًا - ١٢ ليلًا', '١٢ ظهرًا - ٨ ليلًا', '٨ صباحًا - ٤ عصرًا - ١٢ ليلًا', '٦ صباحًا - ١٢ ظهرًا - ٦ مساءً - ١٢ ليلًا']
-export const usageMethods = ['حبة بعد الطعام مباشرة', 'حبة قبل الطعام بساعة أو بعده بساعتين', '٢ حبة بعد الطعام مباشرة', '٣ حبة بعد الطعام مباشرة', 'نصف حبة قبل الطعام', 'نصف حبة بعد الطعام', 'حبة قبل الفطور بساعة', 'كبسولة قبل الطعام بساعة أو بعده بساعتين', 'كبسولة بعد الطعام مباشرة', 'حبة مع الطعام', 'حبة تحت اللسان عند الحاجة', 'حبة ونصف بعد الطعام']
-// What one note cell of the printed pills sheet holds (26 mm row): ~110 chars at 12px, 150 at
-// 11px (PillsPrintTemplate shrinks a long note). Keep in sync with server/validation.js.
-export const MAX_NOTE_LENGTH = 150
+export const doseTimes = DOSE_TIMES
+export const usageMethods = USAGE_METHODS
 export const noteOptions = ['الامتناع عن تناول منتجات الأجبان والألبان قبل وبعد الحبة بساعتين', 'لا يؤخذ مع الخضراوات الورقية الخضراء']
 // The 18 dose times are a flat list; grouped once here (rather than in each pill-form screen)
 // so a single "٨ صباحًا" isn't buried among the "٨ صباحًا - ٤ عصرًا - ١٢ ليلًا" schedules.

@@ -1,24 +1,15 @@
 // Pure request-validation helpers and the fixed option lists they check against.
 // Kept out of index.js so they can be unit tested without booting the server.
 
-export const ALLOWED_FLOORS = [2, 3, 4, 5, 6, 8, 9, 10]
-export const MAX_PATIENT_ROWS = 41
-// Safety ceiling for the chart's manual "+ عمود" (add column) action — keep in sync with
-// MAX_CHART_COLUMNS in src/constants.js and the CHECK constraints in server/schema.sql.
-export const MAX_CHART_COLUMNS = 80
-export const SPECIAL_WARDS = ['ردهة العناية المركزة']
-// Ward names per floor. Keep in sync with `floors` in src/App.jsx. Charts may only
-// reference a ward on this list, otherwise any string would mint a new wards row.
-export const FLOOR_WARDS = {
-  2: ['ردهة رجال', 'ردهة النساء', 'ردهة الخاص'],
-  3: ['الردهة الجراحية', 'ردهة الخاص', 'ردهة CCU'],
-  4: ['ردهة الحوامل', 'ردهة الجراحية'],
-  5: ['ردهة رجال', 'ردهة النساء', 'ردهة الخاص'],
-  6: ['ردهة الخاص', 'الوحدة الأولى', 'الوحدة الثالثة'],
-  8: ['الردهة الخامسة', 'ردهة القسطرة', 'ردهة الخاص'],
-  9: ['ردهة الخاص', 'الردهة الرابعة', 'الردهة الثانية'],
-  10: ['الردهة العصبية', 'ردهة المفاصل', 'الردهة النفسية'],
-}
+import { FLOORS, SPECIAL_WARDS, EXTRA_PILL_FLOORS, PATIENT_ROWS, MAX_CHART_COLUMNS, MAX_NOTE_LENGTH, DOSE_TIMES, USAGE_METHODS } from '../shared/options.js'
+
+// The lists themselves live in shared/options.js, which the client imports too.
+export { SPECIAL_WARDS, EXTRA_PILL_FLOORS, MAX_CHART_COLUMNS, MAX_NOTE_LENGTH, DOSE_TIMES, USAGE_METHODS }
+export const ALLOWED_FLOORS = FLOORS.map((floor) => floor.number)
+export const MAX_PATIENT_ROWS = PATIENT_ROWS
+// Ward names per floor. Charts may only reference a ward on this list, otherwise any string
+// would mint a new wards row.
+export const FLOOR_WARDS = Object.fromEntries(FLOORS.map((floor) => [floor.number, floor.wards]))
 export const isKnownWard = (floor, wardName) => (
   Number.isInteger(floor) ? (FLOOR_WARDS[floor] || []).includes(wardName) : SPECIAL_WARDS.includes(wardName)
 )
@@ -39,11 +30,6 @@ export const medicineKeySql = (column) => `lower(btrim(regexp_replace(${column},
 // "Clexane prefilled syringe" is a drug, hence the exception.
 export const SUPPLY_MATCH = 'iv ?-?set|cannula|canula|كانيول|syringe|سرنج|ng tube|catheter|^n/s|^g/w|^g/s|ringer|^d\\.w'
 export const SUPPLY_EXCEPT = 'prefilled|pfs'
-// Fixed option lists for the pill form. Keep in sync with src/App.jsx.
-export const DOSE_TIMES = ['٨ صباحًا', '٩ صباحًا', '١٠ صباحًا', '١١ صباحًا', '١٢ ظهرًا', '٢ ظهرًا', '٣ ظهرًا', '٤ عصرًا', '٥ عصرًا', '٦ مساءً', '٨ ليلًا', '٩ ليلًا', '١٠ ليلًا', '١٠ صباحًا - ١٠ مساءً', '١٢ ظهرًا - ١٢ ليلًا', '١٢ ظهرًا - ٨ ليلًا', '٨ صباحًا - ٤ عصرًا - ١٢ ليلًا', '٦ صباحًا - ١٢ ظهرًا - ٦ مساءً - ١٢ ليلًا']
-export const USAGE_METHODS = ['حبة بعد الطعام مباشرة', 'حبة قبل الطعام بساعة أو بعده بساعتين', '٢ حبة بعد الطعام مباشرة', '٣ حبة بعد الطعام مباشرة', 'نصف حبة قبل الطعام', 'نصف حبة بعد الطعام', 'حبة قبل الفطور بساعة', 'كبسولة قبل الطعام بساعة أو بعده بساعتين', 'كبسولة بعد الطعام مباشرة', 'حبة مع الطعام', 'حبة تحت اللسان عند الحاجة', 'حبة ونصف بعد الطعام']
-// A pill note: what one note cell of the printed sheet holds (see src/constants.js).
-export const MAX_NOTE_LENGTH = 150
 export const canAccessLocation = (user, floor, wardName) => {
   // A supervisor oversees the whole unit, so every floor and ward is in scope for them too.
   if (user.role === 'admin' || user.role === 'supervisor') return true
