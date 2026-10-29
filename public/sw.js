@@ -33,6 +33,12 @@ const CACHEABLE_API_PATHS = ['/api/chart', '/api/pills', '/api/extra-pills', '/a
   '/api/templates', '/api/interactions', '/api/patients/search', '/api/patients/history', '/api/ward-note', '/api/antibiotics',
   '/api/antibiotics/long', '/api/meropenem', '/api/dashboard', '/api/announcements', '/api/treatment-forms',
   '/api/order', '/api/meropenem-order', '/api/renal-doses']
+// Every chart, date and search a device opens is a separate entry, and nothing removed them short
+// of a sign-out — patient data piling up on a shared iPad, and storage pressure that can make the
+// browser evict the offline drafts. Keep the newest API_CACHE_MAX: keys() lists the oldest first,
+// and a refetched URL moves to the end, so what goes is what this device has not opened lately.
+const API_CACHE_MAX = 200
+const trimApiCache = (cache) => cache.keys().then((keys) => Promise.all(keys.slice(0, Math.max(0, keys.length - API_CACHE_MAX)).map((key) => cache.delete(key))))
 
 self.addEventListener('install', (event) => {
   // The page itself is required, as before. The precache is best effort, one file at a time: a
@@ -67,7 +73,7 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(request).then((response) => {
         const responseToCache = response.ok ? response.clone() : null
-        if (responseToCache) event.waitUntil(caches.open(API_CACHE).then((cache) => cache.put(request, responseToCache)))
+        if (responseToCache) event.waitUntil(caches.open(API_CACHE).then((cache) => cache.put(request, responseToCache).then(() => trimApiCache(cache))))
         return response
       }).catch(() => caches.match(request).then((cached) => {
         if (!cached) return cached
