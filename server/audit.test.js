@@ -49,7 +49,7 @@ test('audit log: medicine edits and chart purges are recorded; admins only can r
   assert.equal(entries[2].detail, 'الاسم: Test Drug 5mg ← Test Drug 10mg · مستلزم: نعم') // only what changed
   assert.equal((await admin.get('/api/audit?before=99999999999999999999')).status, 200) // oversized cursor is ignored, not a 500
   assert.equal((await supervisor.get('/api/audit')).status, 403)
-  assert.equal((await new ApiClient(baseUrl).get('/api/audit')).status, 403) // like every admin-only route
+  assert.equal((await new ApiClient(baseUrl).get('/api/audit')).status, 401) // no session: sign in, like every admin-only route
 })
 
 test('audit log: pages with `before`, and a logging failure never fails the action', async () => {

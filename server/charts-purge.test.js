@@ -30,7 +30,7 @@ const chartCount = async () => (await pool.query('SELECT COUNT(*)::int AS c FROM
 
 test('POST /api/charts/purge: only a manager may call it', async () => {
   const anon = new ApiClient(baseUrl)
-  assert.equal((await anon.post('/api/charts/purge', { from: '2026-01-01', to: '2026-01-31', all: true })).status, 403)
+  assert.equal((await anon.post('/api/charts/purge', { from: '2026-01-01', to: '2026-01-31', all: true })).status, 401)
 
   const plainUser = await loginAs({ role: 'user', floor: 5 })
   assert.equal((await plainUser.post('/api/charts/purge', { from: '2026-01-01', to: '2026-01-31', all: true })).status, 403)
