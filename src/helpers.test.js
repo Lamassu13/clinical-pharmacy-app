@@ -85,6 +85,23 @@ test('mergeChartSnapshots/diffMergeOutcome: patient IDs merge per row, and a pre
   assert.deepEqual(oldDraft.patientNames, ['x', 'b'])
 })
 
+test('mergeChartSnapshots: a column added on one side ("+ عمود") survives instead of being cut to the other copy\'s width', async () => {
+  const { mergeChartSnapshots, diffMergeOutcome } = await import('./helpers.js')
+  const grid = (meds, qty) => ({ patientNames: ['a'], patientIds: [''], columnMedicines: meds, quantities: [qty] })
+  const base = grid(['X'], ['1'])
+  // This device added column 2 with a dose; the server copy is still one column wide.
+  const mine = grid(['X', 'Y'], ['1', '2'])
+  const fresh = grid(['X'], ['3'])
+  const merged = mergeChartSnapshots(base, mine, fresh)
+  assert.deepEqual(merged.columnMedicines, ['X', 'Y'])
+  assert.deepEqual(merged.quantities, [['3', '2']])
+  assert.deepEqual(diffMergeOutcome(merged, mine, fresh).dropped, {})
+  // The other device added it: adopted here like any other field of theirs.
+  const theirs = mergeChartSnapshots(base, grid(['X'], ['1']), grid(['X', 'Z'], ['1', '4']))
+  assert.deepEqual(theirs.columnMedicines, ['X', 'Z'])
+  assert.deepEqual(theirs.quantities, [['1', '4']])
+})
+
 test('addOfflineRows: a patient typed offline in row 1 is added beside the server\'s row 1, never over it', async () => {
   const { addOfflineRows } = await import('./helpers.js')
   const grid = (names, ids, meds, qty) => ({ patientNames: names, patientIds: ids, columnMedicines: meds, quantities: qty })
