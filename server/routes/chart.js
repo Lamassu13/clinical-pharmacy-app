@@ -7,6 +7,7 @@ import {
   normalizeMedicineKey, medicineKeySql, DOSE_TIMES, USAGE_METHODS, MAX_NOTE_LENGTH,
 } from '../validation.js'
 import { numberToArabicWords } from '../arabic-number.js'
+import { memoizeByKey } from '../cache.js'
 import { buildMeropenemForm, activeCourseDay, monthStart, windowStart, doseText, strengthMg, wardKeyOf, MEROPENEM_SQL_PATTERN } from '../meropenem.js'
 import { antibioticOf } from '../ddd.js'
 import { notifyLater, todayInBaghdad, MANAGER_ROLES } from '../push.js'
@@ -820,14 +821,17 @@ router.get('/antibiotics', requireAuth, async (request, response) => {
 // floor list's manager card. Each ward's form is built exactly as «متابعة المضادات الحيوية» builds
 // it, so the day numbers (forgiven gaps, typed course days) always agree with that screen.
 const LONG_COURSE_DAYS = 14
-// Kept for two minutes per date: a dashboard card does not need to be second-fresh, and it spares the
-// free database a ~90-day read on every open. ponytail: per-process memory, so a restart empties it.
-const LONG_COURSE_TTL_MS = 120_000
-const longCourseCache = new Map()
+// Kept for 15 minutes per date, one shared copy (and one in-flight read) for every device. The card
+// re-asked this ~90-day, ~15k-row read on every open of the floors/ward lists, which was most of
+// the Neon network transfer. A course crossing the threshold only changes with the date or a chart
+// edit, so a new name on the card can lag by up to 15 minutes.
+// ponytail: per-process memory, so a restart empties it.
+const LONG_COURSE_TTL_MS = 15 * 60_000
+const longCourseCache = memoizeByKey((date) => computeLongCourses(date), { ttlMs: LONG_COURSE_TTL_MS, max: 3 })
+export const clearLongCourses = () => longCourseCache.clear()
 // Hospital-wide, computed once per date; a floor request is filtered from the same result.
-export const longCourses = async (date) => {
-  const cached = longCourseCache.get(date)
-  if (cached && Date.now() - cached.at < LONG_COURSE_TTL_MS) return cached.body
+export const longCourses = (date) => longCourseCache.get(date, date)
+const computeLongCourses = async (date) => {
   const names = await antibioticNames()
   const rows = await loadCourseRows({ floor: null, wardName: '', chartDate: date }, { names, allWards: true })
   const byDrug = new Map()
@@ -857,10 +861,7 @@ export const longCourses = async (date) => {
     })
   }
   patients.sort((a, b) => b.day - a.day || a.name.localeCompare(b.name, 'ar'))
-  const body = { threshold: LONG_COURSE_DAYS, patients }
-  longCourseCache.clear() // one date at a time is plenty; keeps the map from growing
-  longCourseCache.set(date, { at: Date.now(), body })
-  return body
+  return { threshold: LONG_COURSE_DAYS, patients }
 }
 // Managers read the whole hospital; anyone else (and a manager too, from a floor's ward page) reads
 // one floor they have access to via ?floor=.
