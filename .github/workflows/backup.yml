@@ -9,6 +9,7 @@ name: Backup database
 #   DATABASE_URL        same connection string the Render app uses
 #   B2_KEY_ID            Backblaze application key ID, scoped to the backup bucket only
 #   B2_APPLICATION_KEY   the matching application key
+#   BACKUP_PASSPHRASE    the passphrase each dump is encrypted with (keep a copy outside GitHub)
 # See README.md "Backups" for setup and restore instructions.
 
 on:
@@ -49,6 +50,23 @@ jobs:
           PG_DUMP: /usr/lib/postgresql/18/bin/pg_dump
         run: bash scripts/backup-db.sh
 
+      # The dump holds patient names and every account's details, so only ciphertext leaves the
+      # runner: AES-256 with the BACKUP_PASSPHRASE secret. No secret means no upload — never a
+      # plaintext fallback. The passphrase goes in on stdin, not the command line.
+      - name: Encrypt the dump
+        env:
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          if [ -z "${BACKUP_PASSPHRASE:-}" ]; then
+            echo "The BACKUP_PASSPHRASE secret is not set; refusing to upload an unencrypted dump." >&2
+            exit 1
+          fi
+          dump_file="$(ls -t "${{ runner.temp }}/backups"/*.dump | head -n1)"
+          printf '%s' "$BACKUP_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 \
+            --symmetric --cipher-algo AES256 --compress-algo none --output "$dump_file.gpg" "$dump_file"
+          rm -f "$dump_file"
+
       - name: Upload to Backblaze B2
         env:
           B2_APPLICATION_KEY_ID: ${{ secrets.B2_KEY_ID }}
@@ -56,5 +74,5 @@ jobs:
         run: |
           set -euo pipefail
           b2 account authorize
-          dump_file="$(ls -t "${{ runner.temp }}/backups"/*.dump | head -n1)"
-          b2 file upload "$B2_BUCKET" "$dump_file" "backups/cpa-$(date -u +%Y%m%d).dump"
+          encrypted_file="$(ls -t "${{ runner.temp }}/backups"/*.dump.gpg | head -n1)"
+          b2 file upload "$B2_BUCKET" "$encrypted_file" "backups/cpa-$(date -u +%Y%m%d).dump.gpg"
