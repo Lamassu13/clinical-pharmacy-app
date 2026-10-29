@@ -23,6 +23,7 @@ import { bridgedDailyCounts, MAX_BRIDGE_DAYS } from './dashboard-bridge.js'
 import templatesRoutes from './routes/templates.js'
 import interactionsRoutes from './routes/interactions.js'
 import pushRoutes from './routes/push.js'
+import errorsRoutes from './errors.js'
 import { notifyLater } from './push.js'
 import { usageMiddleware, usageReport, flushUsage } from './usage.js'
 import { recordAudit, readAudit, ROLE_AR } from './audit.js'
@@ -688,6 +689,7 @@ app.use('/api', reportsRoutes)
 app.use('/api', templatesRoutes)
 app.use('/api', interactionsRoutes)
 app.use('/api', pushRoutes)
+app.use('/api', errorsRoutes)
 
 app.get('/api/pills', requireAuth, async (request, response) => {
   const location = readLocation(request.query, request.session.user)
