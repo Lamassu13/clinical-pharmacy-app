@@ -271,9 +271,12 @@ CREATE TABLE IF NOT EXISTS extra_pill_form_entries (
 );
 
 CREATE INDEX IF NOT EXISTS daily_charts_date_idx ON daily_charts (chart_date);
-CREATE INDEX IF NOT EXISTS chart_quantities_chart_idx ON chart_quantities (chart_id);
 CREATE INDEX IF NOT EXISTS users_account_status_idx ON users (account_status);
-CREATE INDEX IF NOT EXISTS pill_entries_chart_idx ON pill_entries (chart_id);
+-- Both primary keys already start with chart_id, so a chart_id-only index on them was a second
+-- copy of the same lookup: storage, plus one more index to update on every autosave's
+-- delete-and-reinsert. Dropped where an older deploy created them.
+DROP INDEX IF EXISTS chart_quantities_chart_idx;
+DROP INDEX IF EXISTS pill_entries_chart_idx;
 -- The antibiotic forms list the names kept on columns whose medicine left the catalogue.
 CREATE INDEX IF NOT EXISTS chart_columns_custom_name_idx ON chart_columns (custom_name) WHERE custom_name IS NOT NULL;
 CREATE INDEX IF NOT EXISTS announcements_created_at_idx ON announcements (created_at DESC);
