@@ -126,16 +126,25 @@ or GitHub Actions artifacts — both are publicly downloadable on a public repo.
 | `DATABASE_URL` | Same connection string configured in the Render dashboard |
 | `B2_KEY_ID` | A Backblaze application key ID, scoped to only the `clinical-pharmacy-db-backup` bucket |
 | `B2_APPLICATION_KEY` | The matching application key |
+| `BACKUP_PASSPHRASE` | A long random passphrase; every dump is encrypted with it (AES-256, gpg) before upload |
+
+Keep a copy of `BACKUP_PASSPHRASE` outside GitHub (a password manager): GitHub never shows a
+secret again, and without the passphrase the backups cannot be opened. If it is not set, the
+backup job stops before uploading rather than send an unencrypted dump.
 
 The bucket needs a lifecycle rule (set in Backblaze's bucket settings) to expire files after
 30 days — that caps storage growth without any pruning code to maintain. You can also trigger
 a backup on demand from the Actions tab ("Backup database" → Run workflow).
 
-**Restoring** a downloaded dump:
+**Restoring** a downloaded dump (decrypt it first; gpg asks for `BACKUP_PASSPHRASE` — on a Mac,
+install gpg with `brew install gnupg`):
 
 ```sh
+gpg --output cpa-YYYYMMDD.dump --decrypt cpa-YYYYMMDD.dump.gpg
 pg_restore --clean --if-exists --no-owner -d "$DATABASE_URL" cpa-YYYYMMDD.dump
 ```
+
+Dumps taken before encryption was added are plain `.dump` files and restore directly.
 
 Dumps leave out the *rows* of `drug_interactions` (the static DDInter import, ~18 MB) to keep
 Neon's network transfer down; after a restore, refill it with `node server/import-ddinter.js`
