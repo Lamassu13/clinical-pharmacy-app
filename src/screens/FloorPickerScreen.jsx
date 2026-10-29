@@ -10,7 +10,7 @@ import { wardAttention } from '../helpers.js'
 // user may see (their assignment, or the whole unit for a manager) — no post-paint DOM hiding.
 export default function FloorPickerScreen({
   today, selectedDate, isExpired, floors = [], specialWards = [], resumeDraft, onResume,
-  onPickFloor, onOpen, dashboard, dashboardLoading, dashboardError, onRetryDashboard,
+  onPickFloor, onOpen, dashboard, dashboardError,
   announcements, isManager, announcementDraft, setAnnouncementDraft, announcementError, announcementBusy,
   onPostAnnouncement, onEditAnnouncement, onDeleteAnnouncement,
 }) {
