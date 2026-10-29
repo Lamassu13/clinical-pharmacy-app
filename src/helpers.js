@@ -7,13 +7,22 @@ import { storage } from './storage.js'
 // conflict; or localStorage, after a killed tab) has to be combined with what is on screen:
 // field by field, a value that differs from `base` (the last state this tab knows the
 // server actually has) is an edit made here and wins; everything else adopts `fresh`.
-export const mergeChartSnapshots = (base, current, fresh) => ({
-  patientNames: fresh.patientNames.map((value, index) => (current.patientNames[index] !== base.patientNames[index] ? current.patientNames[index] : value)),
-  // `?? ''`: a draft saved before patient IDs existed carries no patientIds at all.
-  patientIds: fresh.patientIds.map((value, index) => ((current.patientIds?.[index] ?? '') !== (base.patientIds?.[index] ?? '') ? (current.patientIds?.[index] ?? '') : value)),
-  columnMedicines: fresh.columnMedicines.map((value, index) => (current.columnMedicines[index] !== base.columnMedicines[index] ? current.columnMedicines[index] : value)),
-  quantities: fresh.quantities.map((row, rowIndex) => row.map((value, columnIndex) => (current.quantities[rowIndex][columnIndex] !== base.quantities[rowIndex]?.[columnIndex] ? current.quantities[rowIndex][columnIndex] : value))),
-})
+// Columns run over the widest of the three copies: a column added on one side ("+ عمود") that
+// the other has not seen yet is a blank there, not a column to drop. Mapping over `fresh` alone
+// cut this device's added column — and its doses — off at the server's width, unreported.
+const cellOf = (list, index) => list?.[index] ?? ''
+export const mergeChartSnapshots = (base, current, fresh) => {
+  const width = Math.max(base.columnMedicines.length, current.columnMedicines.length, fresh.columnMedicines.length)
+  const columns = Array.from({ length: width }, (_, index) => index)
+  const pick = (mine, was, theirs) => (mine !== was ? mine : theirs)
+  return {
+    patientNames: fresh.patientNames.map((value, index) => (current.patientNames[index] !== base.patientNames[index] ? current.patientNames[index] : value)),
+    // `?? ''`: a draft saved before patient IDs existed carries no patientIds at all.
+    patientIds: fresh.patientIds.map((value, index) => ((current.patientIds?.[index] ?? '') !== (base.patientIds?.[index] ?? '') ? (current.patientIds?.[index] ?? '') : value)),
+    columnMedicines: columns.map((index) => pick(cellOf(current.columnMedicines, index), cellOf(base.columnMedicines, index), cellOf(fresh.columnMedicines, index))),
+    quantities: fresh.quantities.map((row, rowIndex) => columns.map((index) => pick(cellOf(current.quantities[rowIndex], index), cellOf(base.quantities[rowIndex], index), cellOf(row, index)))),
+  }
+}
 
 // A chart opened blank offline (App.jsx load effect) knew nothing about the server's rows, so its
 // row 1 is not the server's row 1 — a cell-by-cell merge would pin the offline patient's name on
