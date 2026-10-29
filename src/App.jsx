@@ -633,9 +633,12 @@ function App() {
       setAdminSuccess('تم رفض الطلب')
     } catch (error) { setRegistrationsError(error.message || 'تعذر الاتصال بالخادم') } finally { setBusy(false) }
   }, [])
-  const assignLocationToUser = useCallback(async (id, value) => {
+  const assignLocationToUser = useCallback(async (id, value, name) => {
     const location = locationBody(value)
     if (!location) return
+    // A move signs the person out on every device at once, so one stray tap on this list must
+    // not end a pharmacist's round mid-chart.
+    if (!(await askConfirm(`نقل «${name}» إلى ${location.floor ? `الطابق ${location.floor}` : location.ward}؟`, { confirmLabel: 'نقل', detail: 'سيُطلب منه تسجيل الدخول من جديد.' }))) return
     setRegistrationsError(''); setAdminSuccess(''); setBusy(true)
     try {
       const response = await fetch(`${apiUrl}/access/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(location) })
@@ -644,7 +647,7 @@ function App() {
       setAllUsers((current) => current.map((user) => user.id === id ? { ...user, floors: location.floor ? [location.floor] : [], wards: location.ward ? [location.ward] : [] } : user))
       setAdminSuccess('تم تحديث الموقع — سيسجّل المستخدم الدخول من جديد')
     } catch (error) { setRegistrationsError(error.message || 'تعذر الاتصال بالخادم') } finally { setBusy(false) }
-  }, [])
+  }, [askConfirm])
   const changeUserRole = useCallback(async (id, role, name) => {
     if (!(await askConfirm(`تغيير دور "${name}" إلى "${roleLabels[role]}"؟ سيُطلب منه تسجيل الدخول من جديد.`))) return
     setRegistrationsError(''); setAdminSuccess(''); setBusy(true)
