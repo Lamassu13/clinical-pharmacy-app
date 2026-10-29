@@ -334,9 +334,19 @@ router.put('/chart/room', requireAuth, async (request, response) => {
 // pagehide — which releases the lock — when it parks a tab in the back/forward cache, and a
 // resumed tab whose heartbeat could only refresh an existing row stayed 'stale' for good while
 // any other device was free to take the chart.
+// Locks left behind by tabs that closed without releasing them: one row per ward/day/slot ever
+// opened, never read again once stale. Swept once a day, piggybacking on a lock request so an
+// idle API never wakes Neon — the same pattern as the history and audit prunes.
+let lastLockSweep = 0
+const sweepStaleLocks = async () => {
+  if (Date.now() - lastLockSweep < 24 * 3600 * 1000) return
+  lastLockSweep = Date.now()
+  try { await query("DELETE FROM chart_locks WHERE heartbeat_at < NOW() - INTERVAL '1 day'") } catch (error) { console.error('stale lock sweep failed:', error.message) }
+}
 const acquireLock = async (request, response) => {
   const target = await resolveLockTarget(request.body, request.session.user)
   if (target.status) return response.status(target.status).json({ message: target.message })
+  sweepStaleLocks()
   const wardId = target.wardId ?? await ensureWardId(target.floor, target.wardName)
   const user = request.session.user
   const granted = await query(

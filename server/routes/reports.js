@@ -390,7 +390,7 @@ router.get('/reports', requireManager, async (request, response) => {
   const patientDays = sum('patientDays')
 
   // Stewardship. Per patient (same identity as the rest of the report): the antibiotics given each
-  // day, then who was on two or more at once and who received a Reserve-class (AWaRe) drug.
+  // day, then who was on three or more at once and who received a Reserve-class (AWaRe) drug.
   const awareOf = new Map()
   const awareFor = (name) => { if (!awareOf.has(name)) awareOf.set(name, dddLine(name, 1)?.aware || null); return awareOf.get(name) }
   const antibioticPatients = new Map() // `${wardKey}|${patient}` -> { floor, ward, patient, days: Map(date -> Set(drug label)), reserve: Map(drug label -> Set(date)) }
