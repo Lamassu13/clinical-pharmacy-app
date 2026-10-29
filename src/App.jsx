@@ -1328,7 +1328,10 @@ function App() {
     } catch { /* the button stays clickable to retry */ }
   }, [chartCompleted, selected, selectedDate, isExpired, userId])
   const flushPills = useCallback(() => {
-    if (!selected || selected.mode !== 'pills' || !isLoggedIn || !pillsData) return
+    // pillsStale: opened from this device's copy, so the autosave holds these edits until the real
+    // form loads and merges them in; a flush on the way out must not send them past that merge
+    // (they stay in the draft mirror). It used to, over another device's newer values.
+    if (!selected || selected.mode !== 'pills' || !isLoggedIn || !pillsData || pillsStale) return
     const pillsKey = wardKey(selected, selectedDate)
     if (loadedPillsKey !== pillsKey) return
     const changes = pillChanges(lastSyncedPillsRef.current, { entries: pillEntries, rooms: pillRooms })
@@ -1345,7 +1348,7 @@ function App() {
         try { storage.removeItem(`cpa-pills-draft:${pillsKey}`) } catch { /* best effort */ }
       })
       .catch(() => { /* the debounced autosave or next visit will retry */ })
-  }, [isLoggedIn, loadedPillsKey, pillEntries, pillRooms, pillsData, selected, selectedDate])
+  }, [isLoggedIn, loadedPillsKey, pillEntries, pillRooms, pillsData, pillsStale, selected, selectedDate])
   const goHome = useCallback(async () => {
     // The brand logo is "home"; mid-edit with a save still in flight, a stray tap on a shared
     // iPad shouldn't drop the round without a word. Only asks while something is actually
