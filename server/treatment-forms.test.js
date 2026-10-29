@@ -27,9 +27,8 @@ const pdfForm = ({ title = 'استمارة تجريبية', filename = 'form.pdf
 test('treatment forms: auth is required to read; only a manager may write', async () => {
   const anon = new ApiClient(baseUrl)
   assert.equal((await anon.get('/api/treatment-forms')).status, 401)
-  // requireManager checks the role directly rather than first checking for a session (like
-  // every other requireManager route), so an anonymous write gets 403, not 401.
-  assert.equal((await anon.postForm('/api/treatment-forms', pdfForm())).status, 403)
+  // No session is "sign in" (401) on a manager route too; 403 is for a signed-in non-manager.
+  assert.equal((await anon.postForm('/api/treatment-forms', pdfForm())).status, 401)
 
   const member = await loginAs({ role: 'user', floor: 5 })
   assert.equal((await member.get('/api/treatment-forms')).status, 200)

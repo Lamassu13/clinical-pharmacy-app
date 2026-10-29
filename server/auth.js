@@ -6,10 +6,15 @@ export const requireAuth = (request, response, next) => {
   next()
 }
 
+// No session at all answers 401 like requireAuth — "sign in", which the client turns into its
+// sign-in card — and 403 is kept for someone signed in without the role. Answering 403 to a
+// lapsed session left the admin screens showing «تعذر…» instead of asking to sign in again.
+
 // Reserved for what must stay with the manager alone: join requests, deleting users, and
 // changing roles. A supervisor allowed to change roles could promote itself.
 export const requireAdmin = (request, response, next) => {
-  if (request.session.user?.role !== 'admin') return response.status(403).json({ message: 'صلاحية المدير مطلوبة' })
+  if (!request.session.user) return response.status(401).json({ message: 'تسجيل الدخول مطلوب' })
+  if (request.session.user.role !== 'admin') return response.status(403).json({ message: 'صلاحية المدير مطلوبة' })
   next()
 }
 
@@ -17,7 +22,8 @@ export const requireAdmin = (request, response, next) => {
 // catalogue, seeing the user list, and assigning where people work.
 const MANAGER_ROLES = new Set(['admin', 'supervisor'])
 export const requireManager = (request, response, next) => {
-  if (!MANAGER_ROLES.has(request.session.user?.role)) return response.status(403).json({ message: 'صلاحية إدارية مطلوبة' })
+  if (!request.session.user) return response.status(401).json({ message: 'تسجيل الدخول مطلوب' })
+  if (!MANAGER_ROLES.has(request.session.user.role)) return response.status(403).json({ message: 'صلاحية إدارية مطلوبة' })
   next()
 }
 

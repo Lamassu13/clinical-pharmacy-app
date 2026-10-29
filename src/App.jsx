@@ -547,6 +547,9 @@ function App() {
       const result = await response.json()
       if (!response.ok) throw new Error(result.message || 'تعذر تسجيل الدخول')
       if (currentUser && String(currentUser.id) !== String(result.user.id)) await forgetSessionData()
+      // Someone else — or the same person after a role change — signing in on the expiry card must
+      // not land inside the admin screen the previous session had open.
+      if (currentUser && (String(currentUser.id) !== String(result.user.id) || currentUser.role !== result.user.role)) setAdminView(null)
       setCurrentUser(result.user)
       setIsLoggedIn(true)
       // Without this a fresh sign-in could not reopen offline until an online reload had run /auth/me.
@@ -586,6 +589,7 @@ function App() {
     setProfileError(''); setProfileSuccess(''); setBusy(true)
     try {
       const response = await fetch(`${apiUrl}/auth/me`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(profileForm) })
+      if (isExpired(response)) return
       const result = await response.json()
       if (!response.ok) throw new Error(result.message || 'تعذر حفظ التغييرات')
       setCurrentUser(result.user)
@@ -597,42 +601,46 @@ function App() {
     setRegistrationsError('')
     try {
       const response = await fetch(`${apiUrl}/registrations`, { credentials: 'include' })
+      if (isExpired(response)) return
       const result = await response.json()
       if (!response.ok) throw new Error(result.message || 'تعذر جلب الطلبات')
       setRegistrations(result.registrations)
     } catch (error) { setRegistrationsError(error.message || 'تعذر الاتصال بالخادم') }
-  }, [])
+  }, [isExpired])
   const loadUsers = useCallback(async () => {
     try {
       const response = await fetch(`${apiUrl}/users`, { credentials: 'include' })
+      if (isExpired(response)) return
       const result = await response.json()
       if (!response.ok) throw new Error(result.message || 'تعذر جلب المستخدمين')
       setAllUsers(result.users)
     } catch (error) { setRegistrationsError(error.message || 'تعذر الاتصال بالخادم') }
-  }, [])
+  }, [isExpired])
   const approveRegistration = useCallback(async (id) => {
     const location = locationBody(pendingFloor[id])
     if (!location) { setAdminSuccess(''); setRegistrationsError('اختر الطابق أو الردهة قبل قبول الطلب'); return }
     setRegistrationsError(''); setAdminSuccess(''); setBusy(true)
     try {
       const response = await fetch(`${apiUrl}/registrations/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ status: 'active', ...location }) })
+      if (isExpired(response)) return
       const result = await response.json()
       if (!response.ok) throw new Error(result.message || 'تعذر قبول الطلب')
       setRegistrations((current) => (current ?? []).filter((item) => item.id !== id))
       setAdminSuccess('تم قبول الطلب وتفعيل الحساب')
       loadUsers()
     } catch (error) { setRegistrationsError(error.message || 'تعذر الاتصال بالخادم') } finally { setBusy(false) }
-  }, [pendingFloor, loadUsers])
+  }, [pendingFloor, loadUsers, isExpired])
   const rejectRegistration = useCallback(async (id) => {
     setRegistrationsError(''); setAdminSuccess(''); setBusy(true)
     try {
       const response = await fetch(`${apiUrl}/registrations/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ status: 'rejected' }) })
+      if (isExpired(response)) return
       const result = await response.json()
       if (!response.ok) throw new Error(result.message || 'تعذر رفض الطلب')
       setRegistrations((current) => (current ?? []).filter((item) => item.id !== id))
       setAdminSuccess('تم رفض الطلب')
     } catch (error) { setRegistrationsError(error.message || 'تعذر الاتصال بالخادم') } finally { setBusy(false) }
-  }, [])
+  }, [isExpired])
   const assignLocationToUser = useCallback(async (id, value, name) => {
     const location = locationBody(value)
     if (!location) return
@@ -642,37 +650,41 @@ function App() {
     setRegistrationsError(''); setAdminSuccess(''); setBusy(true)
     try {
       const response = await fetch(`${apiUrl}/access/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(location) })
+      if (isExpired(response)) return
       const result = await response.json()
       if (!response.ok) throw new Error(result.message || 'تعذر تعيين الموقع')
       setAllUsers((current) => current.map((user) => user.id === id ? { ...user, floors: location.floor ? [location.floor] : [], wards: location.ward ? [location.ward] : [] } : user))
       setAdminSuccess('تم تحديث الموقع — سيسجّل المستخدم الدخول من جديد')
     } catch (error) { setRegistrationsError(error.message || 'تعذر الاتصال بالخادم') } finally { setBusy(false) }
-  }, [askConfirm])
+  }, [askConfirm, isExpired])
   const changeUserRole = useCallback(async (id, role, name) => {
     if (!(await askConfirm(`تغيير دور "${name}" إلى "${roleLabels[role]}"؟ سيُطلب منه تسجيل الدخول من جديد.`))) return
     setRegistrationsError(''); setAdminSuccess(''); setBusy(true)
     try {
       const response = await fetch(`${apiUrl}/users/${id}/role`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ role }) })
+      if (isExpired(response)) return
       const result = await response.json()
       if (!response.ok) throw new Error(result.message || 'تعذر تغيير الدور')
       setAllUsers((current) => current.map((user) => user.id === id ? { ...user, role } : user))
       setAdminSuccess(`أصبح "${name}" ${roleLabels[role]}`)
     } catch (error) { setRegistrationsError(error.message || 'تعذر الاتصال بالخادم') } finally { setBusy(false) }
-  }, [askConfirm])
+  }, [askConfirm, isExpired])
   const deleteUser = useCallback(async (id, name) => {
     if (!(await askConfirm(`حذف المستخدم "${name}" نهائيًا؟`, { danger: true }))) return
     setRegistrationsError(''); setAdminSuccess(''); setBusy(true)
     try {
       const response = await fetch(`${apiUrl}/users/${id}`, { method: 'DELETE', credentials: 'include' })
+      if (isExpired(response)) return
       const result = await response.json()
       if (!response.ok) throw new Error(result.message || 'تعذر حذف المستخدم')
       setAllUsers((current) => current.filter((user) => user.id !== id))
       setAdminSuccess(`تم حذف المستخدم "${name}"`)
     } catch (error) { setRegistrationsError(error.message || 'تعذر الاتصال بالخادم') } finally { setBusy(false) }
-  }, [askConfirm])
+  }, [askConfirm, isExpired])
   const loadMedicines = useCallback(async () => {
     try {
       const response = await fetch(`${apiUrl}/medicines`, { credentials: 'include' })
+      if (isExpired(response)) return
       const result = await response.json()
       if (!response.ok || !Array.isArray(result.medicines)) throw new Error()
       // Replace, never merge: the catalogue is the only source of truth, so a deleted or
@@ -684,7 +696,7 @@ function App() {
       // Keep the current list on a network error; only a list that never loaded is an error.
       setMedicinesStatus((status) => (status === 'ready' ? status : 'error'))
     }
-  }, [])
+  }, [isExpired])
   // Resolves true once the server accepted the change, so the editor knows to close. A rename
   // is confirmed first: charts link a column to this row by id, so the new name shows on every
   // chart that used it, past ones included.
@@ -693,33 +705,36 @@ function App() {
     setRegistrationsError(''); setAdminSuccess(''); setBusy(true)
     try {
       const response = await fetch(`${apiUrl}/medicines/${item.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ name, arabicName, isSupply, noThursdayDouble }) })
+      if (isExpired(response)) return false
       const result = await response.json()
       if (!response.ok) throw new Error(result.message || 'تعذر تحديث الدواء')
       setAdminMedicines((current) => current.map((entry) => entry.id === item.id ? result.medicine : entry))
       return true
     } catch (error) { setRegistrationsError(error.message || 'تعذر الاتصال بالخادم'); return false } finally { setBusy(false) }
-  }, [askConfirm])
+  }, [askConfirm, isExpired])
   const removeMedicine = useCallback(async (id, name) => {
     if (!(await askConfirm(`حذف «${name}» من قائمة الأدوية؟`, { danger: true, confirmLabel: 'حذف', detail: 'يبقى الاسم على الجارتات السابقة، ويختفي من قائمة الاختيار للجارتات الجديدة.' }))) return false
     setRegistrationsError(''); setAdminSuccess(''); setBusy(true)
     try {
       const response = await fetch(`${apiUrl}/medicines/${id}`, { method: 'DELETE', credentials: 'include' })
+      if (isExpired(response)) return false
       const result = await response.json()
       if (!response.ok) throw new Error(result.message || 'تعذر حذف الدواء')
       setAdminMedicines((current) => (current ?? []).filter((item) => item.id !== id))
       setAdminSuccess(`تم حذف «${name}»`)
       return true
     } catch (error) { setRegistrationsError(error.message || 'تعذر الاتصال بالخادم'); return false } finally { setBusy(false) }
-  }, [askConfirm])
+  }, [askConfirm, isExpired])
   const loadTreatmentForms = useCallback(async () => {
     setTreatmentFormsLoading(true); setTreatmentFormsError(false)
     try {
       const response = await fetch(`${apiUrl}/treatment-forms`, { credentials: 'include' })
+      if (isExpired(response)) return
       const result = await response.json()
       if (!response.ok || !Array.isArray(result.forms)) throw new Error()
       setTreatmentForms(result.forms)
     } catch { setTreatmentFormsError(true) } finally { setTreatmentFormsLoading(false) }
-  }, [])
+  }, [isExpired])
   const uploadTreatmentForm = useCallback(async (title, file) => {
     setRegistrationsError(''); setAdminSuccess(''); setBusy(true)
     try {
@@ -727,12 +742,13 @@ function App() {
       body.append('title', title)
       body.append('file', file)
       const response = await fetch(`${apiUrl}/treatment-forms`, { method: 'POST', credentials: 'include', body })
+      if (isExpired(response)) return
       const result = await response.json()
       if (!response.ok) throw new Error(result.message || 'تعذر رفع الاستمارة')
       setTreatmentForms((current) => [...current, result.form].sort((a, b) => a.title.localeCompare(b.title, 'ar')))
       setAdminSuccess(`تم رفع "${result.form.title}"`)
     } catch (error) { setRegistrationsError(error.message || 'تعذر الاتصال بالخادم') } finally { setBusy(false) }
-  }, [])
+  }, [isExpired])
   const saveTreatmentForm = useCallback(async (id, title, file) => {
     setRegistrationsError(''); setAdminSuccess(''); setBusy(true)
     try {
@@ -740,23 +756,25 @@ function App() {
       body.append('title', title)
       if (file) body.append('file', file)
       const response = await fetch(`${apiUrl}/treatment-forms/${id}`, { method: 'PUT', credentials: 'include', body })
+      if (isExpired(response)) return
       const result = await response.json()
       if (!response.ok) throw new Error(result.message || 'تعذر حفظ الاستمارة')
       setTreatmentForms((current) => current.map((item) => (item.id === id ? result.form : item)).sort((a, b) => a.title.localeCompare(b.title, 'ar')))
       setAdminSuccess(`تم حفظ "${result.form.title}"`)
     } catch (error) { setRegistrationsError(error.message || 'تعذر الاتصال بالخادم') } finally { setBusy(false) }
-  }, [])
+  }, [isExpired])
   const deleteTreatmentForm = useCallback(async (id, title) => {
     if (!(await askConfirm(`حذف الاستمارة "${title}"؟`, { danger: true }))) return
     setRegistrationsError(''); setAdminSuccess(''); setBusy(true)
     try {
       const response = await fetch(`${apiUrl}/treatment-forms/${id}`, { method: 'DELETE', credentials: 'include' })
+      if (isExpired(response)) return
       const result = await response.json()
       if (!response.ok) throw new Error(result.message || 'تعذر حذف الاستمارة')
       setTreatmentForms((current) => (current ?? []).filter((item) => item.id !== id))
       setAdminSuccess(`تم حذف "${title}"`)
     } catch (error) { setRegistrationsError(error.message || 'تعذر الاتصال بالخادم') } finally { setBusy(false) }
-  }, [askConfirm])
+  }, [askConfirm, isExpired])
   const togglePurgeTarget = useCallback((key) => setPurgeTargets((current) => {
     const next = new Set(current)
     if (next.has(key)) next.delete(key); else next.add(key)
@@ -773,10 +791,12 @@ function App() {
     const whatText = [charts && 'الجارتات (مع استمارات الحبوب)', !charts && pills && 'استمارات الحبوب', extra && 'استمارات الحبوب الإضافية'].filter(Boolean).join(' و')
     if (!(await askConfirm(`مسح ${whatText} من ${purgeFrom} إلى ${purgeTo} — ${scopeText}؟ لا يمكن التراجع عن هذا نهائيًا.`, { danger: true }))) return
     setRegistrationsError(''); setAdminSuccess(''); setBusy(true)
+    let expired = false
     try {
       const body = purgeAll ? { from: purgeFrom, to: purgeTo, all: true } : { from: purgeFrom, to: purgeTo, floors: floorNumbers, wards: wardNames }
       const post = async (path, payload, failure) => {
         const response = await fetch(`${apiUrl}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(payload) })
+        if (isExpired(response)) { expired = true; throw new Error() }
         const result = await response.json()
         if (!response.ok) throw new Error(result.message || failure)
         return result
@@ -791,9 +811,12 @@ function App() {
       setAdminSuccess(`تم مسح ${done.join(' و')}`)
       setPurgeTargets(new Set())
       setPurgeAll(false)
-    } catch (error) { setRegistrationsError(error.message || 'تعذر الاتصال بالخادم') } finally { setBusy(false) }
-  }, [askConfirm, purgeAll, purgeFrom, purgeKinds, purgeTo, purgeTargets])
+    } catch (error) { if (!expired) setRegistrationsError(error.message || 'تعذر الاتصال بالخادم') } finally { setBusy(false) }
+  }, [askConfirm, isExpired, purgeAll, purgeFrom, purgeKinds, purgeTo, purgeTargets])
   useEffect(() => {
+    // Not while the sign-in card is up. Signing back in re-runs this, so a list whose load the
+    // lapsed session refused is fetched again instead of showing a false «nothing here».
+    if (sessionExpired) return
     setRegistrationsError(''); setAdminSuccess('')
     if (adminView === 'requests') loadRegistrations()
     if (adminView === 'users') loadUsers()
@@ -805,7 +828,7 @@ function App() {
       if (isAdmin) loadRegistrations()
       loadUsers(); loadMedicines(); loadTreatmentForms()
     }
-  }, [adminView, isAdmin, loadRegistrations, loadUsers, loadMedicines, loadTreatmentForms])
+  }, [adminView, isAdmin, sessionExpired, loadRegistrations, loadUsers, loadMedicines, loadTreatmentForms])
   // Success notices are transient; errors stay until the next action.
   useEffect(() => {
     if (!adminSuccess) return undefined
@@ -820,6 +843,7 @@ function App() {
     setRegistrationsError(''); setAdminSuccess(''); setBusy(true)
     try {
       const response = await fetch(`${apiUrl}/medicines`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ name: medicine }) })
+      if (isExpired(response)) return
       const result = await response.json().catch(() => ({}))
       if (response.status === 409) {
         // Already catalogued. Filter the table down to it so the admin can see the row
@@ -1517,7 +1541,7 @@ function App() {
   useEffect(() => {
     // Also re-runs when adminView clears, so returning from a screen that changed things
     // (a chart purge, an announcement) lands on fresh numbers rather than the stale set.
-    if (!isLoggedIn || floor || selected || (adminView && adminView !== 'dashboard')) return undefined
+    if (!isLoggedIn || sessionExpired || floor || selected || (adminView && adminView !== 'dashboard')) return undefined
     let cancelled = false
     const date = isoDate(new Date())
     const rangeQuery = isManager && rangeFrom && rangeTo ? `&rangeFrom=${rangeFrom}&rangeTo=${rangeTo}` : ''
@@ -1529,19 +1553,19 @@ function App() {
       })
       .catch(() => { if (!cancelled) setDashboardError(true) })
     return () => { cancelled = true }
-  }, [isLoggedIn, floor, selected, adminView, isExpired, isManager, rangeFrom, rangeTo, dashboardReloadKey])
+  }, [isLoggedIn, sessionExpired, floor, selected, adminView, isExpired, isManager, rangeFrom, rangeTo, dashboardReloadKey])
 
   // Announcements: a manager's (and a special-ward-only user's) on the floors list, everyone
   // else's on a single floor's page — loaded each time either opens.
   useEffect(() => {
-    if (!isLoggedIn || selected || adminView) return undefined
+    if (!isLoggedIn || sessionExpired || selected || adminView) return undefined
     let cancelled = false
     fetch(`${apiUrl}/announcements`, { credentials: 'include' })
       .then((response) => { isExpired(response); return response.ok ? response.json() : null })
       .then((result) => { if (!cancelled) setAnnouncements(result ? result.announcements : []) })
       .catch(() => { if (!cancelled) setAnnouncements([]) })
     return () => { cancelled = true }
-  }, [isLoggedIn, floor, selected, adminView, isExpired])
+  }, [isLoggedIn, sessionExpired, floor, selected, adminView, isExpired])
 
   const postAnnouncement = useCallback(async () => {
     const message = announcementDraft.trim()
@@ -2558,7 +2582,7 @@ function App() {
 
   if (!isLoggedIn) return <LoginScreen credentials={credentials} setCredentials={setCredentials} loginError={loginError} busy={busy} onSubmit={submitLogin} onGoToRegister={() => { setAuthView('register'); setLoginError('') }} confirmModal={confirmModal} />
 
-  if (sessionExpired) return <SessionExpiredScreen credentials={credentials} setCredentials={setCredentials} loginError={loginError} busy={busy} onSubmit={submitLogin} onLogout={logout} confirmModal={confirmModal} />
+  if (sessionExpired) return <SessionExpiredScreen reassure={!adminView && ['chart', 'pills'].includes(selected?.mode)} credentials={credentials} setCredentials={setCredentials} loginError={loginError} busy={busy} onSubmit={submitLogin} onLogout={logout} confirmModal={confirmModal} />
 
   const appHeader = <AppHeader theme={theme} onToggleTheme={toggleTheme} currentUser={currentUser} onLogout={logout} onHome={goHome} onMyWard={!isManager && assignedFloorObj ? goToMyWard : undefined} onOpenProfile={openProfile} isAdmin={isAdmin} isManager={isManager} adminView={adminView} onNavigate={setAdminView} isOnline={isOnline} pendingWrites={userId == null ? 0 : pendingWrites(userId).length} />
 

@@ -86,6 +86,17 @@ test('requireAuth: an endpoint behind login refuses an anonymous request', async
   assert.equal(response.status, 401)
 })
 
+test('requireAdmin / requireManager: no session is 401 (sign in again), signed in without the role is 403', async () => {
+  const anon = new ApiClient(baseUrl)
+  assert.equal((await anon.get('/api/users')).status, 401) // manager route
+  assert.equal((await anon.get('/api/registrations')).status, 401) // admin route
+  const user = await createUser({ floor: 5 })
+  const pharmacist = new ApiClient(baseUrl)
+  assert.equal((await pharmacist.post('/api/auth/login', { username: user.username, password: user.password })).status, 200)
+  assert.equal((await pharmacist.get('/api/users')).status, 403)
+  assert.equal((await pharmacist.get('/api/registrations')).status, 403)
+})
+
 test('PUT /api/auth/me: anonymous is refused, and a logged-in user updates their own name/email/phone', async () => {
   const anon = new ApiClient(baseUrl)
   const refused = await anon.put('/api/auth/me', { fullName: 'X', email: 'x@example.test', phone: '123' })

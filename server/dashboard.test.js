@@ -163,9 +163,8 @@ test('GET /api/dashboard topMedicines (special-ward pharmacist): only their assi
 test('GET/POST/DELETE /api/announcements: a plain user can only read; a manager can post and remove', async () => {
   const anon = new ApiClient(baseUrl)
   assert.equal((await anon.get('/api/announcements')).status, 401)
-  // requireManager (like requireAdmin) checks the role directly rather than first checking for
-  // a session, so an anonymous write gets 403, not 401 — matches every requireManager route.
-  assert.equal((await anon.post('/api/announcements', { message: 'x' })).status, 403)
+  // No session is "sign in" (401) on a manager route too; 403 is for a signed-in non-manager.
+  assert.equal((await anon.post('/api/announcements', { message: 'x' })).status, 401)
 
   const plainUser = await loginAs({ role: 'user', floor: 5 })
   assert.equal((await plainUser.get('/api/announcements')).status, 200)
