@@ -34,3 +34,9 @@ services:
         sync: false
       - key: VAPID_SUBJECT
         sync: false
+      # Error alerts (server/errors.js): from @BotFather and the chat id. Without both, errors are
+      # still saved and listed in the app; only the Telegram message is skipped.
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false

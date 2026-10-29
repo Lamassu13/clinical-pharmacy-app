@@ -7,7 +7,7 @@ import { query } from './db.js'
 const FLUSH_MS = 5 * 60 * 1000
 let lastFlush = Date.now()
 // Background traffic that is not the user doing something: the 30 s chart-lock heartbeat and sign-in.
-const NOT_A_SAVE = /^\/api\/(chart\/lock|auth\/)/
+const NOT_A_SAVE = /^\/api\/(chart\/lock|auth\/|errors)/
 const pending = new Map() // `${userId}|${day}` -> counters
 
 // Iraq has no DST, so a fixed UTC+3 shift gives the local day.

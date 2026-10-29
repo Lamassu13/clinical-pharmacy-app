@@ -11,6 +11,9 @@ import '@fontsource/ibm-plex-sans-arabic/latin-700.css'
 import './index.css'
 import App from './App.jsx'
 import { hydrateStorage } from './storage.js'
+import { initErrorReporter } from './error-reporter.js'
+
+initErrorReporter()
 
 // Facebook (fbclid), Google (gclid/…), Mailchimp (mc_*), utm_* etc. append click-tracking
 // params when the link is opened from their platforms. The app never reads its own query

@@ -410,3 +410,20 @@ CREATE TABLE IF NOT EXISTS audit_log (
   target TEXT NOT NULL DEFAULT '',
   detail TEXT NOT NULL DEFAULT ''
 );
+
+-- App errors from users' devices (server/errors.js): crashes, rejected promises and "could not
+-- save" failures, so an admin can see them and the server can send new ones to Telegram. No form
+-- contents or URLs are kept: just the message (300 chars), the screen, the username and the device.
+-- notified = already included in a Telegram message. Pruned after 30 days.
+CREATE TABLE IF NOT EXISTS app_errors (
+  id BIGSERIAL PRIMARY KEY,
+  at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  kind TEXT NOT NULL DEFAULT '',
+  msg TEXT NOT NULL,
+  place TEXT NOT NULL DEFAULT '',
+  screen TEXT NOT NULL DEFAULT '',
+  username TEXT NOT NULL DEFAULT '',
+  device TEXT NOT NULL DEFAULT '',
+  notified BOOLEAN NOT NULL DEFAULT FALSE
+);
+CREATE INDEX IF NOT EXISTS app_errors_unsent_idx ON app_errors (id) WHERE NOT notified;

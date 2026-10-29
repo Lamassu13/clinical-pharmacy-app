@@ -18,6 +18,7 @@ import ProfileScreen from './screens/ProfileScreen.jsx'
 import ReportsScreen from './screens/ReportsScreen.jsx'
 import AdminUsageScreen from './screens/AdminUsageScreen.jsx'
 import AdminAuditScreen from './screens/AdminAuditScreen.jsx'
+import AdminErrorsScreen from './screens/AdminErrorsScreen.jsx'
 import PillsScreen from './screens/PillsScreen.jsx'
 import OrderScreen from './screens/OrderScreen.jsx'
 import MeropenemScreen from './screens/MeropenemScreen.jsx'
@@ -25,6 +26,7 @@ import MeropenemOrderScreen from './screens/MeropenemOrderScreen.jsx'
 import InteractionsScreen from './screens/InteractionsScreen.jsx'
 import RenalDoseScreen from './screens/RenalDoseScreen.jsx'
 import { INTERACTION_RULES } from './interactions.js'
+import { reportError } from './error-reporter.js'
 import { storage, queueWrite, forgetWrite, pendingWrites, flushWrites } from './storage.js'
 import { syncPushSubscription } from './push.js'
 import ExtraPillsScreen from './screens/ExtraPillsScreen.jsx'
@@ -1409,6 +1411,7 @@ function App() {
     else if (adminView === 'reports') screen = 'التقارير'
     else if (adminView === 'usage') screen = 'استخدام المستخدمين'
     else if (adminView === 'audit') screen = 'سجل الإدارة'
+    else if (adminView === 'errors') screen = 'الأخطاء'
     else if (selected?.mode === 'pills') screen = `الحبوب — ${ward}`
     else if (selected?.mode === 'order') screen = `الطلبية — ${ward}`
     else if (selected?.mode === 'meropenem-order') screen = `طلبية الميرونيم — ${ward}`
@@ -1838,7 +1841,7 @@ function App() {
           retryTimer = setTimeout(save, 400)
           return
         }
-        if (!response.ok) throw new Error('save failed')
+        if (!response.ok) throw Object.assign(new Error('save failed'), { status: response.status })
         const result = await response.json()
         const saved = { patientNames, patientIds, columnMedicines, quantities }
         rememberChart(chartKey, selectedDate, result.version, saved)
@@ -1852,7 +1855,10 @@ function App() {
         setOfflineChartKey(null)
         setChartSaveStatus('saved')
         setLastChartSaveAt(Date.now())
-      } catch {
+      } catch (error) {
+        // Only a save the server refused is worth an alert; a dropped connection, the rate limit (429)
+        // or Render restarting (502-504) is not a bug.
+        if (error?.status && error.status !== 429 && !(error.status >= 502 && error.status <= 504)) reportError('save', `تعذّر حفظ الجارت — رفض الخادم (${error.status})`)
         setChartSaveStatus('error')
         retryTimer = setTimeout(save, 4000)
       }
@@ -2561,6 +2567,7 @@ function App() {
   if (adminView === 'reports' && isManager) return <ReportsScreen adminHeader={appHeader} isExpired={isExpired} />
   if (adminView === 'usage' && isManager) return <AdminUsageScreen adminHeader={appHeader} isExpired={isExpired} />
   if (adminView === 'audit' && isAdmin) return <AdminAuditScreen adminHeader={appHeader} isExpired={isExpired} />
+  if (adminView === 'errors' && isAdmin) return <AdminErrorsScreen adminHeader={appHeader} isExpired={isExpired} askConfirm={askConfirm} />
 
   if (adminView === 'floors' && isManager) return <AdminFloorsScreen adminHeader={appHeader} purgeFrom={purgeFrom} setPurgeFrom={setPurgeFrom} purgeTo={purgeTo} setPurgeTo={setPurgeTo} purgeAll={purgeAll} setPurgeAll={setPurgeAll} purgeKinds={purgeKinds} setPurgeKinds={setPurgeKinds} purgeTargets={purgeTargets} onToggleTarget={togglePurgeTarget} busy={busy} registrationsError={registrationsError} adminSuccess={adminSuccess} onPurge={purgeCharts} confirmModal={confirmModal} />
 
