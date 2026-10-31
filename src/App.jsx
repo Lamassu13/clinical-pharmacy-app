@@ -176,6 +176,8 @@ function App() {
   // the chart it was sent for, and must not overwrite the version and base of the one now open.
   const openChartKeyRef = useRef(null)
   const lastSyncedChartRef = useRef({ patientNames: [], patientIds: [], columnMedicines: [], quantities: [] })
+  // Chart saves the server answered with an error since the last one it accepted (see the autosave).
+  const chartSaveFailuresRef = useRef(0)
   // Per-session edit lock (chart_locks server-side). One holder at a time:
   //   'idle'      — free chart, this tab hasn't claimed it; grid editable, no banner (the normal solo open)
   //   'editing'   — this tab holds the lock; heartbeating; grid editable
@@ -1681,6 +1683,7 @@ function App() {
         }
         if (!response.ok) throw Object.assign(new Error('save failed'), { status: response.status })
         const result = await response.json()
+        chartSaveFailuresRef.current = 0
         const saved = { patientNames, patientIds, columnMedicines, quantities }
         rememberChart(chartKey, selectedDate, result.version, saved)
         // Everything the localStorage mirror was protecting has now actually reached the
@@ -1694,10 +1697,15 @@ function App() {
         setChartSaveStatus('saved')
         setLastChartSaveAt(Date.now())
       } catch (error) {
-        // Only a save the server refused (4xx) is worth an alert; a dropped connection, the rate limit
-        // (429), Render restarting (502-504) or a database blip (500: the chart route answers its own
-        // failures with 400) is not a bug, and the retry below covers it.
-        if (error?.status && error.status < 500 && error.status !== 429) reportError('save', `تعذّر حفظ الجارت — رفض الخادم (${error.status})`)
+        // A save the server refused (4xx) is a bug: report it at once. The rate limit (429), a database
+        // blip (500) or Render restarting (502-504) usually clears on the retry below, so those are
+        // reported only once five saves in a row have failed (~20s). A dropped connection is never
+        // reported: no answer, no status.
+        if (error?.status) {
+          chartSaveFailuresRef.current += 1
+          if (error.status < 500 && error.status !== 429) reportError('save', `تعذّر حفظ الجارت — رفض الخادم (${error.status})`)
+          else if (chartSaveFailuresRef.current === 5) reportError('save', `تعذّر حفظ الجارت — فشلت 5 محاولات متتالية (${error.status})`)
+        }
         setChartSaveStatus('error')
         retryTimer = setTimeout(save, 4000)
       }

@@ -4,6 +4,7 @@ import app from './index.js'
 import { pool } from './db.js'
 import { startServer, resetDatabase, createUser, ApiClient } from './test-helpers.js'
 import { buildMeropenemForm, doseText } from './meropenem.js'
+import { todayInBaghdad } from './push.js'
 
 const FLOOR = 5
 const WARD = 'ردهة رجال'
@@ -247,7 +248,7 @@ test('GET /api/meropenem: on a ward that types only patient numbers, a stopped c
   assert.notEqual(res.body.form.patients[0]?.status.kind, 'active', JSON.stringify(res.body.form.patients))
 })
 
-test('GET /api/meropenem: the cached read is served again, but a chart save shows on the form at once', async () => {
+test('GET /api/meropenem: days before today come from the cache until a save to one of them', async () => {
   const seeder = await createUser({ role: 'admin' })
   const medicineId = (await pool.query("INSERT INTO medicines (name) VALUES ('Meronem 1000gm Vial') RETURNING id")).rows[0].id
   const wardId = (await pool.query('INSERT INTO wards (floor_number, name, is_special) VALUES ($1, $2, false) RETURNING id', [FLOOR, WARD])).rows[0].id
@@ -271,4 +272,35 @@ test('GET /api/meropenem: the cached read is served again, but a chart save show
   })
   assert.equal(saved.status, 200)
   assert.deepEqual((await names()).sort(), ['حسن', 'علي'].sort())
+})
+
+test('GET /api/meropenem: today is always read fresh, and a save to today keeps the earlier days cached', async () => {
+  const seeder = await createUser({ role: 'admin' })
+  const medicineId = (await pool.query("INSERT INTO medicines (name) VALUES ('Meronem 1000gm Vial') RETURNING id")).rows[0].id
+  const wardId = (await pool.query('INSERT INTO wards (floor_number, name, is_special) VALUES ($1, $2, false) RETURNING id', [FLOOR, WARD])).rows[0].id
+  const today = todayInBaghdad()
+  const yesterday = new Date(Date.parse(`${today}T00:00:00Z`) - 86400000).toISOString().slice(0, 10)
+  for (const date of [yesterday, today]) await seedDay({ wardId, createdBy: seeder.id, date, patients: [{ row: 1, name: 'علي', id: '123' }], meronemRows: [1], medicineId })
+  const client = await loginAs({ role: 'user', floor: FLOOR })
+  const names = async () => (await client.get(`/api/meropenem?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=${today}`)).body.form.patients.map((patient) => patient.name).sort()
+  assert.deepEqual(await names(), ['علي'])
+
+  // Behind the app's back: حسن on Meronem yesterday. Yesterday is kept, so he is not seen…
+  const addHassan = (date) => pool.query(`WITH c AS (SELECT id FROM daily_charts WHERE ward_id = $1 AND chart_date = $2)
+    , p AS (INSERT INTO chart_patients (chart_id, row_number, patient_name, patient_id) SELECT id, 2, 'حسن', '456' FROM c)
+    INSERT INTO chart_quantities (chart_id, row_number, column_number, quantity) SELECT id, 2, 1, 3 FROM c`, [wardId, date])
+  await addHassan(yesterday)
+  assert.deepEqual(await names(), ['علي'])
+  // …and a save to today's chart does not drop the kept days.
+  const saved = await client.put('/api/chart', {
+    floor: FLOOR, ward: WARD, date: today, expectedVersion: 1,
+    patients: [{ rowNumber: 1, name: 'علي', patientId: '123' }],
+    columns: [{ columnNumber: 1, medicineName: 'Meronem 1000gm Vial' }],
+    quantities: [{ rowNumber: 1, columnNumber: 1, quantity: 6 }],
+  })
+  assert.equal(saved.status, 200)
+  assert.deepEqual(await names(), ['علي'], 'yesterday still served from the cache')
+  // Today is read on every open: the same change made today shows at once.
+  await addHassan(today)
+  assert.deepEqual(await names(), ['حسن', 'علي'].sort())
 })

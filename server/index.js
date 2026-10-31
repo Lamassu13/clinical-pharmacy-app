@@ -212,7 +212,6 @@ app.post('/api/medicines', requireManager, async (request, response) => {
     if (existing.rows[0]) return response.status(409).json({ message: `"${existing.rows[0].name}" موجود في القائمة أصلًا`, medicine: existing.rows[0] })
     const result = await query('INSERT INTO medicines (name, created_by, is_supply) VALUES ($1, $2, $1 ~* $3 AND $1 !~* $4) RETURNING id, name, arabic_name, is_supply, no_thursday_double', [name, request.session.user.id, SUPPLY_MATCH, SUPPLY_EXCEPT])
     medicineCatalogue.invalidate()
-    clearCourseRows()
     await recordAudit(request, 'medicine.created', result.rows[0].name)
     response.status(201).json({ medicine: result.rows[0] })
   } catch (error) {
