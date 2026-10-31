@@ -57,14 +57,19 @@ export const buildMeropenemForm = ({ date, floor, ward, cells, presence, charted
   const isCharted = (wardKey, iso) => chartedByWard.get(wardKey)?.has(iso) ?? false
 
   // Patient key: the ID; else the ID the same name carries on the same ward (typed on one day,
-  // added the next); else the name, which only ever matches on that one ward.
-  const idByWardName = new Map()
+  // added the next); else the name, which only ever matches on that one ward. A name that has carried
+  // more than one ID on a ward takes the latest-dated one (the larger ID on a tie), whatever order the
+  // rows arrive in.
+  const idByWardName = new Map() // ward|name -> { id, date }
   ;[...cells, ...presence].forEach((row) => {
-    if (row.patientId) idByWardName.set(`${wardKeyOf(row.floor, row.ward)}|${nameKey(row.name)}`, row.patientId)
+    if (!row.patientId) return
+    const key = `${wardKeyOf(row.floor, row.ward)}|${nameKey(row.name)}`
+    const saved = idByWardName.get(key)
+    if (!saved || row.date > saved.date || (row.date === saved.date && row.patientId > saved.id)) idByWardName.set(key, { id: row.patientId, date: row.date })
   })
   const keyOf = (row) => {
     const wardKey = wardKeyOf(row.floor, row.ward)
-    const id = row.patientId || idByWardName.get(`${wardKey}|${nameKey(row.name)}`)
+    const id = row.patientId || idByWardName.get(`${wardKey}|${nameKey(row.name)}`)?.id
     return id ? `id:${id}` : `name:${wardKey}|${nameKey(row.name)}`
   }
 

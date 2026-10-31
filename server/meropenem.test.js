@@ -3,8 +3,9 @@ import assert from 'node:assert/strict'
 import app from './index.js'
 import { pool } from './db.js'
 import { startServer, resetDatabase, createUser, ApiClient } from './test-helpers.js'
-import { buildMeropenemForm, doseText } from './meropenem.js'
+import { buildMeropenemForm, doseText, MEROPENEM_SQL_PATTERN, windowStart } from './meropenem.js'
 import { todayInBaghdad } from './push.js'
+import { loadCourseRows } from './routes/chart.js'
 
 const FLOOR = 5
 const WARD = 'ردهة رجال'
@@ -108,6 +109,20 @@ test('meropenem: a course started last month keeps its D-number; one that ended 
 })
 
 // Direct chart seed: patients = [{ row, name, id? }], meronem on column 1 for the listed rows.
+test('meropenem: a name that carried two IDs on a ward takes the latest one, in any row order', () => {
+  // محمد 111 on Meronem, then another محمد (222, no drug) admitted, then a name-only محمد given it.
+  const inputs = scenario([
+    ['2026-09-21', A, [{ name: 'محمد', id: '111', qty: 3 }]],
+    ['2026-09-22', A, [{ name: 'محمد', id: '111', qty: 3 }]],
+    ['2026-09-23', A, [{ name: 'محمد', id: '222' }]],
+    ['2026-09-24', A, [{ name: 'محمد', qty: 3 }]],
+  ])
+  const build = (presence) => buildMeropenemForm({ date: '2026-09-24', ...A, ...inputs, presence }).patients
+  const forward = build(inputs.presence)
+  assert.deepEqual(build([...inputs.presence].reverse()), forward)
+  assert.deepEqual(forward.find((patient) => patient.key === 'id:222')?.days, { '2026-09-24': 1 })
+})
+
 const seedDay = async ({ wardId, createdBy, date, patients, meronemRows, medicineId }) => {
   const chartId = (await pool.query(
     "INSERT INTO daily_charts (ward_id, chart_date, slot, created_by, updated_by, version) VALUES ($1, $2, 'main', $3, $3, 1) RETURNING id",
@@ -303,4 +318,88 @@ test('GET /api/meropenem: today is always read fresh, and a save to today keeps 
   // Today is read on every open: the same change made today shows at once.
   await addHassan(today)
   assert.deepEqual(await names(), ['حسن', 'علي'].sort())
+})
+
+// The original read: one query per part over the whole window, nothing kept. loadCourseRows must
+// return the same rows (presence as a set: its split may return a row twice).
+const referenceCourseRows = async ({ floor, wardName, chartDate }, { pattern, names, allWards = false }) => {
+  const from = windowStart(chartDate)
+  const cells = (await pool.query(
+    `SELECT dc.chart_date::text AS date, w.floor_number AS floor, w.name AS ward, cp.patient_name AS name, cp.patient_id, COALESCE(m.name, cc.custom_name) AS medicine, cq.quantity
+     FROM daily_charts dc JOIN wards w ON w.id = dc.ward_id JOIN chart_patients cp ON cp.chart_id = dc.id
+     JOIN chart_quantities cq ON cq.chart_id = dc.id AND cq.row_number = cp.row_number
+     JOIN chart_columns cc ON cc.chart_id = dc.id AND cc.column_number = cq.column_number LEFT JOIN medicines m ON m.id = cc.medicine_id
+     WHERE dc.chart_date BETWEEN $1::date AND $2::date AND cq.quantity > 0
+       AND ${pattern ? 'COALESCE(m.name, cc.custom_name) ~* $3' : 'COALESCE(m.name, cc.custom_name) = ANY($3::text[])'}
+       AND (btrim(cp.patient_name) <> '' OR cp.patient_id <> '')`,
+    [from, chartDate, pattern || names],
+  )).rows
+  const ids = [...new Set(cells.map((row) => row.patient_id).filter(Boolean))]
+  const cellNames = [...new Set(cells.map((row) => String(row.name).trim().replace(/\s+/g, ' ')).filter(Boolean))]
+  const presence = (await pool.query(
+    `SELECT dc.chart_date::text AS date, w.floor_number AS floor, w.name AS ward, cp.patient_name AS name, cp.patient_id
+     FROM daily_charts dc JOIN wards w ON w.id = dc.ward_id JOIN chart_patients cp ON cp.chart_id = dc.id
+     WHERE dc.chart_date BETWEEN $1::date AND $2::date AND (btrim(cp.patient_name) <> '' OR cp.patient_id <> '')
+       AND ${allWards ? "(cp.patient_id = ANY($3::text[]) OR regexp_replace(btrim(cp.patient_name), '\\s+', ' ', 'g') = ANY($4::text[]))" : '((w.floor_number IS NOT DISTINCT FROM $3 AND w.name = $4) OR cp.patient_id = ANY($5::text[]))'}`,
+    allWards ? [from, chartDate, ids, cellNames] : [from, chartDate, floor, wardName, ids],
+  )).rows
+  const charted = (await pool.query(
+    `SELECT DISTINCT dc.chart_date::text AS date, w.floor_number AS floor, w.name AS ward FROM daily_charts dc JOIN wards w ON w.id = dc.ward_id
+     WHERE dc.chart_date BETWEEN $1::date AND $2::date AND EXISTS (SELECT 1 FROM chart_patients cp WHERE cp.chart_id = dc.id AND (cp.patient_name <> '' OR cp.patient_id <> ''))`,
+    [from, chartDate],
+  )).rows
+  const toRow = (row) => ({ date: row.date, floor: row.floor, ward: row.ward, name: row.name, patientId: row.patient_id })
+  return { cells: cells.map((row) => ({ ...toRow(row), medicine: row.medicine, quantity: row.quantity })), presence: presence.map(toRow), charted }
+}
+
+test('loadCourseRows: kept days + today read fresh give the same rows as one read of the whole window', async () => {
+  const seeder = await createUser({ role: 'admin' })
+  const medicineId = (await pool.query("INSERT INTO medicines (name) VALUES ('Meronem 1000gm Vial') RETURNING id")).rows[0].id
+  const wardId = async (floor, name) => (await pool.query('INSERT INTO wards (floor_number, name, is_special) VALUES ($1, $2, false) RETURNING id', [floor, name])).rows[0].id
+  const wardA = await wardId(A.floor, A.ward)
+  const wardB = await wardId(B.floor, B.ward)
+  const today = todayInBaghdad()
+  const day = (n) => new Date(Date.parse(`${today}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10)
+  const chart = async (ward, n, patients) => {
+    const chartId = (await pool.query("INSERT INTO daily_charts (ward_id, chart_date, slot, created_by, updated_by, version) VALUES ($1, $2, 'main', $3, $3, 1) RETURNING id", [ward, day(n), seeder.id])).rows[0].id
+    await pool.query('INSERT INTO chart_columns (chart_id, column_number, medicine_id) VALUES ($1, 1, $2)', [chartId, medicineId])
+    for (const [index, p] of patients.entries()) {
+      await pool.query('INSERT INTO chart_patients (chart_id, row_number, patient_name, patient_id) VALUES ($1, $2, $3, $4)', [chartId, index + 1, p.name, p.id ?? ''])
+      if (p.dose) await pool.query('INSERT INTO chart_quantities (chart_id, row_number, column_number, quantity) VALUES ($1, $2, 1, 3)', [chartId, index + 1])
+    }
+  }
+  // علي (123): Meronem on A for three days, then on B today without it — a transfer.
+  // حسن (no ID): Meronem on A two days ago, still on A since. سعد (456): on B without it, first dose
+  // today (a newcomer by ID). زيد (no ID): on B two days ago, first dose today (a newcomer by name).
+  // خالد (789): on A without it throughout.
+  for (const n of [-3, -2, -1]) {
+    await chart(wardA, n, [{ name: 'علي', id: '123', dose: true }, { name: 'حسن', dose: n === -2 }, { name: 'خالد', id: '789' }])
+    await chart(wardB, n, [{ name: 'سعد', id: '456' }, ...(n === -2 ? [{ name: 'زيد' }] : [])])
+  }
+  await chart(wardA, 0, [{ name: 'حسن' }, { name: 'خالد', id: '789' }])
+  await chart(wardB, 0, [{ name: 'علي', id: '123' }, { name: 'سعد', id: '456', dose: true }, { name: 'زيد', dose: true }])
+
+  const views = [
+    [{ floor: A.floor, wardName: A.ward, chartDate: today }, { pattern: MEROPENEM_SQL_PATTERN }],
+    [{ floor: B.floor, wardName: B.ward, chartDate: today }, { pattern: MEROPENEM_SQL_PATTERN }],
+    [{ floor: null, wardName: '', chartDate: today }, { names: ['Meronem 1000gm Vial'], allWards: true }],
+    [{ floor: A.floor, wardName: A.ward, chartDate: day(-1) }, { pattern: MEROPENEM_SQL_PATTERN }],
+  ]
+  const asSet = (rows) => [...new Set(rows.map((row) => JSON.stringify(row)))].sort()
+  const compare = async (label) => {
+    for (const [location, options] of views) {
+      const got = await loadCourseRows(location, options)
+      const want = await referenceCourseRows(location, options)
+      const where = `${label} ${location.wardName || 'all'} ${location.chartDate}`
+      assert.deepEqual(got.cells.map((row) => JSON.stringify(row)).sort(), want.cells.map((row) => JSON.stringify(row)).sort(), `${where}: cells`)
+      assert.deepEqual(got.cells.map((row) => row.date), [...got.cells.map((row) => row.date)].sort(), `${where}: cells in date order`)
+      assert.deepEqual(asSet(got.presence), asSet(want.presence), `${where}: presence`)
+      assert.deepEqual(asSet(got.charted), asSet(want.charted), `${where}: charted`)
+    }
+  }
+  await compare('cold')
+  await compare('cached')
+  // A change to today, behind the app's back: read fresh, so still identical.
+  await pool.query("INSERT INTO chart_patients (chart_id, row_number, patient_name, patient_id) SELECT id, 4, 'خالد', '789' FROM daily_charts WHERE ward_id = $1 AND chart_date = $2", [wardB, today])
+  await compare('after a change today')
 })
