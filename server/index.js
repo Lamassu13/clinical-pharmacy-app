@@ -15,7 +15,7 @@ import {
   DOSE_TIMES, USAGE_METHODS, MAX_NOTE_LENGTH, clampInt, isIsoDate, cleanText,
   normalizeMedicineKey, medicineKeySql, SUPPLY_MATCH, SUPPLY_EXCEPT,
 } from './validation.js'
-import chartRoutes, { resolveChartId, readLocation } from './routes/chart.js'
+import chartRoutes, { resolveChartId, readLocation, clearCourseRows } from './routes/chart.js'
 import treatmentFormsRoutes from './routes/treatment-forms.js'
 import extraPillsRoutes from './routes/extra-pills.js'
 import reportsRoutes from './routes/reports.js'
@@ -212,6 +212,7 @@ app.post('/api/medicines', requireManager, async (request, response) => {
     if (existing.rows[0]) return response.status(409).json({ message: `"${existing.rows[0].name}" موجود في القائمة أصلًا`, medicine: existing.rows[0] })
     const result = await query('INSERT INTO medicines (name, created_by, is_supply) VALUES ($1, $2, $1 ~* $3 AND $1 !~* $4) RETURNING id, name, arabic_name, is_supply, no_thursday_double', [name, request.session.user.id, SUPPLY_MATCH, SUPPLY_EXCEPT])
     medicineCatalogue.invalidate()
+    clearCourseRows()
     await recordAudit(request, 'medicine.created', result.rows[0].name)
     response.status(201).json({ medicine: result.rows[0] })
   } catch (error) {
@@ -255,6 +256,7 @@ app.put('/api/medicines/:id', requireManager, async (request, response) => {
     }
     await client.query('COMMIT')
     medicineCatalogue.invalidate()
+    clearCourseRows()
     // What actually changed — the client sends every field on every edit.
     const before = existing.rows[0]
     const after = result.rows[0]
@@ -290,6 +292,7 @@ app.delete('/api/medicines/:id', requireManager, async (request, response) => {
     await client.query('DELETE FROM medicines WHERE id = $1', [id])
     await client.query('COMMIT')
     medicineCatalogue.invalidate()
+    clearCourseRows()
     await recordAudit(request, 'medicine.deleted', target.rows[0].name)
     response.json({ ok: true })
   } catch (error) {
