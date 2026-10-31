@@ -37,7 +37,10 @@ hydrateStorage().then(() => {
   createRoot(document.getElementById('root'), {
     onUncaughtError: (error, { componentStack }) => {
       console.error(error)
-      reportError('error', error?.message, String(componentStack || '').trim().split('\n').slice(0, 4).map((line) => line.trim().replace(/^at /, '')).join(' < '))
+      // Names only: each production frame carries the bundle's URL, which would fill the 200-character
+      // field — Chrome writes `at Name (url)`, Safari and Firefox `Name@url` (an anonymous one is just `@url`).
+      const names = String(componentStack || '').trim().split('\n').map((line) => line.trim().replace(/^at /, '').replace(/ \(.*\)$|@.*$/, '')).filter(Boolean)
+      reportError('error', error?.message, names.slice(0, 6).join(' < '))
     },
   }).render(
     <StrictMode>

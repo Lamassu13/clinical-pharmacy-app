@@ -195,14 +195,9 @@ const readSnapshot = async (run) => {
   const client = await pool.connect()
   try {
     await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY')
-    // One statement at a time: callers fire several at once (Promise.all), and pg 9 drops queueing
-    // them on a single client. A failed one must not poison the chain for the rest.
-    let last = Promise.resolve()
-    const result = await run((sql, params) => {
-      const next = last.catch(() => {}).then(() => client.query(sql, params))
-      last = next
-      return next
-    })
+    // `run` must await each statement before the next: one client runs one at a time, and pg 9 stops
+    // queueing overlapping ones. Statements still in flight at ROLLBACK would outlive the release.
+    const result = await run((sql, params) => client.query(sql, params))
     await client.query('COMMIT')
     return result
   } catch (error) {
@@ -240,13 +235,14 @@ const readChart = (allowSince) => async (request, response) => {
     ])
     if (versionRow.rows[0] && chartToken(chartId, versionRow.rows[0], rooms.rows) === since) return response.json({ unchanged: true, lock })
   }
-  const [patients, columns, quantities, chartRow, roomRows] = await readSnapshot((q) => Promise.all([
-    q('SELECT row_number, patient_name, patient_id FROM chart_patients WHERE chart_id = $1 ORDER BY row_number', [chartId]),
-    q('SELECT cc.column_number, cc.medicine_id, COALESCE(m.name, cc.custom_name) AS medicine_name FROM chart_columns cc LEFT JOIN medicines m ON m.id = cc.medicine_id WHERE cc.chart_id = $1 ORDER BY cc.column_number', [chartId]),
-    q('SELECT row_number, column_number, quantity FROM chart_quantities WHERE chart_id = $1', [chartId]),
-    q('SELECT dc.version, dc.completed_at, dc.completed_by, u.full_name AS completed_by_name FROM daily_charts dc LEFT JOIN users u ON u.id = dc.completed_by WHERE dc.id = $1', [chartId]),
-    q("SELECT patient_row_number, room_number FROM pill_patient_meta WHERE chart_id = $1 AND room_number <> '' ORDER BY patient_row_number", [chartId]),
-  ]))
+  // In sequence (see readSnapshot); an array of awaits evaluates left to right.
+  const [patients, columns, quantities, chartRow, roomRows] = await readSnapshot(async (q) => [
+    await q('SELECT row_number, patient_name, patient_id FROM chart_patients WHERE chart_id = $1 ORDER BY row_number', [chartId]),
+    await q('SELECT cc.column_number, cc.medicine_id, COALESCE(m.name, cc.custom_name) AS medicine_name FROM chart_columns cc LEFT JOIN medicines m ON m.id = cc.medicine_id WHERE cc.chart_id = $1 ORDER BY cc.column_number', [chartId]),
+    await q('SELECT row_number, column_number, quantity FROM chart_quantities WHERE chart_id = $1', [chartId]),
+    await q('SELECT dc.version, dc.completed_at, dc.completed_by, u.full_name AS completed_by_name FROM daily_charts dc LEFT JOIN users u ON u.id = dc.completed_by WHERE dc.id = $1', [chartId]),
+    await q("SELECT patient_row_number, room_number FROM pill_patient_meta WHERE chart_id = $1 AND room_number <> '' ORDER BY patient_row_number", [chartId]),
+  ])
   response.json({ chart: {
     token: chartToken(chartId, chartRow.rows[0], roomRows.rows),
     patients: patients.rows, columns: columns.rows, quantities: quantities.rows,
@@ -551,7 +547,8 @@ router.put('/chart', requireAuth, async (request, response) => {
       newState: { patients: [...patientByRow.values()], columns: linkedColumns, quantities: quantityList },
     })
     await client.query('COMMIT')
-    clearCourseRows()
+    // Today's rows are always read fresh (readWindow); only an earlier day's save stales the kept ones.
+    if (chartDate < todayInBaghdad()) clearCourseRows()
     response.json({ ok: true, chartId, version: chartResult.rows[0].version })
     if (startedNow) {
       const where = floor === null ? wardName : `الطابق ${floor} — ${wardName}`
@@ -737,17 +734,30 @@ router.get('/meropenem-order', requireAuth, async (request, response) => {
 // The saved-chart rows a course form is built from (see ../meropenem.js), for every medicine
 // matching `pattern` (a regex) or named in `names`. Cells are read hospital-wide so a patient transferred in keeps counting
 // from the ward they came from.
-// The cell rows and the charted days do not depend on the ward, so one copy serves every ward's form
-// (and the long-course card): each open used to re-read the whole window, ~10k rows, from Neon. Kept
-// 60 seconds and cleared on every write that changes them (clearCourseRows), so a saved chart shows
-// at once. ponytail: per-process memory, so a restart empties it.
-const courseCache = memoizeByKey((load, ...args) => load(...args), { ttlMs: 60_000, max: 20 })
-export const clearCourseRows = () => courseCache.clear()
-const cached = (kind, from, to, which, load) => courseCache.get(`${kind}|${from}|${to}|${which}`, load, from, to)
+// The cell rows and the charted days are hospital-wide over the whole window (month start minus
+// LOOKBACK_DAYS): for the antibiotics, tens of thousands of rows per open. Only today's charts change
+// during the working day, so the days before today are kept and today onward is read fresh each time.
+// The kept part is cleared when a chart dated before today is saved, on a purge, and when a medicine
+// is renamed or deleted (clearCourseRows); the 10-minute TTL covers writes that bypass the app.
+// ponytail: per-process memory, at most 12 windows of a few MB each; a restart empties it.
+const courseHistory = memoizeByKey((load, from, to) => load(from, to), { ttlMs: 10 * 60_000, max: 12 })
+export const clearCourseRows = () => courseHistory.clear()
+const dayBefore = (iso) => new Date(Date.parse(`${iso}T00:00:00Z`) - 86400000).toISOString().slice(0, 10)
+// The rows of load(start, end) over [from, to]: before today from the cache, the rest fresh. Still in
+// date order when load sorts by date, since every kept day comes before every fresh one.
+const readWindow = async (key, from, to, load) => {
+  const today = todayInBaghdad()
+  const keptTo = to < today ? to : dayBefore(today)
+  const [kept, fresh] = await Promise.all([
+    from <= keptTo ? courseHistory.get(`${key}|${from}|${keptTo}`, load, from, keptTo) : null,
+    to >= today ? load(from > today ? from : today, to) : null,
+  ])
+  return [...(kept?.rows ?? []), ...(fresh?.rows ?? [])]
+}
 
 const loadCourseRows = async ({ floor, wardName, chartDate }, { pattern, names, allWards = false }) => {
   const from = windowStart(chartDate)
-  const cellRows = await cached('cells', from, chartDate, pattern ? `p${pattern}` : names.join('\u0001'), (start, end) => query(
+  const cellRows = await readWindow(`cells|${pattern ? `p${pattern}` : [...names].sort().join('\u0001')}`, from, chartDate, (start, end) => query(
     `SELECT dc.chart_date::text AS date, w.floor_number AS floor, w.name AS ward, cp.patient_name AS name, cp.patient_id,
             COALESCE(m.name, cc.custom_name) AS medicine, cq.quantity
      FROM daily_charts dc
@@ -762,10 +772,10 @@ const loadCourseRows = async ({ floor, wardName, chartDate }, { pattern, names, 
      ORDER BY dc.chart_date, cp.row_number`,
     [start, end, pattern || names],
   ))
-  const ids = [...new Set(cellRows.rows.map((row) => row.patient_id).filter(Boolean))]
+  const ids = [...new Set(cellRows.map((row) => row.patient_id).filter(Boolean))]
   // allWards (the hospital-wide long-course list): presence is every row carrying a seen ID or a
   // seen name, on any ward, instead of one ward's whole chart.
-  const cellNames = [...new Set(cellRows.rows.map((row) => String(row.name).trim().replace(/\s+/g, ' ')).filter(Boolean))]
+  const cellNames = [...new Set(cellRows.map((row) => String(row.name).trim().replace(/\s+/g, ' ')).filter(Boolean))]
   const [presenceRows, chartedRows] = await Promise.all([
     // Who is on a chart each day: everyone on this ward, plus anyone anywhere carrying an ID that
     // had the drug — "still here without it?" and "turned up on another ward?".
@@ -783,7 +793,7 @@ const loadCourseRows = async ({ floor, wardName, chartDate }, { pattern, names, 
     ),
     // The days each ward has a chart at all — a day with no chart (Friday) never ends a course.
     // A patient typed by number alone counts, as in the presence rows above.
-    cached('charted', from, chartDate, '', (start, end) => query(
+    readWindow('charted', from, chartDate, (start, end) => query(
       `SELECT DISTINCT dc.chart_date::text AS date, w.floor_number AS floor, w.name AS ward
        FROM daily_charts dc
        JOIN wards w ON w.id = dc.ward_id
@@ -795,9 +805,9 @@ const loadCourseRows = async ({ floor, wardName, chartDate }, { pattern, names, 
   const toRow = (row) => ({ date: row.date, floor: row.floor, ward: row.ward, name: row.name, patientId: row.patient_id })
   return {
     date: chartDate, floor, ward: wardName,
-    cells: cellRows.rows.map((row) => ({ ...toRow(row), medicine: row.medicine, quantity: row.quantity })),
+    cells: cellRows.map((row) => ({ ...toRow(row), medicine: row.medicine, quantity: row.quantity })),
     presence: presenceRows.rows.map(toRow),
-    charted: chartedRows.rows,
+    charted: chartedRows,
   }
 }
 
