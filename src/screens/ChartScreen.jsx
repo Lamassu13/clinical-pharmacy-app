@@ -122,7 +122,7 @@ export default function ChartScreen({
       <span title="تاريخ اليوم" aria-label={`تاريخ اليوم: ${today} ${todayWeekday}`}><Glyph icon="today" /><b>{today}</b> — <b>{todayWeekday}</b></span>
       <span className="date-controls">
         <label className="date-field" title="تاريخ الجارت"><input type="date" aria-label="تاريخ الجارت" value={selectedDate} onChange={(event) => onChangeDate(event.target.value)} /></label>
-        {!readOnly && <button type="button" className="meta-button" data-tip={isOnline ? 'نسخ إلى اليوم التالي' : 'النسخ يحتاج اتصالًا'} aria-label="نسخ إلى اليوم التالي" onClick={onCopyToNextDay} disabled={!isOnline}><Glyph icon="copy-next" /></button>}
+        {!readOnly && <button type="button" className="meta-button" data-tip={isOnline ? 'نسخ الأدوية إلى اليوم التالي' : 'النسخ يحتاج اتصالًا'} aria-label="نسخ الأدوية إلى اليوم التالي" onClick={onCopyToNextDay} disabled={!isOnline}><Glyph icon="copy-next" /></button>}
         <button type="button" className="meta-button" data-tip={isOnline ? 'سجل التعديلات' : 'السجل يحتاج اتصالًا'} aria-label="سجل التعديلات" onClick={() => setHistoryOpen(true)} disabled={!isOnline}><Glyph icon="history" /></button>
         {!readOnly && <button type="button" className="meta-button" data-tip={isOnline ? 'القوالب' : 'القوالب تحتاج اتصالًا'} aria-label="القوالب" onClick={onOpenTemplates} disabled={!isOnline}><Glyph icon="templates" /></button>}
       </span>
@@ -268,7 +268,7 @@ export default function ChartScreen({
         <span>لم يُحفظ — تُعاد المحاولة تلقائيًا. تعديلاتك محفوظة على هذا الجهاز.</span>
         <button type="button" className="secondary-button compact" onClick={onRetrySave}>إعادة المحاولة الآن</button>
       </>}
-      {copyError && <span>تعذّر نسخ الجارت — أعِد الضغط على «نسخ إلى اليوم التالي».</span>}
+      {copyError && <span>تعذّر نسخ الجارت — أعِد الضغط على «نسخ الأدوية إلى اليوم التالي».</span>}
       {pdfExportError && <span>{pdfExportError}</span>}
     </div>}
 

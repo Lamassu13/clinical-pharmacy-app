@@ -1,7 +1,7 @@
 import { useState } from 'react'
 
 // «قوالب الأدوية» — the pharmacist's own saved sets of medicine columns. Same modal chrome and
-// keyboard handling as ConfirmDialog / CopyChartDialog. Applying replaces the chart's columns,
+// keyboard handling as ConfirmDialog. Applying replaces the chart's columns,
 // so it is only offered while the chart has no doses (`canApply`); the reason shows otherwise.
 export default function TemplatesDialog({ open, templates, error, busy, canApply, canSave, onRetry, onApply, onDelete, onSave, onClose }) {
   const [name, setName] = useState('')
