@@ -246,3 +246,29 @@ test('GET /api/meropenem: on a ward that types only patient numbers, a stopped c
   assert.equal(res.status, 200)
   assert.notEqual(res.body.form.patients[0]?.status.kind, 'active', JSON.stringify(res.body.form.patients))
 })
+
+test('GET /api/meropenem: the cached read is served again, but a chart save shows on the form at once', async () => {
+  const seeder = await createUser({ role: 'admin' })
+  const medicineId = (await pool.query("INSERT INTO medicines (name) VALUES ('Meronem 1000gm Vial') RETURNING id")).rows[0].id
+  const wardId = (await pool.query('INSERT INTO wards (floor_number, name, is_special) VALUES ($1, $2, false) RETURNING id', [FLOOR, WARD])).rows[0].id
+  await seedDay({ wardId, createdBy: seeder.id, date: '2026-09-26', patients: [{ row: 1, name: 'علي', id: '123' }], meronemRows: [1], medicineId })
+  const client = await loginAs({ role: 'user', floor: FLOOR })
+  const where = `floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=2026-09-26`
+  const names = async () => (await client.get(`/api/meropenem?${where}`)).body.form.patients.map((patient) => patient.name)
+  assert.deepEqual(await names(), ['علي'])
+
+  // A row slipped in behind the app's back is not seen while the cached copy is fresh…
+  await pool.query("INSERT INTO chart_patients (chart_id, row_number, patient_name, patient_id) SELECT id, 2, 'حسن', '' FROM daily_charts WHERE ward_id = $1", [wardId])
+  await pool.query("INSERT INTO chart_quantities (chart_id, row_number, column_number, quantity) SELECT id, 2, 1, 3 FROM daily_charts WHERE ward_id = $1", [wardId])
+  assert.deepEqual(await names(), ['علي'], 'served from the cache')
+
+  // …but a save through the app clears it.
+  const saved = await client.put('/api/chart', {
+    floor: FLOOR, ward: WARD, date: '2026-09-26', expectedVersion: 1,
+    patients: [{ rowNumber: 1, name: 'علي', patientId: '123' }, { rowNumber: 2, name: 'حسن' }],
+    columns: [{ columnNumber: 1, medicineName: 'Meronem 1000gm Vial' }],
+    quantities: [{ rowNumber: 1, columnNumber: 1, quantity: 3 }, { rowNumber: 2, columnNumber: 1, quantity: 3 }],
+  })
+  assert.equal(saved.status, 200)
+  assert.deepEqual((await names()).sort(), ['حسن', 'علي'].sort())
+})

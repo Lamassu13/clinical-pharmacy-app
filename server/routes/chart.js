@@ -104,6 +104,7 @@ router.post('/charts/purge', requireManager, async (request, response) => {
          AND ward_id IN (SELECT id FROM wards WHERE floor_number = ANY($3::int[]) OR (floor_number IS NULL AND name = ANY($4::text[])))`,
       [from, to, floors, wards],
     )
+  clearCourseRows()
   // Handover notes are per ward/day like the charts, and may name patients, so they go too.
   await query(
     `DELETE FROM ward_notes WHERE note_date BETWEEN $1 AND $2
@@ -550,6 +551,7 @@ router.put('/chart', requireAuth, async (request, response) => {
       newState: { patients: [...patientByRow.values()], columns: linkedColumns, quantities: quantityList },
     })
     await client.query('COMMIT')
+    clearCourseRows()
     response.json({ ok: true, chartId, version: chartResult.rows[0].version })
     if (startedNow) {
       const where = floor === null ? wardName : `الطابق ${floor} — ${wardName}`
@@ -735,9 +737,17 @@ router.get('/meropenem-order', requireAuth, async (request, response) => {
 // The saved-chart rows a course form is built from (see ../meropenem.js), for every medicine
 // matching `pattern` (a regex) or named in `names`. Cells are read hospital-wide so a patient transferred in keeps counting
 // from the ward they came from.
+// The cell rows and the charted days do not depend on the ward, so one copy serves every ward's form
+// (and the long-course card): each open used to re-read the whole window, ~10k rows, from Neon. Kept
+// 60 seconds and cleared on every write that changes them (clearCourseRows), so a saved chart shows
+// at once. ponytail: per-process memory, so a restart empties it.
+const courseCache = memoizeByKey((load, ...args) => load(...args), { ttlMs: 60_000, max: 20 })
+export const clearCourseRows = () => courseCache.clear()
+const cached = (kind, from, to, which, load) => courseCache.get(`${kind}|${from}|${to}|${which}`, load, from, to)
+
 const loadCourseRows = async ({ floor, wardName, chartDate }, { pattern, names, allWards = false }) => {
   const from = windowStart(chartDate)
-  const cellRows = await query(
+  const cellRows = await cached('cells', from, chartDate, pattern ? `p${pattern}` : names.join('\u0001'), (start, end) => query(
     `SELECT dc.chart_date::text AS date, w.floor_number AS floor, w.name AS ward, cp.patient_name AS name, cp.patient_id,
             COALESCE(m.name, cc.custom_name) AS medicine, cq.quantity
      FROM daily_charts dc
@@ -750,8 +760,8 @@ const loadCourseRows = async ({ floor, wardName, chartDate }, { pattern, names, 
        AND cq.quantity > 0 AND ${pattern ? 'COALESCE(m.name, cc.custom_name) ~* $3' : 'COALESCE(m.name, cc.custom_name) = ANY($3::text[])'}
        AND (btrim(cp.patient_name) <> '' OR cp.patient_id <> '')
      ORDER BY dc.chart_date, cp.row_number`,
-    [from, chartDate, pattern || names],
-  )
+    [start, end, pattern || names],
+  ))
   const ids = [...new Set(cellRows.rows.map((row) => row.patient_id).filter(Boolean))]
   // allWards (the hospital-wide long-course list): presence is every row carrying a seen ID or a
   // seen name, on any ward, instead of one ward's whole chart.
@@ -773,14 +783,14 @@ const loadCourseRows = async ({ floor, wardName, chartDate }, { pattern, names, 
     ),
     // The days each ward has a chart at all — a day with no chart (Friday) never ends a course.
     // A patient typed by number alone counts, as in the presence rows above.
-    query(
+    cached('charted', from, chartDate, '', (start, end) => query(
       `SELECT DISTINCT dc.chart_date::text AS date, w.floor_number AS floor, w.name AS ward
        FROM daily_charts dc
        JOIN wards w ON w.id = dc.ward_id
        WHERE dc.chart_date BETWEEN $1::date AND $2::date
          AND EXISTS (SELECT 1 FROM chart_patients cp WHERE cp.chart_id = dc.id AND (cp.patient_name <> '' OR cp.patient_id <> ''))`,
-      [from, chartDate],
-    ),
+      [start, end],
+    )),
   ])
   const toRow = (row) => ({ date: row.date, floor: row.floor, ward: row.ward, name: row.name, patientId: row.patient_id })
   return {
