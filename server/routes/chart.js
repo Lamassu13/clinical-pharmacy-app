@@ -547,7 +547,7 @@ router.put('/chart', requireAuth, async (request, response) => {
       newState: { patients: [...patientByRow.values()], columns: linkedColumns, quantities: quantityList },
     })
     await client.query('COMMIT')
-    // Today's rows are always read fresh (readWindow); only an earlier day's save stales the kept ones.
+    // Today's rows are always read fresh (loadCourseRows); only an earlier day's save stales the kept ones.
     if (chartDate < todayInBaghdad()) clearCourseRows()
     response.json({ ok: true, chartId, version: chartResult.rows[0].version })
     if (startedNow) {
@@ -734,80 +734,115 @@ router.get('/meropenem-order', requireAuth, async (request, response) => {
 // The saved-chart rows a course form is built from (see ../meropenem.js), for every medicine
 // matching `pattern` (a regex) or named in `names`. Cells are read hospital-wide so a patient transferred in keeps counting
 // from the ward they came from.
-// The cell rows and the charted days are hospital-wide over the whole window (month start minus
-// LOOKBACK_DAYS): for the antibiotics, tens of thousands of rows per open. Only today's charts change
-// during the working day, so the days before today are kept and today onward is read fresh each time.
-// The kept part is cleared when a chart dated before today is saved, on a purge, and when a medicine
-// is renamed or deleted (clearCourseRows); the 10-minute TTL covers writes that bypass the app.
-// ponytail: per-process memory, at most 12 windows of a few MB each; a restart empties it.
-const courseHistory = memoizeByKey((load, from, to) => load(from, to), { ttlMs: 10 * 60_000, max: 12 })
-export const clearCourseRows = () => courseHistory.clear()
+// Every course query covers the whole window (month start minus LOOKBACK_DAYS), hospital-wide: tens
+// of thousands of rows for the antibiotics. Only today's charts change during the working day, so the
+// days before today are kept and today onward is read on every open. The kept rows are cleared when a
+// chart dated before today is saved, on a purge, and when a medicine is renamed or deleted
+// (clearCourseRows); the 6-hour TTL only covers writes made outside the app (after a manual restore,
+// restart the service). Each query is tagged (/* course: … */) so the traffic table shows it apart.
+// Two caches: one for windows that end yesterday (today's forms: room for every ward's part) and a
+// small one for a past date's window, so browsing old dates can neither evict nor bloat today's.
+// ponytail: per-process memory, ~290 B a row: ~40 MB for today's set, a few MB per past window; a
+// restart empties both.
+const keepFor = (max) => memoizeByKey((load, from, to) => load(from, to), { ttlMs: 6 * 3600_000, max })
+const liveHistory = keepFor(60)
+const pastHistory = keepFor(12)
+export const clearCourseRows = () => { liveHistory.clear(); pastHistory.clear() }
 const dayBefore = (iso) => new Date(Date.parse(`${iso}T00:00:00Z`) - 86400000).toISOString().slice(0, 10)
-// The rows of load(start, end) over [from, to]: before today from the cache, the rest fresh. Still in
-// date order when load sorts by date, since every kept day comes before every fresh one.
-const readWindow = async (key, from, to, load) => {
-  const today = todayInBaghdad()
+// [from, to] split at today: kept is the days before it, fresh the rest; either may be null.
+const splitWindow = (from, to, today) => {
   const keptTo = to < today ? to : dayBefore(today)
-  const [kept, fresh] = await Promise.all([
-    from <= keptTo ? courseHistory.get(`${key}|${from}|${keptTo}`, load, from, keptTo) : null,
-    to >= today ? load(from > today ? from : today, to) : null,
-  ])
-  return [...(kept?.rows ?? []), ...(fresh?.rows ?? [])]
+  return { kept: from <= keptTo ? [from, keptTo] : null, fresh: to >= today ? [from > today ? from : today, to] : null }
 }
+const readRows = (range, load) => (range ? load(...range).then((result) => result.rows) : [])
 
-const loadCourseRows = async ({ floor, wardName, chartDate }, { pattern, names, allWards = false }) => {
+// The loaders are built out here so a cached one holds only its own arguments, not the request's.
+const cellsLoader = (pattern, names) => (start, end) => query(
+  `/* course: cells */ SELECT dc.chart_date::text AS date, w.floor_number AS floor, w.name AS ward, cp.patient_name AS name, cp.patient_id,
+          COALESCE(m.name, cc.custom_name) AS medicine, cq.quantity
+   FROM daily_charts dc
+   JOIN wards w ON w.id = dc.ward_id
+   JOIN chart_patients cp ON cp.chart_id = dc.id
+   JOIN chart_quantities cq ON cq.chart_id = dc.id AND cq.row_number = cp.row_number
+   JOIN chart_columns cc ON cc.chart_id = dc.id AND cc.column_number = cq.column_number
+   LEFT JOIN medicines m ON m.id = cc.medicine_id
+   WHERE dc.chart_date BETWEEN $1::date AND $2::date
+     AND cq.quantity > 0 AND ${pattern ? 'COALESCE(m.name, cc.custom_name) ~* $3' : 'COALESCE(m.name, cc.custom_name) = ANY($3::text[])'}
+     AND (btrim(cp.patient_name) <> '' OR cp.patient_id <> '')
+   ORDER BY dc.chart_date, cp.row_number`,
+  [start, end, pattern || names],
+)
+const presenceSql = (who) => `/* course: presence */ SELECT dc.chart_date::text AS date, w.floor_number AS floor, w.name AS ward, cp.patient_name AS name, cp.patient_id
+  FROM daily_charts dc
+  JOIN wards w ON w.id = dc.ward_id
+  JOIN chart_patients cp ON cp.chart_id = dc.id
+  WHERE dc.chart_date BETWEEN $1::date AND $2::date
+    AND (btrim(cp.patient_name) <> '' OR cp.patient_id <> '')
+    AND ${who}`
+const ON_WARD = '(w.floor_number IS NOT DISTINCT FROM $3 AND w.name = $4)'
+const BY_ID = 'cp.patient_id = ANY($3::text[])'
+const BY_ID_OR_NAME = "(cp.patient_id = ANY($3::text[]) OR regexp_replace(btrim(cp.patient_name), '\\s+', ' ', 'g') = ANY($4::text[]))"
+const wardPresenceLoader = (floor, wardName) => (start, end) => query(presenceSql(ON_WARD), [start, end, floor, wardName])
+const matchedPresenceLoader = (allWards, ids, names) => (start, end) => query(presenceSql(allWards ? BY_ID_OR_NAME : BY_ID), allWards ? [start, end, ids, names] : [start, end, ids])
+const loadCharted = (start, end) => query(
+  `/* course: charted */ SELECT DISTINCT dc.chart_date::text AS date, w.floor_number AS floor, w.name AS ward
+   FROM daily_charts dc
+   JOIN wards w ON w.id = dc.ward_id
+   WHERE dc.chart_date BETWEEN $1::date AND $2::date
+     AND EXISTS (SELECT 1 FROM chart_patients cp WHERE cp.chart_id = dc.id AND (cp.patient_name <> '' OR cp.patient_id <> ''))`,
+  [start, end],
+)
+const sortedSet = (values) => [...new Set(values.filter(Boolean))].sort()
+
+export const loadCourseRows = async ({ floor, wardName, chartDate }, { pattern, names, allWards = false }) => {
   const from = windowStart(chartDate)
-  const cellRows = await readWindow(`cells|${pattern ? `p${pattern}` : [...names].sort().join('\u0001')}`, from, chartDate, (start, end) => query(
-    `SELECT dc.chart_date::text AS date, w.floor_number AS floor, w.name AS ward, cp.patient_name AS name, cp.patient_id,
-            COALESCE(m.name, cc.custom_name) AS medicine, cq.quantity
-     FROM daily_charts dc
-     JOIN wards w ON w.id = dc.ward_id
-     JOIN chart_patients cp ON cp.chart_id = dc.id
-     JOIN chart_quantities cq ON cq.chart_id = dc.id AND cq.row_number = cp.row_number
-     JOIN chart_columns cc ON cc.chart_id = dc.id AND cc.column_number = cq.column_number
-     LEFT JOIN medicines m ON m.id = cc.medicine_id
-     WHERE dc.chart_date BETWEEN $1::date AND $2::date
-       AND cq.quantity > 0 AND ${pattern ? 'COALESCE(m.name, cc.custom_name) ~* $3' : 'COALESCE(m.name, cc.custom_name) = ANY($3::text[])'}
-       AND (btrim(cp.patient_name) <> '' OR cp.patient_id <> '')
-     ORDER BY dc.chart_date, cp.row_number`,
-    [start, end, pattern || names],
-  ))
-  const ids = [...new Set(cellRows.map((row) => row.patient_id).filter(Boolean))]
+  const today = todayInBaghdad()
+  const { kept, fresh } = splitWindow(from, chartDate, today)
+  const history = kept?.[1] === dayBefore(today) ? liveHistory : pastHistory
+  const keep = (key, load) => (kept ? history.get(`${key}|${kept[0]}|${kept[1]}`, load, ...kept).then((result) => result.rows) : [])
+  const loadCells = cellsLoader(pattern, names)
+  // Kept days come before fresh ones, so the cells stay in date order.
+  const [keptCells, freshCells] = await Promise.all([keep(`cells|${pattern ? `p${pattern}` : [...names].sort().join('\u0001')}`, loadCells), readRows(fresh, loadCells)])
+  const cellRows = [...keptCells, ...freshCells]
+  const idsOf = (rows) => sortedSet(rows.map((row) => row.patient_id))
+  const namesOf = (rows) => sortedSet(rows.map((row) => String(row.name).trim().replace(/\s+/g, ' ')))
+  const ids = idsOf(cellRows)
   // allWards (the hospital-wide long-course list): presence is every row carrying a seen ID or a
   // seen name, on any ward, instead of one ward's whole chart.
-  const cellNames = [...new Set(cellRows.map((row) => String(row.name).trim().replace(/\s+/g, ' ')).filter(Boolean))]
-  const [presenceRows, chartedRows] = await Promise.all([
-    // Who is on a chart each day: everyone on this ward, plus anyone anywhere carrying an ID that
-    // had the drug — "still here without it?" and "turned up on another ward?".
-    query(
-      `SELECT dc.chart_date::text AS date, w.floor_number AS floor, w.name AS ward, cp.patient_name AS name, cp.patient_id
-       FROM daily_charts dc
-       JOIN wards w ON w.id = dc.ward_id
-       JOIN chart_patients cp ON cp.chart_id = dc.id
-       WHERE dc.chart_date BETWEEN $1::date AND $2::date
-         AND (btrim(cp.patient_name) <> '' OR cp.patient_id <> '')
-         AND ${allWards
-    ? "(cp.patient_id = ANY($3::text[]) OR regexp_replace(btrim(cp.patient_name), '\\s+', ' ', 'g') = ANY($4::text[]))"
-    : '((w.floor_number IS NOT DISTINCT FROM $3 AND w.name = $4) OR cp.patient_id = ANY($5::text[]))'}`,
-      allWards ? [from, chartDate, ids, cellNames] : [from, chartDate, floor, wardName, ids],
-    ),
+  const cellNames = namesOf(cellRows)
+
+  // Who is on a chart each day: everyone on this ward, plus anyone anywhere carrying an ID that had
+  // the drug — "still here without it?" and "turned up on another ward?". The kept days come in
+  // parts: this ward's own rows (per ward), the rows of everyone who had the drug before today
+  // (shared by every ward's form), and, uncached, the earlier rows of anyone who first had it today
+  // (a handful). A row can arrive twice (on this ward and carrying a matched ID); the form collects
+  // presence into sets and picks a name's ID by date, so neither the repeat nor the order matters.
+  const keptIds = idsOf(keptCells)
+  const keptNames = allWards ? namesOf(keptCells) : []
+  const keptIdSet = new Set(keptIds)
+  const keptNameSet = new Set(keptNames)
+  const newIds = ids.filter((id) => !keptIdSet.has(id))
+  const newNames = allWards ? cellNames.filter((name) => !keptNameSet.has(name)) : []
+  const anyone = (idList, nameList) => idList.length > 0 || nameList.length > 0
+  const [wardPart, matchedPart, newcomerPart, freshPresence, keptDays, freshDays] = await Promise.all([
+    allWards ? [] : keep(`presence-ward|${floor ?? ''}|${wardName}`, wardPresenceLoader(floor, wardName)),
+    anyone(keptIds, keptNames) ? keep(`presence-${allWards ? 'all' : 'ids'}|${keptIds.join(',')}|${keptNames.join('\u0001')}`, matchedPresenceLoader(allWards, keptIds, keptNames)) : [],
+    anyone(newIds, newNames) ? readRows(kept, matchedPresenceLoader(allWards, newIds, newNames)) : [],
+    readRows(fresh, (start, end) => query(
+      presenceSql(allWards ? BY_ID_OR_NAME : `(${ON_WARD} OR cp.patient_id = ANY($5::text[]))`),
+      allWards ? [start, end, ids, cellNames] : [start, end, floor, wardName, ids],
+    )),
     // The days each ward has a chart at all — a day with no chart (Friday) never ends a course.
     // A patient typed by number alone counts, as in the presence rows above.
-    readWindow('charted', from, chartDate, (start, end) => query(
-      `SELECT DISTINCT dc.chart_date::text AS date, w.floor_number AS floor, w.name AS ward
-       FROM daily_charts dc
-       JOIN wards w ON w.id = dc.ward_id
-       WHERE dc.chart_date BETWEEN $1::date AND $2::date
-         AND EXISTS (SELECT 1 FROM chart_patients cp WHERE cp.chart_id = dc.id AND (cp.patient_name <> '' OR cp.patient_id <> ''))`,
-      [start, end],
-    )),
+    keep('charted', loadCharted),
+    readRows(fresh, loadCharted),
   ])
   const toRow = (row) => ({ date: row.date, floor: row.floor, ward: row.ward, name: row.name, patientId: row.patient_id })
   return {
     date: chartDate, floor, ward: wardName,
     cells: cellRows.map((row) => ({ ...toRow(row), medicine: row.medicine, quantity: row.quantity })),
-    presence: presenceRows.rows.map(toRow),
-    charted: chartedRows,
+    presence: [...wardPart, ...matchedPart, ...newcomerPart, ...freshPresence].map(toRow),
+    charted: [...keptDays, ...freshDays],
   }
 }
 
