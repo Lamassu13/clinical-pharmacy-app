@@ -11,7 +11,7 @@ import '@fontsource/ibm-plex-sans-arabic/latin-700.css'
 import './index.css'
 import App from './App.jsx'
 import { hydrateStorage } from './storage.js'
-import { initErrorReporter } from './error-reporter.js'
+import { initErrorReporter, reportError } from './error-reporter.js'
 
 initErrorReporter()
 
@@ -32,7 +32,14 @@ try {
 // Drafts and offline copies load from IndexedDB before the first render, so the app can keep
 // reading them synchronously. hydrateStorage() never rejects (it falls back to localStorage).
 hydrateStorage().then(() => {
-  createRoot(document.getElementById('root')).render(
+  // React 19 hands uncaught render errors here instead of to window 'error', and only here is the
+  // component stack available (a render loop like #185 says nothing else about where it is).
+  createRoot(document.getElementById('root'), {
+    onUncaughtError: (error, { componentStack }) => {
+      console.error(error)
+      reportError('error', error?.message, String(componentStack || '').trim().split('\n').slice(0, 4).map((line) => line.trim().replace(/^at /, '')).join(' < '))
+    },
+  }).render(
     <StrictMode>
       <App />
     </StrictMode>,

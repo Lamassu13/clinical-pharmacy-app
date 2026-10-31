@@ -39,6 +39,8 @@ export default defineConfig({
       // conveniences. None are installed; leaving them external keeps the dynamic import
       // as a runtime-only reference, which jsPDF's own .catch() handles if it's ever hit.
       external: ['dompurify', 'canvg', 'core-js'],
+      // Component names survive minification, so a crash report's component stack is readable.
+      output: { keepNames: true },
     },
   },
 })

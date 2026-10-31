@@ -1694,9 +1694,10 @@ function App() {
         setChartSaveStatus('saved')
         setLastChartSaveAt(Date.now())
       } catch (error) {
-        // Only a save the server refused is worth an alert; a dropped connection, the rate limit (429)
-        // or Render restarting (502-504) is not a bug.
-        if (error?.status && error.status !== 429 && !(error.status >= 502 && error.status <= 504)) reportError('save', `تعذّر حفظ الجارت — رفض الخادم (${error.status})`)
+        // Only a save the server refused (4xx) is worth an alert; a dropped connection, the rate limit
+        // (429), Render restarting (502-504) or a database blip (500: the chart route answers its own
+        // failures with 400) is not a bug, and the retry below covers it.
+        if (error?.status && error.status < 500 && error.status !== 429) reportError('save', `تعذّر حفظ الجارت — رفض الخادم (${error.status})`)
         setChartSaveStatus('error')
         retryTimer = setTimeout(save, 4000)
       }
