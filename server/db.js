@@ -11,7 +11,10 @@ const { Pool } = pg
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   max: Number(process.env.DATABASE_POOL_SIZE || 10),
-  idleTimeoutMillis: 30_000,
+  // Shorter than Neon's idle cutoff, so the pool retires a connection before Neon closes it under
+  // a request ("Connection terminated unexpectedly" in the session lookup, surfacing as a 500).
+  idleTimeoutMillis: 10_000,
+  keepAlive: true,
   connectionTimeoutMillis: 5_000,
   // Encrypted AND checked: without verifying Neon's certificate (a public CA's), anyone between
   // Render and Neon could pose as the database. An `sslmode=` in DATABASE_URL takes precedence
