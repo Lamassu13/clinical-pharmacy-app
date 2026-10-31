@@ -4,8 +4,8 @@ import hospitalLogo from '../assets/hospital-logo.png'
 // «استمارة متابعة الميروبينيم» — read-only, built by GET /api/meropenem from the ward's charts:
 // every patient on Meronem in the chosen date's month, their dose, whether they are still on it,
 // and one column per day they were, holding the course day (D1, D2 …; «D4؟» marks a day the
-// chart skipped it but it carried on). Only patients still on it show until «إظهار المنتهين» is
-// on. Same frame as the requisition (OrderScreen).
+// chart skipped it but it carried on). Only patients still on it are shown. Same frame as the
+// requisition (OrderScreen).
 // With `drugs` (GET /api/antibiotics) it is «متابعة المضادات الحيوية»: every followed antibiotic,
 // Meropenem included, one row per patient per drug, a drug filter, and D7+/D14+ cells marked as
 // the usual stewardship review points.
@@ -20,15 +20,13 @@ const statusText = (status, antibiotics) => ({
 }[status.kind] || '')
 
 export default function MeropenemScreen({ header, wardLabel, today, onBack, selectedDate, onChangeDate, loading, data, loadError, onPrint, drugs, onEditDay }) {
-  const [showEnded, setShowEnded] = useState(false)
   const [drugFilter, setDrugFilter] = useState('')
   const antibiotics = Boolean(drugs)
   const shownDrugs = (drugs || []).filter((drug) => !drugFilter || drug.key === drugFilter)
   const all = antibiotics ? shownDrugs.flatMap((drug) => drug.patients.map((patient) => ({ ...patient, drug: drug.label }))) : data?.patients || []
   const title = antibiotics ? 'Antibiotic follow up' : 'Meropenem follow up'
   const drugName = antibiotics ? 'المضادات الحيوية' : 'الميروبينيم'
-  const endedCount = all.filter((patient) => patient.status.kind !== 'active').length
-  const patients = showEnded ? all : all.filter((patient) => patient.status.kind === 'active')
+  const patients = all.filter((patient) => patient.status.kind === 'active')
   // Only the days some shown patient was on it — hidden patients leave no empty columns behind.
   const firstOfMonth = `${selectedDate.slice(0, 8)}01`
   const dates = [...new Set(patients.flatMap((patient) => Object.keys(patient.days)))].sort()
@@ -59,7 +57,6 @@ export default function MeropenemScreen({ header, wardLabel, today, onBack, sele
             <option value="">الكل</option>
             {drugs.map((drug) => <option key={drug.key} value={drug.key}>{drug.label}</option>)}
           </select></label>}
-          {endedCount > 0 && <button type="button" className="secondary-button compact" aria-pressed={showEnded} onClick={() => setShowEnded((on) => !on)}>{showEnded ? 'إخفاء المنتهين' : `إظهار المنتهين (${endedCount})`}</button>}
           <label className="pills-date">التاريخ <input type="date" value={selectedDate} onChange={(event) => onChangeDate(event.target.value)} /></label>
           <button className="primary-button compact" disabled={!patients.length} onClick={onPrint}>طباعة</button>
         </div>
@@ -76,7 +73,7 @@ export default function MeropenemScreen({ header, wardLabel, today, onBack, sele
       {loading ? <div className="empty-state"><span className="spinner" /><span>جارٍ تحميل الاستمارة…</span></div>
         : loadError ? <div className="empty-state"><strong>تعذّر تحميل الاستمارة</strong><span>حدّث الصفحة وحاول مجددًا.</span></div>
         : !all.length ? <div className="empty-state"><strong>لا يوجد مرضى على {drugName} هذا الشهر</strong><span>تُملأ الاستمارة تلقائيًا من الجارت عند إضافة {antibiotics ? 'أحد المضادات المتابَعة' : 'Meronem'} لأي مريض.</span></div>
-        : !patients.length ? <div className="empty-state"><strong>لا يوجد مريض على {drugName} حاليًا</strong><span>المرضى الذين انتهى علاجهم هذا الشهر: اضغط «إظهار المنتهين ({endedCount})».</span></div>
+        : !patients.length ? <div className="empty-state"><strong>لا يوجد مريض على {drugName} حاليًا</strong><span>تُعرض في الاستمارة الحالات المستمرة فقط.</span></div>
         : <div className="order-table-scroll">
             <table className="pill-table meropenem-table">
               <thead><tr>
