@@ -194,7 +194,14 @@ const readSnapshot = async (run) => {
   const client = await pool.connect()
   try {
     await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY')
-    const result = await run((sql, params) => client.query(sql, params))
+    // One statement at a time: callers fire several at once (Promise.all), and pg 9 drops queueing
+    // them on a single client. A failed one must not poison the chain for the rest.
+    let last = Promise.resolve()
+    const result = await run((sql, params) => {
+      const next = last.catch(() => {}).then(() => client.query(sql, params))
+      last = next
+      return next
+    })
     await client.query('COMMIT')
     return result
   } catch (error) {
