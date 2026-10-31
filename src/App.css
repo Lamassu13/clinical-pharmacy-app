@@ -1885,9 +1885,6 @@ button.topbar-user:hover { color: var(--primary); }
 .templates-save label { color: var(--heading); font-size: var(--text-sm); font-weight: 700; }
 .templates-save-row { display: flex; gap: var(--space-2); }
 .templates-save-row input { flex: 1; min-width: 0; min-height: 44px; }
-/* CopyChartDialog's three buttons (vs. ConfirmDialog's two) wrap on the narrow shared-tablet
-   width instead of overflowing the fixed 420px modal. */
-.modal-actions-copy { flex-wrap: wrap; }
 .close-button { position: absolute; top: var(--space-3); inset-inline-end: var(--space-4); border: 0; background: transparent; color: var(--text-muted); font-size: 24px; line-height: 1; padding: 4px; border-radius: var(--radius-sm); }
 .close-button:hover { background: var(--surface-alt); color: var(--text); }
 @keyframes fade-in { from { opacity: 0; } }
