@@ -20,6 +20,7 @@ import AdminAuditScreen from './screens/AdminAuditScreen.jsx'
 import AdminErrorsScreen from './screens/AdminErrorsScreen.jsx'
 import PillsScreen from './screens/PillsScreen.jsx'
 import OrderScreen from './screens/OrderScreen.jsx'
+import ReceiptsScreen from './screens/ReceiptsScreen.jsx'
 import MeropenemScreen from './screens/MeropenemScreen.jsx'
 import MeropenemOrderScreen from './screens/MeropenemOrderScreen.jsx'
 import InteractionsScreen from './screens/InteractionsScreen.jsx'
@@ -33,7 +34,7 @@ import useAnnouncements from './hooks/useAnnouncements.js'
 import useDashboardData from './hooks/useDashboardData.js'
 import useWardNote from './hooks/useWardNote.js'
 import useExtraPills from './hooks/useExtraPills.js'
-import { useOrder, useMeropenemOrder, useCourseForms, useInteractions } from './hooks/useWardViews.js'
+import { useOrder, useMeropenemOrder, useCourseForms, useInteractions, useReceipts } from './hooks/useWardViews.js'
 import { syncPushSubscription } from './push.js'
 import ExtraPillsScreen from './screens/ExtraPillsScreen.jsx'
 import FloorPickerScreen from './screens/FloorPickerScreen.jsx'
@@ -1319,6 +1320,7 @@ function App() {
     else if (adminView === 'errors') screen = 'الأخطاء'
     else if (selected?.mode === 'pills') screen = `الحبوب — ${ward}`
     else if (selected?.mode === 'order') screen = `الطلبية — ${ward}`
+    else if (selected?.mode === 'receipts') screen = `متابعة الاستلام — ${ward}`
     else if (selected?.mode === 'meropenem-order') screen = `طلبية الميرونيم — ${ward}`
     else if (selected?.mode === 'meropenem') screen = `متابعة الميروبينيم — ${ward}`
     else if (selected?.mode === 'antibiotics') screen = `متابعة المضادات الحيوية — ${ward}`
@@ -1928,6 +1930,7 @@ function App() {
     return () => clearInterval(timer)
   }, [isLoggedIn, isOnline, userId, askConfirm, refreshCourseForms])
   const { interactionsData, interactionsLoading, interactionsError } = useInteractions({ selected, selectedDate, isExpired })
+  const { receiptsData, receiptsLoading, receiptsError, receiptSaveError, savingRows, setReceived } = useReceipts({ selected, selectedDate, isExpired })
 
   const { extraPillsForms, extraPillsLoading, extraPillsError, extraPillsBusy, extraPillsActionError, createExtraPillForm, saveExtraPillForm, deleteExtraPillForm } = useExtraPills({ selected, isOnline, isExpired, userId, askConfirm, setEditedAt })
 
@@ -2164,6 +2167,7 @@ function App() {
   if (selected && selected.mode === 'antibiotics') return <MeropenemScreen header={appHeader} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={meropenemLoading} drugs={meropenemData?.drugs || []} loadError={meropenemError} onEditDay={saveCourseDay} onPrint={() => window.print()} />
   if (selected && selected.mode === 'meropenem') return <MeropenemScreen header={appHeader} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={meropenemLoading} data={meropenemData} loadError={meropenemError} onEditDay={saveCourseDay} onPrint={() => window.print()} />
   if (selected && selected.mode === 'interactions') return <InteractionsScreen header={appHeader} wardLabel={wardLabel} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={interactionsLoading} data={interactionsData} loadError={interactionsError} onPrint={() => window.print()} />
+  if (selected && selected.mode === 'receipts') return <ReceiptsScreen header={appHeader} wardLabel={wardLabel} roomLabel={/\bccu\b/i.test(selected.ward || '') ? 'رقم السرير' : 'رقم الغرفة'} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={receiptsLoading} patients={receiptsData} loadError={receiptsError} saveError={receiptSaveError} savingRows={savingRows} onSetReceived={setReceived} />
   if (selected && selected.mode === 'order') return <OrderScreen header={appHeader} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={orderLoading} data={orderData} loadError={orderError} onPrint={() => window.print()} />
   if (selected && selected.mode === 'extra-pills') return <ExtraPillsScreen header={appHeader} catalogue={adminMedicines} floorLabel={wardLabel} today={today} editTime={editTime} onBack={() => setSelected(null)} loading={extraPillsLoading} loadError={extraPillsError} forms={extraPillsForms} busy={extraPillsBusy} actionError={extraPillsActionError} onCreate={createExtraPillForm} onSave={saveExtraPillForm} onRemove={deleteExtraPillForm} confirmModal={confirmModal} />
   if (selected && selected.mode === 'pills') return <PillsScreen header={appHeader} wardLabel={wardLabel} roomLabel={/\bccu\b/i.test(selected.ward || '') ? 'رقم السرير' : 'رقم الغرفة'} today={today} editTime={editTime} onBack={() => { flushPills(); setSelected(null) }} selectedDate={selectedDate} onChangeDate={(nextDate) => { flushPills(); setSelectedDate(nextDate) }} pillsLoading={pillsLoading} pillsData={pillsData} pillsSaveStatus={pillsSaveStatus} pillsLoadError={pillsLoadError} pillEntries={pillEntries} setPillEntries={setPillEntries} pillRooms={pillRooms} setPillRooms={setPillRooms} pillSelection={pillSelection} onTogglePatient={togglePillPatient} onSetPillSelection={setPillSelection} pillsYesterday={pillsYesterday} isOnline={isOnline} catalogue={adminMedicines} englishOnly={/\bccu\b/i.test(selected.ward || '')} confirmModal={confirmModal} pillsClashNote={pillsClashNote} onDismissPillsClashNote={() => setPillsClashNote(null)} />

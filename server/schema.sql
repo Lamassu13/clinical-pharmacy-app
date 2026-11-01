@@ -343,6 +343,21 @@ CREATE TABLE IF NOT EXISTS ward_notes (
   PRIMARY KEY (ward_key, note_date)
 );
 
+-- «متابعة الاستلام»: whether a patient on a chart received the day's doses (true) or missed them
+-- (false); no row = not marked yet. Keyed by the patient's name + ID on that chart, not the row
+-- number: rows renumber (a deleted row, a name typed over, a copy onto an existing day), and a
+-- mark that no longer finds its patient must read as unmarked, never land on someone else.
+-- The chart purge cascades to it.
+CREATE TABLE IF NOT EXISTS dose_receipts (
+  chart_id BIGINT NOT NULL REFERENCES daily_charts(id) ON DELETE CASCADE,
+  patient_name TEXT NOT NULL,
+  patient_id TEXT NOT NULL,
+  received BOOLEAN NOT NULL,
+  updated_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (chart_id, patient_name, patient_id)
+);
+
 -- Web push. One row per browser/device a signed-in user turned notifications on for. `sid` ties
 -- it to the login session that registered it: a push is sent only while that session is still
 -- alive, so a shared ward iPad stops delivering the previous person's alerts the moment they sign

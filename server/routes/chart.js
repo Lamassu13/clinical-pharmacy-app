@@ -188,6 +188,54 @@ router.put('/ward-note', requireAuth, async (request, response) => {
   response.json({ note: { date: location.chartDate, body, by: request.session.user.fullName || '', at: new Date().toISOString() } })
 })
 
+// «متابعة الاستلام»: the day's named patients on the ward's main chart (the extra chart is left
+// out) with their room, each with received true / false, or null while nobody has marked them. A mark is matched by name + ID, so
+// one left behind by a renumbered or retyped row reads as unmarked.
+router.get('/receipts', requireAuth, async (request, response) => {
+  const location = readLocation(request.query, request.session.user)
+  if (location.status) return response.status(location.status).json({ message: location.message })
+  const result = await query(
+    `/* receipts: list */ SELECT cp.row_number, btrim(cp.patient_name) AS name, cp.patient_id, pm.room_number, dr.received
+     FROM daily_charts dc
+     JOIN wards w ON w.id = dc.ward_id
+     JOIN chart_patients cp ON cp.chart_id = dc.id AND btrim(cp.patient_name) <> ''
+     LEFT JOIN pill_patient_meta pm ON pm.chart_id = dc.id AND pm.patient_row_number = cp.row_number
+     LEFT JOIN dose_receipts dr ON dr.chart_id = dc.id AND dr.patient_name = btrim(cp.patient_name) AND dr.patient_id = cp.patient_id
+     WHERE w.floor_number IS NOT DISTINCT FROM $1 AND w.name = $2 AND dc.chart_date = $3 AND dc.slot = 'main'
+     ORDER BY cp.row_number`,
+    [location.floor, location.wardName, location.chartDate],
+  )
+  response.json({ patients: result.rows.map((row) => ({ rowNumber: row.row_number, name: row.name, patientId: row.patient_id, room: row.room_number || '', received: row.received })) })
+})
+
+// Mark one main-chart patient: received true / false, or null to clear. `name` and `patientId` are as GET
+// returned them. 409 when that patient is no longer on the chart (renamed, removed) — reload.
+router.put('/receipts', requireAuth, async (request, response) => {
+  const location = readLocation(request.body, request.session.user)
+  if (location.status) return response.status(location.status).json({ message: location.message })
+  // Compared exactly as GET sent it (btrim: spaces only). A JS trim would also strip a pasted tab
+  // or NBSP, and that patient could then never be matched.
+  const name = cleanText(request.body.name, 200)
+  const patientId = String(request.body.patientId ?? '').replace(/\D/g, '').slice(0, 20)
+  if (!name.trim()) return response.status(400).json({ message: 'اسم المريض مطلوب' })
+  const { received } = request.body
+  if (received !== true && received !== false && received !== null) return response.status(400).json({ message: 'حالة الاستلام غير صالحة' })
+  const chartId = await resolveChartId(location.floor, location.wardName, location.chartDate, 'main')
+  if (!chartId) return response.status(404).json({ message: 'لا يوجد جارت لهذا اليوم' })
+  if (received === null) {
+    await query('/* receipts: clear */ DELETE FROM dose_receipts WHERE chart_id = $1 AND patient_name = $2 AND patient_id = $3', [chartId, name, patientId])
+    return response.json({ ok: true })
+  }
+  const saved = await query(
+    `/* receipts: mark */ INSERT INTO dose_receipts (chart_id, patient_name, patient_id, received, updated_by)
+     SELECT $1, $2, $3, $4, $5 WHERE EXISTS (SELECT 1 FROM chart_patients WHERE chart_id = $1 AND btrim(patient_name) = $2 AND patient_id = $3)
+     ON CONFLICT (chart_id, patient_name, patient_id) DO UPDATE SET received = EXCLUDED.received, updated_by = EXCLUDED.updated_by, updated_at = NOW()`,
+    [chartId, name, patientId, received, request.session.user.id],
+  )
+  if (!saved.rowCount) return response.status(409).json({ message: 'تغيّر الجارت — حدّث الصفحة', conflict: true })
+  response.json({ ok: true })
+})
+
 // One consistent view for a multi-query read. The queries of a chart GET used to run on separate
 // pooled connections, so a save committing between them returned old names beside new quantities.
 // REPEATABLE READ pins every query to one snapshot.
