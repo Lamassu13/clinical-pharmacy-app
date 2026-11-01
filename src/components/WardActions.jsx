@@ -21,6 +21,7 @@ const GROUPS = [
   { id: 'clinical', label: 'المتابعة السريرية', items: [
     { label: 'متابعة الميروبينيم', icon: 'vial', open: { mode: 'meropenem' } },
     { label: 'متابعة المضادات الحيوية', icon: 'calendar', open: { mode: 'antibiotics' } },
+    { label: 'متابعة الاستلام', icon: 'receipt', open: { mode: 'receipts' } },
     { label: 'التداخلات الدوائية', icon: 'overlap', open: { mode: 'interactions' } },
     { label: 'تعديل الجرعة الكلوية', icon: 'kidney', open: { mode: 'renal' } },
   ] },
@@ -32,6 +33,7 @@ const ICONS = {
   'sheet-plus': <><rect x="4.5" y="3.5" width="15" height="17" rx="2" {...TINT} /><rect x="4.5" y="3.5" width="15" height="17" rx="2" /><path d="M8 8.5h8M8 12h4M15.5 13.5v5M13 16h5" /></>,
   pill: <><rect x="3" y="8.5" width="18" height="7" rx="3.5" transform="rotate(-35 12 12)" {...TINT} /><rect x="3" y="8.5" width="18" height="7" rx="3.5" transform="rotate(-35 12 12)" /><path d="M9.7 8.7l4.6 6.6" /></>,
   clipboard: <><rect x="5" y="4.5" width="14" height="16" rx="2" {...TINT} /><rect x="5" y="4.5" width="14" height="16" rx="2" /><path d="M9 4.5V3.5h6v1M8.5 10h7M8.5 13.5h7M8.5 17h4" /></>,
+  receipt: <><rect x="5" y="4.5" width="14" height="16" rx="2" {...TINT} /><rect x="5" y="4.5" width="14" height="16" rx="2" /><path d="M9 4.5V3.5h6v1M8.5 13l2.5 2.5 4.5-5" /></>,
   'pill-sheet': <><rect x="4.5" y="3.5" width="15" height="17" rx="2" {...TINT} /><rect x="4.5" y="3.5" width="15" height="17" rx="2" /><rect x="8" y="10" width="8" height="4" rx="2" /><path d="M12 10v4M8 6.5h8M8 17h5" /></>,
   vial: <><path d="M9 3.5h6M10 3.5v3l-1.5 2.5v9.5a2 2 0 0 0 2 2h3a2 2 0 0 0 2-2V9L14 6.5v-3" /><path d="M8.5 12.5h7v6a2 2 0 0 1-2 2h-3a2 2 0 0 1-2-2z" {...TINT} /><path d="M8.5 12.5h7" /></>,
   calendar: <><rect x="3.5" y="5" width="17" height="15.5" rx="2" {...TINT} /><rect x="3.5" y="5" width="17" height="15.5" rx="2" /><path d="M3.5 9.5h17M8 3v4M16 3v4M7.5 13.5h2M11 13.5h2M14.5 13.5h2M7.5 17h2M11 17h2" /></>,

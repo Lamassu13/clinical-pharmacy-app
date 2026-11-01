@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { apiUrl } from '../constants.js'
 import { interactionsForChart, parseChartRows } from '../helpers.js'
 import { INTERACTION_RULES } from '../interactions.js'
@@ -134,4 +134,68 @@ export function useInteractions({ selected, selectedDate, isExpired }) {
     return () => { cancelled = true }
   }, [selected, selectedDate, isExpired])
   return { interactionsData, interactionsLoading, interactionsError }
+}
+
+// «متابعة الاستلام»: the day's charted patients and whether each received their doses. A mark is
+// shown at once and sent on its own; a failed send puts the old mark back and says so. Main chart
+// only. A patient is their name + ID, which is what the server keys the mark by.
+export const receiptKey = (patient) => `${patient.name}|${patient.patientId}`
+export function useReceipts({ selected, selectedDate, isExpired }) {
+  const [receiptsData, setReceiptsData] = useState(null)
+  const [receiptsLoading, setReceiptsLoading] = useState(false)
+  const [receiptsError, setReceiptsError] = useState(false)
+  const [receiptSaveError, setReceiptSaveError] = useState('')
+  const [savingRows, setSavingRows] = useState(() => new Set())
+  const [receiptsNonce, setReceiptsNonce] = useState(0)
+  useEffect(() => {
+    if (!selected || selected.mode !== 'receipts') return undefined
+    let cancelled = false
+    setReceiptsLoading(true)
+    setReceiptsError(false)
+    const params = new URLSearchParams({ floor: selected.floor || '', ward: selected.ward, date: selectedDate })
+    fetch(`${apiUrl}/receipts?${params}`, { credentials: 'include' })
+      .then((response) => { isExpired(response); return response.ok ? response.json() : null })
+      .then((result) => {
+        if (cancelled) return
+        setReceiptsData(result ? result.patients : null)
+        setReceiptsError(!result)
+        setReceiptsLoading(false)
+      })
+      .catch(() => { if (!cancelled) { setReceiptsError(true); setReceiptsLoading(false) } })
+    return () => { cancelled = true }
+  }, [selected, selectedDate, isExpired, receiptsNonce])
+  // Which ward/day is on screen now: a reply that lands after a date change must not touch that list.
+  const viewRef = useRef('')
+  useEffect(() => { setReceiptSaveError(''); viewRef.current = `${selected?.floor}|${selected?.ward}|${selectedDate}` }, [selected, selectedDate])
+
+  const setReceived = useCallback(async (patient, received) => {
+    const key = receiptKey(patient)
+    const view = `${selected.floor}|${selected.ward}|${selectedDate}`
+    const put = (value) => setReceiptsData((current) => current && current.map((item) => (receiptKey(item) === key ? { ...item, received: value } : item)))
+    put(received)
+    setReceiptSaveError('')
+    setSavingRows((current) => new Set(current).add(key))
+    try {
+      const response = await fetch(`${apiUrl}/receipts`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({ floor: selected.floor || '', ward: selected.ward, date: selectedDate, name: patient.name, patientId: patient.patientId, received }),
+      })
+      if (viewRef.current !== view) return
+      if (response.status === 409 || response.status === 404) {
+        // The chart was edited since this list loaded (patient renamed or removed, chart deleted):
+        // show it as it is now.
+        setReceiptSaveError('تغيّر الجارت منذ فتح القائمة — أُعيد تحميلها، حدّد مجددًا.')
+        setReceiptsNonce((value) => value + 1)
+        return
+      }
+      if (isExpired(response) || !response.ok) throw new Error('save failed')
+    } catch {
+      if (viewRef.current !== view) return
+      put(patient.received)
+      setReceiptSaveError('لم يُحفظ آخر تحديد — تحقّق من الاتصال وأعِد الضغط.')
+    } finally {
+      setSavingRows((current) => { const next = new Set(current); next.delete(key); return next })
+    }
+  }, [selected, selectedDate, isExpired])
+  return { receiptsData, receiptsLoading, receiptsError, receiptSaveError, savingRows, setReceived }
 }
