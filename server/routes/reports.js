@@ -4,6 +4,7 @@ import { dddLine, antibioticOf } from '../ddd.js'
 import { antibioticNames, longCourses } from './chart.js'
 import { requireManager } from '../auth.js'
 import { MAX_BRIDGE_DAYS } from '../dashboard-bridge.js'
+import { LOOKBACK_DAYS } from '../meropenem.js'
 import { ALLOWED_FLOORS, FLOOR_WARDS, SPECIAL_WARDS, SUPPLY_MATCH, SUPPLY_EXCEPT, isIsoDate } from '../validation.js'
 
 const router = express.Router()
@@ -54,6 +55,9 @@ router.get('/reports', requireManager, async (request, response) => {
   const previousFrom = toIso(toDay(from) - days)
   const previousTo = toIso(toDay(from) - 1)
   const params = [previousFrom, to, scope.value, SUPPLY_MATCH, SUPPLY_EXCEPT]
+  // Antibiotic courses reach further back (as far as the follow-up forms look), so a course already
+  // running on `from` keeps its real length; the charted days come from as far, for the bridging rule.
+  const courseFrom = toIso(Math.min(toDay(previousFrom), toDay(from) - LOOKBACK_DAYS))
 
   const antibioticList = [...new Set((await antibioticNames()).map((name) => name.toLowerCase()))]
   const [patientRows, consumptionRows, chartRows, extraFormRows, antibioticRows, longCourseBody, staffRows, weeklyRows] = await Promise.all([
@@ -87,8 +91,8 @@ router.get('/reports', requireManager, async (request, response) => {
        GROUP BY 1, 2, 3`,
       [...params, previousTo],
     ),
-    // "Charted": a patient (by name or by ID alone) and a quantity. From the start of the fetched
-    // window, so a return whose absence began before the range can be checked.
+    // "Charted": a patient (by name or by ID alone) and a quantity. From the start of the course
+    // window, so a return whose absence began before the range — or a course — can be checked.
     query(
       `SELECT w.floor_number AS floor, w.name AS ward, dc.chart_date::text AS date, dc.slot,
               dc.completed_at IS NOT NULL AS completed,
@@ -97,7 +101,7 @@ router.get('/reports', requireManager, async (request, response) => {
        FROM daily_charts dc
        JOIN wards w ON w.id = dc.ward_id
        WHERE dc.chart_date BETWEEN $1::date AND $2::date AND ${scope.sql}`,
-      [previousFrom, to, scope.value],
+      [courseFrom, to, scope.value],
     ),
     // extra_pill_forms carries its own floor/ward (no wards row), so it's filtered directly. Its
     // timestamp is bucketed by the hospital's day (Baghdad, UTC+3), not the database's UTC one,
@@ -110,7 +114,7 @@ router.get('/reports', requireManager, async (request, response) => {
        GROUP BY 1, 2`,
       [from, to, scope.value],
     ),
-    // Antibiotic cells per patient per day, for the stewardship tables below.
+    // Antibiotic cells per patient per day, for the stewardship tables below — from courseFrom.
     antibioticList.length ? query(
       `SELECT w.floor_number AS floor, w.name AS ward, dc.chart_date::text AS date, ${PATIENT_SQL} AS patient, cp.patient_id,
               COALESCE(m.name, cc.custom_name) AS name
@@ -125,7 +129,7 @@ router.get('/reports', requireManager, async (request, response) => {
          AND lower(COALESCE(m.name, cc.custom_name)) = ANY($4::text[])
        GROUP BY 1, 2, 3, 4, 5, 6
        ORDER BY 3`,
-      [from, to, scope.value, antibioticList],
+      [courseFrom, to, scope.value, antibioticList],
     ) : { rows: [] },
     longCourses(to),
     // Who did what, per user, on the charts dated in the range (main and extra). There is no
@@ -394,14 +398,17 @@ router.get('/reports', requireManager, async (request, response) => {
   const awareOf = new Map()
   const awareFor = (name) => { if (!awareOf.has(name)) awareOf.set(name, dddLine(name, 1)?.aware || null); return awareOf.get(name) }
   const antibioticPatients = new Map() // `${wardKey}|${patient}` -> { floor, ward, patient, days: Map(date -> Set(drug label)), reserve: Map(drug label -> Set(date)) }
+  const antibacterial = new Map() // drug label -> false for an antifungal
   antibioticRows.rows.forEach((row) => {
     const patient = patientKeyOf(row)
     const key = `${wardKey(row.floor, row.ward)}|${patient}`
     const entry = antibioticPatients.get(key) || { floor: row.floor, ward: row.ward, ...labelOf(patient), days: new Map(), reserve: new Map() }
-    const drug = antibioticOf(row.name).label
+    const { label: drug, antibacterial: isAntibacterial } = antibioticOf(row.name)
+    antibacterial.set(drug, isAntibacterial)
     if (!entry.days.has(row.date)) entry.days.set(row.date, new Set())
     entry.days.get(row.date).add(drug)
-    if (awareFor(row.name) === 'Reserve') {
+    // The days before `from` are only there for course lengths; every other table is the range's.
+    if (inRange(row.date) && awareFor(row.name) === 'Reserve') {
       if (!entry.reserve.has(drug)) entry.reserve.set(drug, new Set())
       entry.reserve.get(drug).add(row.date)
     }
@@ -410,11 +417,12 @@ router.get('/reports', requireManager, async (request, response) => {
   const multiple = []
   const reserve = []
   antibioticPatients.forEach(({ days: byDay, reserve: reserveDrugs, ...who }) => {
-    const crowded = [...byDay.values()].filter((drugs) => drugs.size > 2)
+    const crowded = [...byDay].filter(([date, drugs]) => inRange(date) && drugs.size > 2).map(([, drugs]) => drugs)
     if (crowded.length) multiple.push({ ...who, maxConcurrent: Math.max(...crowded.map((drugs) => drugs.size)), days: crowded.length, drugs: [...new Set(crowded.flatMap((drugs) => [...drugs]))].sort() })
     reserveDrugs.forEach((dates, drug) => reserve.push({ ...who, drug, days: dates.size }))
   })
-  // Courses: per patient per drug, runs of consecutive days. A run that began before the range is cut at `from`.
+  // Courses: per patient per drug, runs of consecutive days. Only runs still going on or after `from`
+  // count, each at its full length (from courseFrom at the earliest).
   const courseDays = new Map() // drug -> Map(entryKey -> sorted day numbers)
   const courseOwner = new Map()
   antibioticPatients.forEach((entry, key) => entry.days.forEach((drugs, date) => drugs.forEach((drug) => {
@@ -425,35 +433,57 @@ router.get('/reports', requireManager, async (request, response) => {
   })))
   const courseStats = []
   const restarts = []
+  const longRuns = [] // every antibacterial course longer than the threshold, ended or not
+  const lastKnownOf = new Map() // wardKey -> the ward's latest charted day up to `to`
   courseDays.forEach((patients, drug) => {
     const lengths = []
     patients.forEach((dayList, key) => {
       const { floor, ward, patient, patientId } = courseOwner.get(key)
       const known = knownByWard.get(wardKey(floor, ward)) || new Set()
+      if (!lastKnownOf.has(wardKey(floor, ward))) lastKnownOf.set(wardKey(floor, ward), Math.max(...[...known].filter((day) => day <= toDay(to))))
       // Same course across a gap of uncharted days only (Friday), as the follow-up forms count it.
       const bridged = (last, day) => { for (let gap = last + 1; gap < day; gap += 1) if (known.has(gap)) return false; return day - last - 1 <= MAX_BRIDGE_DAYS }
       dayList.sort((a, b) => a - b)
       const runs = []
       dayList.forEach((day, i) => { if (i && bridged(dayList[i - 1], day)) runs[runs.length - 1][1] = day; else runs.push([day, day]) })
-      runs.forEach(([start, end]) => lengths.push(end - start + 1))
+      runs.forEach(([start, end]) => {
+        if (end < toDay(from)) return
+        const length = end - start + 1
+        lengths.push(length)
+        if (length > longCourseBody.threshold && antibacterial.get(drug)) {
+          longRuns.push({ floor, ward, patient, patientId, drug, from: toIso(start), to: toIso(end), days: length, ongoing: end === lastKnownOf.get(wardKey(floor, ward)) })
+        }
+      })
       runs.slice(1).forEach(([start], i) => {
         const gap = start - runs[i][1] - 1
-        if (gap <= RESTART_DAYS) restarts.push({ floor, ward, patient, patientId, drug, stoppedOn: toIso(runs[i][1]), restartedOn: toIso(start), gap })
+        if (start >= toDay(from) && gap <= RESTART_DAYS) restarts.push({ floor, ward, patient, patientId, drug, stoppedOn: toIso(runs[i][1]), restartedOn: toIso(start), gap })
       })
     })
+    if (!lengths.length) return // only courses that ended before the range
     courseStats.push({ drug, courses: lengths.length, average: round1(lengths.reduce((a, b) => a + b, 0) / lengths.length), median: median(lengths), max: Math.max(...lengths), long: lengths.filter((length) => length > longCourseBody.threshold).length })
   })
   courseStats.sort((a, b) => b.courses - a.courses || a.drug.localeCompare(b.drug))
   restarts.sort((a, b) => a.gap - b.gap || a.patient.localeCompare(b.patient, 'ar'))
+  longRuns.sort((a, b) => b.days - a.days || a.patient.localeCompare(b.patient, 'ar') || a.drug.localeCompare(b.drug))
 
-  // DDD per 100 patient-days for each ward.
-  const antibioticByWard = wards.map((ward) => {
-    const lines = consumptionRows.rows.filter((row) => row.name && !row.is_supply && row.floor === ward.floor && row.ward === ward.ward)
+  // DDD per 100 patient-days, and each AWaRe group's share of the DDDs, over a set of wards.
+  const antibioticSummary = (group) => {
+    const inGroup = (row) => group.some((ward) => row.floor === ward.floor && row.ward === ward.ward)
+    const lines = consumptionRows.rows.filter((row) => row.name && !row.is_supply && inGroup(row))
       .map((row) => dddLine(row.name, row.quantity)).filter((line) => line?.ddds !== undefined)
     const ddds = lines.reduce((total, line) => total + line.ddds, 0)
-    const share = (group) => (ddds ? Math.round((lines.filter((line) => line.aware === group).reduce((total, line) => total + line.ddds, 0) / ddds) * 100) : null)
-    return { floor: ward.floor, ward: ward.ward, patientDays: ward.patientDays, ddds: round1(ddds), dddPer100: ward.patientDays ? Math.round((ddds / ward.patientDays) * 1000) / 10 : null, aware: { Access: share('Access'), Watch: share('Watch'), Reserve: share('Reserve') } }
-  }).filter((row) => row.ddds > 0).sort((a, b) => (b.dddPer100 ?? -1) - (a.dddPer100 ?? -1))
+    const patientDaysIn = group.reduce((total, ward) => total + ward.patientDays, 0)
+    const share = (aware) => (ddds ? Math.round((lines.filter((line) => line.aware === aware).reduce((total, line) => total + line.ddds, 0) / ddds) * 100) : null)
+    return { patientDays: patientDaysIn, ddds: round1(ddds), dddPer100: patientDaysIn ? Math.round((ddds / patientDaysIn) * 1000) / 10 : null, aware: { Access: share('Access'), Watch: share('Watch'), Reserve: share('Reserve') } }
+  }
+  const byDddPer100 = (a, b) => (b.dddPer100 ?? -1) - (a.dddPer100 ?? -1)
+  const antibioticByWard = wards.map((ward) => ({ floor: ward.floor, ward: ward.ward, ...antibioticSummary([ward]) }))
+    .filter((row) => row.ddds > 0).sort(byDddPer100)
+  // The same per floor: a numbered floor's wards together, each special ward on its own.
+  const wardsByFloor = new Map()
+  wards.forEach((ward) => wardsByFloor.set(ward.floor ?? ward.ward, [...(wardsByFloor.get(ward.floor ?? ward.ward) || []), ward]))
+  const antibioticByFloor = [...wardsByFloor.values()].map((group) => ({ floor: group[0].floor, ward: group[0].floor === null ? group[0].ward : null, ...antibioticSummary(group) }))
+    .filter((row) => row.ddds > 0).sort(byDddPer100)
 
   const byName = (a, b) => a.patient.localeCompare(b.patient, 'ar')
   multiple.sort((a, b) => b.maxConcurrent - a.maxConcurrent || b.days - a.days || byName(a, b))
@@ -475,7 +505,8 @@ router.get('/reports', requireManager, async (request, response) => {
     notCounted: antibioticLines.filter((line) => line.ddds === undefined).map(({ name, quantity, reason }) => ({ name, quantity, reason })),
     totalDdds: Math.round(totalDdds * 10) / 10,
     dddPer100: per100(totalDdds),
-    longCourseDays: longCourseBody.threshold, longCourses: longCoursePatients, multiple, reserve, courseStats, restarts, restartDays: RESTART_DAYS, byWard: antibioticByWard,
+    longCourseDays: longCourseBody.threshold, longCourses: longCoursePatients, longRuns, multiple, reserve, courseStats, restarts, restartDays: RESTART_DAYS,
+    byWard: antibioticByWard, byFloor: antibioticByFloor,
     aware: Object.fromEntries(['Access', 'Watch', 'Reserve'].map((group) => [group,
       totalDdds ? Math.round((counted.filter((line) => line.aware === group).reduce((total, line) => total + line.ddds, 0) / totalDdds) * 100) : null])),
   }

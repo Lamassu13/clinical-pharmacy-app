@@ -233,3 +233,37 @@ test('GET /api/reports: no chart on Friday — stays, courses, admissions and re
   const ids = (await admin.get('/api/reports?scope=5&from=2026-09-22&to=2026-09-24')).body.wards.find((row) => row.ward === 'ردهة النساء')
   assert.deepEqual([ids.chartedDays, ids.missedDates, ids.patientDays], [3, [], 3])
 })
+
+test('GET /api/reports: antibiotics per floor, and every antibacterial course over 14 days in the range', async () => {
+  const admin = await loginAs({ role: 'admin' })
+  await pool.query('INSERT INTO medicines (name) SELECT unnest($1::text[])', [['Meronem 1000gm Vial', 'Fluconazole 200mg Tab', 'Ceftriaxone 1gm Vial']])
+  const mero = { 'Meronem 1000gm Vial': 3 }
+  const aspirin = { 'Aspirin 100mg Tab': 1 }
+  for (let day = 1; day <= 30; day += 1) {
+    const date = `2026-08-${String(day).padStart(2, '0')}`
+    await saveChart(admin, 2, date, [
+      { name: 'أحمد', meds: day <= 20 ? mero : aspirin }, // 08-01 → 08-20, began before the range, then charted without it
+      { name: 'باسم', meds: day >= 12 ? mero : aspirin }, // 08-12 → 08-30, still on it
+      { name: 'جاسم', meds: day >= 5 && day <= 24 ? { 'Fluconazole 200mg Tab': 1 } : aspirin }, // 20 days, but an antifungal
+      { name: 'داود', meds: day >= 15 && day <= 24 ? { 'Ceftriaxone 1gm Vial': 1 } : aspirin }, // 10 days only
+    ])
+    if (day >= 10) await saveChart(admin, 2, date, [{ name: 'هاني', meds: mero }], 'ردهة النساء') // 21 days, another ward
+  }
+  const { antibiotics } = (await admin.get('/api/reports?scope=all&from=2026-08-10&to=2026-08-30')).body
+
+  assert.deepEqual(antibiotics.longRuns.map((row) => [row.patient, row.ward, row.drug, row.from, row.to, row.days, row.ongoing]), [
+    ['هاني', 'ردهة النساء', 'Meropenem', '2026-08-10', '2026-08-30', 21, true],
+    ['أحمد', WARD, 'Meropenem', '2026-08-01', '2026-08-20', 20, false],
+    ['باسم', WARD, 'Meropenem', '2026-08-12', '2026-08-30', 19, true],
+  ])
+  // The course table counts the same full lengths (the antifungal too — it is only left off the list).
+  assert.deepEqual(antibiotics.courseStats.filter((row) => row.long).map((row) => [row.drug, row.courses, row.max, row.long]), [['Fluconazole', 1, 20, 1], ['Meropenem', 3, 21, 3]].sort((a, b) => b[1] - a[1]))
+
+  const floor2 = antibiotics.byFloor.filter((row) => row.floor === 2)
+  const wards2 = antibiotics.byWard.filter((row) => row.floor === 2)
+  assert.equal(floor2.length, 1)
+  assert.equal(wards2.length, 2)
+  assert.equal(floor2[0].patientDays, wards2[0].patientDays + wards2[1].patientDays)
+  assert.ok(Math.abs(floor2[0].ddds - (wards2[0].ddds + wards2[1].ddds)) <= 0.1)
+  assert.equal(floor2[0].dddPer100, Math.round((floor2[0].ddds / floor2[0].patientDays) * 1000) / 10)
+})

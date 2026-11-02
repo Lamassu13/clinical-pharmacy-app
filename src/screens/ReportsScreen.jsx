@@ -1,5 +1,7 @@
 import { useState } from 'react'
+import { flushSync } from 'react-dom'
 import hospitalLogo from '../assets/hospital-logo.png'
+import { Glyph } from '../components/ToolbarIcons.jsx'
 import { apiUrl, floors, specialWards } from '../constants.js'
 import { isoDate } from '../helpers.js'
 
@@ -17,7 +19,7 @@ const orDash = (value) => (value === null || value === undefined ? '—' : value
 
 // The report's parts, in the order they appear. Ticking only some hides the rest on screen and on
 // the printout. It's display-only — the request is the same — so changing it after «عرض التقرير»
-// takes effect at once, with no new request.
+// takes effect at once, with no new request. Each part also prints on its own (its «طباعة»).
 const SECTIONS = [
   { key: 'figures', label: 'الأرقام الرئيسية' },
   { key: 'longStays', label: 'الإقامة الطويلة' },
@@ -27,9 +29,11 @@ const SECTIONS = [
   { key: 'consumption', label: 'استهلاك الأدوية' },
   { key: 'ddd', label: 'استهلاك المضادات (DDD)' },
   { key: 'longCourses', label: 'كورسات المضادات الطويلة' },
+  { key: 'longRuns', label: 'مضاد بكتيري أكثر من 14 يومًا' },
   { key: 'multiple', label: 'أكثر من مضاد في اليوم' },
   { key: 'courses', label: 'مدة كورسات المضادات' },
   { key: 'restarts', label: 'إعادة المضاد نفسه' },
+  { key: 'antibioticFloors', label: 'المضادات حسب الطابق' },
   { key: 'antibioticWards', label: 'المضادات حسب الردهة' },
   { key: 'reserve', label: 'مضادات Reserve' },
 ]
@@ -53,10 +57,14 @@ function Delta({ now, before }) {
   )
 }
 
-function Section({ title, note, children }) {
+// One part of the report, with its own «طباعة»: that prints the letterhead and this part only.
+function Section({ title, note, children, printKey, printOnly, onPrint, disabled }) {
   return (
-    <section className="report-section">
-      <h2>{title}</h2>
+    <section className={printKey === printOnly ? 'report-section is-print-target' : 'report-section'}>
+      <div className="report-section-head">
+        <h2>{title}</h2>
+        {onPrint && <button type="button" className="secondary-button compact report-print-one" disabled={disabled} onClick={() => onPrint(printKey)}><Glyph icon="print" />طباعة</button>}
+      </div>
       {note && <p className="report-note">{note}</p>}
       {children}
     </section>
@@ -91,6 +99,11 @@ export default function ReportsScreen({ adminHeader, isExpired }) {
   const toggle = toggleIn(setSelected)
   const [sections, setSections] = useState(allSections)
   const toggleSection = toggleIn(setSections)
+  // Which part a section's «طباعة» asked for (null: every ticked part). Print-only CSS does the
+  // hiding, so the screen never changes; it's set before window.print() rather than cleared on
+  // afterprint, which iPad Safari fires unreliably — the main print button sets it back to null.
+  const [printOnly, setPrintOnly] = useState(null)
+  const print = (key) => { flushSync(() => setPrintOnly(key)); window.print() }
   const [from, setFrom] = useState(() => isoDate(new Date(Date.now() - 29 * DAY_MS)))
   const [to, setTo] = useState(today)
   const [report, setReport] = useState(null)
@@ -114,6 +127,7 @@ export default function ReportsScreen({ adminHeader, isExpired }) {
       const result = await response.json()
       if (!response.ok) throw new Error(result.message)
       setReport({ ...result, scope })
+      setPrintOnly(null)
     } catch (caught) {
       setError(caught.message || 'تعذّر إنشاء التقرير — تحقّق من الاتصال وحاول مرة أخرى.')
     } finally { setLoading(false) }
@@ -137,7 +151,7 @@ export default function ReportsScreen({ adminHeader, isExpired }) {
       <label>إلى تاريخ<input type="date" value={to} min={from} max={today} onChange={(event) => setTo(event.target.value)} /></label>
       <div className="reports-controls-actions">
         <button type="submit" className="primary-button" disabled={Boolean(rangeProblem) || !selected.length || loading}>{loading ? 'جارٍ إنشاء التقرير…' : 'عرض التقرير'}</button>
-        <button type="button" className="secondary-button" disabled={!report || loading || !sections.length} onClick={() => window.print()}>طباعة / PDF</button>
+        <button type="button" className="secondary-button" disabled={!report || loading || !sections.length} onClick={() => print(null)}>طباعة / PDF</button>
       </div>
       {!selected.length && <p className="reports-controls-hint" role="status">اختر طابقًا أو ردهة واحدة على الأقل.</p>}
       {!sections.length && <p className="reports-controls-hint" role="status">اختر قسمًا واحدًا على الأقل من أقسام التقرير.</p>}
@@ -153,12 +167,13 @@ export default function ReportsScreen({ adminHeader, isExpired }) {
         <strong>اختر الطابق والمدة ثم اضغط «عرض التقرير»</strong>
         <span>يشمل التقرير: عدد المرضى والدخول والخروج، مدة البقاء، استهلاك كل دواء مقارنةً بالمدة السابقة، ومتابعة المضادات الحيوية.</span>
       </div>
-    ) : <ReportDocument report={report} stale={loading} sections={sections} />}
+    ) : <ReportDocument report={report} stale={loading} sections={sections} printOnly={printOnly} onPrint={print} />}
   </section></main>
 }
 
-function ReportDocument({ report, stale, sections }) {
+function ReportDocument({ report, stale, sections, printOnly, onPrint }) {
   const shows = (key) => sections.includes(key)
+  const part = (key) => ({ printKey: key, printOnly, onPrint, disabled: stale })
   const [trendDrug, setTrendDrug] = useState('')
   const { summary, range, thresholds, trend } = report
   const trendLine = trend.medicines.find((line) => line.name === trendDrug)
@@ -167,7 +182,7 @@ function ReportDocument({ report, stale, sections }) {
   const generatedAt = new Date().toLocaleString('ar-IQ', { dateStyle: 'medium', timeStyle: 'short' })
 
   return (
-    <article className={stale ? 'report-doc is-stale' : 'report-doc'} aria-busy={stale || undefined}>
+    <article className={['report-doc', stale && 'is-stale', printOnly && 'print-one'].filter(Boolean).join(' ')} aria-busy={stale || undefined}>
       <header className="report-doc-head">
         <img className="hospital-logo" width="52" height="52" src={hospitalLogo} alt="" />
         <div>
@@ -182,16 +197,16 @@ function ReportDocument({ report, stale, sections }) {
         <p className="report-doc-stamp">أُنشئ {generatedAt}</p>
       </header>
 
-      {shows('figures') && <dl className="report-figures">
+      {shows('figures') && <Section {...part('figures')} title="الأرقام الرئيسية"><dl className="report-figures">
         <div><dt>أيام المرضى</dt><dd>{summary.patientDays}</dd><Delta now={summary.patientDays} before={summary.previousPatientDays} /></div>
         <div><dt>مرضى فعليون (غير مكرر)</dt><dd>{summary.distinctPatients}</dd><Delta now={summary.distinctPatients} before={summary.previousDistinctPatients} /></div>
         <div><dt>أنواع الأدوية (مع المستلزمات)</dt><dd>{summary.medicineTypes}</dd><Delta now={summary.medicineTypes} before={summary.previousMedicineTypes} /></div>
         <div><dt>دخول / خروج</dt><dd>{summary.admissions} / {summary.discharges}</dd></div>
         <div><dt>متوسط مدة البقاء</dt><dd>{orDash(summary.averageStay)} <small>يوم</small></dd></div>
         <div><dt>متوسط الأدوية لكل مريض</dt><dd>{orDash(summary.averageMedicines)}</dd></div>
-      </dl>}
+      </dl></Section>}
 
-      {shows('longStays') && <Section title={`الإقامة الطويلة (${thresholds.longStay} أيام فأكثر)`} note="مرضى ما زالوا في الردهة في آخر يوم من المدة. النقل إلى ردهة أخرى يبدأ إقامة جديدة.">
+      {shows('longStays') && <Section {...part('longStays')} title={`الإقامة الطويلة (${thresholds.longStay} أيام فأكثر)`} note="مرضى ما زالوا في الردهة في آخر يوم من المدة. النقل إلى ردهة أخرى يبدأ إقامة جديدة.">
         {report.longStays.length === 0 ? <Empty>لا يوجد مريض بقي {thresholds.longStay} أيام متتالية حتى آخر يوم من المدة.</Empty> : (
           <div className="table-frame"><table className="requests-table report-table">
             <thead><tr><th>المريض</th><th>الردهة</th><th>الأيام</th><th>منذ</th></tr></thead>
@@ -202,7 +217,7 @@ function ReportDocument({ report, stale, sections }) {
         )}
       </Section>}
 
-      {shows('stays') && <Section title="مدة بقاء المرضى حسب الردهة" note="عدد الإقامات حسب طولها بالأيام (إقامة = أيام متتالية بالاسم نفسه في الردهة). الإقامات الجارية عند طرفي المدة تُحتسب بما ظهر منها فقط.">
+      {shows('stays') && <Section {...part('stays')} title="مدة بقاء المرضى حسب الردهة" note="عدد الإقامات حسب طولها بالأيام (إقامة = أيام متتالية بالاسم نفسه في الردهة). الإقامات الجارية عند طرفي المدة تُحتسب بما ظهر منها فقط.">
         {report.stayRows.length === 0 ? <Empty>لا توجد إقامات في هذه المدة.</Empty> : (
           <div className="table-frame"><table className="requests-table report-table">
             <thead><tr><th>الردهة</th><th>الإقامات</th>{report.stayBuckets.map((label) => <th key={label}>{label} يوم</th>)}<th>الوسيط</th><th>الأقصى</th></tr></thead>
@@ -215,7 +230,7 @@ function ReportDocument({ report, stale, sections }) {
         )}
       </Section>}
 
-      {shows('readmissions') && <Section title="المرضى العائدون إلى الردهة" note={`مريض غادر الردهة ثم عاد إليها خلال ${thresholds.readmit} يومًا أو أقل. تُحتسب العودة فقط إذا كان للردهة جارت في كل يوم غيابه.`}>
+      {shows('readmissions') && <Section {...part('readmissions')} title="المرضى العائدون إلى الردهة" note={`مريض غادر الردهة ثم عاد إليها خلال ${thresholds.readmit} يومًا أو أقل. تُحتسب العودة فقط إذا كان للردهة جارت في كل يوم غيابه.`}>
         {report.readmissions.length === 0 ? <Empty>لا يوجد مريض عاد إلى الردهة في هذه المدة.</Empty> : (
           <div className="table-frame"><table className="requests-table report-table">
             <thead><tr><th>المريض</th><th>الردهة</th><th>مرات العودة</th><th>تاريخ العودة (بعد كم يومًا)</th></tr></thead>
@@ -226,7 +241,7 @@ function ReportDocument({ report, stale, sections }) {
         )}
       </Section>}
 
-      {shows('trend') && <Section title="اتجاه استهلاك دواء" note="الكمية الأسبوعية في الجارت للدواء المختار، تبدأ الأسابيع من أول يوم في المدة.">
+      {shows('trend') && <Section {...part('trend')} title="اتجاه استهلاك دواء" note="الكمية الأسبوعية في الجارت للدواء المختار، تبدأ الأسابيع من أول يوم في المدة.">
         <label className="report-trend-pick">الدواء
           <select value={trendDrug} onChange={(event) => setTrendDrug(event.target.value)}>
             <option value="">اختر دواءً…</option>
@@ -245,7 +260,7 @@ function ReportDocument({ report, stale, sections }) {
         )}
       </Section>}
 
-      {shows('consumption') && <Section title="استهلاك الأدوية" note="مجموع الكميات في الجارت (الرئيسي والإضافي) لكل دواء، مقارنةً بالمدة السابقة بنفس الطول.">
+      {shows('consumption') && <Section {...part('consumption')} title="استهلاك الأدوية" note="مجموع الكميات في الجارت (الرئيسي والإضافي) لكل دواء، مقارنةً بالمدة السابقة بنفس الطول.">
         {report.consumption.length === 0 ? <Empty>لا توجد كميات مسجّلة في هذه المدة.</Empty> : (
           <div className="table-frame"><table className="requests-table report-table">
             <thead><tr><th>الدواء</th><th>الكمية</th><th>المدة السابقة</th><th>التغيّر</th></tr></thead>
@@ -259,7 +274,7 @@ function ReportDocument({ report, stale, sections }) {
         )}
       </Section>}
 
-      {shows('ddd') && report.antibiotics && <Section title="استهلاك المضادات الحيوية — DDD لكل 100 يوم مريض" note="الجرعة اليومية المحددة (DDD) حسب منظمة الصحة العالمية، وتصنيف AWaRe (Access / Watch / Reserve) لعام 2023. مضادات الفطريات غير مصنّفة في AWaRe.">
+      {shows('ddd') && report.antibiotics && <Section {...part('ddd')} title="استهلاك المضادات الحيوية — DDD لكل 100 يوم مريض" note="الجرعة اليومية المحددة (DDD) حسب منظمة الصحة العالمية، وتصنيف AWaRe (Access / Watch / Reserve) لعام 2023. مضادات الفطريات غير مصنّفة في AWaRe.">
         {!report.antibiotics.lines.length && !report.antibiotics.notCounted.length ? <Empty>لا توجد مضادات حيوية مسجّلة في هذه المدة.</Empty> : <>
           <dl className="report-figures">
             <div><dt>DDD لكل 100 يوم مريض</dt><dd>{orDash(report.antibiotics.dddPer100)}</dd><span className="report-delta" dir="ltr">{report.antibiotics.totalDdds} DDD</span></div>
@@ -282,7 +297,7 @@ function ReportDocument({ report, stale, sections }) {
         </>}
       </Section>}
 
-      {shows('longCourses') && <Section title={`مضادات حيوية لأكثر من ${report.antibiotics.longCourseDays} يومًا`} note="مرضى ما زالوا على المضاد في آخر يوم من المدة؛ رقم اليوم محسوب بنفس قواعد «متابعة المضادات الحيوية».">
+      {shows('longCourses') && <Section {...part('longCourses')} title={`مضادات حيوية لأكثر من ${report.antibiotics.longCourseDays} يومًا`} note="مرضى ما زالوا على المضاد في آخر يوم من المدة؛ رقم اليوم محسوب بنفس قواعد «متابعة المضادات الحيوية».">
         {report.antibiotics.longCourses.length === 0 ? <Empty>لا توجد كورسات أطول من {report.antibiotics.longCourseDays} يومًا.</Empty> : (
           <div className="table-frame"><table className="requests-table report-table">
             <thead><tr><th>المريض</th><th>الردهة</th><th>المضاد</th><th>اليوم</th></tr></thead>
@@ -293,7 +308,18 @@ function ReportDocument({ report, stale, sections }) {
         )}
       </Section>}
 
-      {shows('multiple') && <Section title="أكثر من مضاد حيوي في اليوم نفسه" note="مرضى أُعطوا ثلاثة مضادات مختلفة أو أكثر في يوم واحد. المضاد المركّب (مثل Tazocin) يُحتسب دواءً مستقلًا عن مكوّنه.">
+      {shows('longRuns') && <Section {...part('longRuns')} title={`مضاد بكتيري لأكثر من ${report.antibiotics.longCourseDays} يومًا خلال المدة`} note={`كل مريض بقي على مضاد بكتيري واحد أكثر من ${report.antibiotics.longCourseDays} يومًا متتالية في أي وقت خلال المدة — انتهى الكورس أو ما زال مستمرًا. الكورس الذي بدأ قبل المدة يُحتسب بطوله كاملًا، ومضادات الفطريات غير محسوبة.`}>
+        {report.antibiotics.longRuns.length === 0 ? <Empty>لم يبقَ أي مريض على مضاد بكتيري أكثر من {report.antibiotics.longCourseDays} يومًا في هذه المدة.</Empty> : (
+          <div className="table-frame"><table className="requests-table report-table">
+            <thead><tr><th>المريض</th><th>الردهة</th><th>المضاد</th><th>من</th><th>إلى</th><th>الأيام</th><th>الحالة</th></tr></thead>
+            <tbody>{report.antibiotics.longRuns.map((row) => <tr key={`${row.floor}|${row.ward}|${row.patientId}|${row.patient}|${row.drug}|${row.from}`}>
+              <td>{row.patient}{row.patientId && <span className="report-patient-id"> · {row.patientId}</span>}</td><td>{wardName(row, scopedToFloor)}</td><td lang="en" dir="ltr">{row.drug}</td><td>{formatDate(row.from)}</td><td>{formatDate(row.to)}</td><td className="num">{row.days}</td><td>{row.ongoing ? 'مستمر' : 'انتهى'}</td>
+            </tr>)}</tbody>
+          </table></div>
+        )}
+      </Section>}
+
+      {shows('multiple') && <Section {...part('multiple')} title="أكثر من مضاد حيوي في اليوم نفسه" note="مرضى أُعطوا ثلاثة مضادات مختلفة أو أكثر في يوم واحد. المضاد المركّب (مثل Tazocin) يُحتسب دواءً مستقلًا عن مكوّنه.">
         {report.antibiotics.multiple.length === 0 ? <Empty>لا يوجد مريض أخذ ثلاثة مضادات حيوية أو أكثر في يوم واحد.</Empty> : (
           <div className="table-frame"><table className="requests-table report-table">
             <thead><tr><th>المريض</th><th>الردهة</th><th>أعلى عدد في يوم</th><th>أيام</th><th>المضادات</th></tr></thead>
@@ -304,7 +330,7 @@ function ReportDocument({ report, stale, sections }) {
         )}
       </Section>}
 
-      {shows('courses') && <Section title="مدة كورسات المضادات الحيوية" note="الكورس = أيام متتالية لمضاد واحد عند المريض نفسه. الكورس الذي بدأ قبل المدة يُحتسب من أول يوم فيها.">
+      {shows('courses') && <Section {...part('courses')} title="مدة كورسات المضادات الحيوية" note="الكورس = أيام متتالية لمضاد واحد عند المريض نفسه. الكورس الذي بدأ قبل المدة يُحتسب بطوله كاملًا.">
         {report.antibiotics.courseStats.length === 0 ? <Empty>لا توجد كورسات في هذه المدة.</Empty> : (
           <div className="table-frame"><table className="requests-table report-table">
             <thead><tr><th>المضاد</th><th>الكورسات</th><th>المتوسط (يوم)</th><th>الوسيط</th><th>الأطول</th><th>أكثر من {report.antibiotics.longCourseDays} يومًا</th></tr></thead>
@@ -315,7 +341,7 @@ function ReportDocument({ report, stale, sections }) {
         )}
       </Section>}
 
-      {shows('restarts') && <Section title="إعادة المضاد نفسه" note={`مريض أُوقف عنه مضاد ثم أُعطي المضاد نفسه خلال ${report.antibiotics.restartDays} أيام أو أقل.`}>
+      {shows('restarts') && <Section {...part('restarts')} title="إعادة المضاد نفسه" note={`مريض أُوقف عنه مضاد ثم أُعطي المضاد نفسه خلال ${report.antibiotics.restartDays} أيام أو أقل.`}>
         {report.antibiotics.restarts.length === 0 ? <Empty>لا توجد إعادة لمضاد في هذه المدة.</Empty> : (
           <div className="table-frame"><table className="requests-table report-table">
             <thead><tr><th>المريض</th><th>الردهة</th><th>المضاد</th><th>توقف في</th><th>أُعيد في</th><th>أيام التوقف</th></tr></thead>
@@ -326,7 +352,19 @@ function ReportDocument({ report, stale, sections }) {
         )}
       </Section>}
 
-      {shows('antibioticWards') && <Section title="استهلاك المضادات الحيوية حسب الردهة" note="DDD لكل 100 يوم مريض في كل ردهة، ونسبة كل فئة AWaRe من DDD الردهة.">
+      {shows('antibioticFloors') && <Section {...part('antibioticFloors')} title="استهلاك المضادات الحيوية حسب الطابق" note="DDD لكل 100 يوم مريض في كل طابق (ردهاته مجتمعة)، ونسبة كل فئة AWaRe من DDD الطابق. الردهة التي لا تتبع طابقًا تظهر وحدها.">
+        {report.antibiotics.byFloor.length === 0 ? <Empty>لا توجد مضادات حيوية محسوبة في هذه المدة.</Empty> : (
+          <div className="table-frame"><table className="requests-table report-table">
+            <thead><tr><th>الطابق</th><th>أيام المرضى</th><th>DDD</th><th>DDD/100</th><th lang="en" dir="ltr">AWaRe</th></tr></thead>
+            <tbody>{report.antibiotics.byFloor.map((row) => <tr key={`${row.floor}|${row.ward}`}>
+              <td>{row.floor === null ? row.ward : `الطابق ${row.floor}`}</td><td className="num">{row.patientDays}</td><td className="num">{row.ddds}</td><td className="num">{orDash(row.dddPer100)}</td>
+              <td className="report-aware-cell"><AwareBar aware={row.aware} compact /></td>
+            </tr>)}</tbody>
+          </table></div>
+        )}
+      </Section>}
+
+      {shows('antibioticWards') && <Section {...part('antibioticWards')} title="استهلاك المضادات الحيوية حسب الردهة" note="DDD لكل 100 يوم مريض في كل ردهة، ونسبة كل فئة AWaRe من DDD الردهة.">
         {report.antibiotics.byWard.length === 0 ? <Empty>لا توجد مضادات حيوية محسوبة في هذه المدة.</Empty> : (
           <div className="table-frame"><table className="requests-table report-table">
             <thead><tr><th>الردهة</th><th>أيام المرضى</th><th>DDD</th><th>DDD/100</th><th lang="en" dir="ltr">AWaRe</th></tr></thead>
@@ -338,7 +376,7 @@ function ReportDocument({ report, stale, sections }) {
         )}
       </Section>}
 
-      {shows('reserve') && <Section title="مضادات الاحتياط (Reserve)" note="مرضى أُعطوا دواءً من فئة Reserve حسب تصنيف AWaRe لمنظمة الصحة العالمية.">
+      {shows('reserve') && <Section {...part('reserve')} title="مضادات الاحتياط (Reserve)" note="مرضى أُعطوا دواءً من فئة Reserve حسب تصنيف AWaRe لمنظمة الصحة العالمية.">
         {report.antibiotics.reserve.length === 0 ? <Empty>لم يُعطَ أي مريض مضادًا من فئة Reserve في هذه المدة.</Empty> : (
           <div className="table-frame"><table className="requests-table report-table">
             <thead><tr><th>المريض</th><th>الردهة</th><th>الدواء</th><th>الأيام</th></tr></thead>

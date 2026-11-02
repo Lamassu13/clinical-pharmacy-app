@@ -2356,6 +2356,11 @@ button.topbar-user:hover { color: var(--primary); }
 
 .report-section { margin-top: var(--space-7); }
 .report-section h2 { margin: 0 0 var(--space-2); color: var(--heading); font-size: var(--text-lg); }
+/* Each part's title with its own «طباعة» (screen only — print hides the button). */
+.report-section-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-2); }
+.report-section-head h2 { margin: 0; }
+.report-print-one { display: inline-flex; align-items: center; gap: var(--space-1); min-height: 44px; flex: 0 0 auto; }
+.report-section-head + .report-figures { margin-top: var(--space-3); }
 .report-note { max-width: 75ch; margin: 0 0 var(--space-3); color: var(--text-muted); font-size: var(--text-sm); }
 .report-patient-id { color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .report-empty { margin: 0; padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: var(--surface-alt); color: var(--text-muted); font-size: var(--text-sm); }
@@ -2378,7 +2383,10 @@ button.topbar-user:hover { color: var(--primary); }
   .report-figures, .report-figures > div { border-color: #000; }
   .report-figures { break-inside: avoid; }
   .report-section { margin-top: 8mm; }
-  .report-section h2 { break-after: avoid; }
+  .report-section h2, .report-section-head { break-after: avoid; }
+  .report-print-one { display: none !important; }
+  /* A section's own «طباعة»: the letterhead and that section only. */
+  .report-doc.print-one > .report-section:not(.is-print-target) { display: none !important; }
   .report-table { font-size: 10pt; }
   .report-table th, .report-table td { border-color: #000; padding: 4px 6px; color: #000; background: none !important; }
   .report-table tr { break-inside: avoid; }
