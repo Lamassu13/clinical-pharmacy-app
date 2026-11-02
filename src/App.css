@@ -2385,14 +2385,42 @@ button.topbar-user:hover { color: var(--primary); }
   .report-section { margin-top: 8mm; }
   .report-section h2, .report-section-head { break-after: avoid; }
   .report-print-one { display: none !important; }
-  /* A section's own «طباعة»: the letterhead and that section only. */
-  .report-doc.print-one > .report-section:not(.is-print-target) { display: none !important; }
   .report-table { font-size: 10pt; }
   .report-table th, .report-table td { border-color: #000; padding: 4px 6px; color: #000; background: none !important; }
   .report-table tr { break-inside: avoid; }
   .reports-page .table-frame { overflow: visible; border: 0; }
   .reports-page .card-status { padding: 0; background: none; color: #000; }
 }
+
+/* The report as paper (src/reportPdf.js): fixed A4 portrait pages, drawn off-screen inside .ppt-root
+   and put in a PDF, filled block by block from the on-screen report. Black on white whatever the
+   screen's theme: the colour tokens the report uses are redefined on the page. */
+.report-page {
+  --text: #000; --text-muted: #333; --heading: #000; --border: #000; --border-strong: #000;
+  --surface: #fff; --surface-alt: #fff; --green-50: #fff; --bg: #fff; --warning-text: #000;
+  display: flex; flex-direction: column; width: 210mm; height: 297mm; box-sizing: border-box; padding: 12mm 12mm 7mm;
+  background: #fff; color: #000; font-family: var(--font-sans); direction: rtl;
+}
+.report-page-body { flex: 1; min-height: 0; overflow: hidden; }
+.report-page-foot { display: flex; justify-content: space-between; gap: 4mm; margin-top: 2mm; padding-top: 1.5mm; border-top: 1px solid #000; font-size: 8pt; }
+.report-page .report-doc-head { grid-template-columns: auto 1fr auto; padding-bottom: 4mm; border-color: #000; } /* the desktop letterhead on every device */
+.report-page .report-doc-stamp { grid-column: auto; }
+.report-page .report-doc-head .hospital-logo { background: none; padding: 0; }
+.report-page .report-section { margin-top: 6mm; }
+.report-page .report-page-body > .report-section:first-child { margin-top: 0; }
+.report-page .report-section-head { margin-bottom: 1.5mm; }
+.report-page .report-section h2 { font-size: 13pt; }
+.report-page .report-note, .report-page .report-continued { max-width: none; margin: 0 0 2mm; font-size: 9pt; }
+.report-page .report-continued { font-weight: 700; }
+.report-page .report-figures { margin-top: 2mm; }
+.report-page .report-empty { padding: 2mm 3mm; border: 1px solid #000; background: none; font-size: 9pt; }
+.report-page .table-frame { overflow: visible; max-height: none; border: 0; border-radius: 0; }
+.report-page .report-table { font-size: 9.5pt; }
+.report-page .report-table th, .report-page .report-table td { padding: 1.2mm 1.6mm; border-color: #000; color: #000; background: none; }
+.report-page .report-table thead th { position: static; background: #e6e6e6; }
+.report-page .card-status { padding: 0; background: none; color: #000; }
+.report-page .report-trend-pick { display: block; margin-bottom: 2mm; }
+.report-page .report-trend-pick strong { margin-inline-start: 2mm; }
 
 /* ============================================================
    Patient-entry form («+ إدخال مريض») — phone first. A full-screen sheet over the chart (the
