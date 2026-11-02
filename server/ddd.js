@@ -67,8 +67,10 @@ export const antibioticOf = (name) => {
   const entry = DDD[generic]
   if (!entry) return null
   // A combination (Augmentin, Tazocin) is its own course, apart from the plain drug.
-  if (entry.combo?.pattern.test(name)) return { key: `${generic}+`, label: entry.combo.label, perDay: entry.perDay }
-  return { key: generic, label: entry.label || titleCase(generic), perDay: entry.perDay }
+  // Antifungals (ATC J02) are followed too, but they are not antibacterials.
+  const antibacterial = !entry.atc.startsWith('J02')
+  if (entry.combo?.pattern.test(name)) return { key: `${generic}+`, label: entry.combo.label, perDay: entry.perDay, antibacterial }
+  return { key: generic, label: entry.label || titleCase(generic), perDay: entry.perDay, antibacterial }
 }
 
 // One consumption line → its DDDs, or { reason } when it is an antibiotic that cannot be counted,
