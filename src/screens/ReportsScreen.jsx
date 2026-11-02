@@ -15,6 +15,27 @@ const keyLabel = (key) => (specialWards.includes(key) ? key : `الطابق ${ke
 const scopeLabel = (scope) => (scope === 'all' ? 'كل الطوابق والردهات' : scope.split(',').map(keyLabel).join('، '))
 const orDash = (value) => (value === null || value === undefined ? '—' : value)
 
+// The report's parts, in the order they appear. Ticking only some hides the rest on screen and on
+// the printout. It's display-only — the request is the same — so changing it after «عرض التقرير»
+// takes effect at once, with no new request.
+const SECTIONS = [
+  { key: 'figures', label: 'الأرقام الرئيسية' },
+  { key: 'longStays', label: 'الإقامة الطويلة' },
+  { key: 'stays', label: 'مدة البقاء' },
+  { key: 'readmissions', label: 'المرضى العائدون' },
+  { key: 'trend', label: 'اتجاه استهلاك دواء' },
+  { key: 'consumption', label: 'استهلاك الأدوية' },
+  { key: 'ddd', label: 'استهلاك المضادات (DDD)' },
+  { key: 'longCourses', label: 'كورسات المضادات الطويلة' },
+  { key: 'multiple', label: 'أكثر من مضاد في اليوم' },
+  { key: 'courses', label: 'مدة كورسات المضادات' },
+  { key: 'restarts', label: 'إعادة المضاد نفسه' },
+  { key: 'antibioticWards', label: 'المضادات حسب الردهة' },
+  { key: 'reserve', label: 'مضادات Reserve' },
+]
+const allSections = SECTIONS.map((section) => section.key)
+const toggleIn = (setList) => (key) => setList((current) => (current.includes(key) ? current.filter((item) => item !== key) : [...current, key]))
+
 // Change against the previous period of the same length, as words and a drawn arrow — never
 // colour alone, and never red: a rise in patients is not an error.
 function Delta({ now, before }) {
@@ -67,7 +88,9 @@ export default function ReportsScreen({ adminHeader, isExpired }) {
   const today = isoDate(new Date())
   const [selected, setSelected] = useState(allKeys)
   const scope = selected.length === allKeys.length ? 'all' : allKeys.filter((key) => selected.includes(key)).join(',')
-  const toggle = (key) => setSelected((current) => (current.includes(key) ? current.filter((item) => item !== key) : [...current, key]))
+  const toggle = toggleIn(setSelected)
+  const [sections, setSections] = useState(allSections)
+  const toggleSection = toggleIn(setSections)
   const [from, setFrom] = useState(() => isoDate(new Date(Date.now() - 29 * DAY_MS)))
   const [to, setTo] = useState(today)
   const [report, setReport] = useState(null)
@@ -105,13 +128,19 @@ export default function ReportsScreen({ adminHeader, isExpired }) {
         <label><input type="checkbox" checked={selected.length === allKeys.length} onChange={() => setSelected(selected.length === allKeys.length ? [] : allKeys)} /> الكل</label>
         {allKeys.map((key) => <label key={key}><input type="checkbox" checked={selected.includes(key)} onChange={() => toggle(key)} /> {keyLabel(key)}</label>)}
       </fieldset>
+      <fieldset className="reports-scope">
+        <legend>أقسام التقرير</legend>
+        <label><input type="checkbox" checked={sections.length === allSections.length} onChange={() => setSections(sections.length === allSections.length ? [] : allSections)} /> الكل</label>
+        {SECTIONS.map(({ key, label }) => <label key={key}><input type="checkbox" checked={sections.includes(key)} onChange={() => toggleSection(key)} /> {label}</label>)}
+      </fieldset>
       <label>من تاريخ<input type="date" value={from} max={to || today} onChange={(event) => setFrom(event.target.value)} /></label>
       <label>إلى تاريخ<input type="date" value={to} min={from} max={today} onChange={(event) => setTo(event.target.value)} /></label>
       <div className="reports-controls-actions">
         <button type="submit" className="primary-button" disabled={Boolean(rangeProblem) || !selected.length || loading}>{loading ? 'جارٍ إنشاء التقرير…' : 'عرض التقرير'}</button>
-        <button type="button" className="secondary-button" disabled={!report || loading} onClick={() => window.print()}>طباعة / PDF</button>
+        <button type="button" className="secondary-button" disabled={!report || loading || !sections.length} onClick={() => window.print()}>طباعة / PDF</button>
       </div>
       {!selected.length && <p className="reports-controls-hint" role="status">اختر طابقًا أو ردهة واحدة على الأقل.</p>}
+      {!sections.length && <p className="reports-controls-hint" role="status">اختر قسمًا واحدًا على الأقل من أقسام التقرير.</p>}
       {rangeProblem && <p className="reports-controls-hint" role="status">{rangeProblem}</p>}
     </form>
 
@@ -124,11 +153,12 @@ export default function ReportsScreen({ adminHeader, isExpired }) {
         <strong>اختر الطابق والمدة ثم اضغط «عرض التقرير»</strong>
         <span>يشمل التقرير: عدد المرضى والدخول والخروج، مدة البقاء، استهلاك كل دواء مقارنةً بالمدة السابقة، ومتابعة المضادات الحيوية.</span>
       </div>
-    ) : <ReportDocument report={report} stale={loading} />}
+    ) : <ReportDocument report={report} stale={loading} sections={sections} />}
   </section></main>
 }
 
-function ReportDocument({ report, stale }) {
+function ReportDocument({ report, stale, sections }) {
+  const shows = (key) => sections.includes(key)
   const [trendDrug, setTrendDrug] = useState('')
   const { summary, range, thresholds, trend } = report
   const trendLine = trend.medicines.find((line) => line.name === trendDrug)
@@ -152,19 +182,16 @@ function ReportDocument({ report, stale }) {
         <p className="report-doc-stamp">أُنشئ {generatedAt}</p>
       </header>
 
-      <dl className="report-figures">
+      {shows('figures') && <dl className="report-figures">
         <div><dt>أيام المرضى</dt><dd>{summary.patientDays}</dd><Delta now={summary.patientDays} before={summary.previousPatientDays} /></div>
         <div><dt>مرضى فعليون (غير مكرر)</dt><dd>{summary.distinctPatients}</dd><Delta now={summary.distinctPatients} before={summary.previousDistinctPatients} /></div>
         <div><dt>أنواع الأدوية (مع المستلزمات)</dt><dd>{summary.medicineTypes}</dd><Delta now={summary.medicineTypes} before={summary.previousMedicineTypes} /></div>
         <div><dt>دخول / خروج</dt><dd>{summary.admissions} / {summary.discharges}</dd></div>
         <div><dt>متوسط مدة البقاء</dt><dd>{orDash(summary.averageStay)} <small>يوم</small></dd></div>
         <div><dt>متوسط الأدوية لكل مريض</dt><dd>{orDash(summary.averageMedicines)}</dd></div>
-      </dl>
+      </dl>}
 
-
-
-
-      <Section title={`الإقامة الطويلة (${thresholds.longStay} أيام فأكثر)`} note="مرضى ما زالوا في الردهة في آخر يوم من المدة. النقل إلى ردهة أخرى يبدأ إقامة جديدة.">
+      {shows('longStays') && <Section title={`الإقامة الطويلة (${thresholds.longStay} أيام فأكثر)`} note="مرضى ما زالوا في الردهة في آخر يوم من المدة. النقل إلى ردهة أخرى يبدأ إقامة جديدة.">
         {report.longStays.length === 0 ? <Empty>لا يوجد مريض بقي {thresholds.longStay} أيام متتالية حتى آخر يوم من المدة.</Empty> : (
           <div className="table-frame"><table className="requests-table report-table">
             <thead><tr><th>المريض</th><th>الردهة</th><th>الأيام</th><th>منذ</th></tr></thead>
@@ -173,10 +200,9 @@ function ReportDocument({ report, stale }) {
             </tr>)}</tbody>
           </table></div>
         )}
-      </Section>
+      </Section>}
 
-
-      <Section title="مدة بقاء المرضى حسب الردهة" note="عدد الإقامات حسب طولها بالأيام (إقامة = أيام متتالية بالاسم نفسه في الردهة). الإقامات الجارية عند طرفي المدة تُحتسب بما ظهر منها فقط.">
+      {shows('stays') && <Section title="مدة بقاء المرضى حسب الردهة" note="عدد الإقامات حسب طولها بالأيام (إقامة = أيام متتالية بالاسم نفسه في الردهة). الإقامات الجارية عند طرفي المدة تُحتسب بما ظهر منها فقط.">
         {report.stayRows.length === 0 ? <Empty>لا توجد إقامات في هذه المدة.</Empty> : (
           <div className="table-frame"><table className="requests-table report-table">
             <thead><tr><th>الردهة</th><th>الإقامات</th>{report.stayBuckets.map((label) => <th key={label}>{label} يوم</th>)}<th>الوسيط</th><th>الأقصى</th></tr></thead>
@@ -187,9 +213,9 @@ function ReportDocument({ report, stale }) {
             </tr>)}</tbody>
           </table></div>
         )}
-      </Section>
+      </Section>}
 
-      <Section title="المرضى العائدون إلى الردهة" note={`مريض غادر الردهة ثم عاد إليها خلال ${thresholds.readmit} يومًا أو أقل. تُحتسب العودة فقط إذا كان للردهة جارت في كل يوم غيابه.`}>
+      {shows('readmissions') && <Section title="المرضى العائدون إلى الردهة" note={`مريض غادر الردهة ثم عاد إليها خلال ${thresholds.readmit} يومًا أو أقل. تُحتسب العودة فقط إذا كان للردهة جارت في كل يوم غيابه.`}>
         {report.readmissions.length === 0 ? <Empty>لا يوجد مريض عاد إلى الردهة في هذه المدة.</Empty> : (
           <div className="table-frame"><table className="requests-table report-table">
             <thead><tr><th>المريض</th><th>الردهة</th><th>مرات العودة</th><th>تاريخ العودة (بعد كم يومًا)</th></tr></thead>
@@ -198,9 +224,9 @@ function ReportDocument({ report, stale }) {
             </tr>)}</tbody>
           </table></div>
         )}
-      </Section>
+      </Section>}
 
-      <Section title="اتجاه استهلاك دواء" note="الكمية الأسبوعية في الجارت للدواء المختار، تبدأ الأسابيع من أول يوم في المدة.">
+      {shows('trend') && <Section title="اتجاه استهلاك دواء" note="الكمية الأسبوعية في الجارت للدواء المختار، تبدأ الأسابيع من أول يوم في المدة.">
         <label className="report-trend-pick">الدواء
           <select value={trendDrug} onChange={(event) => setTrendDrug(event.target.value)}>
             <option value="">اختر دواءً…</option>
@@ -217,9 +243,9 @@ function ReportDocument({ report, stale }) {
             </tr>)}</tbody>
           </table></div>
         )}
-      </Section>
+      </Section>}
 
-      <Section title="استهلاك الأدوية" note="مجموع الكميات في الجارت (الرئيسي والإضافي) لكل دواء، مقارنةً بالمدة السابقة بنفس الطول.">
+      {shows('consumption') && <Section title="استهلاك الأدوية" note="مجموع الكميات في الجارت (الرئيسي والإضافي) لكل دواء، مقارنةً بالمدة السابقة بنفس الطول.">
         {report.consumption.length === 0 ? <Empty>لا توجد كميات مسجّلة في هذه المدة.</Empty> : (
           <div className="table-frame"><table className="requests-table report-table">
             <thead><tr><th>الدواء</th><th>الكمية</th><th>المدة السابقة</th><th>التغيّر</th></tr></thead>
@@ -231,9 +257,9 @@ function ReportDocument({ report, stale }) {
             </tr>)}</tbody>
           </table></div>
         )}
-      </Section>
+      </Section>}
 
-      {report.antibiotics && <Section title="استهلاك المضادات الحيوية — DDD لكل 100 يوم مريض" note="الجرعة اليومية المحددة (DDD) حسب منظمة الصحة العالمية، وتصنيف AWaRe (Access / Watch / Reserve) لعام 2023. مضادات الفطريات غير مصنّفة في AWaRe.">
+      {shows('ddd') && report.antibiotics && <Section title="استهلاك المضادات الحيوية — DDD لكل 100 يوم مريض" note="الجرعة اليومية المحددة (DDD) حسب منظمة الصحة العالمية، وتصنيف AWaRe (Access / Watch / Reserve) لعام 2023. مضادات الفطريات غير مصنّفة في AWaRe.">
         {!report.antibiotics.lines.length && !report.antibiotics.notCounted.length ? <Empty>لا توجد مضادات حيوية مسجّلة في هذه المدة.</Empty> : <>
           <dl className="report-figures">
             <div><dt>DDD لكل 100 يوم مريض</dt><dd>{orDash(report.antibiotics.dddPer100)}</dd><span className="report-delta" dir="ltr">{report.antibiotics.totalDdds} DDD</span></div>
@@ -256,7 +282,7 @@ function ReportDocument({ report, stale }) {
         </>}
       </Section>}
 
-      <Section title={`مضادات حيوية لأكثر من ${report.antibiotics.longCourseDays} يومًا`} note="مرضى ما زالوا على المضاد في آخر يوم من المدة؛ رقم اليوم محسوب بنفس قواعد «متابعة المضادات الحيوية».">
+      {shows('longCourses') && <Section title={`مضادات حيوية لأكثر من ${report.antibiotics.longCourseDays} يومًا`} note="مرضى ما زالوا على المضاد في آخر يوم من المدة؛ رقم اليوم محسوب بنفس قواعد «متابعة المضادات الحيوية».">
         {report.antibiotics.longCourses.length === 0 ? <Empty>لا توجد كورسات أطول من {report.antibiotics.longCourseDays} يومًا.</Empty> : (
           <div className="table-frame"><table className="requests-table report-table">
             <thead><tr><th>المريض</th><th>الردهة</th><th>المضاد</th><th>اليوم</th></tr></thead>
@@ -265,9 +291,9 @@ function ReportDocument({ report, stale }) {
             </tr>)}</tbody>
           </table></div>
         )}
-      </Section>
+      </Section>}
 
-      <Section title="أكثر من مضاد حيوي في اليوم نفسه" note="مرضى أُعطوا ثلاثة مضادات مختلفة أو أكثر في يوم واحد. المضاد المركّب (مثل Tazocin) يُحتسب دواءً مستقلًا عن مكوّنه.">
+      {shows('multiple') && <Section title="أكثر من مضاد حيوي في اليوم نفسه" note="مرضى أُعطوا ثلاثة مضادات مختلفة أو أكثر في يوم واحد. المضاد المركّب (مثل Tazocin) يُحتسب دواءً مستقلًا عن مكوّنه.">
         {report.antibiotics.multiple.length === 0 ? <Empty>لا يوجد مريض أخذ ثلاثة مضادات حيوية أو أكثر في يوم واحد.</Empty> : (
           <div className="table-frame"><table className="requests-table report-table">
             <thead><tr><th>المريض</th><th>الردهة</th><th>أعلى عدد في يوم</th><th>أيام</th><th>المضادات</th></tr></thead>
@@ -276,9 +302,9 @@ function ReportDocument({ report, stale }) {
             </tr>)}</tbody>
           </table></div>
         )}
-      </Section>
+      </Section>}
 
-      <Section title="مدة كورسات المضادات الحيوية" note="الكورس = أيام متتالية لمضاد واحد عند المريض نفسه. الكورس الذي بدأ قبل المدة يُحتسب من أول يوم فيها.">
+      {shows('courses') && <Section title="مدة كورسات المضادات الحيوية" note="الكورس = أيام متتالية لمضاد واحد عند المريض نفسه. الكورس الذي بدأ قبل المدة يُحتسب من أول يوم فيها.">
         {report.antibiotics.courseStats.length === 0 ? <Empty>لا توجد كورسات في هذه المدة.</Empty> : (
           <div className="table-frame"><table className="requests-table report-table">
             <thead><tr><th>المضاد</th><th>الكورسات</th><th>المتوسط (يوم)</th><th>الوسيط</th><th>الأطول</th><th>أكثر من {report.antibiotics.longCourseDays} يومًا</th></tr></thead>
@@ -287,9 +313,9 @@ function ReportDocument({ report, stale }) {
             </tr>)}</tbody>
           </table></div>
         )}
-      </Section>
+      </Section>}
 
-      <Section title="إعادة المضاد نفسه" note={`مريض أُوقف عنه مضاد ثم أُعطي المضاد نفسه خلال ${report.antibiotics.restartDays} أيام أو أقل.`}>
+      {shows('restarts') && <Section title="إعادة المضاد نفسه" note={`مريض أُوقف عنه مضاد ثم أُعطي المضاد نفسه خلال ${report.antibiotics.restartDays} أيام أو أقل.`}>
         {report.antibiotics.restarts.length === 0 ? <Empty>لا توجد إعادة لمضاد في هذه المدة.</Empty> : (
           <div className="table-frame"><table className="requests-table report-table">
             <thead><tr><th>المريض</th><th>الردهة</th><th>المضاد</th><th>توقف في</th><th>أُعيد في</th><th>أيام التوقف</th></tr></thead>
@@ -298,9 +324,9 @@ function ReportDocument({ report, stale }) {
             </tr>)}</tbody>
           </table></div>
         )}
-      </Section>
+      </Section>}
 
-      <Section title="استهلاك المضادات الحيوية حسب الردهة" note="DDD لكل 100 يوم مريض في كل ردهة، ونسبة كل فئة AWaRe من DDD الردهة.">
+      {shows('antibioticWards') && <Section title="استهلاك المضادات الحيوية حسب الردهة" note="DDD لكل 100 يوم مريض في كل ردهة، ونسبة كل فئة AWaRe من DDD الردهة.">
         {report.antibiotics.byWard.length === 0 ? <Empty>لا توجد مضادات حيوية محسوبة في هذه المدة.</Empty> : (
           <div className="table-frame"><table className="requests-table report-table">
             <thead><tr><th>الردهة</th><th>أيام المرضى</th><th>DDD</th><th>DDD/100</th><th lang="en" dir="ltr">AWaRe</th></tr></thead>
@@ -310,9 +336,9 @@ function ReportDocument({ report, stale }) {
             </tr>)}</tbody>
           </table></div>
         )}
-      </Section>
+      </Section>}
 
-      <Section title="مضادات الاحتياط (Reserve)" note="مرضى أُعطوا دواءً من فئة Reserve حسب تصنيف AWaRe لمنظمة الصحة العالمية.">
+      {shows('reserve') && <Section title="مضادات الاحتياط (Reserve)" note="مرضى أُعطوا دواءً من فئة Reserve حسب تصنيف AWaRe لمنظمة الصحة العالمية.">
         {report.antibiotics.reserve.length === 0 ? <Empty>لم يُعطَ أي مريض مضادًا من فئة Reserve في هذه المدة.</Empty> : (
           <div className="table-frame"><table className="requests-table report-table">
             <thead><tr><th>المريض</th><th>الردهة</th><th>الدواء</th><th>الأيام</th></tr></thead>
@@ -321,7 +347,7 @@ function ReportDocument({ report, stale }) {
             </tr>)}</tbody>
           </table></div>
         )}
-      </Section>
+      </Section>}
     </article>
   )
 }
