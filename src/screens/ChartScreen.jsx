@@ -7,6 +7,7 @@ import MedicineSuggest from '../components/MedicineSuggest.jsx'
 import ChartHistoryDialog from '../components/ChartHistoryDialog.jsx'
 import IdClashNote, { useIdClashes } from '../components/IdClashNote.jsx'
 import { medicineMatches } from '../helpers.js'
+import { DRUG_REQUESTS } from '../../shared/drug-requests.js'
 
 // Presentational only: every piece of chart state, and the autosave/lock/draft logic that
 // maintains it, stays in App so that swapping in the sign-in card when a session lapses does
@@ -22,6 +23,7 @@ export default function ChartScreen({
   activeRow, activeColumn, labelBelow, setActiveRow, setActiveColumn, setLabelBelow,
   onSetColumnMedicine, onCommitColumnMedicine, columnMedicineNotice, onDismissNotice, onApplySuggestion,
   onSetPatientName, onSetPatientId, onCheckPreviousDay, onUpdateQuantity, onCollapseRow, onAddColumn, canAddColumn, chartAlerts = {}, onShowAlerts, wardNote, onChangeWardNote, onSaveWardNote,
+  onDoseCommitted, savedRequests = [], onClearSaved, onOpenRequestForms,
   chartFrameRef, chartHeadRef, chartGridRef, chartDosesRef, chartFootRef,
 }) {
   const columnFocusValue = useRef('')
@@ -41,6 +43,14 @@ export default function ChartScreen({
     input.blur()
   }
   const patientFocusEmpty = useRef(false)
+  // The dose cell being edited and its value when focus arrived: leaving it with a new quantity
+  // above 0 is a dose added (App may then open «استمارة الميرونيم» / «استمارة الالبومين»).
+  const doseFocus = useRef(null)
+  const doseCellOf = (target) => {
+    const td = target.closest?.('.chart-doses td[data-col]')
+    const tr = td?.closest('tr[data-row]')
+    return td && tr && target.tagName === 'INPUT' ? { row: Number(tr.dataset.row), col: Number(td.dataset.col) } : null
+  }
 
   // One line, four states — see chartSaveStatus in App. loadError overrides it because a
   // chart that never loaded matters more than the last PUT; copyError gets its own slot
@@ -214,8 +224,16 @@ export default function ChartScreen({
       </div>
       {/* inert while another device holds the lock — the poll keeps this view current. */}
       <div className="chart-grid" ref={chartGridRef} inert={(!chartReady || readOnly) || undefined}
-        onFocusCapture={(event) => { const row = event.target.closest('tr[data-row]'); if (row) setActiveRow(Number(row.dataset.row)); const cell = event.target.closest('td[data-col]'); setActiveColumn(cell ? Number(cell.dataset.col) : -1); if (cell && chartGridRef.current) setLabelBelow(cell.getBoundingClientRect().top - chartGridRef.current.getBoundingClientRect().top < 34) }}
-        onBlurCapture={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) { setActiveRow(-1); setActiveColumn(-1) } }}
+        onFocusCapture={(event) => { const row = event.target.closest('tr[data-row]'); if (row) setActiveRow(Number(row.dataset.row)); const cell = event.target.closest('td[data-col]'); setActiveColumn(cell ? Number(cell.dataset.col) : -1); if (cell && chartGridRef.current) setLabelBelow(cell.getBoundingClientRect().top - chartGridRef.current.getBoundingClientRect().top < 34); const dose = doseCellOf(event.target); doseFocus.current = dose && { ...dose, value: event.target.value } }}
+        onBlurCapture={(event) => {
+          const dose = doseCellOf(event.target)
+          const was = doseFocus.current
+          if (dose && was && dose.row === was.row && dose.col === was.col) {
+            doseFocus.current = null
+            if (Number(event.target.value) > 0 && event.target.value !== was.value) onDoseCommitted?.(dose.row, dose.col)
+          }
+          if (!event.currentTarget.contains(event.relatedTarget)) { setActiveRow(-1); setActiveColumn(-1) }
+        }}
         onKeyDown={(event) => {
           // Arrow / Enter move between dose cells (the grid is one Tab stop). RTL: ArrowLeft
           // is visually left = the next, higher-index column. Left/Right take over from
@@ -278,6 +296,12 @@ export default function ChartScreen({
       <span>{chartClashNote}</span>
       <button type="button" className="text-button compact" aria-label="إخفاء" onClick={onDismissClashNote}>حسنًا</button>
     </div>}
+
+    {savedRequests.map((saved) => <div key={saved.kind} className="undo-toast req-saved-note" role="status">
+      <span>حُفظت {DRUG_REQUESTS[saved.kind].label} لـ«{saved.name}»{saved.queued ? ' على هذا الجهاز — تُرسل عند عودة الاتصال.' : '.'}</span>
+      {!saved.queued && onOpenRequestForms && <button type="button" className="text-button compact" onClick={() => onOpenRequestForms(saved.kind)}>عرض وطباعة</button>}
+      <button type="button" className="text-button compact" aria-label="إخفاء" onClick={onClearSaved}>حسنًا</button>
+    </div>)}
 
     {undo && <div className="undo-toast" role="status">
       <span>{undo.message}</span>

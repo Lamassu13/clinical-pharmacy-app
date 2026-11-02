@@ -2596,3 +2596,144 @@ button.topbar-user:hover { color: var(--primary); }
   .bottom-nav button:focus-visible { outline: 2px solid var(--primary); outline-offset: -4px; }
   body.has-bottom-nav { padding-bottom: calc(66px + env(safe-area-inset-bottom)); }
 }
+
+/* ============================================================
+   Request forms — «استمارة الميرونيم» and «استمارة الالبومين». The dialog that fills one (opened over
+   the patient-entry sheet, so above its z-index 40 like every .modal-backdrop), and the screen that
+   draws each form as its paper one: bordered tables, grey bands, tickable boxes. On paper: one form
+   per A4 portrait page, black on white; a ticked box prints its ✓, an unticked one prints plain.
+   ============================================================ */
+.req-dialog { width: min(100%, 560px); max-height: calc(100svh - 32px); overflow-y: auto; padding: var(--space-6); }
+.req-dialog h2 { margin: 0 0 var(--space-4); color: var(--heading); font-size: var(--text-lg); }
+.req-dialog-note { margin: 0 0 var(--space-4); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); background: var(--warning-tint); color: var(--warning-text); font-size: var(--text-sm); font-weight: 700; line-height: 1.6; }
+.req-dialog-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4) var(--space-3); margin-bottom: var(--space-5); }
+.req-dialog-wide { grid-column: 1 / -1; }
+.req-dialog-grid input { width: 100%; min-height: 48px; font-size: 16px; }
+.req-dialog-grid small { color: var(--text-muted); font-weight: 400; }
+.req-dialog-field { display: flex; gap: var(--space-2); }
+.req-dialog-field input { flex: 1; min-width: 0; }
+.req-dialog-stack { display: grid; gap: var(--space-2); }
+.req-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.req-chip {
+  flex: none; min-height: 44px; padding: 0 var(--space-4); border: 1px solid var(--border-strong); border-radius: 999px;
+  background: var(--surface); color: var(--text); font-size: var(--text-sm); font-weight: 700; white-space: nowrap;
+}
+.req-chip:hover { border-color: var(--green-300); background: var(--green-50); }
+.req-chip[aria-pressed="true"] { border-color: var(--primary); background: var(--green-50); color: var(--primary-hover); }
+.req-dialog .form-error { margin-bottom: var(--space-4); }
+@media (max-width: 480px) {
+  .req-dialog { padding: var(--space-5); }
+  .req-dialog-grid { grid-template-columns: 1fr; }
+}
+/* The entry form's «حُفظت …» line carries a link to the form's screen. */
+.req-saved { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); }
+
+.req-page { width: min(100% - var(--space-6), 860px); }
+.req-page > .form-error { margin-bottom: var(--space-4); }
+.req-hint { margin: var(--space-5) 0 0; color: var(--text-muted); font-size: var(--text-sm); }
+.req-sheets { display: grid; gap: var(--space-7); margin-top: var(--space-4); }
+.req-sheet-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-4); margin-bottom: var(--space-3); }
+.req-sheet-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-3); margin: 0; color: var(--text-muted); font-size: var(--text-sm); }
+.req-sheet-meta strong { color: var(--heading); font-size: var(--text-base); }
+.req-sheet-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.req-sheet-actions button { min-height: 44px; }
+.req-paper { padding: var(--space-5); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); box-shadow: var(--shadow-xs); color: var(--text); }
+.req-paper-head { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-3); color: var(--text-muted); font-size: var(--text-sm); font-weight: 700; }
+.req-form { width: 100%; border-collapse: collapse; table-layout: fixed; border: 2px solid var(--text); font-size: 13px; line-height: 1.35; }
+.req-form + .req-form { margin-top: var(--space-2); }
+.req-form th, .req-form td { padding: 6px 8px; border: 1px solid var(--text); text-align: start; vertical-align: middle; font-weight: 400; overflow-wrap: anywhere; }
+.req-form .req-band { background: var(--surface-alt); text-align: center; font-weight: 700; }
+.req-label { color: var(--text); }
+.req-value { color: var(--heading); font-weight: 700; }
+
+/* A tickable box: the button fills its cell. */
+.req-form td.req-tick-cell { padding: 0; }
+.req-tick {
+  display: flex; align-items: flex-start; gap: 8px; width: 100%; min-height: 44px; padding: 6px 8px;
+  border: 0; border-radius: 0; background: transparent; color: inherit; font: inherit; text-align: start; line-height: inherit; cursor: pointer;
+}
+.req-tick:hover { background: var(--green-50); }
+.req-tick-box {
+  flex: none; display: grid; place-items: center; width: 20px; height: 20px; margin-top: 1px;
+  border: 2px solid var(--border-strong); border-radius: 5px; color: #fff; font-size: 14px; font-weight: 800; line-height: 1;
+}
+.req-tick-text { min-width: 0; }
+.req-tick-cell--on .req-tick { background: var(--green-50); }
+.req-tick-cell--on .req-tick-box { border-color: var(--primary); background: var(--primary); }
+.req-tick:focus-visible { outline: 2px solid var(--primary); outline-offset: -3px; }
+.req-note-input { display: block; width: calc(100% - 16px); margin: 0 8px 8px; padding: 6px 8px; font-size: 14px; }
+.req-note-print { display: none; }
+
+.req-signatures { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-4); margin-top: var(--space-6); padding-bottom: var(--space-7); text-align: center; font-size: 13px; }
+.req-signatures p { margin: 0; }
+.req-signatures strong { display: block; }
+
+/* Meropenem */
+.req-form .mero-title { text-align: center; }
+.mero-title strong { display: block; }
+.mero-diagnosis .req-tick { min-height: 3.4em; align-items: center; }
+.mero-culture td { height: 3em; }
+.mero-culture .req-tick { min-height: 3em; align-items: center; }
+.mero-dose th { width: 26%; font-weight: 400; }
+.mero-dose td { height: 2.6em; font-weight: 700; color: var(--heading); }
+
+/* Albumin: the patient box has no inner rules, as on paper. */
+.alb-title { display: flex; align-items: center; justify-content: center; gap: var(--space-2); margin: 0 0 var(--space-3); font-size: 15px; }
+.req-form.alb-head td { border: 0; padding: 7px 10px; }
+.alb-head td:nth-child(1) { width: 36%; }
+.alb-head td:nth-child(2) { width: 24%; }
+.req-form.alb-grid { margin-top: 0; border-top: 0; }
+.alb-grid .alb-protocol { text-align: start; font-weight: 700; }
+.alb-grid .req-tick { min-height: 3.6em; }
+.alb-grid strong { font-weight: 700; }
+.alb-line { display: block; }
+.alb-i12 .req-tick-text { font-size: 12px; }
+.alb-signatures { row-gap: var(--space-7); }
+
+@media (max-width: 560px) {
+  .req-paper { padding: var(--space-3); }
+  .req-form { font-size: 11px; }
+  .req-form th, .req-form td, .req-tick { padding: 4px 5px; }
+  .req-tick-box { width: 16px; height: 16px; font-size: 12px; }
+  .req-signatures { font-size: 11px; gap: var(--space-2); }
+}
+
+@media print {
+  /* Declared after the order block so page: reqform wins over the page: order of .order-page. */
+  @page reqform { size: A4 portrait; margin: 12mm; }
+  .req-page { page: reqform; width: 100%; padding: 0; }
+  .req-page > .form-error, .req-hint, .req-sheet-tools, .req-page .modal-backdrop, .req-note-input { display: none !important; }
+  .req-sheets { display: block; margin: 0; }
+  /* A single form's «طباعة» prints that form only. */
+  .req-sheets--one .req-sheet:not(.req-sheet--print) { display: none; }
+  .req-sheet { break-after: page; }
+  .req-sheet:last-child { break-after: auto; }
+  .req-paper { padding: 6mm 0 0; border: 0; border-radius: 0; box-shadow: none; }
+  .req-paper, .req-paper * { background: #fff !important; color: #000 !important; border-color: #000 !important; }
+  .req-form .req-band { background: #eee !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .req-paper-head { margin-bottom: 6mm; font-size: 10pt; }
+  .req-paper .hospital-logo { filter: grayscale(1); }
+  .req-form { font-size: 10.5pt; }
+  .req-form + .req-form { margin-top: 3mm; }
+  .req-form.alb-grid { margin-top: 0; }
+  .req-form th, .req-form td, .req-tick { padding: 1.6mm 2mm; }
+  .req-form td.req-tick-cell { padding: 0; }
+  .req-tick { min-height: 0; }
+  /* An unticked box prints as the blank form does; a ticked one carries a bold ✓. */
+  .req-tick-box { display: none; }
+  .req-tick-cell--on .req-tick-box { display: block; width: auto; height: auto; margin: 0; border: 0; font-size: 13pt; }
+  .req-note-print { display: block; padding: 0 2mm 1.6mm; font-weight: 700; }
+  /* min-height, not height: a three-line diagnosis must grow its row, not spill over the rules. */
+  .mero-diagnosis .req-tick { min-height: 13mm; }
+  .mero-culture td { height: 11mm; }
+  .mero-culture .req-tick { min-height: 11mm; }
+  .mero-dose td, .mero-dose th { height: 9mm; }
+  .alb-title { margin-bottom: 5mm; font-size: 12pt; }
+  .req-form.alb-head { font-size: 10.5pt; }
+  .req-form.alb-head td { padding: 1.5mm 2.5mm; }
+  .alb-grid { font-size: 9.5pt; }
+  .alb-grid .req-tick { min-height: 12mm; }
+  .alb-i12 .req-tick-text { font-size: 8.5pt; }
+  .req-signatures { margin-top: 10mm; padding: 0; font-size: 10.5pt; }
+  .alb-signatures { row-gap: 14mm; }
+}

@@ -1,5 +1,9 @@
 // «استمارة متابعة الميروبينيم» — derived entirely from saved charts, nothing stored. Pure, so
 // the course / D-number rules can be tested without a database (see meropenem.test.js).
+import { doseText } from '../shared/dose.js'
+
+// The dose wording lives in shared/dose.js (the patient-entry form uses it too).
+export { strengthMg, doseText } from '../shared/dose.js'
 
 export const MEROPENEM_SQL_PATTERN = '(meronem|meropenem)'
 
@@ -14,26 +18,6 @@ const nameKey = (value) => String(value ?? '').trim().replace(/\s+/g, ' ')
 
 export const monthStart = (iso) => `${iso.slice(0, 8)}01`
 export const windowStart = (iso) => toIso(toDay(monthStart(iso)) - LOOKBACK_DAYS)
-
-// Vial strength in mg: "Meronem 1000gm Vial" → 1000, "Meronem 500gm Vial" → 500. The catalogue
-// writes gm where it means mg, so a small number with "g" or "gm" ("1g", "Tazocin 4.5gm",
-// "Rocephin 1gm") is read as grams — no vial here is under 10 mg.
-export const strengthMg = (medicine) => {
-  const match = String(medicine).match(/(\d+(?:\.\d+)?)\s*(mg|gm|g)\b/i)
-  if (!match) return 0
-  const value = Number(match[1])
-  return match[2].toLowerCase() !== 'mg' && value < 10 ? value * 1000 : value
-}
-const formatMg = (mg) => (mg >= 1000 ? `${mg / 1000}g` : `${mg}mg`)
-
-// Meropenem is given three times a day, so a quantity that divides by 3 reads as a per-dose
-// amount: 1g vial × 6 → "2g × 3", 500mg × 3 → "500mg × 3". Anything else stays as vials × count.
-// Other drugs pass their own doses-a-day (../ddd.js); without one it stays as vials × count.
-export const doseText = (medicine, quantity, perDay = 3) => {
-  const mg = strengthMg(medicine)
-  if (!mg) return `× ${quantity}`
-  return perDay && quantity % perDay === 0 ? `${formatMg(mg * quantity / perDay)} × ${perDay}` : `${formatMg(mg)} × ${quantity}`
-}
 
 export const wardKeyOf = (floor, ward) => `${floor ?? ''}|${ward}`
 const wardLabelOf = (floor, ward) => (floor ? `الطابق ${floor} — ${ward}` : ward)

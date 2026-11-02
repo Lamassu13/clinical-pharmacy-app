@@ -25,7 +25,7 @@ export default function AdminFloorsScreen({
       <fieldset className="purge-targets">
         <legend>ما الذي يُمسح</legend>
         <div className="purge-targets-grid">
-          {[['charts', 'الجارتات (تشمل استمارات الحبوب)'], ['pills', 'استمارات الحبوب فقط'], ['extra', 'استمارات الحبوب الإضافية']].map(([key, label]) => (
+          {[['charts', 'الجارتات (تشمل استمارات الحبوب والميرونيم)'], ['pills', 'استمارات الحبوب فقط'], ['extra', 'استمارات الحبوب الإضافية']].map(([key, label]) => (
             <label key={key}>
               <input type="checkbox" checked={purgeKinds[key]} disabled={key === 'pills' && purgeKinds.charts} onChange={() => setPurgeKinds((current) => ({ ...current, [key]: !current[key] }))} />
               <span>{label}</span>
