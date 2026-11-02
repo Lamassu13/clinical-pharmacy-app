@@ -1,9 +1,9 @@
-import { useState } from 'react'
-import { flushSync } from 'react-dom'
+import { useRef, useState } from 'react'
 import hospitalLogo from '../assets/hospital-logo.png'
 import { Glyph } from '../components/ToolbarIcons.jsx'
 import { apiUrl, floors, specialWards } from '../constants.js'
 import { isoDate } from '../helpers.js'
+import { exportReportPdf } from '../reportPdf.js'
 
 // التقارير — per-floor figures over a chosen range, read on screen or printed. Loaded only when
 // «عرض التقرير» is pressed: no auto-load, no polling (the Neon/Render free plans bill wake time).
@@ -57,13 +57,13 @@ function Delta({ now, before }) {
   )
 }
 
-// One part of the report, with its own «طباعة»: that prints the letterhead and this part only.
-function Section({ title, note, children, printKey, printOnly, onPrint, disabled }) {
+// One part of the report, with its own «طباعة»: a PDF of the letterhead and this part only.
+function Section({ title, note, children, printKey, onPrint, printing, disabled }) {
   return (
-    <section className={printKey === printOnly ? 'report-section is-print-target' : 'report-section'}>
+    <section className="report-section" data-section={printKey}>
       <div className="report-section-head">
         <h2>{title}</h2>
-        {onPrint && <button type="button" className="secondary-button compact report-print-one" disabled={disabled} onClick={() => onPrint(printKey)}><Glyph icon="print" />طباعة</button>}
+        {onPrint && <button type="button" className="secondary-button compact report-print-one" disabled={disabled} onClick={() => onPrint(printKey)}><Glyph icon="print" />{printing === printKey ? 'جارٍ التحضير…' : 'طباعة'}</button>}
       </div>
       {note && <p className="report-note">{note}</p>}
       {children}
@@ -99,11 +99,11 @@ export default function ReportsScreen({ adminHeader, isExpired }) {
   const toggle = toggleIn(setSelected)
   const [sections, setSections] = useState(allSections)
   const toggleSection = toggleIn(setSections)
-  // Which part a section's «طباعة» asked for (null: every ticked part). Print-only CSS does the
-  // hiding, so the screen never changes; it's set before window.print() rather than cleared on
-  // afterprint, which iPad Safari fires unreliably — the main print button sets it back to null.
-  const [printOnly, setPrintOnly] = useState(null)
-  const print = (key) => { flushSync(() => setPrintOnly(key)); window.print() }
+  // «طباعة»: the report as an A4 PDF drawn to canvas (../reportPdf.js), every ticked part, or one
+  // part (`key`) from that section's own button.
+  const articleRef = useRef(null)
+  const [pdfBusy, setPdfBusy] = useState(null) // the part being drawn ('all' for the whole report)
+  const [pdfError, setPdfError] = useState('')
   const [from, setFrom] = useState(() => isoDate(new Date(Date.now() - 29 * DAY_MS)))
   const [to, setTo] = useState(today)
   const [report, setReport] = useState(null)
@@ -127,10 +127,25 @@ export default function ReportsScreen({ adminHeader, isExpired }) {
       const result = await response.json()
       if (!response.ok) throw new Error(result.message)
       setReport({ ...result, scope })
-      setPrintOnly(null)
     } catch (caught) {
       setError(caught.message || 'تعذّر إنشاء التقرير — تحقّق من الاتصال وحاول مرة أخرى.')
     } finally { setLoading(false) }
+  }
+
+  const print = async (key) => {
+    if (!report || pdfBusy || !articleRef.current) return
+    const part = key && SECTIONS.find((section) => section.key === key)
+    const range = `${report.range.from} – ${report.range.to}`
+    setPdfBusy(key || 'all'); setPdfError('')
+    try {
+      await exportReportPdf(articleRef.current, {
+        only: key,
+        title: `تقرير ${scopeLabel(report.scope)} · ${formatDate(report.range.from)} – ${formatDate(report.range.to)}`,
+        name: `تقرير ${scopeLabel(report.scope)}${part ? ` — ${part.label}` : ''} ${range}`,
+      })
+    } catch {
+      setPdfError('تعذّر إنشاء ملف PDF — حاول مرة أخرى.')
+    } finally { setPdfBusy(null) }
   }
 
   return <main className="app-shell">{adminHeader}<section className="dashboard reports-page">
@@ -151,7 +166,7 @@ export default function ReportsScreen({ adminHeader, isExpired }) {
       <label>إلى تاريخ<input type="date" value={to} min={from} max={today} onChange={(event) => setTo(event.target.value)} /></label>
       <div className="reports-controls-actions">
         <button type="submit" className="primary-button" disabled={Boolean(rangeProblem) || !selected.length || loading}>{loading ? 'جارٍ إنشاء التقرير…' : 'عرض التقرير'}</button>
-        <button type="button" className="secondary-button" disabled={!report || loading || !sections.length} onClick={() => print(null)}>طباعة / PDF</button>
+        <button type="button" className="secondary-button" disabled={!report || loading || Boolean(pdfBusy) || !sections.length} onClick={() => print(null)}>{pdfBusy === 'all' ? 'جارٍ التحضير…' : 'طباعة / PDF'}</button>
       </div>
       {!selected.length && <p className="reports-controls-hint" role="status">اختر طابقًا أو ردهة واحدة على الأقل.</p>}
       {!sections.length && <p className="reports-controls-hint" role="status">اختر قسمًا واحدًا على الأقل من أقسام التقرير.</p>}
@@ -159,6 +174,7 @@ export default function ReportsScreen({ adminHeader, isExpired }) {
     </form>
 
     {error && <p className="form-error" role="alert">{error}</p>}
+    {pdfError && <p className="form-error" role="alert">{pdfError}</p>}
 
     {loading && !report ? (
       <div className="dashboard-skeleton report-skeleton" aria-hidden="true">{Array.from({ length: 6 }, (_, i) => <span key={i} className="skeleton-row" />)}</div>
@@ -167,13 +183,13 @@ export default function ReportsScreen({ adminHeader, isExpired }) {
         <strong>اختر الطابق والمدة ثم اضغط «عرض التقرير»</strong>
         <span>يشمل التقرير: عدد المرضى والدخول والخروج، مدة البقاء، استهلاك كل دواء مقارنةً بالمدة السابقة، ومتابعة المضادات الحيوية.</span>
       </div>
-    ) : <ReportDocument report={report} stale={loading} sections={sections} printOnly={printOnly} onPrint={print} />}
+    ) : <ReportDocument ref={articleRef} report={report} stale={loading} sections={sections} printing={pdfBusy} onPrint={print} />}
   </section></main>
 }
 
-function ReportDocument({ report, stale, sections, printOnly, onPrint }) {
+function ReportDocument({ ref, report, stale, sections, printing, onPrint }) {
   const shows = (key) => sections.includes(key)
-  const part = (key) => ({ printKey: key, printOnly, onPrint, disabled: stale })
+  const part = (key) => ({ printKey: key, onPrint, printing, disabled: stale || Boolean(printing) })
   const [trendDrug, setTrendDrug] = useState('')
   const { summary, range, thresholds, trend } = report
   const trendLine = trend.medicines.find((line) => line.name === trendDrug)
@@ -182,7 +198,7 @@ function ReportDocument({ report, stale, sections, printOnly, onPrint }) {
   const generatedAt = new Date().toLocaleString('ar-IQ', { dateStyle: 'medium', timeStyle: 'short' })
 
   return (
-    <article className={['report-doc', stale && 'is-stale', printOnly && 'print-one'].filter(Boolean).join(' ')} aria-busy={stale || undefined}>
+    <article ref={ref} className={stale ? 'report-doc is-stale' : 'report-doc'} aria-busy={stale || undefined}>
       <header className="report-doc-head">
         <img className="hospital-logo" width="52" height="52" src={hospitalLogo} alt="" />
         <div>
