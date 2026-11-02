@@ -7,7 +7,6 @@ import MedicineSuggest from '../components/MedicineSuggest.jsx'
 import ChartHistoryDialog from '../components/ChartHistoryDialog.jsx'
 import IdClashNote, { useIdClashes } from '../components/IdClashNote.jsx'
 import { medicineMatches } from '../helpers.js'
-import { DRUG_REQUESTS } from '../../shared/drug-requests.js'
 
 // Presentational only: every piece of chart state, and the autosave/lock/draft logic that
 // maintains it, stays in App so that swapping in the sign-in card when a session lapses does
@@ -23,7 +22,7 @@ export default function ChartScreen({
   activeRow, activeColumn, labelBelow, setActiveRow, setActiveColumn, setLabelBelow,
   onSetColumnMedicine, onCommitColumnMedicine, columnMedicineNotice, onDismissNotice, onApplySuggestion,
   onSetPatientName, onSetPatientId, onCheckPreviousDay, onUpdateQuantity, onCollapseRow, onAddColumn, canAddColumn, chartAlerts = {}, onShowAlerts, wardNote, onChangeWardNote, onSaveWardNote,
-  onDoseCommitted, savedRequests = [], onClearSaved, onOpenRequestForms,
+  onDoseCommitted,
   chartFrameRef, chartHeadRef, chartGridRef, chartDosesRef, chartFootRef,
 }) {
   const columnFocusValue = useRef('')
@@ -296,12 +295,6 @@ export default function ChartScreen({
       <span>{chartClashNote}</span>
       <button type="button" className="text-button compact" aria-label="إخفاء" onClick={onDismissClashNote}>حسنًا</button>
     </div>}
-
-    {savedRequests.map((saved) => <div key={saved.kind} className="undo-toast req-saved-note" role="status">
-      <span>حُفظت {DRUG_REQUESTS[saved.kind].label} لـ«{saved.name}»{saved.queued ? ' على هذا الجهاز — تُرسل عند عودة الاتصال.' : '.'}</span>
-      {!saved.queued && onOpenRequestForms && <button type="button" className="text-button compact" onClick={() => onOpenRequestForms(saved.kind)}>عرض وطباعة</button>}
-      <button type="button" className="text-button compact" aria-label="إخفاء" onClick={onClearSaved}>حسنًا</button>
-    </div>)}
 
     {undo && <div className="undo-toast" role="status">
       <span>{undo.message}</span>

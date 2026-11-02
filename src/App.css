@@ -2625,8 +2625,6 @@ button.topbar-user:hover { color: var(--primary); }
   .req-dialog { padding: var(--space-5); }
   .req-dialog-grid { grid-template-columns: 1fr; }
 }
-/* The entry form's «حُفظت …» line carries a link to the form's screen. */
-.req-saved { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); }
 
 .req-page { width: min(100% - var(--space-6), 860px); }
 .req-page > .form-error { margin-bottom: var(--space-4); }
@@ -2662,7 +2660,22 @@ button.topbar-user:hover { color: var(--primary); }
 .req-tick-cell--on .req-tick-box { border-color: var(--primary); background: var(--primary); }
 .req-tick:focus-visible { outline: 2px solid var(--primary); outline-offset: -3px; }
 .req-note-input { display: block; width: calc(100% - 16px); margin: 0 8px 8px; padding: 6px 8px; font-size: 14px; }
-.req-note-print { display: none; }
+.req-note-print { display: block; padding: 0 8px 6px; font-weight: 700; }
+
+/* A value typed on the form, edited where it sits: the label, then a blank to write in. The blank
+   is an underline at rest (the paper's dotted line) and a normal field while focused. */
+.req-field { display: flex; align-items: center; gap: 6px; min-width: 0; color: inherit; font-size: inherit; font-weight: 400; }
+.req-input {
+  flex: 1 1 auto; min-width: 0; min-height: 36px; padding: 4px 6px;
+  border: 0; border-bottom: 1px dashed var(--border-strong); border-radius: 0; background: transparent;
+  color: var(--heading); font: inherit; font-weight: 700;
+}
+.req-input:hover { border-bottom-color: var(--primary); }
+.req-input:focus { border: 1px solid var(--primary); border-radius: var(--radius-sm); background: var(--surface); }
+.req-unit { flex: none; color: var(--text-muted); }
+/* A label never breaks mid-word; the blank takes what is left of the cell. */
+.req-field .req-label { flex: none; white-space: nowrap; }
+.req-field .req-input { width: 4em; }
 
 .req-signatures { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-4); margin-top: var(--space-6); padding-bottom: var(--space-7); text-align: center; font-size: 13px; }
 .req-signatures p { margin: 0; }
@@ -2698,42 +2711,32 @@ button.topbar-user:hover { color: var(--primary); }
   .req-signatures { font-size: 11px; gap: var(--space-2); }
 }
 
-@media print {
-  /* Declared after the order block so page: reqform wins over the page: order of .order-page. */
-  @page reqform { size: A4 portrait; margin: 12mm; }
-  .req-page { page: reqform; width: 100%; padding: 0; }
-  .req-page > .form-error, .req-hint, .req-sheet-tools, .req-page .modal-backdrop, .req-note-input { display: none !important; }
-  .req-sheets { display: block; margin: 0; }
-  /* A single form's «طباعة» prints that form only. */
-  .req-sheets--one .req-sheet:not(.req-sheet--print) { display: none; }
-  .req-sheet { break-after: page; }
-  .req-sheet:last-child { break-after: auto; }
-  .req-paper { padding: 6mm 0 0; border: 0; border-radius: 0; box-shadow: none; }
-  .req-paper, .req-paper * { background: #fff !important; color: #000 !important; border-color: #000 !important; }
-  .req-form .req-band { background: #eee !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .req-paper-head { margin-bottom: 6mm; font-size: 10pt; }
-  .req-paper .hospital-logo { filter: grayscale(1); }
-  .req-form { font-size: 10.5pt; }
-  .req-form + .req-form { margin-top: 3mm; }
-  .req-form.alb-grid { margin-top: 0; }
-  .req-form th, .req-form td, .req-tick { padding: 1.6mm 2mm; }
-  .req-form td.req-tick-cell { padding: 0; }
-  .req-tick { min-height: 0; }
-  /* An unticked box prints as the blank form does; a ticked one carries a bold ✓. */
-  .req-tick-box { display: none; }
-  .req-tick-cell--on .req-tick-box { display: block; width: auto; height: auto; margin: 0; border: 0; font-size: 13pt; }
-  .req-note-print { display: block; padding: 0 2mm 1.6mm; font-weight: 700; }
-  /* min-height, not height: a three-line diagnosis must grow its row, not spill over the rules. */
-  .mero-diagnosis .req-tick { min-height: 13mm; }
-  .mero-culture td { height: 11mm; }
-  .mero-culture .req-tick { min-height: 11mm; }
-  .mero-dose td, .mero-dose th { height: 9mm; }
-  .alb-title { margin-bottom: 5mm; font-size: 12pt; }
-  .req-form.alb-head { font-size: 10.5pt; }
-  .req-form.alb-head td { padding: 1.5mm 2.5mm; }
-  .alb-grid { font-size: 9.5pt; }
-  .alb-grid .req-tick { min-height: 12mm; }
-  .alb-i12 .req-tick-text { font-size: 8.5pt; }
-  .req-signatures { margin-top: 10mm; padding: 0; font-size: 10.5pt; }
-  .alb-signatures { row-gap: 14mm; }
-}
+/* The forms as paper, drawn off-screen for the PDF (RequestPrintTemplate in .ppt-root): one fixed
+   A4 portrait page each, black on white, sized in mm so a form never runs onto a second page. */
+.rpt-sheet { width: 210mm; height: 297mm; box-sizing: border-box; padding: 12mm 12mm 10mm; overflow: hidden; background: #fff; color: #000; font-family: var(--font-sans); }
+.rpt-sheet .req-paper { padding: 0; border: 0; border-radius: 0; box-shadow: none; background: #fff; color: #000; }
+.rpt-sheet .req-paper * { color: #000; border-color: #000; }
+.rpt-sheet .req-paper-head { margin-bottom: 4mm; font-size: 10pt; }
+.rpt-sheet .hospital-logo { filter: grayscale(1); }
+.rpt-sheet .req-form { border: 2px solid #000; font-size: 10.5pt; line-height: 1.3; }
+.rpt-sheet .req-form + .req-form { margin-top: 3mm; }
+.rpt-sheet .req-form th, .rpt-sheet .req-form td { padding: 1.5mm 2mm; border: 1px solid #000; }
+.rpt-sheet .req-form .req-band { background: #e6e6e6; }
+.rpt-sheet .req-value { color: #000; }
+.rpt-sheet .req-form td.req-tick-cell { padding: 0; }
+.rpt-sheet .req-tick { display: flex; align-items: center; gap: 1.5mm; min-height: 0; padding: 1.5mm 2mm; background: #fff; }
+.rpt-sheet .req-tick-mark { flex: none; display: inline-block; width: 1.7mm; height: 3.4mm; margin: 0 1.2mm 1mm; border: solid #000; border-width: 0 0.7mm 0.7mm 0; transform: rotate(45deg); }
+.rpt-sheet .req-note-print { padding: 0 2mm 1.5mm; }
+.rpt-sheet .req-signatures { margin-top: 8mm; padding: 0; font-size: 10.5pt; }
+.rpt-sheet .mero-diagnosis .req-tick { min-height: 11mm; }
+.rpt-sheet .mero-culture td { height: 10mm; }
+.rpt-sheet .mero-culture .req-tick { min-height: 10mm; }
+.rpt-sheet .mero-dose td, .rpt-sheet .mero-dose th { height: 8mm; }
+.rpt-sheet .mero-dose td { color: #000; }
+.rpt-sheet .alb-title { margin-bottom: 4mm; font-size: 12pt; }
+.rpt-sheet .req-form.alb-head { font-size: 10.5pt; }
+.rpt-sheet .req-form.alb-head td { padding: 1.5mm 2.5mm; border: 0; }
+.rpt-sheet .req-form.alb-grid { margin-top: 0; border-top: 0; font-size: 9.5pt; }
+.rpt-sheet .alb-grid .req-tick { align-items: flex-start; min-height: 11mm; }
+.rpt-sheet .alb-i12 .req-tick-text { font-size: 8.5pt; }
+.rpt-sheet .alb-signatures { row-gap: 12mm; }

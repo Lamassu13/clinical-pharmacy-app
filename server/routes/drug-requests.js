@@ -45,6 +45,19 @@ const ownRequest = async (request) => {
   return { row }
 }
 
+// رقم الطبلة as the ward's charts for that day carry it (main chart first), by the patient's name:
+// a form saved before the ID was typed on the chart still shows it. name -> ID.
+const chartIds = async (floor, wardName, chartDate) => new Map((await query(
+  `SELECT DISTINCT ON (name) regexp_replace(btrim(cp.patient_name), '\\s+', ' ', 'g') AS name, cp.patient_id
+   FROM daily_charts dc
+   JOIN wards w ON w.id = dc.ward_id
+   JOIN chart_patients cp ON cp.chart_id = dc.id
+   WHERE w.floor_number IS NOT DISTINCT FROM $1 AND w.name = $2 AND dc.chart_date = $3
+     AND cp.patient_id <> '' AND btrim(cp.patient_name) <> ''
+   ORDER BY name, (dc.slot = 'main') DESC, cp.row_number`,
+  [floor, wardName, chartDate],
+)).rows.map((row) => [row.name, row.patient_id]))
+
 router.get('/drug-requests', requireAuth, async (request, response) => {
   const kind = kindOf(request.query.kind)
   if (!kind) return response.status(400).json(BAD_KIND)
@@ -52,7 +65,9 @@ router.get('/drug-requests', requireAuth, async (request, response) => {
   if (location.status) return response.status(location.status).json({ message: location.message })
   const { floor, wardName, chartDate } = location
   const result = await query(`${SELECT} WHERE r.kind = $1 AND r.ward_key = $2 AND r.request_date = $3 ORDER BY r.created_at, r.id`, [kind, wardKeyOf(floor, wardName), chartDate])
-  response.json({ requests: result.rows.map(toRequest) })
+  // A stored رقم الطبلة (typed in the popup's patient, or on the form) wins; otherwise the chart's.
+  const ids = result.rows.some((row) => !row.patient_id) ? await chartIds(floor, wardName, chartDate) : new Map()
+  response.json({ requests: result.rows.map((row) => toRequest({ ...row, patient_id: row.patient_id || ids.get(row.patient_name) || '' })) })
 })
 
 // The patient's course day for this medicine on `date`, and whether today's form is already filled.

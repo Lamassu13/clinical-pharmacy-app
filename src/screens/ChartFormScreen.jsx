@@ -1,7 +1,6 @@
 import { useRef, useState } from 'react'
 import { PATIENT_ROWS } from '../constants.js'
 import { medicineKey, medicineMatches, toEnglishDigits } from '../helpers.js'
-import { DRUG_REQUESTS } from '../../shared/drug-requests.js'
 
 // Phone-first entry form for ONE patient. It has no state of the chart's own: «إضافة إلى الجارت»
 // hands the patient to App (onSubmit), which puts it into the same chart state the grid edits,
@@ -13,7 +12,7 @@ const blankLine = () => ({ id: Math.random().toString(36).slice(2), med: '', qty
 
 export default function ChartFormScreen({
   usedRows, wardLabel, roomLabel, slot, onSlotChange, onClose, medicines, columnMedicines = [], chartReady, lockState, lockHolder, chartSaveStatus, isOnline, loadError,
-  onSubmit, onFindPrevious, askConfirm, onPromptRequests, savedRequests = [], onClearSaved, onOpenRequestForms,
+  onSubmit, onFindPrevious, askConfirm, onPromptRequests,
 }) {
   const [name, setName] = useState('')
   const [id, setId] = useState('')
@@ -81,7 +80,6 @@ export default function ChartFormScreen({
     const result = onSubmit({ name, id, room, doses: filled.map((line) => ({ med: canonical(line.med), qty: line.qty || '1' })) })
     if (!result.ok) { setError(result.reason === 'full' ? 'الجارت ممتلئ — لا يوجد صف فارغ لمريض جديد.' : 'الجارت قيد التعديل من جهاز آخر.'); return }
     setAdded({ row: result.row + 1, name: name.trim() })
-    onClearSaved?.()
     onPromptRequests?.({ name: name.trim(), patientId: id }, filled.map((line) => ({ medicine: canonical(line.med), quantity: Number(line.qty) || 1 })))
     setName(''); setId(''); setRoom(''); setLines([blankLine()]); setError('')
     nameRef.current?.focus()
@@ -191,10 +189,6 @@ export default function ChartFormScreen({
       <div className="entry-form-bar">
         {error && <p className="form-error" role="alert">{error}</p>}
         {added && <p className="form-success" role="status">أُضيف «{added.name}» إلى الجارت — صف {added.row}</p>}
-        {savedRequests.map((saved) => <p key={saved.kind} className="form-success req-saved" role="status">
-          <span>حُفظت {DRUG_REQUESTS[saved.kind].label} لـ«{saved.name}»{saved.queued ? ' على هذا الجهاز — تُرسل عند عودة الاتصال.' : '.'}</span>
-          {onOpenRequestForms && !saved.queued && <button type="button" className="text-button compact" onClick={() => onOpenRequestForms(saved.kind)}>عرض وطباعة</button>}
-        </p>)}
         <button type="submit" className="primary-button" disabled={!canEdit}>إضافة إلى الجارت</button>
       </div>
     </form>

@@ -79,23 +79,44 @@ export default function useDrugRequests({ selected, selectedDate, isExpired, use
     } finally { setBusy(false) }
   }, [wardFloor, wardName, selectedDate, isExpired, userId, listKind])
 
-  // A tapped box: shown at once, then the whole set is sent. Taps on one form go out one after
-  // another, so they reach the server in the order they were made. A refused or failed send reloads
-  // the list (the boxes go back to what is saved) and says so.
+  // Changes made on a form's screen — a tapped box, a value edited in place — are shown at once and
+  // sent one after another per form, so they reach the server in the order they were made. A refused
+  // or failed send reloads the list (the form goes back to what is saved) and says why.
   const chains = useRef(new Map())
-  const setTicks = useCallback((request, ticks, note = request.note) => {
-    setActionError('')
-    setRequests((current) => current && current.map((item) => (item.id === request.id ? { ...item, ticks, note } : item)))
-    const send = () => fetch(`${apiUrl}/drug-requests/${request.id}/ticks`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ ticks, note }),
-    }).then((response) => { if (!isExpired(response) && !response.ok) throw new Error('refused') })
-    const next = (chains.current.get(request.id) || Promise.resolve()).catch(() => {}).then(send)
-    chains.current.set(request.id, next)
-    next.catch(() => {
-      setActionError('لم يُحفظ آخر تحديد — تحقّق من الاتصال وأعِد الضغط.')
+  const enqueue = useCallback((id, send) => {
+    const next = (chains.current.get(id) || Promise.resolve()).catch(() => {}).then(send)
+    chains.current.set(id, next)
+    next.catch((error) => {
+      setActionError(error.message || 'لم يُحفظ آخر تعديل — تحقّق من الاتصال وحاول مرة أخرى.')
       setNonce((value) => value + 1)
     })
-  }, [isExpired])
+  }, [])
+  const putLocal = (id, change) => setRequests((current) => current && current.map((item) => (item.id === id ? { ...item, ...change } : item)))
+
+  const setTicks = useCallback((request, ticks, note = request.note) => {
+    setActionError('')
+    putLocal(request.id, { ticks, note })
+    enqueue(request.id, () => fetch(`${apiUrl}/drug-requests/${request.id}/ticks`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ ticks, note }),
+    }).then((response) => { if (!isExpired(response) && !response.ok) throw new Error('') }))
+  }, [isExpired, enqueue])
+
+  // A value edited in place: { name } / { patientId } / { fields: { key: value } }. The reply replaces
+  // the form (albumin's «كتابة» follows the count).
+  const saveField = useCallback((request, patch) => {
+    setActionError('')
+    const next = { name: patch.name ?? request.name, patientId: patch.patientId ?? request.patientId, fields: { ...request.fields, ...patch.fields } }
+    putLocal(request.id, next)
+    enqueue(request.id, async () => {
+      const response = await fetch(`${apiUrl}/drug-requests/${request.id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(next),
+      })
+      if (isExpired(response)) return
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(response.status === 409 ? `${result.message} — أُعيدت الاستمارة كما كانت.` : '')
+      putLocal(request.id, result.request)
+    })
+  }, [isExpired, enqueue])
 
   const remove = useCallback(async (request) => {
     if (!(await askConfirm(`حذف ${DRUG_REQUESTS[request.kind].label} للمريض «${request.name}»؟`, { danger: true, confirmLabel: 'حذف' }))) return
@@ -111,5 +132,5 @@ export default function useDrugRequests({ selected, selectedDate, isExpired, use
     } finally { setBusy(false) }
   }, [askConfirm, isExpired])
 
-  return { listKind, requests, loading, loadError, busy, actionError, check, save, setTicks, remove }
+  return { listKind, requests, loading, loadError, busy, actionError, check, save, setTicks, saveField, remove }
 }
