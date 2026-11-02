@@ -16,6 +16,8 @@ const GROUPS = [
     { label: 'الحبوب', icon: 'pill', open: { mode: 'pills' } },
     { label: 'الطلبية', icon: 'clipboard', open: { mode: 'order', slot: 'main' } },
     { label: 'طلبية الميرونيم', icon: 'clipboard', open: { mode: 'meropenem-order', slot: 'main' } },
+    { label: 'استمارة الميرونيم', icon: 'vial', open: { mode: 'meropenem-forms' } },
+    { label: 'استمارة الالبومين', icon: 'vial', open: { mode: 'albumin-forms' } },
     { label: 'استمارة الحبوب الإضافي', icon: 'pill-sheet', open: { mode: 'extra-pills' }, show: (floor) => Boolean(floor && EXTRA_PILL_FLOORS.includes(floor)) },
   ] },
   { id: 'clinical', label: 'المتابعة السريرية', items: [

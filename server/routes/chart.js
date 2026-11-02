@@ -111,6 +111,12 @@ router.post('/charts/purge', requireManager, async (request, response) => {
        AND ($3::boolean OR split_part(ward_key, '|', 1) = ANY($4::text[]) OR (split_part(ward_key, '|', 1) = '' AND split_part(ward_key, '|', 2) = ANY($5::text[])))`,
     [from, to, all, floors.map(String), wards],
   )
+  // «استمارة الميرونيم» / «استمارة الالبومين» name the patient too, and belong to their ward/day the same way.
+  await query(
+    `DELETE FROM drug_requests WHERE request_date BETWEEN $1 AND $2
+       AND ($3::boolean OR split_part(ward_key, '|', 1) = ANY($4::text[]) OR (split_part(ward_key, '|', 1) = '' AND split_part(ward_key, '|', 2) = ANY($5::text[])))`,
+    [from, to, all, floors.map(String), wards],
+  )
   await recordAudit(request, 'charts.purged', purgeScope(all, floors, wards), `${from} ← ${to} · حُذف ${result.rowCount} جارت`)
   response.json({ deleted: result.rowCount })
 })
@@ -894,7 +900,7 @@ export const loadCourseRows = async ({ floor, wardName, chartDate }, { pattern, 
   }
 }
 
-const loadOverrides = async (drugKey) => (await query(
+export const loadOverrides = async (drugKey) => (await query(
   'SELECT patient_key, anchor_date::text AS date, n FROM course_day_overrides WHERE drug_key = $1 ORDER BY updated_at',
   [drugKey],
 )).rows.map((row) => ({ patientKey: row.patient_key, date: row.date, n: row.n }))
