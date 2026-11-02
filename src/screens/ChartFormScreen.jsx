@@ -2,20 +2,18 @@ import { useRef, useState } from 'react'
 import { PATIENT_ROWS } from '../constants.js'
 import { medicineKey, medicineMatches, toEnglishDigits } from '../helpers.js'
 import { DRUG_REQUESTS } from '../../shared/drug-requests.js'
-import DrugRequestDialog from '../components/DrugRequestDialog.jsx'
 
 // Phone-first entry form for ONE patient. It has no state of the chart's own: «إضافة إلى الجارت»
 // hands the patient to App (onSubmit), which puts it into the same chart state the grid edits,
 // so the lock, draft, autosave and conflict merge all apply. A name or ID that was on
 // yesterday's chart offers the same copy-forward the grid does, filling this form instead.
-// A patient added on Meronem on the first day of the course is then asked for «استمارة الميرونيم»
-// (age, weight, allergy, S.cr, dose, duration) — a later day is not — and one added on albumin for
-// «استمارة الالبومين» (treatment day, serum albumin, weight, S.cr, count) every day it is given.
+// A patient added on Meronem or albumin is then asked for «استمارة الميرونيم» / «استمارة الالبومين»
+// (onPromptRequests — App's useRequestPrompts, which the chart grid shares and which decides when).
 const blankLine = () => ({ id: Math.random().toString(36).slice(2), med: '', qty: '1' })
 
 export default function ChartFormScreen({
   usedRows, wardLabel, roomLabel, slot, onSlotChange, onClose, medicines, columnMedicines = [], chartReady, lockState, lockHolder, chartSaveStatus, isOnline, loadError,
-  onSubmit, onFindPrevious, askConfirm, onCheckRequest, onSaveRequest, onOpenRequestForms,
+  onSubmit, onFindPrevious, askConfirm, onPromptRequests, savedRequests = [], onClearSaved, onOpenRequestForms,
 }) {
   const [name, setName] = useState('')
   const [id, setId] = useState('')
@@ -24,10 +22,6 @@ export default function ChartFormScreen({
   const [focusLine, setFocusLine] = useState(null)
   const [error, setError] = useState('')
   const [added, setAdded] = useState(null)
-  // The request forms still to ask for the patients just added, one dialog at a time
-  // ([{ id, kind, name, patientId, fields, note }]), and the forms saved for the latest patient.
-  const [requestQueue, setRequestQueue] = useState([])
-  const [savedRequests, setSavedRequests] = useState([])
   const asked = useRef(new Set())
   const nameRef = useRef(null)
   const readOnly = lockState === 'readonly'
@@ -87,37 +81,12 @@ export default function ChartFormScreen({
     const result = onSubmit({ name, id, room, doses: filled.map((line) => ({ med: canonical(line.med), qty: line.qty || '1' })) })
     if (!result.ok) { setError(result.reason === 'full' ? 'الجارت ممتلئ — لا يوجد صف فارغ لمريض جديد.' : 'الجارت قيد التعديل من جهاز آخر.'); return }
     setAdded({ row: result.row + 1, name: name.trim() })
-    setSavedRequests([])
-    askRequests({ name: name.trim(), patientId: id }, filled.map((line) => ({ medicine: canonical(line.med), quantity: Number(line.qty) || 1 })))
+    onClearSaved?.()
+    onPromptRequests?.({ name: name.trim(), patientId: id }, filled.map((line) => ({ medicine: canonical(line.med), quantity: Number(line.qty) || 1 })))
     setName(''); setId(''); setRoom(''); setLines([blankLine()]); setError('')
     nameRef.current?.focus()
   }
 
-  // Asked once the patient is on the chart, for each form one of the added medicines needs:
-  // Meropenem only on the course's first day, albumin every day, neither when today's is already
-  // filled. With no connection the day cannot be checked, so the dialog opens anyway and says so.
-  const askRequests = async (patient, lines) => {
-    if (!onCheckRequest) return
-    const asks = []
-    for (const [kind, spec] of Object.entries(DRUG_REQUESTS)) {
-      const mine = lines.filter((line) => spec.pattern.test(line.medicine))
-      if (!mine.length) continue
-      const check = await onCheckRequest(kind, patient.name, patient.patientId)
-      if (check && (check.requested || (spec.firstDayOnly && check.day !== 1))) continue
-      const fields = { ...spec.prefill(mine), ...(spec.dayField && check ? { [spec.dayField]: String(check.day) } : {}) }
-      asks.push({ id: `${kind}-${Date.now()}-${asks.length}`, kind, ...patient, fields, note: check ? '' : spec.offlineNote })
-    }
-    if (asks.length) setRequestQueue((current) => [...current, ...asks])
-  }
-  const nextRequest = () => { setRequestQueue((current) => current.slice(1)); nameRef.current?.focus() }
-  const saveRequest = async (item, payload) => {
-    const result = await onSaveRequest(item.kind, payload)
-    if (result.ok) {
-      setSavedRequests((current) => [...current, { kind: item.kind, name: payload.name, queued: Boolean(result.queued) }])
-      nextRequest()
-    }
-    return result
-  }
 
   const saveText = chartSaveStatus === 'error' ? 'لم يُحفظ — سيُعاد المحاولة'
     : chartSaveStatus === 'saving' ? 'جارٍ الحفظ…'
@@ -229,8 +198,5 @@ export default function ChartFormScreen({
         <button type="submit" className="primary-button" disabled={!canEdit}>إضافة إلى الجارت</button>
       </div>
     </form>
-    {requestQueue[0] && <DrugRequestDialog key={requestQueue[0].id} kind={requestQueue[0].kind} initial={requestQueue[0]}
-      kicker={`${DRUG_REQUESTS[requestQueue[0].kind].popupKicker} — ${requestQueue[0].name}`} note={requestQueue[0].note}
-      onSave={(payload) => saveRequest(requestQueue[0], payload)} onClose={nextRequest} />}
   </section>
 }
