@@ -9,11 +9,12 @@ import { cleanField } from '../../shared/drug-requests.js'
 // thumb) with an empty square showing it can be ticked; `after` sits under it inside the cell.
 export function TickCell({ checked, onToggle, colSpan, className, children, after, paper }) {
   const classes = ['req-tick-cell', checked && 'req-tick-cell--on', className].filter(Boolean).join(' ')
-  // On paper the tick is drawn, not a ✓ character: the PDF renderer takes ✓ from a fallback font and
-  // sets it below the line.
-  if (paper) return <td colSpan={colSpan} className={classes}><div className="req-tick">
-    {checked && <span className="req-tick-mark" aria-hidden="true" />}<span className="req-tick-text">{children}</span>
-  </div>{after}</td>
+  // On paper the cell is a plain table cell — no box inside it to size, so nothing can stretch the
+  // row apart from its lines — and the tick is drawn, not a ✓ character, which the PDF renderer
+  // takes from a fallback font and sets below the line.
+  if (paper) return <td colSpan={colSpan} className={classes}>
+    {checked && <span className="req-tick-mark" aria-hidden="true" />}{children}{after}
+  </td>
   return <td colSpan={colSpan} className={classes}>
     <button type="button" className="req-tick" aria-pressed={checked} onClick={onToggle}>
       <span className="req-tick-box" aria-hidden="true">{checked ? '✓' : ''}</span>
