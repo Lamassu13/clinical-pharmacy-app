@@ -2465,6 +2465,10 @@ button.topbar-user:hover { color: var(--primary); }
    Margins and the bordered form follow the old print rules (26.5mm top, 12mm sides, 16mm
    bottom, 253mm form) so the paper keeps its layout. */
 .ppt-root { position: fixed; top: 0; left: -99999px; z-index: -1; direction: rtl; color: #000; }
+/* The sheets are A4-wide, about twice a phone's width, and iPhone Safari enlarges text in blocks wider
+   than the screen; the PDF then draws that text at its real size inside rows laid out for the
+   enlarged one (a 17th indication in giant type, ticked rows pulled apart). Keep every size as set. */
+.ppt-root, .ppt-root * { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 .ppt-sheet { width: 210mm; height: 297mm; box-sizing: border-box; padding: 26.5mm 12mm 16mm; background: #fff; }
 .ppt-form { height: 100%; box-sizing: border-box; border: 1px solid #000; display: flex; flex-direction: column; }
 .ppt-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border-bottom: 2px solid #000; }
@@ -2723,20 +2727,18 @@ button.topbar-user:hover { color: var(--primary); }
 .rpt-sheet .req-form th, .rpt-sheet .req-form td { padding: 1.5mm 2mm; border: 1px solid #000; }
 .rpt-sheet .req-form .req-band { background: #e6e6e6; }
 .rpt-sheet .req-value { color: #000; }
-.rpt-sheet .req-form td.req-tick-cell { padding: 0; }
-.rpt-sheet .req-tick { display: flex; align-items: center; gap: 1.5mm; min-height: 0; padding: 1.5mm 2mm; background: #fff; }
-.rpt-sheet .req-tick-mark { flex: none; display: inline-block; width: 1.7mm; height: 3.4mm; margin: 0 1.2mm 1mm; border: solid #000; border-width: 0 0.7mm 0.7mm 0; transform: rotate(45deg); }
-.rpt-sheet .req-note-print { padding: 0 2mm 1.5mm; }
+.rpt-sheet .req-form td.req-tick-cell { padding: 1.5mm 2mm; vertical-align: middle; }
+.rpt-sheet .req-tick-mark { display: inline-block; width: 1.6mm; height: 3.2mm; margin-inline: 0.6mm 2.2mm; vertical-align: 0.3mm; border: solid #000; border-width: 0 0.7mm 0.7mm 0; transform: rotate(45deg); }
+.rpt-sheet .req-note-print { padding: 0.5mm 0 0; }
 .rpt-sheet .req-signatures { margin-top: 8mm; padding: 0; font-size: 10.5pt; }
-.rpt-sheet .mero-diagnosis .req-tick { min-height: 11mm; }
+.rpt-sheet .mero-diagnosis td.req-tick-cell { height: 11mm; }
 .rpt-sheet .mero-culture td { height: 10mm; }
-.rpt-sheet .mero-culture .req-tick { min-height: 10mm; }
 .rpt-sheet .mero-dose td, .rpt-sheet .mero-dose th { height: 8mm; }
 .rpt-sheet .mero-dose td { color: #000; }
 .rpt-sheet .alb-title { margin-bottom: 4mm; font-size: 12pt; }
 .rpt-sheet .req-form.alb-head { font-size: 10.5pt; }
 .rpt-sheet .req-form.alb-head td { padding: 1.5mm 2.5mm; border: 0; }
 .rpt-sheet .req-form.alb-grid { margin-top: 0; border-top: 0; font-size: 9.5pt; }
-.rpt-sheet .alb-grid .req-tick { align-items: flex-start; min-height: 11mm; }
-.rpt-sheet .alb-i12 .req-tick-text { font-size: 8.5pt; }
+.rpt-sheet .alb-grid td.req-tick-cell { height: 11mm; vertical-align: top; }
+.rpt-sheet td.alb-i12 { font-size: 8.5pt; }
 .rpt-sheet .alb-signatures { row-gap: 12mm; }
