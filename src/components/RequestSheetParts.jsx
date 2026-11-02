@@ -1,3 +1,4 @@
+import tick from '../assets/tick.png'
 import { cleanField } from '../../shared/drug-requests.js'
 
 // Pieces both request forms (MeropenemSheet, AlbuminSheet) are drawn with. Each comes in two modes:
@@ -9,11 +10,11 @@ import { cleanField } from '../../shared/drug-requests.js'
 // thumb) with an empty square showing it can be ticked; `after` sits under it inside the cell.
 export function TickCell({ checked, onToggle, colSpan, className, children, after, paper }) {
   const classes = ['req-tick-cell', checked && 'req-tick-cell--on', className].filter(Boolean).join(' ')
-  // On paper the cell is a plain table cell — no box inside it to size, so nothing can stretch the
-  // row apart from its lines — and the tick is drawn, not a ✓ character, which the PDF renderer
-  // takes from a fallback font and sets below the line.
+  // On paper the cell is a plain table cell, and the tick is a small image: not a ✓ character (the PDF
+  // renderer takes it from a fallback font and sets it below the line), and not a rotated shape (on
+  // iPhone the renderer drew a row holding a rotated element with its lines out of place).
   if (paper) return <td colSpan={colSpan} className={classes}>
-    {checked && <span className="req-tick-mark" aria-hidden="true" />}{children}{after}
+    {checked && <img className="req-tick-mark" src={tick} alt="" width="13" height="13" />}{children}{after}
   </td>
   return <td colSpan={colSpan} className={classes}>
     <button type="button" className="req-tick" aria-pressed={checked} onClick={onToggle}>
