@@ -10,7 +10,6 @@ import { DRUG_REQUESTS } from '../../shared/drug-requests.js'
 // `check` and `save` are useDrugRequests'; `scope` is the ward and date being charted.
 export default function useRequestPrompts({ check, save, scope }) {
   const [queue, setQueue] = useState([])
-  const [saved, setSaved] = useState([])
   const asked = useRef(new Set())
   // Where focus was when the first dialog opened (the grid cell, the entry form's name box): it goes
   // back there when the last one closes.
@@ -28,7 +27,7 @@ export default function useRequestPrompts({ check, save, scope }) {
       const result = await check(kind, patient.name, patient.patientId)
       if (result && (result.requested || (spec.firstDayOnly && result.day !== 1))) continue
       const fields = { ...spec.prefill(mine), ...(spec.dayField && result ? { [spec.dayField]: String(result.day) } : {}) }
-      asks.push({ id: `${key}|${Date.now()}`, kind, scope, ...patient, fields, note: result ? '' : spec.offlineNote })
+      asks.push({ id: `${key}|${Date.now()}`, kind, ...patient, fields, note: result ? '' : spec.offlineNote })
     }
     if (!asks.length) return
     setQueue((current) => {
@@ -52,14 +51,10 @@ export default function useRequestPrompts({ check, save, scope }) {
   const saveCurrent = useCallback(async (payload) => {
     const item = queue[0]
     const result = await save(item.kind, payload)
-    if (result.ok) {
-      setSaved((current) => [...current.filter((entry) => entry.kind !== item.kind), { kind: item.kind, name: payload.name, queued: Boolean(result.queued), scope: item.scope }])
-      next()
-    }
+    // Saved (or kept on the device until the signal returns, which the header counts): no note.
+    if (result.ok) next()
     return result
   }, [queue, save, next])
 
-  const clearSaved = useCallback(() => setSaved([]), [])
-  // A «حُفظت …» note belongs to the ward and day it was saved for.
-  return { current: queue[0] || null, ask, saveCurrent, skipCurrent: next, saved: saved.filter((entry) => entry.scope === scope), clearSaved }
+  return { current: queue[0] || null, ask, saveCurrent, skipCurrent: next }
 }

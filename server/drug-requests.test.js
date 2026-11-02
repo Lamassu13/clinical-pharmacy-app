@@ -145,3 +145,17 @@ test('requests: purging the ward’s charts for the dates removes its forms too'
   assert.deepEqual((await pharmacist.get(`/api/drug-requests?${where('albumin', '2026-09-24')}`)).body.requests, [])
   assert.equal((await pharmacist.get(`/api/drug-requests?${where('meropenem', '2026-09-28')}`)).body.requests.length, 1)
 })
+
+test('list: a form saved before the رقم الطبلة was typed shows the one that day’s chart has; a stored one wins', async () => {
+  const pharmacist = await loginAs({ role: 'user', floor: FLOOR })
+  const place = { kind: 'albumin', floor: FLOOR, ward: WARD, date: '2026-09-24' }
+  await pharmacist.post('/api/drug-requests', { ...place, name: 'اخلاص  علي' })
+  await pharmacist.post('/api/drug-requests', { ...place, name: 'سارة', patientId: '55' })
+  await pharmacist.post('/api/drug-requests', { ...place, name: 'زينب' })
+  // The ID typed on the chart afterwards (name spaced differently); سارة's chart ID differs from her
+  // stored one; زينب has an ID only on another day's chart.
+  await saveChart(pharmacist, '2026-09-24', ALBUMIN, [{ name: ' اخلاص علي', id: '901' }, { name: 'سارة', id: '77' }])
+  await saveChart(pharmacist, '2026-09-23', ALBUMIN, [{ name: 'زينب', id: '300' }])
+  const list = (await pharmacist.get(`/api/drug-requests?${where('albumin', '2026-09-24')}`)).body.requests
+  assert.deepEqual(list.map((r) => [r.name, r.patientId]), [['اخلاص علي', '901'], ['سارة', '55'], ['زينب', '']])
+})
