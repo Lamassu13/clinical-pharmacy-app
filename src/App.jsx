@@ -1129,13 +1129,17 @@ function App() {
     quantities: quantities.flatMap((row, rowIndex) => row.map((quantity, columnIndex) => quantity ? ({ rowNumber: rowIndex + 1, columnNumber: columnIndex + 1, quantity: Number(quantity) }) : [])),
     expectedVersion: chartVersionRef.current,
   }), [columnMedicines, patientIds, patientNames, quantities, selected])
-  // Called on a 409 from PUT /api/chart. With per-session locking this is rare — it only
-  // happens when this tab's lock went stale (missed heartbeats) and another device took over
-  // while this tab still had unsaved edits. Re-fetch, merge field-by-field (mine wins where I
+  // Called on a 409 from PUT /api/chart: another device saved this chart since this tab's last
+  // save. The lock is per user, so two devices signed in to one account both edit freely and
+  // this is routine for them; otherwise it only happens when this tab's lock went stale (missed
+  // heartbeats) and another device took over. Re-fetch, merge field-by-field (mine wins where I
   // changed it since the last sync, theirs where they did), and if any field was taken from
   // the other device, leave one persistent line naming them. No modal, no inert grid.
+  // Returns false when it changed nothing because another chart is open by the time the re-fetch
+  // lands: the caller must not retry then.
   const mergeAfterConflict = useCallback(async (date) => {
-    if (!selected) return
+    if (!selected) return false
+    const chartKey = wardKey(selected, date)
     const params = new URLSearchParams({ floor: selected.floor || '', ward: selected.ward, slot: selected.slot || 'main', date })
     const response = await fetch(`${apiUrl}/chart?${params}`, { credentials: 'include' })
     // A failed re-fetch, or a cached copy (not the server's state, see the load effect): throwing
@@ -1144,6 +1148,12 @@ function App() {
     if (!response.ok) throw new Error('conflict re-fetch failed')
     if (response.headers.get('x-from-cache') === '1') throw new Error('stale chart copy')
     const result = await response.json()
+    // Left this chart (another ward or date) while the re-fetch was out. Everything below writes
+    // the grid, its version and its saved baseline, which now belong to the chart on screen:
+    // merging here put the female ward's patients into the male ward's chart, which the next
+    // autosave then saved there. This chart's unsaved edits are still in its own device draft
+    // (cpa-chart-draft), merged in when it is next opened.
+    if (openChartKeyRef.current !== chartKey) return false
     const fresh = parseChartRows(result.chart)
     const mine = { patientNames, patientIds, columnMedicines, quantities }
     // Opened blank offline: this grid's rows are not the server's rows — add them, don't overlay.
@@ -1157,7 +1167,7 @@ function App() {
       setChartCompleted(!!result.chart?.completedAt)
       setCompletedByName(result.chart?.completedByName ?? null)
       setChartClashNote(`أُضيف ما كُتب دون اتصال إلى جارت الخادم كمرضى جدد${unplaced ? ` — ${unplaced} مريض لم يتّسع له الجارت، راجعه` : ''}. راجِع الجارت.`)
-      return
+      return true
     }
     const merged = mergeChartSnapshots(lastSyncedChartRef.current, mine, fresh)
     const { adopted, dropped, droppedOther } = diffMergeOutcome(merged, mine, fresh)
@@ -1179,6 +1189,7 @@ function App() {
       if (droppedOther) parts.push(`${droppedOther} من أسماء المرضى/الأدوية اختلفت أيضًا وأُبقيت قيمتك — راجعها يدويًا`)
       setChartClashNote(`${parts.join(' · ')}. راجِعها${adopted.length ? `: ${adopted.slice(0, 4).join('، ')}${adopted.length > 4 ? '…' : ''}` : ''}.`)
     }
+    return true
   }, [columnMedicines, offlineChartKey, patientIds, patientNames, quantities, selected])
   // Fire an immediate save (survives navigation / tab close) — only once the grid is loaded,
   // so we never overwrite unknown server state with a blank grid.
@@ -1685,18 +1696,26 @@ function App() {
       return undefined
     }
     setChartSaveStatus('pending')
+    // Set by the cleanup: this run's grid is no longer the one on screen (an edit since, or another
+    // chart opened). A save already in flight still records its own success below, but it must not
+    // merge or schedule a retry: a retry timer set after the cleanup is never cleared, and kept
+    // re-sending this chart's grid — then merging it into whichever chart was open by then.
+    let cancelled = false
     let retryTimer
     const save = async () => {
       setChartSaveStatus('saving')
       try {
         const response = await fetch(`${apiUrl}/chart`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(buildChartBody(selectedDate)) })
         if (isExpired(response)) return
-        // Rare with locking (only after a stale-lock takeover). mergeAfterConflict merges the
-        // fresh server state with this tab's pending edits, updates chartVersionRef, and drops
-        // one review line if any field came from the other device; retrying at 400ms resends
-        // the merged grid against the now-current version.
+        // Another device saved first: two devices on one account both hold the lock (it is per
+        // user), and a stale lock can be taken over. mergeAfterConflict merges the fresh server
+        // state with this tab's pending edits, updates chartVersionRef, and drops one review line
+        // if any field came from the other device; retrying at 400ms resends the merged grid
+        // against the now-current version. A cancelled run leaves that to the current one.
         if (response.status === 409) {
-          await mergeAfterConflict(selectedDate)
+          if (cancelled) return
+          const merged = await mergeAfterConflict(selectedDate)
+          if (!merged || cancelled) return
           retryTimer = setTimeout(save, 400)
           return
         }
@@ -1716,6 +1735,7 @@ function App() {
         setChartSaveStatus('saved')
         setLastChartSaveAt(Date.now())
       } catch (error) {
+        if (cancelled) return // the current run saves (and reports) from here on
         // A save the server refused (4xx) is a bug: report it at once. The rate limit (429), a database
         // blip (500) or Render restarting (502-504) usually clears on the retry below, so those are
         // reported only once five saves in a row have failed (~20s). A dropped connection is never
@@ -1732,7 +1752,7 @@ function App() {
     // "إعادة المحاولة الآن" bumps chartSaveNonce, which re-runs this effect: it clears the
     // 4s error backoff still pending and reschedules the save on the normal debounce.
     const timer = setTimeout(save, 1200)
-    return () => { clearTimeout(timer); clearTimeout(retryTimer) }
+    return () => { cancelled = true; clearTimeout(timer); clearTimeout(retryTimer) }
   }, [buildChartBody, chartLoading, chartSaveNonce, columnMedicines, isExpired, isLoggedIn, loadedChartKey, lockState, mergeAfterConflict, patientIds, patientNames, quantities, selected, selectedDate, sessionExpired])
 
   // Heartbeat while this tab holds the edit lock (or held it and is trying to keep it). A
