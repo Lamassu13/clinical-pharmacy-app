@@ -2,7 +2,8 @@ import express from 'express'
 import { query } from '../db.js'
 import { requireAuth } from '../auth.js'
 import { canAccessLocation, cleanText } from '../validation.js'
-import { readLocation, loadCourseRows, loadOverrides } from './chart.js'
+import { readLocation, readWritableLocation, refuse, loadCourseRows, loadOverrides } from './chart.js'
+import { DAY_LOCKED, isDayLocked } from '../day-lock.js'
 import { buildMeropenemForm, wardKeyOf } from '../meropenem.js'
 import { numberToArabicWords } from '../arabic-number.js'
 import { DRUG_REQUESTS, MAX_REQUEST_NOTE, cleanFields, cleanTicks } from '../../shared/drug-requests.js'
@@ -43,6 +44,11 @@ const ownRequest = async (request) => {
   const [floorText, ...ward] = row.ward_key.split('|')
   if (!canAccessLocation(request.session.user, floorText ? Number(floorText) : null, ward.join('|'))) return { status: 403, message: 'لا تملك صلاحية لهذه الردهة' }
   return { row }
+}
+// The same, for a change: a form is edited, ticked or deleted on its own day only (../day-lock.js).
+const ownWritableRequest = async (request) => {
+  const own = await ownRequest(request)
+  return own.row && isDayLocked(request.session.user, own.row.date) ? { status: 403, ...DAY_LOCKED } : own
 }
 
 // رقم الطبلة as the ward's charts for that day carry it (main chart first), by the patient's name:
@@ -101,8 +107,8 @@ router.get('/drug-requests/check', requireAuth, async (request, response) => {
 router.post('/drug-requests', requireAuth, async (request, response) => {
   const kind = kindOf(request.body.kind)
   if (!kind) return response.status(400).json(BAD_KIND)
-  const location = readLocation(request.body, request.session.user)
-  if (location.status) return response.status(location.status).json({ message: location.message })
+  const location = readWritableLocation(request.body, request.session.user)
+  if (location.status) return refuse(response, location)
   const name = nameKey(cleanText(request.body.name, 200))
   if (!name) return response.status(400).json({ message: 'اسم المريض مطلوب' })
   const { floor, wardName, chartDate } = location
@@ -117,8 +123,8 @@ router.post('/drug-requests', requireAuth, async (request, response) => {
 })
 
 router.put('/drug-requests/:id', requireAuth, async (request, response) => {
-  const own = await ownRequest(request)
-  if (own.status) return response.status(own.status).json({ message: own.message })
+  const own = await ownWritableRequest(request)
+  if (own.status) return refuse(response, own)
   const name = nameKey(cleanText(request.body.name, 200))
   if (!name) return response.status(400).json({ message: 'اسم المريض مطلوب' })
   try {
@@ -135,8 +141,8 @@ router.put('/drug-requests/:id', requireAuth, async (request, response) => {
 
 // The ticked boxes, sent whole on each tap (last tap wins), and the «Others (specify)» text.
 router.patch('/drug-requests/:id/ticks', requireAuth, async (request, response) => {
-  const own = await ownRequest(request)
-  if (own.status) return response.status(own.status).json({ message: own.message })
+  const own = await ownWritableRequest(request)
+  if (own.status) return refuse(response, own)
   const ticks = cleanTicks(own.row.kind, request.body.ticks)
   const note = request.body.note === undefined ? own.row.note : cleanText(request.body.note, MAX_REQUEST_NOTE).trim()
   await query('UPDATE drug_requests SET ticks = $2, note = $3, updated_at = NOW() WHERE id = $1', [own.row.id, JSON.stringify(ticks), note])
@@ -144,8 +150,8 @@ router.patch('/drug-requests/:id/ticks', requireAuth, async (request, response) 
 })
 
 router.delete('/drug-requests/:id', requireAuth, async (request, response) => {
-  const own = await ownRequest(request)
-  if (own.status) return response.status(own.status).json({ message: own.message })
+  const own = await ownWritableRequest(request)
+  if (own.status) return refuse(response, own)
   await query('DELETE FROM drug_requests WHERE id = $1', [own.row.id])
   response.json({ ok: true })
 })

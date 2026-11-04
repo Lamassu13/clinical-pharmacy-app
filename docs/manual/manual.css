@@ -1,0 +1,95 @@
+/* دليل الاستخدام — A4 portrait, printed by build.mjs with Chromium (Arabic shaping and RTL are its own).
+   Colours are the app's: Pharmacy Green #087c54, headings #064d3e (DESIGN.md). */
+@page { size: A4; margin: 16mm 15mm 18mm; }
+:root {
+  --green: #087c54; --green-dark: #064d3e; --green-50: #eef6f1; --green-100: #d9ece1;
+  --text: #132a27; --muted: #4f6b63; --border: #dbe6df;
+  --warn: #a86400; --warn-bg: #fdf4e7;
+}
+* { box-sizing: border-box; }
+html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body { margin: 0; font-family: 'IBM Plex Sans Arabic', sans-serif; font-size: 10.5pt; line-height: 1.75; color: var(--text); background: #fff; }
+p { margin: 0 0 2.5mm; }
+b { font-weight: 600; }
+.ui { display: inline-block; padding: 0 1.6mm; border-radius: 1.4mm; background: var(--green-50); color: var(--green-dark); font-weight: 600; line-height: 1.5; }
+span[dir='ltr'] { unicode-bidi: isolate; white-space: nowrap; }
+
+/* ---------- cover ---------- */
+.cover { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 263mm; text-align: center;
+  border: 1.2mm solid var(--green); border-radius: 6mm; padding: 18mm 16mm; background: linear-gradient(180deg, #fff 0%, var(--green-50) 100%); }
+.cover-logo { width: 46mm; height: 46mm; margin-bottom: 8mm; }
+.cover-org { margin: 0; font-size: 15pt; color: var(--muted); font-weight: 500; }
+.cover-unit { margin: 1mm 0 10mm; font-size: 20pt; color: var(--green-dark); font-weight: 700; }
+.cover-title { margin: 0 0 6mm; font-size: 34pt; line-height: 1.3; color: var(--green); font-weight: 700; }
+.cover-sub { max-width: 150mm; margin: 0 0 14mm; font-size: 12pt; color: var(--text); }
+.cover-meta { display: flex; flex-direction: column; gap: 1mm; padding: 4mm 10mm; border-radius: 3mm; background: #fff; border: 1px solid var(--border); font-size: 11pt; color: var(--green-dark); font-weight: 500; }
+.cover-note { margin-top: 18mm; font-size: 9pt; color: var(--muted); }
+
+/* ---------- contents ---------- */
+.toc-title { margin: 0 0 6mm; font-size: 22pt; color: var(--green-dark); border-bottom: 0.6mm solid var(--green); padding-bottom: 3mm; }
+.toc-list { list-style: none; margin: 0; padding: 0; }
+.toc-list li { display: flex; align-items: center; gap: 3mm; padding: 1.3mm 0; border-bottom: 1px dotted var(--border); font-size: 11.5pt; }
+.toc-list .t-num { flex: none; width: 7.5mm; height: 7.5mm; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--green-50); color: var(--green); font-weight: 700; font-size: 11pt; }
+.toc-list .t-title { flex: 1; font-weight: 500; }
+.toc-list .t-page { flex: none; min-width: 10mm; text-align: left; font-weight: 600; color: var(--green-dark); }
+.howto { margin-top: 7mm; break-inside: avoid; padding: 5mm 6mm; border-radius: 3mm; background: var(--green-50); }
+.howto h3 { margin: 0 0 2mm; color: var(--green-dark); font-size: 12pt; }
+.howto ul { margin: 0; padding-inline-start: 5mm; }
+
+/* ---------- chapters ---------- */
+.chapter { break-before: page; }
+.chapter h1 { display: flex; align-items: center; gap: 4mm; margin: 0 0 5mm; padding-bottom: 3mm; border-bottom: 0.6mm solid var(--green); font-size: 19pt; line-height: 1.35; color: var(--green-dark); }
+.chapter h1 .num { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 12mm; height: 12mm; border-radius: 3mm; background: var(--green); color: #fff; font-size: 15pt; }
+.chapter h2 { margin: 6mm 0 2.5mm; font-size: 13.5pt; color: var(--green-dark); break-after: avoid; }
+.chapter h2::before { content: ''; display: inline-block; width: 2.2mm; height: 2.2mm; margin-inline-end: 2.4mm; border-radius: 0.6mm; background: var(--green); vertical-align: 0.6mm; }
+ul, ol { margin: 0 0 3mm; padding-inline-start: 6mm; }
+li { margin-bottom: 1.2mm; }
+ol.steps { list-style: none; counter-reset: step; padding-inline-start: 0; }
+ol.steps > li { position: relative; counter-increment: step; padding-inline-start: 9mm; min-height: 7mm; }
+ol.steps > li::before { content: counter(step); position: absolute; inset-inline-start: 0; top: 0.4mm; width: 6.2mm; height: 6.2mm; border-radius: 50%; background: var(--green); color: #fff; font-weight: 700; font-size: 9.5pt; line-height: 6.2mm; text-align: center; }
+
+/* ---------- tables ---------- */
+table.grid { width: 100%; margin: 1mm 0 4mm; border-collapse: collapse; font-size: 10pt; break-inside: auto; }
+table.grid th, table.grid td { padding: 1.8mm 2.4mm; border: 1px solid var(--border); text-align: start; vertical-align: top; }
+table.grid thead th { background: var(--green); color: #fff; font-weight: 600; }
+table.grid tbody tr:nth-child(even) td { background: #f7faf8; }
+table.grid tr { break-inside: avoid; }
+table.grid td:first-child { white-space: nowrap; }
+table.grid td.ico { text-align: center; font-size: 12pt; }
+table.terms td:first-child { width: 34mm; color: var(--green-dark); }
+
+/* ---------- figures ---------- */
+figure { margin: 3mm 0 5mm; break-inside: avoid; text-align: center; }
+figure img { display: block; max-width: 100%; max-height: 120mm; margin: 0 auto; border: 1px solid var(--border); border-radius: 2.5mm; box-shadow: 0 0.6mm 2mm rgba(6, 77, 62, 0.12); }
+figcaption { margin-top: 1.8mm; font-size: 9pt; color: var(--muted); }
+figure.print img { max-height: 105mm; border-color: #c9d4ce; }
+.split { display: flex; gap: 6mm; align-items: flex-start; break-inside: avoid; }
+.split > div { flex: 1 1 auto; min-width: 0; }
+.split > figure { flex: 0 0 72mm; margin-top: 1mm; }
+.split > figure.narrow img { max-height: 135mm; }
+.split > figure.phone { flex: 0 0 52mm; }
+.split > figure.wide { flex: 0 0 100mm; }
+.split > figure.phone img { max-height: 112mm; border-radius: 4mm; }
+.figpair { display: flex; gap: 5mm; align-items: flex-start; break-inside: avoid; }
+.figpair figure { flex: 1 1 0; }
+.figpair img { max-height: 115mm; }
+figure.form img { max-height: 200mm; }
+img.tb { display: inline-block; width: 7mm; height: 7mm; vertical-align: middle; border-radius: 1.4mm; }
+table.grid td.ico img.tb { width: 9mm; height: 9mm; }
+
+/* ---------- notes, FAQ ---------- */
+.note { margin: 3mm 0 4mm; padding: 3mm 4mm; border-radius: 2.5mm; border-inline-start: 1.2mm solid; break-inside: avoid; font-size: 10pt; }
+.note.tip { background: var(--green-50); border-color: var(--green); }
+.note.warn { background: var(--warn-bg); border-color: var(--warn); }
+.note.warn > b:first-child { color: var(--warn); }
+.note.tip > b:first-child { color: var(--green); }
+dl.faq { margin: 0; }
+dl.faq dt { margin-top: 4mm; padding: 2mm 3mm; border-radius: 2mm; background: var(--green-50); color: var(--green-dark); font-weight: 600; break-after: avoid; }
+dl.faq dt::before { content: 'س: '; color: var(--green); }
+dl.faq dd { margin: 1.5mm 0 0; padding-inline-start: 3mm; break-inside: avoid; }
+dl.faq dd::before { content: 'ج: '; font-weight: 600; color: var(--green); }
+.endnote { margin-top: 14mm; text-align: center; color: var(--muted); font-size: 9.5pt; }
+.endnote img { width: 18mm; height: 18mm; opacity: 0.8; }
+
+/* Invisible markers the build finds in the PDF text to number the contents (build.mjs). */
+.mk { font-size: 1px; color: #fff; }

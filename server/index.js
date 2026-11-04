@@ -15,7 +15,7 @@ import {
   DOSE_TIMES, USAGE_METHODS, MAX_NOTE_LENGTH, clampInt, isIsoDate, cleanText,
   normalizeMedicineKey, medicineKeySql, SUPPLY_MATCH, SUPPLY_EXCEPT,
 } from './validation.js'
-import chartRoutes, { resolveChartId, readLocation, clearCourseRows } from './routes/chart.js'
+import chartRoutes, { resolveChartId, readLocation, readWritableLocation, refuse, clearCourseRows } from './routes/chart.js'
 import treatmentFormsRoutes from './routes/treatment-forms.js'
 import extraPillsRoutes from './routes/extra-pills.js'
 import drugRequestsRoutes from './routes/drug-requests.js'
@@ -766,8 +766,8 @@ app.get('/api/pills', requireAuth, async (request, response) => {
   response.json({ pills: result })
 })
 app.put('/api/pills', requireAuth, async (request, response) => {
-  const location = readLocation(request.body, request.session.user)
-  if (location.status) return response.status(location.status).json({ message: location.message })
+  const location = readWritableLocation(request.body, request.session.user)
+  if (location.status) return refuse(response, location)
   const { floor, wardName, chartDate, slot } = location
   const chartId = await resolveChartId(floor, wardName, chartDate, slot)
   if (!chartId) return response.status(404).json({ message: 'لا يوجد جارت لهذا اليوم' })

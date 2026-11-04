@@ -13,6 +13,7 @@ import { antibioticOf } from '../ddd.js'
 import { notifyLater, todayInBaghdad, MANAGER_ROLES } from '../push.js'
 import { recordChartChanges } from '../chart-history.js'
 import { recordAudit } from '../audit.js'
+import { DAY_LOCKED, isDayLocked, tomorrowInBaghdad } from '../day-lock.js'
 
 const router = express.Router()
 
@@ -37,6 +38,15 @@ export const readLocation = (source, user) => {
   if (!canAccessLocation(user, floor, wardName)) return { status: 403, message: 'لا تملك صلاحية لهذه الردهة' }
   return { floor, wardName, chartDate, slot: readSlot(source.slot) }
 }
+
+// readLocation for a write: also refuses any day but today outside management (../day-lock.js).
+export const readWritableLocation = (source, user) => {
+  const location = readLocation(source, user)
+  if (location.status) return location
+  return isDayLocked(user, location.chartDate) ? { status: 403, ...DAY_LOCKED } : location
+}
+// A refused readLocation / readWritableLocation as the response, keeping the day-lock flag.
+export const refuse = (response, outcome) => response.status(outcome.status).json({ message: outcome.message, ...(outcome.dayLocked ? { dayLocked: true } : {}) })
 
 // readLocation plus the ward_id the lock is keyed by — null when this ward has never been
 // touched (no wards row yet).
@@ -178,8 +188,8 @@ router.get('/ward-note', requireAuth, async (request, response) => {
 })
 
 router.put('/ward-note', requireAuth, async (request, response) => {
-  const location = readLocation(request.body, request.session.user)
-  if (location.status) return response.status(location.status).json({ message: location.message })
+  const location = readWritableLocation(request.body, request.session.user)
+  if (location.status) return refuse(response, location)
   const body = cleanText(request.body.body, 2000).trim()
   const key = wardKeyOf(location.floor, location.wardName)
   if (!body) {
@@ -217,8 +227,8 @@ router.get('/receipts', requireAuth, async (request, response) => {
 // Mark one main-chart patient: received true / false, or null to clear. `name` and `patientId` are as GET
 // returned them. 409 when that patient is no longer on the chart (renamed, removed) — reload.
 router.put('/receipts', requireAuth, async (request, response) => {
-  const location = readLocation(request.body, request.session.user)
-  if (location.status) return response.status(location.status).json({ message: location.message })
+  const location = readWritableLocation(request.body, request.session.user)
+  if (location.status) return refuse(response, location)
   // Compared exactly as GET sent it (btrim: spaces only). A JS trim would also strip a pasted tab
   // or NBSP, and that patient could then never be matched.
   const name = cleanText(request.body.name, 200)
@@ -366,8 +376,8 @@ router.get('/chart/poll', requireAuth, readChart(true))
 // empty room clears the row. 404 when this day has no saved chart yet — the client retries once
 // the chart's first save has created it.
 router.put('/chart/room', requireAuth, async (request, response) => {
-  const location = readLocation(request.body, request.session.user)
-  if (location.status) return response.status(location.status).json({ message: location.message })
+  const location = readWritableLocation(request.body, request.session.user)
+  if (location.status) return refuse(response, location)
   const { floor, wardName, chartDate, slot } = location
   const rowNumber = clampInt(request.body.rowNumber, 1, MAX_PATIENT_ROWS)
   if (rowNumber === null) return response.status(400).json({ message: 'الصف مطلوب' })
@@ -450,6 +460,7 @@ router.get('/chart/lock', requireAuth, async (request, response) => {
 router.patch('/chart/complete', requireAuth, async (request, response) => {
   const target = await resolveLockTarget(request.body, request.session.user)
   if (target.status) return response.status(target.status).json({ message: target.message })
+  if (isDayLocked(request.session.user, target.chartDate)) return response.status(403).json(DAY_LOCKED)
   const completed = request.body.completed === true
   const wardId = target.wardId ?? await ensureWardId(target.floor, target.wardName)
   const user = request.session.user
@@ -486,6 +497,11 @@ router.put('/chart', requireAuth, async (request, response) => {
   const quantities = (Array.isArray(request.body.quantities) ? request.body.quantities : [])
     .map((entry) => ({ rowNumber: clampInt(entry?.rowNumber, 1, MAX_PATIENT_ROWS), columnNumber: clampInt(entry?.columnNumber, 1, MAX_CHART_COLUMNS), quantity: clampInt(entry?.quantity, 0, 1_000_000) }))
     .filter((entry) => entry.rowNumber !== null && entry.columnNumber !== null && entry.quantity !== null)
+  // Only today's chart, outside management (../day-lock.js). One exception: «نسخ الأدوية إلى اليوم
+  // التالي» on today's chart writes tomorrow's medicine columns, with no patient and no dose.
+  const copyForward = chartDate === tomorrowInBaghdad() && patients.every((patient) => !patient.name.trim() && !patient.patientId)
+    && quantities.every((entry) => !entry.quantity)
+  if (isDayLocked(request.session.user, chartDate) && !copyForward) return response.status(403).json(DAY_LOCKED)
   // 0 means "I have no chart yet" — the correct baseline for a first save, since a plain
   // INSERT with no existing row always succeeds regardless of this value.
   const expectedVersion = clampInt(request.body.expectedVersion, 0, Number.MAX_SAFE_INTEGER) ?? 0
@@ -621,8 +637,8 @@ router.put('/chart', requireAuth, async (request, response) => {
 // on the wrong patient's printed administration form. Reinsert rather than UPDATE ... - 1:
 // the primary key is checked per row, so shifting rows in an unspecified order collides.
 router.post('/chart/collapse-row', requireAuth, async (request, response) => {
-  const location = readLocation(request.body, request.session.user)
-  if (location.status) return response.status(location.status).json({ message: location.message })
+  const location = readWritableLocation(request.body, request.session.user)
+  if (location.status) return refuse(response, location)
   const { floor, wardName, chartDate, slot } = location
   const rowNumber = clampInt(request.body.rowNumber, 1, MAX_PATIENT_ROWS)
   if (rowNumber === null) return response.status(400).json({ message: 'الصف مطلوب' })
@@ -667,8 +683,8 @@ router.post('/chart/collapse-row', requireAuth, async (request, response) => {
 // deleted row's pill data, which collapse-row handed to the client. Without it an undone row
 // delete left each patient below it holding the dose times and room of the patient underneath.
 router.post('/chart/expand-row', requireAuth, async (request, response) => {
-  const location = readLocation(request.body, request.session.user)
-  if (location.status) return response.status(location.status).json({ message: location.message })
+  const location = readWritableLocation(request.body, request.session.user)
+  if (location.status) return refuse(response, location)
   const { floor, wardName, chartDate, slot } = location
   const rowNumber = clampInt(request.body.rowNumber, 1, MAX_PATIENT_ROWS)
   if (rowNumber === null) return response.status(400).json({ message: 'الصف مطلوب' })
@@ -1005,8 +1021,8 @@ router.get('/antibiotics/long', requireAuth, async (request, response) => {
 // A typed course day: "on `anchorDate` this patient is D`n`" (the form's first shown day for a
 // course); the days after it count on from there. Shared by both forms through the drug key.
 router.put('/course-day', requireAuth, async (request, response) => {
-  const location = readLocation(request.body, request.session.user)
-  if (location.status) return response.status(location.status).json({ message: location.message })
+  const location = readWritableLocation(request.body, request.session.user)
+  if (location.status) return refuse(response, location)
   const patientKey = cleanText(request.body.patientKey, 300).trim()
   const drugKey = cleanText(request.body.drugKey, 60).trim()
   const n = Number(request.body.n)

@@ -14,7 +14,7 @@ import usePdfSheets from '../usePdfSheets.js'
 const SHEETS = { meropenem: MeropenemSheet, albumin: AlbuminSheet }
 const savedAt = (iso) => new Date(iso).toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' })
 
-export default function DrugRequestsScreen({ kind, header, wardLabel, wardName, onBack, selectedDate, onChangeDate, isOnline, loading, loadError, requests, busy, actionError, onSave, onSetTicks, onSaveField, onDelete, confirmModal }) {
+export default function DrugRequestsScreen({ dayLocked = false, kind, header, wardLabel, wardName, onBack, selectedDate, onChangeDate, isOnline, loading, loadError, requests, busy, actionError, onSave, onSetTicks, onSaveField, onDelete, confirmModal }) {
   const spec = DRUG_REQUESTS[kind]
   const Sheet = SHEETS[kind]
   const [adding, setAdding] = useState(false)
@@ -30,12 +30,13 @@ export default function DrugRequestsScreen({ kind, header, wardLabel, wardName, 
     {header}
 
     <section className="order-page req-page">
+      {dayLocked && <p className="day-lock-note" role="status">ليست استمارات اليوم — للعرض والطباعة فقط. لا يُعدَّل إلا يوم اليوم.</p>}
       <div className="chart-toolbar order-toolbar">
         <button className="back-button" onClick={onBack}>→ العودة للردهات</button>
         <div><p className="modal-kicker">{spec.label}</p><h1>{wardLabel}</h1></div>
         <div className="toolbar-actions">
           <label className="pills-date">التاريخ <input type="date" value={selectedDate} onChange={(event) => onChangeDate(event.target.value)} /></label>
-          <button type="button" className="secondary-button compact" disabled={!isOnline || loadError || loading} onClick={() => setAdding(true)}>+ استمارة جديدة</button>
+          {!dayLocked && <button type="button" className="secondary-button compact" disabled={!isOnline || loadError || loading} onClick={() => setAdding(true)}>+ استمارة جديدة</button>}
           <button type="button" className="primary-button compact" disabled={!list.length || pdf.busy} onClick={() => print(list)}>{pdf.busy ? 'جارٍ التحضير…' : list.length > 1 ? 'طباعة الكل' : 'طباعة'}</button>
         </div>
       </div>
@@ -58,13 +59,13 @@ export default function DrugRequestsScreen({ kind, header, wardLabel, wardName, 
                   </p>
                   <span className="req-sheet-actions">
                     <button type="button" className="secondary-button compact" disabled={pdf.busy} onClick={() => print([request])}>طباعة</button>
-                    <button type="button" className="danger-button compact" disabled={busy} onClick={() => onDelete(request)}>حذف</button>
+                    {!dayLocked && <button type="button" className="danger-button compact" disabled={busy} onClick={() => onDelete(request)}>حذف</button>}
                   </span>
                 </div>
-                <Sheet request={request} wardName={wardName} wardLabel={wardLabel}
+                <fieldset className="day-lock" disabled={dayLocked}><Sheet request={request} wardName={wardName} wardLabel={wardLabel}
                   onToggle={(key) => onSetTicks(request, toggleTick(kind, request.ticks, key))}
                   onNote={(note) => onSetTicks(request, request.ticks, note)}
-                  onField={(patch) => onSaveField(request, patch)} />
+                  onField={(patch) => onSaveField(request, patch)} /></fieldset>
               </article>)}
             </div>
           </>}

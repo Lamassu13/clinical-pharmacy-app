@@ -6,6 +6,11 @@ import { pool } from './db.js'
 import { medicineCatalogue } from './medicine-catalogue.js'
 import { dashboardRows } from './dashboard-rows.js'
 import { clearCourseRows, clearLongCourses } from './routes/chart.js'
+import { dayLockSettings } from './day-lock.js'
+
+// The suite writes fixed past dates as pharmacists to test everything else, so the today-only rule
+// (./day-lock.js) is off here; server/day-lock.test.js turns it on to test the rule itself.
+dayLockSettings.enabled = false
 
 // A test run pointed at the wrong database would TRUNCATE real patient data. The name
 // is the only signal available here, so refuse anything that isn't obviously a test DB
