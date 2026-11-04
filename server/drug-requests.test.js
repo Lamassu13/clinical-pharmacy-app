@@ -73,10 +73,10 @@ test('albumin: the treatment day counts up day by day; fields cleaned per kind; 
 
   const sent = await pharmacist.post('/api/drug-requests', {
     kind: 'albumin', floor: FLOOR, ward: WARD, date: '2026-09-26', name: 'سارة', patientId: '44',
-    fields: { treatmentDay: '٣', count: '4 vials', serumAlbumin: '1,8x', weight: '70.5', scr: '1.1', diagnosis: 'Liver cirrhosis', age: '54' },
+    fields: { treatmentDay: '٣', count: '4 vials', serumAlbumin: '1,8x', weight: '70.5', scr: '1.1', doctor: ' د. سعد كاظم ', diagnosis: 'Liver cirrhosis', age: '54' },
   })
   assert.equal(sent.status, 201)
-  assert.deepEqual(sent.body.request.fields, { treatmentDay: '3', count: '4', serumAlbumin: '1.8', weight: '70.5', scr: '1.1', diagnosis: 'Liver cirrhosis' })
+  assert.deepEqual(sent.body.request.fields, { treatmentDay: '3', count: '4', serumAlbumin: '1.8', weight: '70.5', scr: '1.1', doctor: 'د. سعد كاظم', diagnosis: 'Liver cirrhosis' })
   assert.equal(sent.body.request.words, 'أربعة')
   assert.deepEqual(sent.body.request.ticks, [])
   assert.deepEqual(await check(pharmacist, 'albumin', '2026-09-26', { name: 'سارة', id: '44' }), { day: 3, requested: true })
@@ -84,7 +84,7 @@ test('albumin: the treatment day counts up day by day; fields cleaned per kind; 
 
 test('requests: list per kind, resend updates in place and keeps ticks, edit, tick, delete; other floors refused', async () => {
   const pharmacist = await loginAs({ role: 'user', floor: FLOOR })
-  const form = { kind: 'meropenem', floor: FLOOR, ward: WARD, date: '2026-09-24', name: ' علي  حسين ', patientId: '12a3', fields: { age: '54', weight: '80', allergy: 'Penicillin', scr: '1.2', dose: '1g × 3', duration: '7 أيام' } }
+  const form = { kind: 'meropenem', floor: FLOOR, ward: WARD, date: '2026-09-24', name: ' علي  حسين ', patientId: '12a3', fields: { age: '54', weight: '80', allergy: 'Penicillin', scr: '1.2', dose: '1g × 3', duration: '7 أيام', doctor: 'د. سعد كاظم' } }
   assert.equal((await pharmacist.post('/api/drug-requests', { ...form, name: '  ' })).status, 400)
   assert.equal((await pharmacist.post('/api/drug-requests', { ...form, kind: 'x' })).status, 400)
   const created = await pharmacist.post('/api/drug-requests', form)
@@ -93,6 +93,7 @@ test('requests: list per kind, resend updates in place and keeps ticks, edit, ti
   assert.equal(created.body.request.name, 'علي حسين')
   assert.equal(created.body.request.patientId, '123')
   assert.match(created.body.request.createdByName, /Test User/)
+  assert.equal(created.body.request.fields.doctor, 'د. سعد كاظم')
 
   const ticked = await pharmacist.patch(`/api/drug-requests/${id}/ticks`, { ticks: ['others', 'culture-after', 'culture-before', 'i3'], note: 'Brain abscess' })
   assert.equal(ticked.status, 200)
@@ -112,9 +113,12 @@ test('requests: list per kind, resend updates in place and keeps ticks, edit, ti
   assert.deepEqual((await list('albumin')).map((r) => [r.name, r.fields.count, r.words]), [['علي حسين', '2', 'اثنان']])
   assert.deepEqual((await pharmacist.get(`/api/drug-requests?${where('meropenem', '2026-09-25')}`)).body.requests, [])
 
-  const edited = await pharmacist.put(`/api/drug-requests/${id}`, { name: 'علي حسين', patientId: '123', fields: { ...form.fields, duration: '10 أيام' } })
+  // Corrected on the form, as its screen does: one value changes, the others stay.
+  const edited = await pharmacist.put(`/api/drug-requests/${id}`, { name: 'علي حسين', patientId: '123', fields: { ...form.fields, duration: '10 أيام', doctor: 'د. سعد كاظم الجبوري' } })
   assert.equal(edited.status, 200)
   assert.equal(edited.body.request.fields.duration, '10 أيام')
+  assert.equal(edited.body.request.fields.doctor, 'د. سعد كاظم الجبوري')
+  assert.equal(edited.body.request.fields.dose, '1g × 3')
   assert.deepEqual(edited.body.request.ticks, ['others', 'culture-before'])
   // Renaming onto another form of the same kind and day is a clash, not a silent merge.
   const other = await pharmacist.post('/api/drug-requests', { ...form, name: 'حسن', patientId: '' })

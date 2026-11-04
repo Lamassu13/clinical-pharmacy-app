@@ -54,7 +54,7 @@ export default function AlbuminSheet({ request, wardLabel, paper = false, onTogg
 
     <div className="req-signatures alb-signatures">
       <p><strong>الصيدلي السريري</strong></p>
-      <p><strong>الطبيب الاختصاص</strong></p>
+      <p className="req-sign-doctor">{value('اسم الطبيب الاختصاص', 'doctor', { bare: true })}<strong>الطبيب الاختصاص</strong></p>
       <p><strong>مسؤول وحدة الصيدلة السريرية</strong></p>
       <p><strong>مسؤول القسم</strong></p>
       <p />
