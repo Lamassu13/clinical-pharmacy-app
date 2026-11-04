@@ -2720,6 +2720,10 @@ button.topbar-user:hover { color: var(--primary); }
 .req-signatures { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-4); margin-top: var(--space-6); padding-bottom: var(--space-7); text-align: center; font-size: 13px; }
 .req-signatures p { margin: 0; }
 .req-signatures strong { display: block; }
+/* The specialist's name, written above their signature line: a centred blank on the form's screen. */
+.req-sign-doctor { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.req-sign-doctor .req-field { align-self: stretch; }
+.req-sign-doctor .req-input { width: 100%; text-align: center; }
 
 /* Meropenem */
 .req-form .mero-title { text-align: center; }

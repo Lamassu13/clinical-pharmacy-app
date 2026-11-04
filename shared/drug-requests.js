@@ -21,6 +21,8 @@ export const DRUG_REQUESTS = {
       { key: 'allergy', label: 'التحسس', max: 200, chips: ['لا يوجد'] },
       { key: 'dose', label: 'الجرعة', max: 120, wide: true, auto: true, placeholder: '1g × 3' },
       { key: 'duration', label: 'تحديد مدة الصرف', max: 120, wide: true, placeholder: 'مثال: 7 أيام', chips: ['5 أيام', '7 أيام', '10 أيام', '14 يومًا'] },
+      // Printed above the specialist's signature («الطبيب الاخصائي» / «الطبيب الاختصاص»).
+      { key: 'doctor', label: 'اسم الطبيب الاختصاص', max: 120, wide: true },
     ],
     // The dose as the follow-up form words it: 1g vial × 6 → «2g × 3».
     prefill: (lines) => ({ dose: lines.map((line) => doseText(line.medicine, line.quantity)).join(' + ') }),
@@ -70,6 +72,8 @@ export const DRUG_REQUESTS = {
       { key: 'serumAlbumin', label: 'Serum albumin', unit: 'g/dl', max: 20, decimal: true },
       { key: 'weight', label: 'Weight', unit: 'kg', max: 20, decimal: true },
       { key: 'scr', label: 'S.creatinine', max: 30, ltr: true, placeholder: 'mg/dL' },
+      // Printed above the specialist's signature («الطبيب الاخصائي» / «الطبيب الاختصاص»).
+      { key: 'doctor', label: 'اسم الطبيب الاختصاص', max: 120, wide: true },
       // Written on the form's screen («تعديل»), not asked in the popup.
       { key: 'diagnosis', label: 'Diagnosis', max: 200, wide: true, auto: true, screenOnly: true },
     ],
