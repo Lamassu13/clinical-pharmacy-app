@@ -6,6 +6,11 @@ import { pool } from './db.js'
 import { medicineCatalogue } from './medicine-catalogue.js'
 import { dashboardRows } from './dashboard-rows.js'
 import { clearCourseRows, clearLongCourses, forgetSavedCharts } from './routes/chart.js'
+import { dayLockSettings } from './day-lock.js'
+
+// The suite writes fixed past dates as pharmacists to test everything else, so the today-only rule
+// (./day-lock.js) is off here; server/day-lock.test.js turns it on to test the rule itself.
+dayLockSettings.enabled = false
 
 // A test run pointed at the wrong database would TRUNCATE real patient data. The name
 // is the only signal available here, so refuse anything that isn't obviously a test DB
@@ -27,7 +32,7 @@ export const resetDatabase = async () => {
   await pool.query(`
   TRUNCATE TABLE chart_quantities, chart_columns, chart_patients, pill_entries,
     pill_patient_meta, chart_locks, daily_charts, wards, medicines, treatment_forms,
-    extra_pill_forms, course_day_overrides, ward_notes, user_floor_access, user_ward_access, audit_log, app_errors, users RESTART IDENTITY CASCADE;
+    extra_pill_forms, drug_requests, course_day_overrides, ward_notes, user_floor_access, user_ward_access, audit_log, app_errors, users RESTART IDENTITY CASCADE;
   DO $$ BEGIN
     IF to_regclass('public.session') IS NOT NULL THEN EXECUTE 'TRUNCATE TABLE session'; END IF;
   END $$;

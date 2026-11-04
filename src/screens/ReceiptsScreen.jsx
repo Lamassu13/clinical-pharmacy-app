@@ -17,7 +17,7 @@ const Icon = ({ children }) => <svg width="18" height="18" viewBox="0 0 24 24" f
 const GivenIcon = () => <Icon><path d="M5 12.5l4.5 4.5L19 7.5" /></Icon>
 const MissedIcon = () => <Icon><path d="M7 7l10 10M17 7L7 17" /></Icon>
 
-export default function ReceiptsScreen({ header, wardLabel, roomLabel, onBack, selectedDate, onChangeDate, loading, patients, loadError, saveError, savingRows, onSetReceived }) {
+export default function ReceiptsScreen({ dayLocked = false, header, wardLabel, roomLabel, onBack, selectedDate, onChangeDate, loading, patients, loadError, saveError, savingRows, onSetReceived }) {
   const [filter, setFilter] = useState('all')
   const all = patients || []
   const active = FILTERS.find((item) => item.key === filter)
@@ -39,6 +39,7 @@ export default function ReceiptsScreen({ header, wardLabel, roomLabel, onBack, s
         : loadError ? <div className="empty-state"><strong>تعذّر تحميل المرضى</strong><span>تحقّق من الاتصال، ثم حدّث الصفحة.</span></div>
         : !all.length ? <div className="empty-state"><strong>لا يوجد مرضى في جارت هذا اليوم</strong><span>سجّل الجارت الرئيسي لهذه الردهة أولًا، ثم يظهر مرضاه هنا لتحديد من استلم جرعاته.</span></div>
         : <>
+{dayLocked && <p className="day-lock-note" role="status">ليس يوم اليوم — للعرض والطباعة فقط. لا يُعدَّل إلا يوم اليوم.</p>}
           <div className="filter-chips receipts-filters" role="group" aria-label="عرض المرضى حسب الاستلام">
             {FILTERS.map((item) => <button key={item.key} type="button" className="filter-chip" aria-pressed={filter === item.key} onClick={() => setFilter(item.key)}>
               {item.label} <span className="filter-chip-count">{all.filter(item.match).length}</span>
@@ -48,7 +49,7 @@ export default function ReceiptsScreen({ header, wardLabel, roomLabel, onBack, s
           {saveError && <p className="form-error" role="alert">{saveError}</p>}
 
           {!shown.length ? <div className="empty-state"><strong>لا يوجد مرضى في «{active.label}»</strong></div>
-            : <ul className="medicine-list receipts-list">
+            : <fieldset className="day-lock" disabled={dayLocked}><ul className="medicine-list receipts-list">
               {shown.map((patient) => {
                 const busy = savingRows.has(receiptKey(patient))
                 // Ignored rather than disabled while its save is in flight: a disabled button drops
@@ -69,7 +70,7 @@ export default function ReceiptsScreen({ header, wardLabel, roomLabel, onBack, s
                   </div>
                 </li>
               })}
-            </ul>}
+            </ul></fieldset>}
         </>}
     </section>
   </main>

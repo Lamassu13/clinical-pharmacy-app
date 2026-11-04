@@ -21,7 +21,7 @@ const BLANK_ENTRY = { doseTime: '', usageMethod: '', note: '', pillQty: null, pi
 const BLANK_EXTRA = { doseTime: '', usageMethod: '', note: '', pillQty: '', pillName: '' }
 
 export default function PillsScreen({
-  header, wardLabel, roomLabel, today, editTime, onBack,
+  dayLocked = false, header, wardLabel, roomLabel, today, editTime, onBack,
   selectedDate, onChangeDate, pillsLoading, pillsData, pillsSaveStatus, pillsLoadError,
   pillEntries, setPillEntries, pillRooms, setPillRooms, pillSelection, onTogglePatient, onSetPillSelection, pillsYesterday, isOnline, catalogue = [], englishOnly = false,
   confirmModal, pillsClashNote, onDismissPillsClashNote,
@@ -116,6 +116,7 @@ export default function PillsScreen({
       {/* Same warning-tinted banner chart uses for a recovered offline draft (.chart-clash-note) —
           reused as-is rather than duplicated, since it's plain "review this" styling, not
           chart-specific. */}
+{dayLocked && <p className="day-lock-note" role="status">ليست استمارة اليوم — للعرض والطباعة فقط. لا يُعدَّل إلا يوم اليوم.</p>}
       {pillsClashNote && <div className="chart-clash-note" role="status">
         <span>{pillsClashNote}</span>
         <button type="button" className="text-button compact" aria-label="إخفاء" onClick={onDismissPillsClashNote}>حسنًا</button>
@@ -154,13 +155,14 @@ export default function PillsScreen({
             <div className="pill-form-head">
               <label className={pillSelection.has(patient.rowNumber) ? 'pill-pick is-checked' : 'pill-pick'}><input type="checkbox" checked={pillSelection.has(patient.rowNumber)} onChange={() => onTogglePatient(patient.rowNumber)} /><span>تحديد للطباعة</span></label>
               <div className="pill-form-patient"><strong>{patient.name}</strong><span>{today}</span></div>
-              <label className="pill-room">{roomLabel} <input inputMode="numeric" value={pillRooms[patient.rowNumber] || ''} onChange={(event) => setPillRooms((current) => ({ ...current, [patient.rowNumber]: event.target.value }))} /></label>
+              <label className="pill-room">{roomLabel} <input inputMode="numeric" disabled={dayLocked} value={pillRooms[patient.rowNumber] || ''} onChange={(event) => setPillRooms((current) => ({ ...current, [patient.rowNumber]: event.target.value }))} /></label>
               <div className="pill-form-brand">
                 <div className="pill-form-title"><strong>مستشفى بغداد التعليمي</strong><span>وحدة الصيدلة السريرية</span><span>{wardLabel}</span></div>
                 <img className="hospital-logo header-logo" width="42" height="42" src={hospitalLogo} alt="" />
               </div>
             </div>
-            <div className="pill-table-scroll">
+            {/* A disabled fieldset turns off every control inside: not today's form (dayLocked). */}
+            <fieldset className="day-lock" disabled={dayLocked}><div className="pill-table-scroll">
               <table className="pill-table">
                 <thead><tr><th scope="col"></th><th scope="col">العلاج</th><th className="pill-qty-cell" scope="col">كمية الحبوب</th><th scope="col">وقت الجرعة</th><th scope="col">طريقة الاستخدام</th><th scope="col">الملاحظات</th></tr></thead>
                 <tbody>{pageMeds.map((med, medIndex) => {
@@ -221,7 +223,7 @@ export default function PillsScreen({
                   </span>
                 </td></tr>}</tbody>
               </table>
-            </div>
+            </div></fieldset>
             <div className="pill-form-foot"><span className="pill-sign">توقيع الصيدلاني السريري</span><span className="pill-edit-time">وقت التحرير: {editTime}</span></div>
           </article>
         })

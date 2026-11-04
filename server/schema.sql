@@ -445,3 +445,25 @@ CREATE TABLE IF NOT EXISTS app_errors (
   notified BOOLEAN NOT NULL DEFAULT FALSE
 );
 CREATE INDEX IF NOT EXISTS app_errors_unsent_idx ON app_errors (id) WHERE NOT notified;
+
+-- «استمارة الميرونيم» and «استمارة الالبومين» (shared/drug-requests.js): the request forms the
+-- patient-entry form fills when Meronem (on a course's first day) or albumin is added, or typed on the
+-- form's own screen. One per kind per patient per ward per day: a resend of the same patient (an
+-- offline save replayed) updates it instead of adding a second. ward_key is 'floor|ward', '' for the
+-- floor of an independent ward (as ward_notes). `fields` holds the kind's typed values, `ticks` the
+-- boxes ticked on the paper form (diagnosis / indication / culture keys), `note` «Others (specify)».
+CREATE TABLE IF NOT EXISTS drug_requests (
+  id BIGSERIAL PRIMARY KEY,
+  kind TEXT NOT NULL CHECK (kind IN ('meropenem', 'albumin')),
+  ward_key TEXT NOT NULL,
+  request_date DATE NOT NULL,
+  patient_name TEXT NOT NULL,
+  patient_id TEXT NOT NULL DEFAULT '',
+  fields JSONB NOT NULL DEFAULT '{}',
+  ticks JSONB NOT NULL DEFAULT '[]',
+  note TEXT NOT NULL DEFAULT '',
+  created_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (kind, ward_key, request_date, patient_name, patient_id)
+);

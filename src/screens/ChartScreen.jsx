@@ -14,7 +14,7 @@ import { medicineMatches } from '../helpers.js'
 const formatNoteDate = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString('ar-IQ', { weekday: 'long', day: 'numeric', month: 'numeric' })
 
 export default function ChartScreen({
-  selected, wardLabel, today, todayWeekday, isManager, dateIsToday, selectedDate, onChangeDate, onCopyToNextDay, onOpenTemplates, isOnline, onBack, onGoToPills, onGoToOrder, onOpenForm, onExportPdf, pdfBusy, pdfExportError,
+  dayLocked = false, selected, wardLabel, today, todayWeekday, isManager, dateIsToday, selectedDate, onChangeDate, onCopyToNextDay, onOpenTemplates, isOnline, onBack, onGoToPills, onGoToOrder, onOpenForm, onExportPdf, pdfBusy, pdfExportError,
   chartSaveStatus, loadError, copyError, chartReady, lastChartSaveAt, onRetryLoad, onRetrySave, lockState, lockHolder,
   chartCompleted, completedByName, onToggleComplete, chartRooms, roomLabel, onSetRoom, onSaveRooms,
   chartClashNote, onDismissClashNote, droppedCells, undo, onUndo,
@@ -22,6 +22,7 @@ export default function ChartScreen({
   activeRow, activeColumn, labelBelow, setActiveRow, setActiveColumn, setLabelBelow,
   onSetColumnMedicine, onCommitColumnMedicine, columnMedicineNotice, onDismissNotice, onApplySuggestion,
   onSetPatientName, onSetPatientId, onCheckPreviousDay, onUpdateQuantity, onCollapseRow, onAddColumn, canAddColumn, chartAlerts = {}, onShowAlerts, wardNote, onChangeWardNote, onSaveWardNote,
+  onDoseCommitted,
   chartFrameRef, chartHeadRef, chartGridRef, chartDosesRef, chartFootRef,
 }) {
   const columnFocusValue = useRef('')
@@ -41,6 +42,14 @@ export default function ChartScreen({
     input.blur()
   }
   const patientFocusEmpty = useRef(false)
+  // The dose cell being edited and its value when focus arrived: leaving it with a new quantity
+  // above 0 is a dose added (App may then open «استمارة الميرونيم» / «استمارة الالبومين»).
+  const doseFocus = useRef(null)
+  const doseCellOf = (target) => {
+    const td = target.closest?.('.chart-doses td[data-col]')
+    const tr = td?.closest('tr[data-row]')
+    return td && tr && target.tagName === 'INPUT' ? { row: Number(tr.dataset.row), col: Number(td.dataset.col) } : null
+  }
 
   // One line, four states — see chartSaveStatus in App. loadError overrides it because a
   // chart that never loaded matters more than the last PUT; copyError gets its own slot
@@ -65,8 +74,10 @@ export default function ChartScreen({
 
   // Another device holds the edit lock: the grid goes inert (below) and the view polls the
   // holder's edits in. The toolbar/meta/status bars stay readable — an SR user still needs the
-  // ward name, date and save state during read-only. read = true only while it's someone else's.
-  const readOnly = lockState === 'readonly'
+  // ward name, date and save state during read-only. read = true only while it's someone else's —
+  // or while it is not today's chart and this is not a manager (dayLocked, App).
+  const heldElsewhere = lockState === 'readonly'
+  const readOnly = heldElsewhere || dayLocked
   // Print only: the sheet normally shows 34 rows before المجموع, blank ones included — that's
   // what fits one A4 landscape page on the ward's printer. A chart with a patient past row 34
   // extends instead of truncating them: totals follow whichever is taller. Screen view is
@@ -89,7 +100,10 @@ export default function ChartScreen({
 
   return <section className="chart-page">
     <ChartHistoryDialog open={historyOpen} selected={selected} selectedDate={selectedDate} onClose={() => setHistoryOpen(false)} />
-    {readOnly && <div className="chart-lock-banner chart-lock-banner--held" role="status">
+    {dayLocked && <div className="chart-lock-banner chart-lock-banner--day" role="status">
+      جارت {today} — للعرض فقط. لا يُعدَّل إلا جارت اليوم.
+    </div>}
+    {heldElsewhere && !dayLocked && <div className="chart-lock-banner chart-lock-banner--held" role="status">
       قيد التعديل — {lockHolder?.name || 'جهاز آخر'}{since && ` · منذ ${since}`}
     </div>}
     {lockState === 'available' && <div className="chart-lock-banner chart-lock-banner--free" role="status">
@@ -137,7 +151,7 @@ export default function ChartScreen({
       </blockquote>}
       <label className="ward-note-today">ملاحظة اليوم
         <textarea value={wardNote.draft} maxLength={2000} rows={2} onChange={(event) => onChangeWardNote(event.target.value)} onBlur={onSaveWardNote}
-          placeholder="ما يحتاج الصيدلي التالي معرفته عن هذه الردهة" disabled={wardNote.status === 'load-error'} />
+          placeholder="ما يحتاج الصيدلي التالي معرفته عن هذه الردهة" disabled={wardNote.status === 'load-error' || dayLocked} />
       </label>
       <p className="ward-note-status" role="status">{wardNote.status === 'saving' ? 'جارٍ الحفظ…'
         : wardNote.status === 'save-error' ? 'لم تُحفظ الملاحظة — تحقّق من الاتصال ثم اخرج من المربع مرة أخرى.'
@@ -214,8 +228,16 @@ export default function ChartScreen({
       </div>
       {/* inert while another device holds the lock — the poll keeps this view current. */}
       <div className="chart-grid" ref={chartGridRef} inert={(!chartReady || readOnly) || undefined}
-        onFocusCapture={(event) => { const row = event.target.closest('tr[data-row]'); if (row) setActiveRow(Number(row.dataset.row)); const cell = event.target.closest('td[data-col]'); setActiveColumn(cell ? Number(cell.dataset.col) : -1); if (cell && chartGridRef.current) setLabelBelow(cell.getBoundingClientRect().top - chartGridRef.current.getBoundingClientRect().top < 34) }}
-        onBlurCapture={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) { setActiveRow(-1); setActiveColumn(-1) } }}
+        onFocusCapture={(event) => { const row = event.target.closest('tr[data-row]'); if (row) setActiveRow(Number(row.dataset.row)); const cell = event.target.closest('td[data-col]'); setActiveColumn(cell ? Number(cell.dataset.col) : -1); if (cell && chartGridRef.current) setLabelBelow(cell.getBoundingClientRect().top - chartGridRef.current.getBoundingClientRect().top < 34); const dose = doseCellOf(event.target); doseFocus.current = dose && { ...dose, value: event.target.value } }}
+        onBlurCapture={(event) => {
+          const dose = doseCellOf(event.target)
+          const was = doseFocus.current
+          if (dose && was && dose.row === was.row && dose.col === was.col) {
+            doseFocus.current = null
+            if (Number(event.target.value) > 0 && event.target.value !== was.value) onDoseCommitted?.(dose.row, dose.col)
+          }
+          if (!event.currentTarget.contains(event.relatedTarget)) { setActiveRow(-1); setActiveColumn(-1) }
+        }}
         onKeyDown={(event) => {
           // Arrow / Enter move between dose cells (the grid is one Tab stop). RTL: ArrowLeft
           // is visually left = the next, higher-index column. Left/Right take over from

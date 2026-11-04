@@ -6,11 +6,13 @@ import { medicineKey, medicineMatches, toEnglishDigits } from '../helpers.js'
 // hands the patient to App (onSubmit), which puts it into the same chart state the grid edits,
 // so the lock, draft, autosave and conflict merge all apply. A name or ID that was on
 // yesterday's chart offers the same copy-forward the grid does, filling this form instead.
+// A patient added on Meronem or albumin is then asked for «استمارة الميرونيم» / «استمارة الالبومين»
+// (onPromptRequests — App's useRequestPrompts, which the chart grid shares and which decides when).
 const blankLine = () => ({ id: Math.random().toString(36).slice(2), med: '', qty: '1' })
 
-export default function ChartFormScreen({
+export default function ChartFormScreen({ dayLocked = false,
   usedRows, wardLabel, roomLabel, slot, onSlotChange, onClose, medicines, columnMedicines = [], chartReady, lockState, lockHolder, chartSaveStatus, isOnline, loadError,
-  onSubmit, onFindPrevious, askConfirm,
+  onSubmit, onFindPrevious, askConfirm, onPromptRequests,
 }) {
   const [name, setName] = useState('')
   const [id, setId] = useState('')
@@ -21,7 +23,7 @@ export default function ChartFormScreen({
   const [added, setAdded] = useState(null)
   const asked = useRef(new Set())
   const nameRef = useRef(null)
-  const readOnly = lockState === 'readonly'
+  const readOnly = lockState === 'readonly' || dayLocked
   const canEdit = chartReady && !readOnly && !loadError
 
   const canonical = (text) => medicines.find((item) => medicineKey(item) === medicineKey(text)) || ''
@@ -78,9 +80,11 @@ export default function ChartFormScreen({
     const result = onSubmit({ name, id, room, doses: filled.map((line) => ({ med: canonical(line.med), qty: line.qty || '1' })) })
     if (!result.ok) { setError(result.reason === 'full' ? 'الجارت ممتلئ — لا يوجد صف فارغ لمريض جديد.' : 'الجارت قيد التعديل من جهاز آخر.'); return }
     setAdded({ row: result.row + 1, name: name.trim() })
+    onPromptRequests?.({ name: name.trim(), patientId: id }, filled.map((line) => ({ medicine: canonical(line.med), quantity: Number(line.qty) || 1 })))
     setName(''); setId(''); setRoom(''); setLines([blankLine()]); setError('')
     nameRef.current?.focus()
   }
+
 
   const saveText = chartSaveStatus === 'error' ? 'لم يُحفظ — سيُعاد المحاولة'
     : chartSaveStatus === 'saving' ? 'جارٍ الحفظ…'
@@ -106,7 +110,8 @@ export default function ChartFormScreen({
     </p>}
     {loadError && <p className="form-error" role="alert">تعذر تحميل الجارت — لا يمكن الإضافة الآن.</p>}
     {!loadError && !chartReady && <p className="entry-form-note" role="status">جارٍ تحميل الجارت…</p>}
-    {readOnly && <p className="form-error" role="status">الجارت قيد التعديل — {lockHolder?.name || 'جهاز آخر'}. لا يمكن الإضافة حتى ينتهي.</p>}
+    {dayLocked && <p className="form-error" role="status">هذا ليس جارت اليوم — لا يمكن إضافة مريض إلا في جارت اليوم.</p>}
+    {readOnly && !dayLocked && <p className="form-error" role="status">الجارت قيد التعديل — {lockHolder?.name || 'جهاز آخر'}. لا يمكن الإضافة حتى ينتهي.</p>}
     {!isOnline && chartReady && <p className="entry-form-note" role="status">لا يوجد اتصال — يُحفظ على هذا الجهاز ويُرسل عند عودة الإشارة.</p>}
 
     <form className="entry-form" onSubmit={submit} noValidate>
