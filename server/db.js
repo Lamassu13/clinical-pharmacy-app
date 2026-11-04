@@ -66,7 +66,7 @@ pg.Client.prototype.query = function (config, ...rest) {
   if (typeof result?.then === 'function') result.then((done) => tally(text, done), () => {})
   return result
 }
-export const dbTraffic = () => [...traffic].map(([statement, entry]) => ({ statement, ...entry })).sort((a, b) => b.bytes - a.bytes).slice(0, 10)
+export const dbTraffic = (limit = 10) => [...traffic].map(([statement, entry]) => ({ statement, ...entry })).sort((a, b) => b.bytes - a.bytes).slice(0, limit)
 export const trafficSince = new Date().toISOString()
 
 export const query = (text, params) => pool.query(text, params)

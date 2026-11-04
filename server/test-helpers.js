@@ -5,7 +5,7 @@ import bcrypt from 'bcryptjs'
 import { pool } from './db.js'
 import { medicineCatalogue } from './medicine-catalogue.js'
 import { dashboardRows } from './dashboard-rows.js'
-import { clearCourseRows, clearLongCourses } from './routes/chart.js'
+import { clearCourseRows, clearLongCourses, forgetSavedCharts } from './routes/chart.js'
 import { dayLockSettings } from './day-lock.js'
 
 // The suite writes fixed past dates as pharmacists to test everything else, so the today-only rule
@@ -42,6 +42,7 @@ export const resetDatabase = async () => {
   dashboardRows.clear()
   clearLongCourses()
   clearCourseRows()
+  forgetSavedCharts() // chart ids restart from 1 above, so a kept description would belong to another test's chart
 }
 
 let userCounter = 0
