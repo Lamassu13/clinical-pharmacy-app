@@ -13,8 +13,28 @@ import { antibioticOf } from '../ddd.js'
 import { notifyLater, todayInBaghdad, MANAGER_ROLES } from '../push.js'
 import { recordChartChanges } from '../chart-history.js'
 import { recordAudit } from '../audit.js'
+import { medicineCatalogue } from '../medicine-catalogue.js'
 
 const router = express.Router()
+
+// What the last committed save wrote to chart_patients / chart_quantities, per chart. A save
+// replaces both tables whole and used to read the old rows back (DELETE ... RETURNING) only to
+// build the change history, which is most of what the database sends this app. When the chart
+// is still at the version this memory describes, the rows are deleted without being sent back
+// and the history diffs against this copy instead. It feeds the history and nothing else: the
+// rows written come from the request. Only PUT /chart writes these two tables; chart_columns is
+// not kept here because a medicine delete rewrites it behind a save (customNameByColumn needs
+// the live row). A restart, or any version mismatch, just falls back to reading the rows.
+const SAVED_CHARTS_MAX = 100
+const savedCharts = new Map() // chartId -> { version, patients, quantities }
+export const forgetSavedCharts = () => savedCharts.clear()
+const rememberSavedChart = (chartId, version, patients, quantities) => {
+  // Always the latest commit; no "newer wins" guard — a version that moved backwards (a restore)
+  // must not keep a description of rows that are gone. A late older write just causes one miss.
+  savedCharts.delete(chartId) // so the oldest insertion really is the oldest
+  savedCharts.set(chartId, { version, patients, quantities })
+  if (savedCharts.size > SAVED_CHARTS_MAX) savedCharts.delete(savedCharts.keys().next().value)
+}
 
 // A ward/day holds a 'main' chart and, optionally, an 'extra' one ("الجارت الإضافي").
 export const CHART_SLOTS = ['main', 'extra']
@@ -484,6 +504,10 @@ router.put('/chart', requireAuth, async (request, response) => {
   // INSERT with no existing row always succeeds regardless of this value.
   const expectedVersion = clampInt(request.body.expectedVersion, 0, Number.MAX_SAFE_INTEGER) ?? 0
 
+  // Loaded before a connection is taken: on a cold cache the load needs its own connection, and
+  // ten saves each holding one while waiting for it would deadlock the pool. A failed load is
+  // harmless — an empty list just sends every name through the database lookups below.
+  const catalogue = await medicineCatalogue.get().catch(() => [])
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
@@ -518,11 +542,18 @@ router.put('/chart', requireAuth, async (request, response) => {
     // apart from a genuinely bogus name: "this chart already had exactly this preserved name"
     // vs. "this text has never matched any medicine, drop it" (the backstop two lines down).
     // RETURNING hands back the rows being replaced — the "before" for the change history below.
-    const replacedPatients = await client.query('DELETE FROM chart_patients WHERE chart_id = $1 RETURNING row_number, patient_name, patient_id', [chartId])
+    // A hit (see savedCharts) skips RETURNING for patients and quantities, the two big tables.
+    const saved = savedCharts.get(chartId)
+    const hit = saved !== undefined && saved.version === chartResult.rows[0].version - 1
+    const replacedPatients = hit
+      ? await client.query('DELETE FROM chart_patients WHERE chart_id = $1', [chartId])
+      : await client.query('DELETE FROM chart_patients WHERE chart_id = $1 RETURNING row_number, patient_name, patient_id', [chartId])
     const replacedColumns = await client.query('DELETE FROM chart_columns WHERE chart_id = $1 RETURNING column_number, medicine_id, custom_name', [chartId])
     // (the preserved custom names read about above come from these same rows: nothing has been replaced yet)
     const customNameByColumn = new Map(replacedColumns.rows.filter((row) => row.custom_name !== null).map((row) => [row.column_number, row.custom_name]))
-    const replacedQuantities = await client.query('DELETE FROM chart_quantities WHERE chart_id = $1 RETURNING row_number, column_number, quantity', [chartId])
+    const replacedQuantities = hit
+      ? await client.query('DELETE FROM chart_quantities WHERE chart_id = $1', [chartId])
+      : await client.query('DELETE FROM chart_quantities WHERE chart_id = $1 RETURNING row_number, column_number, quantity', [chartId])
 
     // Batched set-based inserts (UNNEST) instead of one query per row: a full
     // 36x51 chart is ~8 round-trips instead of ~2000, so the pooled connection
@@ -545,10 +576,18 @@ router.put('/chart', requireAuth, async (request, response) => {
     const medicineByColumn = new Map(columns.map((column) => [column.columnNumber, column.medicineName]))
     const wantedKeys = [...new Set([...medicineByColumn.values()].filter(Boolean).map(normalizeMedicineKey))]
     const idByKey = new Map()
-    if (wantedKeys.length) {
-      // A catalogue predating the duplicate check can hold two rows with one key; the oldest
-      // wins, so the same typed column always links to the same row rather than alternating.
-      const known = await client.query(`SELECT id, name FROM medicines WHERE ${medicineKeySql('name')} = ANY($1::text[]) ORDER BY id`, [wantedKeys])
+    // The cached catalogue answers first. A catalogue predating the duplicate check can hold two
+    // rows with one key; the oldest wins (ids arrive as strings, so compare them as numbers), so
+    // the same typed column always links to the same row rather than alternating.
+    for (const row of catalogue) {
+      const key = normalizeMedicineKey(row.name)
+      if (!idByKey.has(key) || Number(row.id) < Number(idByKey.get(key))) idByKey.set(key, row.id)
+    }
+    // Only a name the cache cannot place goes to the database (a medicine added behind the app's
+    // back, or the cache failing to load) — never dropped on the cache's word alone.
+    const unplaced = wantedKeys.filter((key) => !idByKey.has(key))
+    if (unplaced.length) {
+      const known = await client.query(`SELECT id, name FROM medicines WHERE ${medicineKeySql('name')} = ANY($1::text[]) ORDER BY id`, [unplaced])
       known.rows.forEach((row) => { const key = normalizeMedicineKey(row.name); if (!idByKey.has(key)) idByKey.set(key, row.id) })
     }
     const linkedColumns = [...medicineByColumn.keys()]
@@ -585,16 +624,19 @@ router.put('/chart', requireAuth, async (request, response) => {
     }
     // After the save is complete, so nothing here can change what was stored; it cannot fail the
     // save either (own savepoint, errors logged and swallowed).
+    const savedPatients = [...patientByRow.values()]
     await recordChartChanges(client, {
-      chartId, version: chartResult.rows[0].version, user: request.session.user,
+      chartId, version: chartResult.rows[0].version, user: request.session.user, medicines: catalogue,
       oldState: {
-        patients: replacedPatients.rows.map((row) => ({ rowNumber: row.row_number, name: row.patient_name, patientId: row.patient_id || '' })),
+        patients: hit ? saved.patients : replacedPatients.rows.map((row) => ({ rowNumber: row.row_number, name: row.patient_name, patientId: row.patient_id || '' })),
         columns: replacedColumns.rows.map((row) => ({ columnNumber: row.column_number, medicineId: row.medicine_id, customName: row.custom_name })),
-        quantities: replacedQuantities.rows.map((row) => ({ rowNumber: row.row_number, columnNumber: row.column_number, quantity: row.quantity })),
+        quantities: hit ? saved.quantities : replacedQuantities.rows.map((row) => ({ rowNumber: row.row_number, columnNumber: row.column_number, quantity: row.quantity })),
       },
-      newState: { patients: [...patientByRow.values()], columns: linkedColumns, quantities: quantityList },
+      newState: { patients: savedPatients, columns: linkedColumns, quantities: quantityList },
     })
     await client.query('COMMIT')
+    // Only after COMMIT: a rolled-back save must never leave a description of rows that were not stored.
+    rememberSavedChart(chartId, chartResult.rows[0].version, savedPatients, quantityList)
     // Today's rows are always read fresh (loadCourseRows); only an earlier day's save stales the kept ones.
     if (chartDate < todayInBaghdad()) clearCourseRows()
     response.json({ ok: true, chartId, version: chartResult.rows[0].version })
@@ -605,6 +647,9 @@ router.put('/chart', requireAuth, async (request, response) => {
   } catch (error) {
     await client.query('ROLLBACK')
     console.error('chart save failed:', error)
+    // A foreign-key failure on a column's medicine means the cached catalogue named a medicine
+    // deleted behind the app's back; drop it so the client's retry resolves against the table.
+    if (error.code === '23503') medicineCatalogue.invalidate()
     response.status(400).json({ message: 'تعذر حفظ الجارت' })
   } finally { client.release() }
 })

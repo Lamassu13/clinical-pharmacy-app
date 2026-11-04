@@ -104,3 +104,14 @@ test('history: entries older than 90 days are pruned, newer ones kept', async ()
   const versions = (await pool.query('SELECT version FROM chart_changes ORDER BY version')).rows.map((row) => row.version)
   assert.deepEqual(versions, [1, 98])
 })
+
+test('diffChart: two same-named patients pair by row number, whatever order the old rows arrive in', () => {
+  const rows = [{ rowNumber: 1, name: 'Twin', patientId: '' }, { rowNumber: 2, name: 'Twin', patientId: '' }]
+  const quantities = (a, b) => [{ rowNumber: 1, columnNumber: 1, quantity: a }, { rowNumber: 2, columnNumber: 1, quantity: b }]
+  const columns = [{ columnNumber: 1, medicineId: '1', customName: null }]
+  const next = { patients: rows, columns, quantities: quantities(1, 9) }
+  const inOrder = diffChart({ patients: rows, columns, quantities: quantities(1, 2) }, next)
+  const shuffled = diffChart({ patients: [...rows].reverse(), columns, quantities: quantities(1, 2) }, next)
+  assert.deepEqual(shuffled, inOrder)
+  assert.deepEqual(inOrder.map((change) => [change.row, change.from, change.to]), [[2, 2, 9]])
+})

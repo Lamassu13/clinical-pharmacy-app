@@ -13,7 +13,9 @@ const nameKey = (name) => String(name || '').trim().toLowerCase().replace(/\s+/g
 // gets a counter so two same-named patients do not collapse into one.
 const keyRows = (rows) => {
   const seen = new Map()
-  return rows.map((row) => {
+  // By row number, so the counters pair same-named patients the same way whatever order the rows
+  // arrived in (a DELETE ... RETURNING has no guaranteed order, a request does).
+  return [...rows].sort((a, b) => a.rowNumber - b.rowNumber).map((row) => {
     const base = row.patientId ? `id:${row.patientId}` : nameKey(row.name) ? `name:${nameKey(row.name)}` : `row:${row.rowNumber}`
     const count = seen.get(base) || 0
     seen.set(base, count + 1)
@@ -100,7 +102,9 @@ export const pruneChartChanges = (executor) => executor.query(`DELETE FROM chart
 
 // Runs inside PUT /chart's transaction, after the save itself. Never throws into the caller's
 // save: a history failure rolls back to the savepoint and is logged, the chart still saves.
-export const recordChartChanges = async (client, { chartId, version, user, oldState, newState }) => {
+// medicines: the cached catalogue rows ({ id, name }), so the names come from memory; only an id it
+// does not hold is looked up.
+export const recordChartChanges = async (client, { chartId, version, user, oldState, newState, medicines = [] }) => {
   try {
     await client.query('SAVEPOINT chart_history')
     const changes = diffChart(oldState, newState).slice(0, MAX_STORED)
@@ -108,7 +112,9 @@ export const recordChartChanges = async (client, { chartId, version, user, oldSt
       const ids = new Set()
       for (const change of changes) for (const ref of [change.fromRef, change.toRef]) if (ref?.medicineId) ids.add(String(ref.medicineId))
       for (const column of [...oldState.columns, ...newState.columns]) if (column.medicineId) ids.add(String(column.medicineId))
-      const names = new Map((await client.query('SELECT id, name FROM medicines WHERE id = ANY($1::bigint[])', [[...ids]])).rows.map((row) => [String(row.id), row.name]))
+      const names = new Map(medicines.map((row) => [String(row.id), row.name]))
+      const unknown = [...ids].filter((id) => !names.has(id))
+      if (unknown.length) (await client.query('SELECT id, name FROM medicines WHERE id = ANY($1::bigint[])', [unknown])).rows.forEach((row) => names.set(String(row.id), row.name))
       const nameOf = (ref) => (ref ? (ref.medicineId ? names.get(String(ref.medicineId)) : ref.customName) || '' : '')
       const columnName = (columnNumber) => nameOf(newState.columns.find((c) => c.columnNumber === columnNumber) || oldState.columns.find((c) => c.columnNumber === columnNumber))
       const column = (pick) => changes.map(pick)

@@ -5,7 +5,7 @@ import bcrypt from 'bcryptjs'
 import { pool } from './db.js'
 import { medicineCatalogue } from './medicine-catalogue.js'
 import { dashboardRows } from './dashboard-rows.js'
-import { clearCourseRows, clearLongCourses } from './routes/chart.js'
+import { clearCourseRows, clearLongCourses, forgetSavedCharts } from './routes/chart.js'
 
 // A test run pointed at the wrong database would TRUNCATE real patient data. The name
 // is the only signal available here, so refuse anything that isn't obviously a test DB
@@ -37,6 +37,7 @@ export const resetDatabase = async () => {
   dashboardRows.clear()
   clearLongCourses()
   clearCourseRows()
+  forgetSavedCharts() // chart ids restart from 1 above, so a kept description would belong to another test's chart
 }
 
 let userCounter = 0
