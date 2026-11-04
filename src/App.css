@@ -1487,6 +1487,13 @@ button.topbar-user:hover { color: var(--primary); }
 }
 @keyframes banner-in { from { opacity: 0; transform: translateY(-4px); } }
 .chart-lock-banner--held, .chart-lock-banner--stale { background: var(--warning-tint); color: var(--warning-text); }
+/* Not today's chart (dayLocked): read-only for a pharmacist. Informational, not a warning. */
+.chart-lock-banner--day { background: var(--surface-alt); color: var(--heading); border: 1px solid var(--border-strong); }
+/* The same for the other daily screens, and the fieldset that switches their inputs off. */
+.day-lock-note { margin: 0 0 var(--space-3); padding: var(--space-2) var(--space-3); border: 1px solid var(--border-strong); border-radius: var(--radius-md); background: var(--surface-alt); color: var(--heading); font-weight: 700; font-size: var(--text-sm); }
+fieldset.day-lock { min-width: 0; margin: 0; padding: 0; border: 0; }
+fieldset.day-lock:disabled { cursor: not-allowed; }
+fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room input:disabled { opacity: 0.6; }
 .chart-lock-banner--free { background: var(--success-tint); color: var(--success); }
 /* A quiet "you have the pen" mark in the dark meta bar — a shade greener than its other pills. */
 .chart-meta > span.chart-lock-mark { background: var(--green-600); }

@@ -10,7 +10,7 @@ import { medicineKey, medicineMatches, toEnglishDigits } from '../helpers.js'
 // (onPromptRequests — App's useRequestPrompts, which the chart grid shares and which decides when).
 const blankLine = () => ({ id: Math.random().toString(36).slice(2), med: '', qty: '1' })
 
-export default function ChartFormScreen({
+export default function ChartFormScreen({ dayLocked = false,
   usedRows, wardLabel, roomLabel, slot, onSlotChange, onClose, medicines, columnMedicines = [], chartReady, lockState, lockHolder, chartSaveStatus, isOnline, loadError,
   onSubmit, onFindPrevious, askConfirm, onPromptRequests,
 }) {
@@ -23,7 +23,7 @@ export default function ChartFormScreen({
   const [added, setAdded] = useState(null)
   const asked = useRef(new Set())
   const nameRef = useRef(null)
-  const readOnly = lockState === 'readonly'
+  const readOnly = lockState === 'readonly' || dayLocked
   const canEdit = chartReady && !readOnly && !loadError
 
   const canonical = (text) => medicines.find((item) => medicineKey(item) === medicineKey(text)) || ''
@@ -110,7 +110,8 @@ export default function ChartFormScreen({
     </p>}
     {loadError && <p className="form-error" role="alert">تعذر تحميل الجارت — لا يمكن الإضافة الآن.</p>}
     {!loadError && !chartReady && <p className="entry-form-note" role="status">جارٍ تحميل الجارت…</p>}
-    {readOnly && <p className="form-error" role="status">الجارت قيد التعديل — {lockHolder?.name || 'جهاز آخر'}. لا يمكن الإضافة حتى ينتهي.</p>}
+    {dayLocked && <p className="form-error" role="status">هذا ليس جارت اليوم — لا يمكن إضافة مريض إلا في جارت اليوم.</p>}
+    {readOnly && !dayLocked && <p className="form-error" role="status">الجارت قيد التعديل — {lockHolder?.name || 'جهاز آخر'}. لا يمكن الإضافة حتى ينتهي.</p>}
     {!isOnline && chartReady && <p className="entry-form-note" role="status">لا يوجد اتصال — يُحفظ على هذا الجهاز ويُرسل عند عودة الإشارة.</p>}
 
     <form className="entry-form" onSubmit={submit} noValidate>
