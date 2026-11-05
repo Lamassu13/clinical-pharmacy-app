@@ -256,7 +256,7 @@ app.put('/api/medicines/:id', requireManager, async (request, response) => {
     }
     await client.query('COMMIT')
     medicineCatalogue.invalidate()
-    clearCourseRows()
+    clearCourseRows('medicine edit')
     // What actually changed — the client sends every field on every edit.
     const before = existing.rows[0]
     const after = result.rows[0]
@@ -292,7 +292,7 @@ app.delete('/api/medicines/:id', requireManager, async (request, response) => {
     await client.query('DELETE FROM medicines WHERE id = $1', [id])
     await client.query('COMMIT')
     medicineCatalogue.invalidate()
-    clearCourseRows()
+    clearCourseRows('medicine delete')
     await recordAudit(request, 'medicine.deleted', target.rows[0].name)
     response.json({ ok: true })
   } catch (error) {
