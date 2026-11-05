@@ -825,41 +825,13 @@ button.topbar-user:hover { color: var(--primary); }
 .special .floor-number { background: var(--green-200); color: var(--heading); }
 .arrow { margin-inline-start: auto; display: flex; color: var(--primary); transition: transform var(--dur) var(--ease); }
 .location-card--link:hover .arrow, .location-card--link:focus-visible .arrow { transform: translateX(-3px); }
-.ward-card-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
-/* A card that carries its own action buttons is a container, not a tap target. Give it a
-   flatter, inset ground and no hover-lift, and drop the action row onto its own full-width
-   line below the name, so "these buttons are the way in" reads before a thumb lands on the
-   card body expecting it to react. */
+/* A card that is not itself a link is a container (the dashboard's stat cards): a flatter, inset
+   ground and no hover-lift, so it does not promise a click its body does not answer. */
 .location-card:not(.location-card--link) {
   flex-wrap: wrap;
   background: var(--surface-alt);
 }
 .location-card:not(.location-card--link):hover { border-color: var(--border); }
-.location-card:not(.location-card--link) .ward-card-actions {
-  flex-basis: 100%;
-  margin-inline-start: 0;
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--border);
-}
-.location-card:not(.location-card--link) .ward-card-actions .compact {
-  min-height: 44px;
-  flex: 1 1 auto;
-}
-.ward-card-actions > .compact:first-child { flex: 1 1 auto; }
-/* A ward card has two targets: the body opens the ward's own page, «الجارت» goes straight to the
-   chart. The body is a real button filling the top of the card, so it can honour a tap; the
-   shortcut strip sits under it behind a hairline. No hover-lift: the card is two targets, not one. */
-.location-card.location-card--ward { padding: 0; gap: 0; overflow: hidden; background: var(--surface); }
-.location-card.location-card--ward:hover { border-color: var(--green-300); }
-.location-card-open {
-  display: flex; align-items: center; gap: var(--space-4); flex: 1 1 100%; min-width: 0; min-height: 44px;
-  padding: var(--space-4) var(--space-5); border: 0; background: transparent;
-  color: inherit; font: inherit; text-align: start; cursor: pointer;
-  transition: background var(--dur-fast) var(--ease);
-}
-.location-card-open:hover, .location-card-open:focus-visible { background: var(--green-50); }
-.location-card-open:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
-.location-card-open:hover .arrow, .location-card-open:focus-visible .arrow { transform: translateX(-3px); }
 .location-card--ward .ward-card-actions { padding: var(--space-3) var(--space-5); background: var(--surface-alt); }
 
 /* Plain icon rows, used on the ward page. */
