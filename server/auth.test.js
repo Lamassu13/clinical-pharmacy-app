@@ -95,6 +95,19 @@ test('requireAdmin / requireManager: no session is 401 (sign in again), signed i
   assert.equal((await pharmacist.post('/api/auth/login', { username: user.username, password: user.password })).status, 200)
   assert.equal((await pharmacist.get('/api/users')).status, 403)
   assert.equal((await pharmacist.get('/api/registrations')).status, 403)
+  assert.equal((await anon.get('/api/registrations/count')).status, 401)
+  assert.equal((await pharmacist.get('/api/registrations/count')).status, 403)
+})
+
+test('GET /api/registrations/count: the number of pending sign-up requests, for an admin only', async () => {
+  const admin = await createUser({ role: 'admin' })
+  const client = new ApiClient(baseUrl)
+  assert.equal((await client.post('/api/auth/login', { username: admin.username, password: admin.password })).status, 200)
+  assert.deepEqual((await client.get('/api/registrations/count')).body, { count: 0 })
+  await createUser({ accountStatus: 'pending' })
+  await createUser({ accountStatus: 'pending' })
+  await createUser({ accountStatus: 'rejected' })
+  assert.deepEqual((await client.get('/api/registrations/count')).body, { count: 2 })
 })
 
 test('PUT /api/auth/me: anonymous is refused, and a logged-in user updates their own name/email/phone', async () => {
