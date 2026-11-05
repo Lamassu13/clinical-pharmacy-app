@@ -9,14 +9,17 @@ const CHART_ITEMS = [
 ]
 // `needsConnection`: PRODUCT.md lists these as the ones that cannot work offline; the ward page says so
 // in words while the device is offline (everything else here is kept on the device or fails on its own).
+// Order: the pill forms together, then the order and the request forms with the two Meropenem rows last,
+// so «متابعة الميروبينيم» (first of the next group) follows them; the two lookup tools stay at the end.
+// `count`: a drug-request kind whose forms are counted for the day and shown on the row (WardHubScreen).
 const GROUPS = [
   { id: 'forms', label: 'الاستمارات اليومية', items: [
     { label: 'الحبوب', icon: 'pill', open: { mode: 'pills' } },
-    { label: 'الطلبية', icon: 'clipboard', open: { mode: 'order', slot: 'main' }, needsConnection: true },
-    { label: 'طلبية الميرونيم', icon: 'clipboard', open: { mode: 'meropenem-order', slot: 'main' } },
-    { label: 'استمارة الميرونيم', icon: 'vial', open: { mode: 'meropenem-forms' } },
-    { label: 'استمارة الالبومين', icon: 'drop', open: { mode: 'albumin-forms' } },
     { label: 'استمارة الحبوب الإضافي', icon: 'pill-sheet', open: { mode: 'extra-pills' }, show: (floor) => Boolean(floor && EXTRA_PILL_FLOORS.includes(floor)) },
+    { label: 'الطلبية', icon: 'clipboard', open: { mode: 'order', slot: 'main' }, needsConnection: true },
+    { label: 'استمارة الالبومين', icon: 'drop', open: { mode: 'albumin-forms' }, count: 'albumin' },
+    { label: 'طلبية الميرونيم', icon: 'clipboard', open: { mode: 'meropenem-order', slot: 'main' } },
+    { label: 'استمارة الميرونيم', icon: 'vial', open: { mode: 'meropenem-forms' }, count: 'meropenem' },
   ] },
   { id: 'clinical', label: 'المتابعة السريرية', items: [
     { label: 'متابعة الميروبينيم', icon: 'trend', open: { mode: 'meropenem' }, needsConnection: true },

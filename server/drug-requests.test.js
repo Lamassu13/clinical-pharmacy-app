@@ -137,6 +137,18 @@ test('requests: list per kind, resend updates in place and keeps ticks, edit, ti
   assert.deepEqual((await list('meropenem')).map((r) => r.name), ['حسن'])
 })
 
+test('counts: forms per kind for the ward and day; zeros when none; another floor refused', async () => {
+  const pharmacist = await loginAs({ role: 'user', floor: FLOOR })
+  const counts = async (date, client = pharmacist, floor = FLOOR, ward = WARD) => client.get(`/api/drug-requests/counts?floor=${floor}&ward=${encodeURIComponent(ward)}&date=${date}`)
+  assert.deepEqual((await counts('2026-09-24')).body, { meropenem: 0, albumin: 0 })
+  const form = { floor: FLOOR, ward: WARD, date: '2026-09-24', fields: {} }
+  for (const [kind, name] of [['meropenem', 'علي'], ['albumin', 'علي'], ['albumin', 'حسن']]) assert.equal((await pharmacist.post('/api/drug-requests', { ...form, kind, name })).status, 201)
+  assert.deepEqual((await counts('2026-09-24')).body, { meropenem: 1, albumin: 2 })
+  assert.deepEqual((await counts('2026-09-25')).body, { meropenem: 0, albumin: 0 })
+  assert.equal((await counts('2026-09-24', pharmacist, 8, 'الردهة الخامسة')).status, 403)
+  assert.equal((await counts('not-a-date')).status, 400)
+})
+
 test('requests: purging the ward’s charts for the dates removes its forms too', async () => {
   const pharmacist = await loginAs({ role: 'user', floor: FLOOR })
   const place = { floor: FLOOR, ward: WARD }

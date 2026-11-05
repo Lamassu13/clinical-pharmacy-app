@@ -76,6 +76,16 @@ router.get('/drug-requests', requireAuth, async (request, response) => {
   response.json({ requests: result.rows.map((row) => toRequest({ ...row, patient_id: row.patient_id || ids.get(row.patient_name) || '' })) })
 })
 
+// How many forms the ward has on `date`, per kind ({ meropenem, albumin }) — two numbers for the ward
+// page's rows, so it never ships the forms themselves.
+router.get('/drug-requests/counts', requireAuth, async (request, response) => {
+  const location = readLocation(request.query, request.session.user)
+  if (location.status) return response.status(location.status).json({ message: location.message })
+  const { floor, wardName, chartDate } = location
+  const rows = (await query('SELECT kind, COUNT(*)::int AS n FROM drug_requests WHERE kind = ANY($3) AND ward_key = $1 AND request_date = $2 GROUP BY kind', [wardKeyOf(floor, wardName), chartDate, Object.keys(DRUG_REQUESTS)])).rows
+  response.json(Object.fromEntries(Object.keys(DRUG_REQUESTS).map((kind) => [kind, rows.find((row) => row.kind === kind)?.n ?? 0])))
+})
+
 // The patient's course day for this medicine on `date`, and whether today's form is already filled.
 // The course is the follow-up form's own (../meropenem.js): the patient is counted as if charted on
 // it here today — their chart save may still be on its way — so a patient who had it yesterday, here

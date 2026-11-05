@@ -550,7 +550,7 @@ button.topbar-user:hover { color: var(--primary); }
 .card-status--partial { background: var(--green-100); color: var(--primary-hover); }
 /* Dashboard data failed to load — say so rather than showing a card that looks fresh. */
 .card-status--muted { background: var(--surface-alt); color: var(--text-muted); }
-.card-status--done { background: var(--success-tint); color: var(--success); }
+.card-status--done { background: var(--success-tint); color: var(--primary-hover); } /* 13px text: --success on its own tint is 4.3:1 in light */
 .card-status svg { flex: 0 0 auto; }
 
 /* Visually hidden but still announced — the status dot above is decorative on its own. */
