@@ -306,6 +306,10 @@ app.get('/api/registrations', requireAdmin, async (_request, response) => {
   const result = await query("SELECT id, full_name, username, phone, email, fingerprint_number, created_at FROM users WHERE account_status = 'pending' ORDER BY created_at ASC")
   response.json({ registrations: result.rows })
 })
+// Just the number, for the badge on «طلبات الانضمام» in the admin menu (the list itself loads on its screen).
+app.get('/api/registrations/count', requireAdmin, async (_request, response) => {
+  response.json({ count: (await query("SELECT COUNT(*)::int AS n FROM users WHERE account_status = 'pending'")).rows[0].n })
+})
 app.put('/api/registrations/:id', requireAdmin, async (request, response) => {
   const status = request.body.status
   const id = Number(request.params.id)

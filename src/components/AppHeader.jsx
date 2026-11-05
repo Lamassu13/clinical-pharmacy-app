@@ -7,16 +7,26 @@ import { Glyph } from './ToolbarIcons.jsx'
 // four admin screens all mounted their own near-copies before. Three groups, kept apart: the
 // brand (which is also "home"), the manager's admin sections behind one disclosure, and the
 // user's own controls (theme, name, sign out).
-const ADMIN_SECTIONS = [
-  { view: 'dashboard', label: 'لوحة التحكم' },
-  { view: 'requests', label: 'طلبات الانضمام', adminOnly: true },
-  { view: 'medicines', label: 'إدارة الأدوية' },
-  { view: 'floors', label: 'إدارة الطوابق' },
-  { view: 'reports', label: 'التقارير' },
-  { view: 'users', label: 'جميع المستخدمين' },
-  { view: 'usage', label: 'استخدام المستخدمين' },
-  { view: 'audit', label: 'سجل الإدارة', adminOnly: true },
-  { view: 'errors', label: 'الأخطاء', adminOnly: true },
+// The admin sections in four groups, so the list reads as a map instead of nine items in the order they
+// were added. `adminOnly` ones are hidden from a supervisor (an empty group goes with them).
+const ADMIN_GROUPS = [
+  { id: 'overview', label: 'نظرة عامة', sections: [
+    { view: 'dashboard', label: 'لوحة التحكم' },
+    { view: 'reports', label: 'التقارير' },
+  ] },
+  { id: 'people', label: 'المستخدمون', sections: [
+    { view: 'requests', label: 'طلبات الانضمام', adminOnly: true, counted: true },
+    { view: 'users', label: 'جميع المستخدمين' },
+    { view: 'usage', label: 'استخدام المستخدمين' },
+  ] },
+  { id: 'setup', label: 'الإعداد', sections: [
+    { view: 'medicines', label: 'إدارة الأدوية' },
+    { view: 'floors', label: 'إدارة الطوابق' },
+  ] },
+  { id: 'watch', label: 'المراقبة', sections: [
+    { view: 'audit', label: 'سجل الإدارة', adminOnly: true },
+    { view: 'errors', label: 'الأخطاء', adminOnly: true },
+  ] },
 ]
 
 function Chevron() {
@@ -42,25 +52,33 @@ function useDismiss(ref) {
   }, [ref])
 }
 
-function AdminMenu({ isAdmin, adminView, onNavigate }) {
+// `pendingRequests`: sign-up requests waiting for the admin, shown on «طلبات الانضمام»; `onOpen` asks
+// App to refresh that number each time the menu is opened.
+function AdminMenu({ isAdmin, adminView, onNavigate, pendingRequests = 0, onOpen }) {
   const ref = useRef(null)
-  const sections = ADMIN_SECTIONS.filter((section) => isAdmin || !section.adminOnly)
-  const current = sections.find((section) => section.view === adminView)
+  const groups = ADMIN_GROUPS.map((group) => ({ ...group, sections: group.sections.filter((section) => isAdmin || !section.adminOnly) })).filter((group) => group.sections.length)
+  const current = groups.flatMap((group) => group.sections).find((section) => section.view === adminView)
   useDismiss(ref)
 
   const go = (view) => { if (ref.current) ref.current.open = false; onNavigate(view) }
 
-  return <details className="admin-menu" ref={ref}>
+  return <details className="admin-menu" ref={ref} onToggle={(event) => { if (event.currentTarget.open) onOpen?.() }}>
     <summary>
       <Glyph icon="admin" />
       <span className="tb-label">الإدارة{current && <span className="admin-menu-at"> · {current.label}</span>}</span>
       <Chevron />
     </summary>
     <div className="admin-menu-list">
-      {sections.map((section) => (
-        <button key={section.view} type="button" aria-current={adminView === section.view || undefined} onClick={() => go(section.view)}>
-          {section.label}
-        </button>
+      {groups.map((group) => (
+        <div key={group.id} className="admin-menu-group" role="group" aria-labelledby={`admin-menu-${group.id}`}>
+          <span className="admin-menu-group-label" id={`admin-menu-${group.id}`}>{group.label}</span>
+          {group.sections.map((section) => (
+            <button key={section.view} type="button" aria-current={adminView === section.view || undefined} onClick={() => go(section.view)}>
+              <span>{section.label}</span>
+              {section.counted && pendingRequests > 0 && <span className="admin-menu-count">{pendingRequests}<span className="sr-only"> بانتظار الموافقة</span></span>}
+            </button>
+          ))}
+        </div>
       ))}
       {adminView && <button type="button" className="admin-menu-exit" onClick={() => go(null)}>الخروج من الإدارة</button>}
     </div>
@@ -127,7 +145,7 @@ function BottomNav({ adminView, isManager, onHome, onMyWard, onNavigate, onOpenP
   </nav>
 }
 
-export default function AppHeader({ theme, onToggleTheme, currentUser, onLogout, onHome, onMyWard, onOpenProfile, isAdmin, isManager, adminView, onNavigate, isOnline, pendingWrites = 0 }) {
+export default function AppHeader({ theme, onToggleTheme, currentUser, onLogout, onHome, onMyWard, onOpenProfile, isAdmin, isManager, adminView, onNavigate, isOnline, pendingWrites = 0, pendingRequests = 0, onAdminMenuOpen }) {
   return <><header className="topbar">
     <TopBarBrand onClick={onHome} />
     <nav className="user-menu" aria-label="أدوات الحساب">
@@ -137,7 +155,7 @@ export default function AppHeader({ theme, onToggleTheme, currentUser, onLogout,
       {isOnline === false ? <span className="offline-badge" role="status">○ غير متصل — سيُرفع تلقائيًا</span>
         : pendingWrites > 0 && <span className="offline-badge" role="status">↻ {pendingWrites} بانتظار الرفع</span>}
       {onMyWard && <button type="button" className="secondary-button compact my-ward-button desktop-only" onClick={onMyWard}>ردهتي اليوم</button>}
-      {isManager && <AdminMenu isAdmin={isAdmin} adminView={adminView} onNavigate={onNavigate} />}
+      {isManager && <AdminMenu isAdmin={isAdmin} adminView={adminView} onNavigate={onNavigate} pendingRequests={pendingRequests} onOpen={onAdminMenuOpen} />}
       {isManager && <span className="topbar-divider" aria-hidden="true" />}
       <span className="desktop-only"><ThemeToggle theme={theme} onToggle={onToggleTheme} /></span>
       <button type="button" className="topbar-user desktop-only" aria-current={adminView === 'profile' || undefined} onClick={onOpenProfile}>{currentUser?.fullName || 'مستخدم'}</button>

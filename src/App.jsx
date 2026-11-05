@@ -77,6 +77,7 @@ function App() {
   const [profileSuccess, setProfileSuccess] = useState('')
   const [adminView, setAdminView] = useState(null)
   const [registrations, setRegistrations] = useState([])
+  const [pendingRequests, setPendingRequests] = useState(0)
   const [allUsers, setAllUsers] = useState([])
   const [pendingFloor, setPendingFloor] = useState({})
   const [registrationsError, setRegistrationsError] = useState('')
@@ -490,7 +491,16 @@ function App() {
       const result = await response.json()
       if (!response.ok) throw new Error(result.message || 'تعذر جلب الطلبات')
       setRegistrations(result.registrations)
+      setPendingRequests(result.registrations.length)
     } catch (error) { setRegistrationsError(error.message || 'تعذر الاتصال بالخادم') }
+  }, [isExpired])
+  // Just the number, for the badge in the admin menu — asked at sign-in and each time the menu opens.
+  const refreshPendingRequests = useCallback(async () => {
+    try {
+      const response = await fetch(`${apiUrl}/registrations/count`, { credentials: 'include' })
+      if (isExpired(response) || !response.ok) return
+      setPendingRequests((await response.json()).count)
+    } catch { /* keeps the last number */ }
   }, [isExpired])
   const loadUsers = useCallback(async () => {
     try {
@@ -511,6 +521,7 @@ function App() {
       const result = await response.json()
       if (!response.ok) throw new Error(result.message || 'تعذر قبول الطلب')
       setRegistrations((current) => (current ?? []).filter((item) => item.id !== id))
+      setPendingRequests((count) => Math.max(0, count - 1))
       setAdminSuccess('تم قبول الطلب وتفعيل الحساب')
       loadUsers()
     } catch (error) { setRegistrationsError(error.message || 'تعذر الاتصال بالخادم') } finally { setBusy(false) }
@@ -523,6 +534,7 @@ function App() {
       const result = await response.json()
       if (!response.ok) throw new Error(result.message || 'تعذر رفض الطلب')
       setRegistrations((current) => (current ?? []).filter((item) => item.id !== id))
+      setPendingRequests((count) => Math.max(0, count - 1))
       setAdminSuccess('تم رفض الطلب')
     } catch (error) { setRegistrationsError(error.message || 'تعذر الاتصال بالخادم') } finally { setBusy(false) }
   }, [isExpired])
@@ -663,6 +675,7 @@ function App() {
       loadUsers(); loadMedicines()
     }
   }, [adminView, isAdmin, sessionExpired, loadRegistrations, loadUsers, loadMedicines])
+  useEffect(() => { if (isAdmin && !sessionExpired) refreshPendingRequests() }, [isAdmin, sessionExpired, refreshPendingRequests])
   // Success notices are transient; errors stay until the next action.
   useEffect(() => {
     if (!adminSuccess) return undefined
@@ -2136,7 +2149,7 @@ function App() {
 
   if (sessionExpired) return <SessionExpiredScreen reassure={!adminView && ['chart', 'pills'].includes(selected?.mode)} credentials={credentials} setCredentials={setCredentials} loginError={loginError} busy={busy} onSubmit={submitLogin} onLogout={logout} confirmModal={confirmModal} />
 
-  const appHeader = <AppHeader theme={theme} onToggleTheme={toggleTheme} currentUser={currentUser} onLogout={logout} onHome={goHome} onMyWard={!isManager && assignedFloorObj ? goToMyWard : undefined} onOpenProfile={openProfile} isAdmin={isAdmin} isManager={isManager} adminView={adminView} onNavigate={setAdminView} isOnline={isOnline} pendingWrites={userId == null ? 0 : pendingWrites(userId).length} />
+  const appHeader = <AppHeader theme={theme} onToggleTheme={toggleTheme} currentUser={currentUser} onLogout={logout} onHome={goHome} onMyWard={!isManager && assignedFloorObj ? goToMyWard : undefined} onOpenProfile={openProfile} isAdmin={isAdmin} isManager={isManager} adminView={adminView} onNavigate={setAdminView} isOnline={isOnline} pendingWrites={userId == null ? 0 : pendingWrites(userId).length} pendingRequests={isAdmin ? pendingRequests : 0} onAdminMenuOpen={isAdmin ? refreshPendingRequests : undefined} />
 
   if (adminView === 'profile') return <ProfileScreen isManager={isManager} adminHeader={appHeader} profileForm={profileForm} setProfileForm={setProfileForm} profileError={profileError} profileSuccess={profileSuccess} busy={busy} onSubmit={submitProfile} />
 
