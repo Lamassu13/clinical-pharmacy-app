@@ -134,7 +134,7 @@ router.post('/charts/purge', requireManager, async (request, response) => {
          AND ward_id IN (SELECT id FROM wards WHERE floor_number = ANY($3::int[]) OR (floor_number IS NULL AND name = ANY($4::text[])))`,
       [from, to, floors, wards],
     )
-  clearCourseRows()
+  clearCourseRows('purge')
   // Handover notes are per ward/day like the charts, and may name patients, so they go too.
   await query(
     `DELETE FROM ward_notes WHERE note_date BETWEEN $1 AND $2
@@ -660,7 +660,7 @@ router.put('/chart', requireAuth, async (request, response) => {
     // Only after COMMIT: a rolled-back save must never leave a description of rows that were not stored.
     rememberSavedChart(chartId, chartResult.rows[0].version, savedPatients, quantityList)
     // Today's rows are always read fresh (loadCourseRows); only an earlier day's save stales the kept ones.
-    if (chartDate < todayInBaghdad()) clearCourseRows()
+    if (chartDate < todayInBaghdad()) clearCourseRows('past-day save')
     response.json({ ok: true, chartId, version: chartResult.rows[0].version })
     if (startedNow) {
       const where = floor === null ? wardName : `الطابق ${floor} — ${wardName}`
@@ -862,7 +862,21 @@ router.get('/meropenem-order', requireAuth, async (request, response) => {
 const keepFor = (max) => memoizeByKey((load, from, to) => load(from, to), { ttlMs: 6 * 3600_000, max })
 const liveHistory = keepFor(60)
 const pastHistory = keepFor(12)
-export const clearCourseRows = () => { liveHistory.clear(); pastHistory.clear() }
+// `why` only labels the log line: a cold load a few minutes after a clear is explained by it, one
+// with no clear before it is the 6-hour expiry or a restart.
+export const clearCourseRows = (why = 'unspecified') => { console.log(`course cache: cleared (${why})`); wardsById = new Map(); liveHistory.clear(); pastHistory.clear() }
+// Ward text (floor, name) is sent once from here, not on every row of a 60-90 day read. Wards are
+// only ever inserted (never renamed or deleted), so an id seen once keeps its text; an unknown id
+// reloads the whole small table. Emptied with the course rows: a restore or reset can renumber wards.
+let wardsById = new Map()
+const knowWards = async (rowLists) => {
+  if (!rowLists.every((rows) => rows.every((row) => wardsById.has(String(row.ward_id))))) {
+    wardsById = new Map((await query('/* course: wards */ SELECT id, floor_number, name FROM wards')).rows.map((ward) => [String(ward.id), ward]))
+  }
+  return wardsById
+}
+// Module-level so a cached loader holds only its own arguments, not the request's.
+const logged = (tag, load) => (...range) => { console.log(`course cache: cold ${tag} ${range.join('..')}`); return load(...range) }
 const dayBefore = (iso) => new Date(Date.parse(`${iso}T00:00:00Z`) - 86400000).toISOString().slice(0, 10)
 // [from, to] split at today: kept is the days before it, fresh the rest; either may be null.
 const splitWindow = (from, to, today) => {
@@ -873,10 +887,9 @@ const readRows = (range, load) => (range ? load(...range).then((result) => resul
 
 // The loaders are built out here so a cached one holds only its own arguments, not the request's.
 const cellsLoader = (pattern, names) => (start, end) => query(
-  `/* course: cells */ SELECT dc.chart_date::text AS date, w.floor_number AS floor, w.name AS ward, cp.patient_name AS name, cp.patient_id,
+  `/* course: cells */ SELECT dc.chart_date::text AS date, dc.ward_id, cp.patient_name AS name, cp.patient_id,
           COALESCE(m.name, cc.custom_name) AS medicine, cq.quantity
    FROM daily_charts dc
-   JOIN wards w ON w.id = dc.ward_id
    JOIN chart_patients cp ON cp.chart_id = dc.id
    JOIN chart_quantities cq ON cq.chart_id = dc.id AND cq.row_number = cp.row_number
    JOIN chart_columns cc ON cc.chart_id = dc.id AND cc.column_number = cq.column_number
@@ -887,7 +900,7 @@ const cellsLoader = (pattern, names) => (start, end) => query(
    ORDER BY dc.chart_date, cp.row_number`,
   [start, end, pattern || names],
 )
-const presenceSql = (who) => `/* course: presence */ SELECT dc.chart_date::text AS date, w.floor_number AS floor, w.name AS ward, cp.patient_name AS name, cp.patient_id
+const presenceSql = (who) => `/* course: presence */ SELECT dc.chart_date::text AS date, dc.ward_id, cp.patient_name AS name, cp.patient_id
   FROM daily_charts dc
   JOIN wards w ON w.id = dc.ward_id
   JOIN chart_patients cp ON cp.chart_id = dc.id
@@ -900,9 +913,8 @@ const BY_ID_OR_NAME = "(cp.patient_id = ANY($3::text[]) OR regexp_replace(btrim(
 const wardPresenceLoader = (floor, wardName) => (start, end) => query(presenceSql(ON_WARD), [start, end, floor, wardName])
 const matchedPresenceLoader = (allWards, ids, names) => (start, end) => query(presenceSql(allWards ? BY_ID_OR_NAME : BY_ID), allWards ? [start, end, ids, names] : [start, end, ids])
 const loadCharted = (start, end) => query(
-  `/* course: charted */ SELECT DISTINCT dc.chart_date::text AS date, w.floor_number AS floor, w.name AS ward
+  `/* course: charted */ SELECT DISTINCT dc.chart_date::text AS date, dc.ward_id
    FROM daily_charts dc
-   JOIN wards w ON w.id = dc.ward_id
    WHERE dc.chart_date BETWEEN $1::date AND $2::date
      AND EXISTS (SELECT 1 FROM chart_patients cp WHERE cp.chart_id = dc.id AND (cp.patient_name <> '' OR cp.patient_id <> ''))`,
   [start, end],
@@ -914,7 +926,7 @@ export const loadCourseRows = async ({ floor, wardName, chartDate }, { pattern, 
   const today = todayInBaghdad()
   const { kept, fresh } = splitWindow(from, chartDate, today)
   const history = kept?.[1] === dayBefore(today) ? liveHistory : pastHistory
-  const keep = (key, load) => (kept ? history.get(`${key}|${kept[0]}|${kept[1]}`, load, ...kept).then((result) => result.rows) : [])
+  const keep = (key, load) => (kept ? history.get(`${key}|${kept[0]}|${kept[1]}`, logged(key.split('|')[0], load), ...kept).then((result) => result.rows) : [])
   const loadCells = cellsLoader(pattern, names)
   // Kept days come before fresh ones, so the cells stay in date order.
   const [keptCells, freshCells] = await Promise.all([keep(`cells|${pattern ? `p${pattern}` : [...names].sort().join('\u0001')}`, loadCells), readRows(fresh, loadCells)])
@@ -952,12 +964,16 @@ export const loadCourseRows = async ({ floor, wardName, chartDate }, { pattern, 
     keep('charted', loadCharted),
     readRows(fresh, loadCharted),
   ])
-  const toRow = (row) => ({ date: row.date, floor: row.floor, ward: row.ward, name: row.name, patientId: row.patient_id })
+  const presenceRows = [...wardPart, ...matchedPart, ...newcomerPart, ...freshPresence]
+  const chartedRows = [...keptDays, ...freshDays]
+  const wards = await knowWards([cellRows, presenceRows, chartedRows])
+  const placed = (row) => { const ward = wards.get(String(row.ward_id)); return { date: row.date, floor: ward.floor_number, ward: ward.name } }
+  const toRow = (row) => ({ ...placed(row), name: row.name, patientId: row.patient_id })
   return {
     date: chartDate, floor, ward: wardName,
     cells: cellRows.map((row) => ({ ...toRow(row), medicine: row.medicine, quantity: row.quantity })),
-    presence: [...wardPart, ...matchedPart, ...newcomerPart, ...freshPresence].map(toRow),
-    charted: [...keptDays, ...freshDays],
+    presence: presenceRows.map(toRow),
+    charted: chartedRows.map(placed),
   }
 }
 
