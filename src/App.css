@@ -843,7 +843,8 @@ button.topbar-user:hover { color: var(--primary); }
   color: var(--text); font: inherit; font-size: var(--text-sm); font-weight: 700; text-align: start; cursor: pointer;
   transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
-.ward-menu-item:hover { background: var(--green-50); color: var(--primary-hover); }
+/* Hover only where the device hovers: on a touchscreen it would stay painted after the tap. */
+@media (hover: hover) { .ward-menu-item:hover { background: var(--green-50); color: var(--primary-hover); } }
 .ward-menu-item:active { background: var(--green-100); }
 .ward-menu-icon { flex-shrink: 0; color: var(--primary-hover); }
 /* One ward's own page. «الجارت» is the page's one solid button; the other chart sits under it, then
@@ -859,12 +860,12 @@ button.topbar-user:hover { color: var(--primary); }
 .ward-hub-chart-more { min-height: 52px; font-size: var(--text-base); white-space: normal; }
 .ward-hub-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: var(--space-5); align-items: start; }
 .ward-hub-label { margin: 0 0 var(--space-2); color: var(--heading); font-size: var(--text-base); }
-.ward-hub-list { padding: var(--space-1) var(--space-2); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--shadow-xs); }
+.ward-hub-list { margin: 0; list-style: none; padding: var(--space-1) var(--space-2); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--shadow-xs); }
 .ward-hub-list .ward-menu-item { min-height: 52px; font-size: var(--text-base); border-radius: 0; }
-.ward-hub-list .ward-menu-item + .ward-menu-item { border-top: 1px solid var(--border); }
+.ward-hub-list li + li { border-top: 1px solid var(--border); }
 .ward-hub-list .ward-menu-item > span:not(.card-status):not(.arrow) { flex: 1 1 auto; }
 .ward-hub-list .ward-menu-item .arrow { margin-inline-start: 0; color: var(--text-muted); }
-.ward-hub-list .ward-menu-item:hover .arrow { color: var(--primary); }
+@media (hover: hover) { .ward-hub-list .ward-menu-item:hover .arrow { color: var(--primary); } }
 
 /* A killed-tab draft, surfaced on the picker: warning-framed, full width, one tap to resume. */
 .resume-draft-card {
