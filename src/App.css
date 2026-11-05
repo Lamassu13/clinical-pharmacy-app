@@ -29,6 +29,7 @@
 
   /* intent colours */
   --primary: var(--green-500);
+  --on-primary: #fff;
   --primary-hover: var(--green-700);
   --primary-tint: #087c541f;
   --danger: #c92a33;
@@ -96,6 +97,7 @@
   --text-muted: #9db0a8;
   --heading: #7fceac;
   --primary: #34b485;
+  --on-primary: #04251b; /* white on this green is 2.6:1; dark ink is 6:1 */
   --primary-hover: #48c497;
   --primary-tint: #34b48533;
   --danger: #f2757d;
@@ -186,7 +188,7 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 .primary-button:disabled, .secondary-button:disabled, .danger-button:disabled, .chart-extra-button:disabled { opacity: .5; cursor: not-allowed; transform: none; }
 .primary-button span, .secondary-button span { margin: 0; }
 
-.primary-button { background: var(--primary); color: #fff; box-shadow: var(--shadow-xs); }
+.primary-button { background: var(--primary); color: var(--on-primary); box-shadow: var(--shadow-xs); }
 .primary-button:hover:not(:disabled) { background: var(--primary-hover); }
 .secondary-button { background: var(--green-50); color: var(--primary-hover); border-color: var(--green-200); }
 .secondary-button:hover:not(:disabled) { background: var(--green-100); }
@@ -844,17 +846,24 @@ button.topbar-user:hover { color: var(--primary); }
 .ward-menu-item:hover { background: var(--green-50); color: var(--primary-hover); }
 .ward-menu-item:active { background: var(--green-100); }
 .ward-menu-icon { flex-shrink: 0; color: var(--primary-hover); }
-/* One ward's own page. «الجارت» is the page's one solid button; the two groups are plain rows in a
-   hairline panel, side by side where there is room. */
-.ward-hub-floor { margin: var(--space-1) 0 0; color: var(--text-muted); font-size: var(--text-sm); font-weight: 700; }
-.ward-hub-chart { width: 100%; min-height: 56px; margin-bottom: var(--space-5); font-size: var(--text-lg); }
+/* One ward's own page. «الجارت» is the page's one solid button; the other chart sits under it, then
+   the two groups as plain rows in a hairline panel, side by side where there is room. Capped so
+   the title, the rows and their chevrons stay within reach of each other on a wide screen. */
+.ward-hub { width: min(100% - var(--space-7), 920px); }
+.ward-hub-head { margin-bottom: var(--space-5); }
+.ward-hub-title { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.ward-hub-meta { margin: var(--space-1) 0 0; color: var(--text-muted); font-size: var(--text-sm); font-weight: 700; }
+.ward-hub-chart { width: 100%; min-height: 56px; font-size: var(--text-lg); }
 .ward-hub-chart .ward-menu-icon { color: inherit; width: 22px; height: 22px; }
+.ward-hub-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: var(--space-3); margin: var(--space-3) 0 var(--space-6); }
+.ward-hub-chart-more { min-height: 52px; font-size: var(--text-base); white-space: normal; }
 .ward-hub-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: var(--space-5); align-items: start; }
 .ward-hub-label { margin: 0 0 var(--space-2); color: var(--heading); font-size: var(--text-base); }
 .ward-hub-list { padding: var(--space-1) var(--space-2); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--shadow-xs); }
 .ward-hub-list .ward-menu-item { min-height: 52px; font-size: var(--text-base); border-radius: 0; }
 .ward-hub-list .ward-menu-item + .ward-menu-item { border-top: 1px solid var(--border); }
-.ward-hub-list .ward-menu-item .arrow { color: var(--green-300); }
+.ward-hub-list .ward-menu-item > span:not(.card-status):not(.arrow) { flex: 1 1 auto; }
+.ward-hub-list .ward-menu-item .arrow { margin-inline-start: 0; color: var(--text-muted); }
 .ward-hub-list .ward-menu-item:hover .arrow { color: var(--primary); }
 
 /* A killed-tab draft, surfaced on the picker: warning-framed, full width, one tap to resume. */
