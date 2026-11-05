@@ -1,4 +1,4 @@
-import { WardGlyph, CardStatus } from '../components/WardGlyph.jsx'
+import { WardGlyph, ChevronStart, CardStatus } from '../components/WardGlyph.jsx'
 import WardActions from '../components/WardActions.jsx'
 import DashboardWidgets from '../components/DashboardWidgets.jsx'
 import PatientSearch from '../components/PatientSearch.jsx'
@@ -8,7 +8,7 @@ import LongAntibioticPatients from '../components/LongAntibioticPatients.jsx'
 // from the floor grid into a floor doesn't feel like a different screen. The floor number
 // is in the heading, so the cards don't repeat it — each carries the ward glyph instead.
 export default function WardPickerScreen({
-  floor, today, selectedDate, isExpired, dashboard, dashboardError, onBack, onOpen,
+  floor, today, selectedDate, isExpired, dashboard, dashboardError, onBack, onOpen, onOpenWard,
   announcements, isManager, announcementDraft, setAnnouncementDraft, announcementError, announcementBusy,
   onPostAnnouncement, onEditAnnouncement, onDeleteAnnouncement,
 }) {
@@ -30,10 +30,13 @@ export default function WardPickerScreen({
     <PatientSearch floor={floor.number} date={selectedDate} onOpen={onOpen} isExpired={isExpired} />
     <div className="location-grid">{floor.wards.map((ward) => {
       const started = startedWards.has(ward)
-      return <div className="location-card" key={ward}>
-        <span className="floor-number"><WardGlyph /></span>
-        <span className="location-card-body"><strong>{ward}</strong></span>
-        {dashboard ? <CardStatus started={started} /> : dashboardError && <CardStatus unavailable />}
+      return <div className="location-card location-card--ward" key={ward}>
+        <button type="button" className="location-card-open" onClick={() => onOpenWard({ floor: floor.number, ward })}>
+          <span className="floor-number"><WardGlyph /></span>
+          <span className="location-card-body"><strong>{ward}</strong></span>
+          {dashboard ? <CardStatus started={started} /> : dashboardError && <CardStatus unavailable />}
+          <span className="arrow"><ChevronStart /></span>
+        </button>
         <WardActions floor={floor.number} ward={ward} started={started} onOpen={onOpen} />
       </div>
     })}</div>
