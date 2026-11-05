@@ -11,14 +11,16 @@ export default function WardHubScreen({ floor, ward, today, started, isOnline, d
   // A ward card low on the list opens this page at its scroll position; start at the top.
   useEffect(() => { window.scrollTo(0, 0) }, [ward])
   const open = (extra) => onOpen({ floor, ward, ...extra })
-  const row = (item) => <button key={item.label} type="button" className="ward-menu-item" onClick={() => open(item.open)}>
-    <Icon name={item.icon} />
-    <span>{item.label}</span>
-    {!isOnline && item.needsConnection && <span className="card-status card-status--muted">يتطلب اتصالاً</span>}
-    <span className="arrow" aria-hidden="true"><ChevronStart /></span>
-  </button>
+  const row = (item) => <li key={item.label}>
+    <button type="button" className="ward-menu-item" onClick={() => open(item.open)}>
+      <Icon name={item.icon} />
+      <span>{item.label}</span>
+      {!isOnline && item.needsConnection && <span className="card-status card-status--muted">يتطلب اتصالاً</span>}
+      <span className="arrow" aria-hidden="true"><ChevronStart /></span>
+    </button>
+  </li>
   return <section className="dashboard ward-hub">
-    <button className="back-button" onClick={onBack}>{floor ? '→ العودة للردهات' : '→ العودة للطوابق'}</button>
+    <button className="back-button" onClick={onBack}><span aria-hidden="true">→</span> {floor ? 'العودة للردهات' : 'العودة للطوابق'}</button>
     <div className="section-heading ward-hub-head">
       <div>
         <div className="ward-hub-title">
@@ -41,7 +43,7 @@ export default function WardHubScreen({ floor, ward, today, started, isOnline, d
         const items = group.items.filter((item) => !item.show || item.show(floor))
         return <section key={group.id} className="ward-hub-group" aria-labelledby={`ward-hub-${group.id}`}>
           <h2 className="ward-hub-label" id={`ward-hub-${group.id}`}>{group.label}</h2>
-          <div className="ward-hub-list">{items.map(row)}</div>
+          <ul className="ward-hub-list" role="list" aria-labelledby={`ward-hub-${group.id}`}>{items.map(row)}</ul>
         </section>
       })}
     </div>
