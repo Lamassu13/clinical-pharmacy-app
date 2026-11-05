@@ -1,5 +1,4 @@
 import { WardGlyph, ChevronStart, CardStatus } from '../components/WardGlyph.jsx'
-import WardActions from '../components/WardActions.jsx'
 import DashboardWidgets from '../components/DashboardWidgets.jsx'
 import PatientSearch from '../components/PatientSearch.jsx'
 import LongAntibioticPatients from '../components/LongAntibioticPatients.jsx'
@@ -30,15 +29,12 @@ export default function WardPickerScreen({
     <PatientSearch floor={floor.number} date={selectedDate} onOpen={onOpen} isExpired={isExpired} />
     <div className="location-grid">{floor.wards.map((ward) => {
       const started = startedWards.has(ward)
-      return <div className="location-card location-card--ward" key={ward}>
-        <button type="button" className="location-card-open" onClick={() => onOpenWard({ floor: floor.number, ward })}>
-          <span className="floor-number"><WardGlyph /></span>
-          <span className="location-card-body"><strong>{ward}</strong></span>
-          {dashboard ? <CardStatus started={started} /> : dashboardError && <CardStatus unavailable />}
-          <span className="arrow"><ChevronStart /></span>
-        </button>
-        <WardActions floor={floor.number} ward={ward} started={started} onOpen={onOpen} />
-      </div>
+      return <button type="button" className="location-card location-card--link" key={ward} onClick={() => onOpenWard({ floor: floor.number, ward })}>
+        <span className="floor-number"><WardGlyph /></span>
+        <span className="location-card-body"><strong>{ward}</strong></span>
+        {dashboard ? <CardStatus started={started} /> : dashboardError && <CardStatus unavailable />}
+        <span className="arrow"><ChevronStart /></span>
+      </button>
     })}</div>
     {!isManager && <div className="dashboard-announcements">
       <DashboardWidgets

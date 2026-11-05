@@ -2,7 +2,7 @@ import { EXTRA_PILL_FLOORS } from '../constants.js'
 
 // What a ward offers: daily forms, then clinical follow-up. `open` is merged into { floor, ward } and
 // handed to onOpen as is. Shown on the ward's own page (WardHubScreen); «الجارت» is not listed here
-// because it is the page's one primary button and the shortcut on every ward card.
+// because it is the page's one primary button.
 const GROUPS = [
   { id: 'forms', label: 'الاستمارات اليومية', items: [
     { label: 'إدخال مريض (استمارة)', icon: 'sheet-plus', open: { mode: 'chart', slot: 'main', form: true } },

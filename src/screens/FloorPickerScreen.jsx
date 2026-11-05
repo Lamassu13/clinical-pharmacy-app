@@ -1,7 +1,6 @@
 import DashboardWidgets from '../components/DashboardWidgets.jsx'
 import { WardGlyph, ChevronStart, StatusCheck, CardStatus } from '../components/WardGlyph.jsx'
 import { Glyph } from '../components/ToolbarIcons.jsx'
-import WardActions from '../components/WardActions.jsx'
 import PatientSearch from '../components/PatientSearch.jsx'
 import LongAntibioticPatients from '../components/LongAntibioticPatients.jsx'
 import { wardAttention } from '../helpers.js'
@@ -68,15 +67,12 @@ export default function FloorPickerScreen({
       )}
       {specialWards.map((ward) => {
         const started = startedSpecialWards.has(ward)
-        return <div className="location-card location-card--ward special" key={ward}>
-          <button type="button" className="location-card-open" onClick={() => onOpenWard({ floor: null, ward })}>
-            <span className="floor-number"><WardGlyph /></span>
-            <span className="location-card-body"><strong>{ward}</strong><span className="card-kind">ردهة مستقلة</span></span>
-            {dashboard ? <CardStatus started={started} /> : dashboardError && <CardStatus unavailable />}
-            <span className="arrow"><ChevronStart /></span>
-          </button>
-          <WardActions floor={null} ward={ward} started={started} onOpen={onOpen} />
-        </div>
+        return <button type="button" className="location-card location-card--link special" key={ward} onClick={() => onOpenWard({ floor: null, ward })}>
+          <span className="floor-number"><WardGlyph /></span>
+          <span className="location-card-body"><strong>{ward}</strong><span className="card-kind">ردهة مستقلة</span></span>
+          {dashboard ? <CardStatus started={started} /> : dashboardError && <CardStatus unavailable />}
+          <span className="arrow"><ChevronStart /></span>
+        </button>
       })}
     </div>
 
