@@ -2672,12 +2672,15 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
 }
 .req-tick:hover { background: var(--green-50); }
 .req-tick-box {
-  flex: none; display: grid; place-items: center; width: 20px; height: 20px; margin-top: 1px;
-  border: 2px solid var(--border-strong); border-radius: 5px; color: #fff; font-size: 14px; font-weight: 800; line-height: 1;
+  flex: none; width: 20px; height: 20px; margin-top: 1px;
+  border: 2px solid var(--border-strong); border-radius: 5px;
 }
-.req-tick-text { min-width: 0; }
-.req-tick-cell--on .req-tick { background: var(--green-50); }
-.req-tick-cell--on .req-tick-box { border-color: var(--primary); background: var(--primary); }
+/* Ticked: the square steps aside (it keeps its room, so nothing shifts) and the indication is circled in a
+   bold oval. The oval's padding and border are mostly cancelled by the negative margins (the start side over the
+   hidden square's room), so ticking barely moves anything. */
+.req-tick-text { min-width: 0; border: 2.5px solid transparent; border-radius: 999px; padding: 6px 18px; margin-block: -8.5px; margin-inline: -16px -6px; }
+.req-tick-cell--on .req-tick-box { visibility: hidden; }
+.req-tick-cell--on .req-tick-text { border-color: var(--primary); }
 .req-tick:focus-visible { outline: 2px solid var(--primary); outline-offset: -3px; }
 .req-note-input { display: block; width: calc(100% - 16px); margin: 0 8px 8px; padding: 6px 8px; font-size: 14px; }
 .req-note-print { display: block; padding: 0 8px 6px; font-weight: 700; }
@@ -2725,13 +2728,13 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
 .alb-grid strong { font-weight: 700; }
 .alb-line { display: block; }
 .alb-i12 .req-tick-text { font-size: 12px; }
-.alb-signatures { row-gap: var(--space-7); }
+.alb-signatures { row-gap: calc(var(--space-8) * 1.5); }
 
 @media (max-width: 560px) {
   .req-paper { padding: var(--space-3); }
   .req-form { font-size: 11px; }
   .req-form th, .req-form td, .req-tick { padding: 4px 5px; }
-  .req-tick-box { width: 16px; height: 16px; font-size: 12px; }
+  .req-tick-box { width: 16px; height: 16px; }
   .req-signatures { font-size: 11px; gap: var(--space-2); }
 }
 
@@ -2748,7 +2751,7 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
 .rpt-sheet .req-form .req-band { background: #e6e6e6; }
 .rpt-sheet .req-value { color: #000; }
 .rpt-sheet .req-form td.req-tick-cell { padding: 1.5mm 2mm; vertical-align: middle; }
-.rpt-sheet .req-tick-mark { display: inline-block; width: 3.4mm; height: 3.4mm; margin-inline-end: 1.6mm; vertical-align: -0.5mm; }
+.rpt-sheet .req-circled { display: inline-block; padding: 1.4mm 3mm; margin: -1.55mm -1.3mm; border: 0.55mm solid #000; border-radius: 5mm; }
 .rpt-sheet .req-note-print { padding: 0.5mm 0 0; }
 .rpt-sheet .req-signatures { margin-top: 8mm; padding: 0; font-size: 10.5pt; }
 .rpt-sheet .mero-diagnosis td.req-tick-cell { height: 11mm; }
@@ -2761,4 +2764,4 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
 .rpt-sheet .req-form.alb-grid { margin-top: 0; border-top: 0; font-size: 9.5pt; }
 .rpt-sheet .alb-grid td.req-tick-cell { height: 11mm; vertical-align: top; }
 .rpt-sheet td.alb-i12 { font-size: 8.5pt; }
-.rpt-sheet .alb-signatures { row-gap: 12mm; }
+.rpt-sheet .alb-signatures { row-gap: 24mm; }
