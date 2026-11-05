@@ -16,7 +16,7 @@ import usePdfSheets from '../usePdfSheets.js'
 const SHEETS = { meropenem: MeropenemSheet, albumin: AlbuminSheet }
 const savedAt = (iso) => new Date(iso).toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' })
 
-export default function DrugRequestsScreen({ dayLocked = false, kind, header, wardLabel, wardName, onBack, selectedDate, onChangeDate, isOnline, loading, loadError, requests, busy, actionError, onSave, onSetTicks, onSaveField, onDelete, confirmModal }) {
+export default function DrugRequestsScreen({ footer, dayLocked = false, kind, header, wardLabel, wardName, onBack, selectedDate, onChangeDate, isOnline, loading, loadError, requests, busy, actionError, onSave, onSetTicks, onSaveField, onDelete, confirmModal }) {
   const spec = DRUG_REQUESTS[kind]
   const Sheet = SHEETS[kind]
   const [adding, setAdding] = useState(false)
@@ -82,6 +82,7 @@ export default function DrugRequestsScreen({ dayLocked = false, kind, header, wa
             </div>
           </>}
     </section>
+    {footer}
 
     {adding && <DrugRequestDialog kind={kind} screen initial={{}} kicker={wardLabel} title={`${spec.label} — جديدة`} saveLabel="حفظ" cancelLabel="إلغاء"
       onSave={async (payload) => { const result = await onSave(kind, payload); if (result.ok) { setAdding(false); if (result.request) setOpen(result.request.id, true) } return result }}
