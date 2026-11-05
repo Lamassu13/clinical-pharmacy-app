@@ -12,7 +12,7 @@ import usePdfSheets from '../usePdfSheets.js'
 // pills form (PillsScreen.jsx), but with no chart behind it at all: the patient name and
 // every medicine slot are typed directly here, one form is exactly 7 medicine rows (never
 // paginated — 7 is this form's fixed size, not a per-page split of a longer chart-derived
-// list), and forms are explicit save/dirty like TreatmentFormRow rather than autosaved on
+// list), and forms are explicit save/dirty rather than autosaved on
 // every keystroke — a deliberate simplification for a secondary, occasional-use tool.
 function ExtraPillFormCard({ form, catalogue, floorLabel, today, editTime, selected, onToggleSelect, onSave, onRemove, busy }) {
   const [patientName, setPatientName] = useState(form.patientName)

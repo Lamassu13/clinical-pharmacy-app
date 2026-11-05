@@ -12,7 +12,6 @@ import AdminRequestsScreen from './screens/AdminRequestsScreen.jsx'
 import AdminUsersScreen from './screens/AdminUsersScreen.jsx'
 import AdminMedicinesScreen from './screens/AdminMedicinesScreen.jsx'
 import AdminFloorsScreen from './screens/AdminFloorsScreen.jsx'
-import TreatmentFormsScreen from './screens/TreatmentFormsScreen.jsx'
 import ProfileScreen from './screens/ProfileScreen.jsx'
 import ReportsScreen from './screens/ReportsScreen.jsx'
 import AdminUsageScreen from './screens/AdminUsageScreen.jsx'
@@ -235,11 +234,6 @@ function App() {
   // freshly added medicine can open straight into it.
   const [editingMedicineId, setEditingMedicineId] = useState(null)
   const [medicineFilter, setMedicineFilter] = useState('')
-  // استمارات العلاج — every member reads this list; only a manager gets the write handlers below.
-  const [treatmentForms, setTreatmentForms] = useState([])
-  const [treatmentFormsLoading, setTreatmentFormsLoading] = useState(false)
-  const [treatmentFormsError, setTreatmentFormsError] = useState(false)
-  const [treatmentFormFilter, setTreatmentFormFilter] = useState('')
   // Floor-management screen: the bulk chart-purge form. purgeTargets holds floor numbers
   // and/or special-ward names; purgeAll overrides it with "every ward".
   const [purgeFrom, setPurgeFrom] = useState('')
@@ -616,56 +610,6 @@ function App() {
       return true
     } catch (error) { setRegistrationsError(error.message || 'تعذر الاتصال بالخادم'); return false } finally { setBusy(false) }
   }, [askConfirm, isExpired])
-  const loadTreatmentForms = useCallback(async () => {
-    setTreatmentFormsLoading(true); setTreatmentFormsError(false)
-    try {
-      const response = await fetch(`${apiUrl}/treatment-forms`, { credentials: 'include' })
-      if (isExpired(response)) return
-      const result = await response.json()
-      if (!response.ok || !Array.isArray(result.forms)) throw new Error()
-      setTreatmentForms(result.forms)
-    } catch { setTreatmentFormsError(true) } finally { setTreatmentFormsLoading(false) }
-  }, [isExpired])
-  const uploadTreatmentForm = useCallback(async (title, file) => {
-    setRegistrationsError(''); setAdminSuccess(''); setBusy(true)
-    try {
-      const body = new FormData()
-      body.append('title', title)
-      body.append('file', file)
-      const response = await fetch(`${apiUrl}/treatment-forms`, { method: 'POST', credentials: 'include', body })
-      if (isExpired(response)) return
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.message || 'تعذر رفع الاستمارة')
-      setTreatmentForms((current) => [...current, result.form].sort((a, b) => a.title.localeCompare(b.title, 'ar')))
-      setAdminSuccess(`تم رفع "${result.form.title}"`)
-    } catch (error) { setRegistrationsError(error.message || 'تعذر الاتصال بالخادم') } finally { setBusy(false) }
-  }, [isExpired])
-  const saveTreatmentForm = useCallback(async (id, title, file) => {
-    setRegistrationsError(''); setAdminSuccess(''); setBusy(true)
-    try {
-      const body = new FormData()
-      body.append('title', title)
-      if (file) body.append('file', file)
-      const response = await fetch(`${apiUrl}/treatment-forms/${id}`, { method: 'PUT', credentials: 'include', body })
-      if (isExpired(response)) return
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.message || 'تعذر حفظ الاستمارة')
-      setTreatmentForms((current) => current.map((item) => (item.id === id ? result.form : item)).sort((a, b) => a.title.localeCompare(b.title, 'ar')))
-      setAdminSuccess(`تم حفظ "${result.form.title}"`)
-    } catch (error) { setRegistrationsError(error.message || 'تعذر الاتصال بالخادم') } finally { setBusy(false) }
-  }, [isExpired])
-  const deleteTreatmentForm = useCallback(async (id, title) => {
-    if (!(await askConfirm(`حذف الاستمارة "${title}"؟`, { danger: true }))) return
-    setRegistrationsError(''); setAdminSuccess(''); setBusy(true)
-    try {
-      const response = await fetch(`${apiUrl}/treatment-forms/${id}`, { method: 'DELETE', credentials: 'include' })
-      if (isExpired(response)) return
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.message || 'تعذر حذف الاستمارة')
-      setTreatmentForms((current) => (current ?? []).filter((item) => item.id !== id))
-      setAdminSuccess(`تم حذف "${title}"`)
-    } catch (error) { setRegistrationsError(error.message || 'تعذر الاتصال بالخادم') } finally { setBusy(false) }
-  }, [askConfirm, isExpired])
   const togglePurgeTarget = useCallback((key) => setPurgeTargets((current) => {
     const next = new Set(current)
     if (next.has(key)) next.delete(key); else next.add(key)
@@ -712,14 +656,13 @@ function App() {
     if (adminView === 'requests') loadRegistrations()
     if (adminView === 'users') loadUsers()
     if (adminView === 'medicines') loadMedicines()
-    if (adminView === 'forms') loadTreatmentForms()
     // لوحة التحكم needs a count from each of the sections it links to — a supervisor just
     // skips the admin-only requests count, same gate AdminRequestsScreen itself uses.
     if (adminView === 'dashboard') {
       if (isAdmin) loadRegistrations()
-      loadUsers(); loadMedicines(); loadTreatmentForms()
+      loadUsers(); loadMedicines()
     }
-  }, [adminView, isAdmin, sessionExpired, loadRegistrations, loadUsers, loadMedicines, loadTreatmentForms])
+  }, [adminView, isAdmin, sessionExpired, loadRegistrations, loadUsers, loadMedicines])
   // Success notices are transient; errors stay until the next action.
   useEffect(() => {
     if (!adminSuccess) return undefined
@@ -2197,7 +2140,7 @@ function App() {
 
   if (adminView === 'profile') return <ProfileScreen isManager={isManager} adminHeader={appHeader} profileForm={profileForm} setProfileForm={setProfileForm} profileError={profileError} profileSuccess={profileSuccess} busy={busy} onSubmit={submitProfile} />
 
-  if (adminView === 'dashboard' && isManager) return <AdminDashboardScreen adminHeader={appHeader} isAdmin={isAdmin} onNavigate={setAdminView} onOpenWard={(target) => { setAdminView(null); openTarget(target) }} registrations={registrations} allUsers={allUsers} adminMedicines={adminMedicines} treatmentForms={treatmentForms} dashboard={dashboardData} dashboardLoading={dashboardData === null && !dashboardError} dashboardError={dashboardError} onRetryDashboard={retryDashboard} rangeFrom={rangeFrom} setRangeFrom={setRangeFrom} rangeTo={rangeTo} setRangeTo={setRangeTo} pendingFloor={pendingFloor} setPendingFloor={setPendingFloor} busy={busy} onApprove={approveRegistration} onReject={rejectRegistration} registrationsError={registrationsError} adminSuccess={adminSuccess} confirmModal={confirmModal} />
+  if (adminView === 'dashboard' && isManager) return <AdminDashboardScreen adminHeader={appHeader} isAdmin={isAdmin} onNavigate={setAdminView} onOpenWard={(target) => { setAdminView(null); openTarget(target) }} registrations={registrations} allUsers={allUsers} adminMedicines={adminMedicines} dashboard={dashboardData} dashboardLoading={dashboardData === null && !dashboardError} dashboardError={dashboardError} onRetryDashboard={retryDashboard} rangeFrom={rangeFrom} setRangeFrom={setRangeFrom} rangeTo={rangeTo} setRangeTo={setRangeTo} pendingFloor={pendingFloor} setPendingFloor={setPendingFloor} busy={busy} onApprove={approveRegistration} onReject={rejectRegistration} registrationsError={registrationsError} adminSuccess={adminSuccess} confirmModal={confirmModal} />
 
   if (adminView === 'requests' && isAdmin) return <AdminRequestsScreen adminHeader={appHeader} registrations={registrations} registrationsError={registrationsError} adminSuccess={adminSuccess} pendingFloor={pendingFloor} setPendingFloor={setPendingFloor} busy={busy} onReload={loadRegistrations} onApprove={approveRegistration} onReject={rejectRegistration} confirmModal={confirmModal} />
 
@@ -2215,11 +2158,6 @@ function App() {
   const medicineSearch = medicineFilter.trim().toLowerCase()
   const visibleMedicines = adminMedicines.filter((item) => !medicineSearch || `${item.name} ${item.arabic_name || ''}`.toLowerCase().includes(medicineSearch))
   if (adminView === 'medicines' && isManager) return <AdminMedicinesScreen adminHeader={appHeader} adminMedicines={adminMedicines} visibleMedicines={visibleMedicines} medicinesStatus={medicinesStatus} onRetryMedicines={loadMedicines} editingMedicineId={editingMedicineId} setEditingMedicineId={setEditingMedicineId} askConfirm={askConfirm} medicineFilter={medicineFilter} setMedicineFilter={setMedicineFilter} newMedicine={newMedicine} setNewMedicine={setNewMedicine} registrationsError={registrationsError} adminSuccess={adminSuccess} busy={busy} onAddMedicine={addMedicine} onSaveMedicine={saveMedicine} onRemoveMedicine={removeMedicine} confirmModal={confirmModal} />
-  const formSearch = treatmentFormFilter.trim().toLowerCase()
-  const visibleTreatmentForms = treatmentForms.filter((item) => !formSearch || item.title.toLowerCase().includes(formSearch))
-  // No isManager guard here, unlike the other admin screens — every member reads this list;
-  // the upload/rename/replace/delete controls inside are what's gated on isManager.
-  if (adminView === 'forms') return <TreatmentFormsScreen adminHeader={appHeader} isManager={isManager} forms={visibleTreatmentForms} formCount={treatmentForms.length} formFilter={treatmentFormFilter} setFormFilter={setTreatmentFormFilter} loading={treatmentFormsLoading} loadError={treatmentFormsError} onRetry={loadTreatmentForms} registrationsError={registrationsError} adminSuccess={adminSuccess} busy={busy} onUpload={uploadTreatmentForm} onSave={saveTreatmentForm} onRemove={deleteTreatmentForm} confirmModal={confirmModal} />
 
   const wardLabel = selected
     ? `${selected.floor ? `الطابق ${selected.floor} - ${selected.ward}` : selected.ward}${selected.slot === 'extra' ? ' — إضافي' : ''}`

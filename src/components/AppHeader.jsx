@@ -110,7 +110,7 @@ function BottomNav({ adminView, isManager, onHome, onMyWard, onNavigate, onOpenP
     viewport?.addEventListener('resize', nudge)
     return () => { clearTimeout(timer); document.removeEventListener('focusout', nudge); viewport?.removeEventListener('resize', nudge); document.body.classList.remove('has-bottom-nav') }
   }, [])
-  const adminActive = isManager && adminView && adminView !== 'forms' && adminView !== 'profile' && adminView !== 'reports'
+  const adminActive = isManager && adminView && adminView !== 'profile' && adminView !== 'reports'
   const tabs = [
     { key: 'home', icon: 'home', label: 'الرئيسية', active: !adminView, onClick: onHome },
     onMyWard && { key: 'ward', icon: 'ward', label: 'ردهتي', onClick: onMyWard },
@@ -137,7 +137,6 @@ export default function AppHeader({ theme, onToggleTheme, currentUser, onLogout,
       {isOnline === false ? <span className="offline-badge" role="status">○ غير متصل — سيُرفع تلقائيًا</span>
         : pendingWrites > 0 && <span className="offline-badge" role="status">↻ {pendingWrites} بانتظار الرفع</span>}
       {onMyWard && <button type="button" className="secondary-button compact my-ward-button desktop-only" onClick={onMyWard}>ردهتي اليوم</button>}
-      <button type="button" className="secondary-button compact forms-button" aria-label="استمارات العلاج" aria-current={adminView === 'forms' || undefined} onClick={() => onNavigate('forms')}><Glyph icon="forms" /><span className="tb-label">استمارات العلاج</span></button>
       {isManager && <AdminMenu isAdmin={isAdmin} adminView={adminView} onNavigate={onNavigate} />}
       {isManager && <span className="topbar-divider" aria-hidden="true" />}
       <span className="desktop-only"><ThemeToggle theme={theme} onToggle={onToggleTheme} /></span>

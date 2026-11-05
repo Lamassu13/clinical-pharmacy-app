@@ -978,11 +978,6 @@ button.topbar-user:hover { color: var(--primary); }
   .medicine-editor-actions > .primary-button, .medicine-editor-actions > .secondary-button { flex: 1 1 0; }
   .medicine-editor-delete { flex-basis: 100%; margin-inline-start: 0; margin-top: var(--space-3); }
 }
-/* استمارات العلاج: the "replace file" control is a native file input dressed as a text-button
-   via its <label> — sr-only hides the input itself, the label stays the click target. */
-.form-replace-label { position: relative; cursor: pointer; }
-.form-file-pending { color: var(--text-muted); font-size: var(--text-xs); }
-
 /* Floor-management: the bulk chart-purge form */
 .admin-subheading { margin: var(--space-8) 0 var(--space-4); font-size: var(--text-lg); color: var(--heading); }
 .purge-form { display: flex; flex-direction: column; gap: var(--space-5); max-width: 640px; }
@@ -2518,7 +2513,7 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
   .desktop-only, .topbar-divider { display: none !important; }
   .topbar .tb-glyph { display: block; width: 24px; height: 24px; opacity: 1; }
   .topbar .tb-label { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
-  .topbar .forms-button, .admin-menu > summary, .account-menu > summary {
+  .admin-menu > summary, .account-menu > summary {
     width: 44px; height: 44px; min-height: 44px; padding: 0; justify-content: center; align-items: center;
     border: 1px solid var(--green-200); border-radius: var(--radius-md); background: var(--green-50); color: var(--green-600);
   }
