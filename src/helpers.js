@@ -699,15 +699,6 @@ export const pillChanges = (base, current) => ({
   rooms: Object.fromEntries(changedKeys(base?.rooms, current.rooms).map((row) => [row, current.rooms[row] || ''])),
 })
 
-// A treatment-form's size, for the استمارات العلاج list — "340 كيلوبايت" / "1.2 ميغابايت".
-export const formatFileSize = (bytes) => {
-  const n = Number(bytes)
-  if (!Number.isFinite(n) || n < 0) return ''
-  if (n < 1024) return `${n} بايت`
-  if (n < 1024 * 1024) return `${Math.round(n / 1024)} كيلوبايت`
-  return `${(n / (1024 * 1024)).toFixed(1)} ميغابايت`
-}
-
 // Average patients per day for each floor / special ward, over only the days a chart was made.
 // `rows` is the dashboard's patientsByFloorRange ([{ floor, ward, date, count }], one row per
 // floor-or-ward per day that had a named patient); `keys` the floor numbers and ward names to report.

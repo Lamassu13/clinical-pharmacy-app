@@ -32,13 +32,6 @@ function MedicineIcon() {
     <line x1="12" y1="8.5" x2="12" y2="15.5" transform="rotate(-45 12 12)" />
   </svg>
 }
-function FormsIcon() {
-  return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <path d="M7 3.5h7l4 4V19a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 6 19V5A1.5 1.5 0 0 1 7 3.5Z" fill="currentColor" fillOpacity="0.14" stroke="none" />
-    <path d="M7 3.5h7l4 4V19a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 6 19V5A1.5 1.5 0 0 1 7 3.5Z" />
-    <path d="M14 3.5V7.5h4" /><path d="M9 12h6M9 15.5h6" />
-  </svg>
-}
 function StatCard({ icon, value, label, detail, onClick }) {
   return <button type="button" className="location-card location-card--link stat-card" onClick={onClick}>
     <span className="floor-number">{icon}</span>
@@ -53,7 +46,7 @@ function StatCard({ icon, value, label, detail, onClick }) {
 
 export default function AdminDashboardScreen({
   adminHeader, isAdmin, onNavigate, onOpenWard,
-  registrations, allUsers, adminMedicines, treatmentForms,
+  registrations, allUsers, adminMedicines,
   dashboard, dashboardLoading, dashboardError, onRetryDashboard,
   rangeFrom, setRangeFrom, rangeTo, setRangeTo,
   pendingFloor, setPendingFloor, busy, onApprove, onReject,
@@ -86,7 +79,6 @@ export default function AdminDashboardScreen({
       )}
       <StatCard icon={<UsersIcon />} value={allUsers.length} label="المستخدمون" detail={roleBreakdown} onClick={() => onNavigate('users')} />
       <StatCard icon={<MedicineIcon />} value={adminMedicines.length} label="الأدوية في القائمة" onClick={() => onNavigate('medicines')} />
-      <StatCard icon={<FormsIcon />} value={treatmentForms.length} label="استمارات العلاج" onClick={() => onNavigate('forms')} />
     </div>
 
     {isAdmin && recentRequests.length > 0 && (
