@@ -3,7 +3,7 @@ import hospitalLogo from '../assets/hospital-logo.png'
 // «طلبية الميرونيم» — read-only, built by GET /api/meropenem-order from the ward's MAIN chart for
 // the day: one line per patient on Meronem with the course day (D1, D2 …), the dose and the vial count. Same frame (and
 // print rules) as the requisition (OrderScreen).
-export default function MeropenemOrderScreen({ header, wardLabel, today, onBack, selectedDate, onChangeDate, loading, data, loadError, onPrint }) {
+export default function MeropenemOrderScreen({ header, footer, wardLabel, today, onBack, selectedDate, onChangeDate, loading, data, loadError, onPrint }) {
   const items = data?.items || []
   // Vials are ordered per strength, so the total is one line per vial size (1g, 500mg), biggest first.
   const totals = [...items.reduce((map, item) => map.set(item.strengthMg || 0, (map.get(item.strengthMg || 0) || 0) + (Number(item.count) || 0)), new Map())].sort((a, b) => b[0] - a[0])
@@ -52,5 +52,6 @@ export default function MeropenemOrderScreen({ header, wardLabel, today, onBack,
             </table>
           </div>}
     </section>
+    {footer}
   </main>
 }

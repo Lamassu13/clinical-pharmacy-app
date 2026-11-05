@@ -3,7 +3,7 @@ import hospitalLogo from '../assets/hospital-logo.png'
 // The requisition ("الطلبية") — a read-only list built from the ward's main chart for the
 // day: one row per medicine, its quantity summed across all patients, and that total spelled
 // out in Arabic. RTL like the rest of the app, so التسلسل is the rightmost column.
-export default function OrderScreen({ header, wardLabel, today, onBack, selectedDate, onChangeDate, loading, data, loadError, onPrint }) {
+export default function OrderScreen({ header, footer, wardLabel, today, onBack, selectedDate, onChangeDate, loading, data, loadError, onPrint }) {
   const items = data?.items || []
   const isThursday = Boolean(data?.isThursday)
 
@@ -47,5 +47,6 @@ export default function OrderScreen({ header, wardLabel, today, onBack, selected
             </table>
           </div>}
     </section>
+    {footer}
   </main>
 }

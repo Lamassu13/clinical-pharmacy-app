@@ -723,3 +723,7 @@ export const averagePatients = (rows, keys) => {
   const patientDays = [...totalByDate.values()].reduce((sum, count) => sum + count, 0)
   return { locations, total: { chartedDays: totalByDate.size, patientDays, average: mean(patientDays, totalByDate.size) } }
 }
+
+// A count of request forms worded for a row or a step: 1 and 2 are special in Arabic, 3-10 take the
+// plural, 11+ the singular again.
+export const formsWord = (n) => (n === 1 ? 'استمارة واحدة' : n === 2 ? 'استمارتان' : `${n} ${n <= 10 ? 'استمارات' : 'استمارة'}`)

@@ -20,7 +20,7 @@ const hasSchedule = (entry) => Boolean(entry && (entry.doseTime || entry.usageMe
 const BLANK_ENTRY = { doseTime: '', usageMethod: '', note: '', pillQty: null, pillName: '' }
 const BLANK_EXTRA = { doseTime: '', usageMethod: '', note: '', pillQty: '', pillName: '' }
 
-export default function PillsScreen({
+export default function PillsScreen({ footer,
   dayLocked = false, header, wardLabel, roomLabel, today, editTime, onBack,
   selectedDate, onChangeDate, pillsLoading, pillsData, pillsSaveStatus, pillsLoadError,
   pillEntries, setPillEntries, pillRooms, setPillRooms, pillSelection, onTogglePatient, onSetPillSelection, pillsYesterday, isOnline, catalogue = [], englishOnly = false,
@@ -228,6 +228,6 @@ export default function PillsScreen({
           </article>
         })
         })}
-    </section>{pdf.sheets && <PillsPrintTemplate ref={pdf.ref} sheets={pdf.sheets} />}{confirmModal}
+    </section>{footer}{pdf.sheets && <PillsPrintTemplate ref={pdf.ref} sheets={pdf.sheets} />}{confirmModal}
   </main>
 }

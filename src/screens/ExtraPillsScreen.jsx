@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import hospitalLogo from '../assets/hospital-logo.png'
 import PillSelect from '../components/PillSelect.jsx'
 import PillNote from '../components/PillNote.jsx'
@@ -14,11 +14,16 @@ import usePdfSheets from '../usePdfSheets.js'
 // paginated — 7 is this form's fixed size, not a per-page split of a longer chart-derived
 // list), and forms are explicit save/dirty rather than autosaved on
 // every keystroke — a deliberate simplification for a secondary, occasional-use tool.
-function ExtraPillFormCard({ form, catalogue, floorLabel, today, editTime, selected, onToggleSelect, onSave, onRemove, busy }) {
+function ExtraPillFormCard({ form, catalogue, floorLabel, today, editTime, selected, onToggleSelect, onSave, onRemove, onDirtyChange, busy }) {
   const [patientName, setPatientName] = useState(form.patientName)
   const [roomNumber, setRoomNumber] = useState(form.roomNumber)
   const [entries, setEntries] = useState(form.entries)
   const dirty = patientName !== form.patientName || roomNumber !== form.roomNumber || JSON.stringify(entries) !== JSON.stringify(form.entries)
+  // Tells App.jsx while this form holds edits not saved yet, so the work steps can ask before leaving.
+  useEffect(() => {
+    onDirtyChange?.(form.id, dirty)
+    return () => onDirtyChange?.(form.id, false)
+  }, [dirty, form.id, onDirtyChange])
   // Set by App.jsx when this create/edit is still queued offline (see enqueueExtraPillsOp) —
   // a not-yet-created form's id is a local "temp-" placeholder, not a real one yet either.
   const pendingSync = form.pending || (typeof form.id === 'string' && form.id.startsWith('temp-'))
@@ -86,7 +91,7 @@ function ExtraPillFormCard({ form, catalogue, floorLabel, today, editTime, selec
   </article>
 }
 
-export default function ExtraPillsScreen({
+export default function ExtraPillsScreen({ footer, onDirtyChange,
   header, floorLabel, today, editTime, onBack, catalogue = [],
   loading, loadError, forms, busy, actionError, onCreate, onSave, onRemove, confirmModal,
 }) {
@@ -117,7 +122,7 @@ export default function ExtraPillsScreen({
       {loading ? <div className="empty-state"><span className="spinner" /><span>جارٍ تحميل الاستمارات…</span></div>
         : loadError ? <div className="empty-state"><strong>تعذّر تحميل الاستمارات</strong></div>
         : forms.length === 0 ? <div className="empty-state"><strong>لا توجد استمارات بعد</strong><span>اضغط «+ إنشاء استمارة جديدة» لإضافة أول مريض.</span></div>
-        : forms.map((form) => <ExtraPillFormCard
+        : forms.map((form) => <ExtraPillFormCard onDirtyChange={onDirtyChange}
             // Keyed on more than id, like AdminMedicinesScreen's MedicineRow — this card seeds
             // patientName/roomNumber/entries into local state once (below) and never re-syncs
             // from a later prop change while untouched. A synced update from another device
@@ -129,6 +134,6 @@ export default function ExtraPillsScreen({
             selected={selection.has(form.id)} onToggleSelect={toggleSelect}
             onSave={onSave} onRemove={onRemove} busy={busy}
           />)}
-    </section>{pdf.sheets && <PillsPrintTemplate ref={pdf.ref} sheets={pdf.sheets} />}{confirmModal}
+    </section>{footer}{pdf.sheets && <PillsPrintTemplate ref={pdf.ref} sheets={pdf.sheets} />}{confirmModal}
   </main>
 }
