@@ -1,24 +1,24 @@
-import tick from '../assets/tick.png'
 import { cleanField } from '../../shared/drug-requests.js'
 
 // Pieces both request forms (MeropenemSheet, AlbuminSheet) are drawn with. Each comes in two modes:
 // on the form's screen (`paper` false) values are boxes to type in and boxes to tick; on paper
-// (`paper` true, drawn off-screen for the PDF) everything is plain text and only a ticked box carries
-// its ✓. Each paper text is a single element, so html2canvas keeps Arabic letters joined.
+// (`paper` true, drawn off-screen for the PDF) everything is plain text and the ticked indication is
+// circled in a bold oval, as a doctor would circle it on the paper form. Each paper text is a single element, so html2canvas keeps Arabic letters joined.
 
-// A box on the paper form the pharmacist ticks. On screen the whole cell is the button (gloved
-// thumb) with an empty square showing it can be ticked; `after` sits under it inside the cell.
+// An indication on the paper form the pharmacist ticks. On screen the whole cell is the button (gloved
+// thumb) with an empty square showing it can be ticked; ticked, the square gives way to a bold oval
+// round the indication's text. `after` sits under it inside the cell, outside the oval.
+// On paper the cell is a plain table cell and the oval is a bordered span (no ✓ character: the PDF
+// renderer takes it from a fallback font and sets it below the line; no rotated shape: on iPhone the
+// renderer drew a row holding a rotated element with its lines out of place). The text stays one element.
 export function TickCell({ checked, onToggle, colSpan, className, children, after, paper }) {
   const classes = ['req-tick-cell', checked && 'req-tick-cell--on', className].filter(Boolean).join(' ')
-  // On paper the cell is a plain table cell, and the tick is a small image: not a ✓ character (the PDF
-  // renderer takes it from a fallback font and sets it below the line), and not a rotated shape (on
-  // iPhone the renderer drew a row holding a rotated element with its lines out of place).
   if (paper) return <td colSpan={colSpan} className={classes}>
-    {checked && <img className="req-tick-mark" src={tick} alt="" width="13" height="13" />}{children}{after}
+    {checked ? <span className="req-circled">{children}</span> : children}{after}
   </td>
   return <td colSpan={colSpan} className={classes}>
     <button type="button" className="req-tick" aria-pressed={checked} onClick={onToggle}>
-      <span className="req-tick-box" aria-hidden="true">{checked ? '✓' : ''}</span>
+      <span className="req-tick-box" aria-hidden="true" />
       <span className="req-tick-text">{children}</span>
     </button>
     {after}
