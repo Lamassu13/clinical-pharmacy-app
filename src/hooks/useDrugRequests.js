@@ -20,6 +20,7 @@ export default function useDrugRequests({ selected, selectedDate, isExpired, use
   const [loadError, setLoadError] = useState(false)
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState('')
+  const [notice, setNotice] = useState('')
   const [nonce, setNonce] = useState(0)
   const wardFloor = selected?.floor || ''
   const wardName = selected?.ward || ''
@@ -30,6 +31,7 @@ export default function useDrugRequests({ selected, selectedDate, isExpired, use
     setLoading(true)
     setLoadError(false)
     setActionError('')
+    setNotice('')
     const params = new URLSearchParams({ kind: listKind, floor: wardFloor, ward: wardName, date: selectedDate })
     fetch(`${apiUrl}/drug-requests?${params}`, { credentials: 'include' })
       .then((response) => { isExpired(response); return response.ok ? response.json() : null })
@@ -132,5 +134,29 @@ export default function useDrugRequests({ selected, selectedDate, isExpired, use
     } finally { setBusy(false) }
   }, [askConfirm, isExpired])
 
-  return { listKind, requests, loading, loadError, busy, actionError, check, save, setTicks, saveField, remove }
+  // «إرسال إلى نموذج الوزارة»: the server files the albumin form with the ministry's Google Form. Asks first
+  // (it leaves the app), and again before sending one that already went.
+  const sendToGoogle = useCallback(async (request) => {
+    const resend = Boolean(request.googleSentAt)
+    const question = resend ? `أُرسلت استمارة «${request.name}» من قبل. إرسالها مرة ثانية يسجّل المريض مرتين عند الوزارة — متأكد؟` : `إرسال استمارة «${request.name}» إلى نموذج وزارة الصحة؟`
+    if (!(await askConfirm(question, { confirmLabel: 'إرسال' }))) return
+    setBusy(true)
+    setActionError('')
+    setNotice('')
+    try {
+      const response = await fetch(`${apiUrl}/drug-requests/${request.id}/google-form`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ resend }),
+      })
+      if (isExpired(response)) return
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok) { setActionError(result.message || 'تعذّر الإرسال — حاول مرة أخرى.'); return }
+      if (result.dryRun) { setNotice('وضع التجربة: لم يُرسل شيء إلى Google.'); return }
+      putLocal(request.id, result.request)
+      setNotice(`أُرسلت استمارة «${request.name}» إلى نموذج وزارة الصحة.`)
+    } catch {
+      setActionError('لا يوجد اتصال — الإرسال يحتاج اتصالًا.')
+    } finally { setBusy(false) }
+  }, [askConfirm, isExpired])
+
+  return { listKind, requests, loading, loadError, busy, actionError, notice, check, save, setTicks, saveField, remove, sendToGoogle }
 }

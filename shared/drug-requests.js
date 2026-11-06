@@ -69,6 +69,9 @@ export const DRUG_REQUESTS = {
     // The popup's «Treatment day» starts from the course day the follow-up rules give.
     dayField: 'treatmentDay',
     fields: [
+      // Both are asked by the ministry's Google Form (shared/albumin-google-form.js); the age is in years, 0.08 for a month.
+      { key: 'sex', label: 'الجنس', max: 10, choices: ['ذكر', 'أنثى'], required: true },
+      { key: 'age', label: 'العمر (بالسنة)', max: 6, decimal: true, required: true, placeholder: 'مثال: 45' },
       { key: 'treatmentDay', label: 'Treatment day', max: 4, digits: true },
       { key: 'count', label: 'العدد المطلوب (رقما)', max: 4, digits: true },
       { key: 'serumAlbumin', label: 'Serum albumin', unit: 'g/dl', max: 20, decimal: true },

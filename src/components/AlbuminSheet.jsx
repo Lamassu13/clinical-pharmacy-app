@@ -26,6 +26,14 @@ export default function AlbuminSheet({ request, wardLabel, paper = false, onTogg
   }
 
   return <div className="req-paper">
+    {/* On screen only: the paper form has no box for them; the ministry's Google Form asks them. Never drawn for the PDF. */}
+    {!paper && <div className="req-extra-row">
+      <span className="req-label">الجنس <small>(لنموذج الوزارة — لا يُطبع)</small></span>
+      <div className="req-chips" role="group" aria-label="الجنس">
+        {fieldOf.sex.choices.map((choice) => <button key={choice} type="button" className="req-chip" aria-pressed={fields.sex === choice} onClick={() => onField({ fields: { sex: choice } })}>{choice}</button>)}
+      </div>
+      {value('العمر (بالسنة):', 'age')}
+    </div>}
     <p className="alb-title">
       <img className="hospital-logo" width="30" height="30" src={hospitalLogo} alt="" />
       <strong>استمارة صرف الالبومين / مستشفى بغداد التعليمي</strong>

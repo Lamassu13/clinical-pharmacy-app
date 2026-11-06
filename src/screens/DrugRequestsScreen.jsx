@@ -16,7 +16,7 @@ import usePdfSheets from '../usePdfSheets.js'
 const SHEETS = { meropenem: MeropenemSheet, albumin: AlbuminSheet }
 const savedAt = (iso) => new Date(iso).toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' })
 
-export default function DrugRequestsScreen({ footer, dayLocked = false, kind, header, wardLabel, wardName, onBack, selectedDate, onChangeDate, isOnline, loading, loadError, requests, busy, actionError, onSave, onSetTicks, onSaveField, onDelete, confirmModal }) {
+export default function DrugRequestsScreen({ footer, dayLocked = false, kind, header, wardLabel, wardName, onBack, selectedDate, onChangeDate, isOnline, loading, loadError, requests, busy, actionError, notice, onSendToGoogle, onSave, onSetTicks, onSaveField, onDelete, confirmModal }) {
   const spec = DRUG_REQUESTS[kind]
   const Sheet = SHEETS[kind]
   const [adding, setAdding] = useState(false)
@@ -46,6 +46,7 @@ export default function DrugRequestsScreen({ footer, dayLocked = false, kind, he
       </div>
 
       {actionError && <p className="form-error" role="alert">{actionError}</p>}
+      {notice && <p className="req-hint" role="status">{notice}</p>}
       {pdf.error && <p className="form-error" role="alert">{pdf.error}</p>}
 
       {loading ? <div className="empty-state"><span className="spinner" /><span>جارٍ تحميل الاستمارات…</span></div>
@@ -68,6 +69,7 @@ export default function DrugRequestsScreen({ footer, dayLocked = false, kind, he
                     <div className="req-sheet-tools">
                       <p className="req-sheet-meta">{request.createdByName && <span>أدخلها {request.createdByName} · {savedAt(request.createdAt)}</span>}</p>
                       <span className="req-sheet-actions">
+                        {kind === 'albumin' && <button type="button" className="secondary-button compact" disabled={busy || !isOnline || dayLocked} onClick={() => onSendToGoogle(request)}>{request.googleSentAt ? 'أُرسلت ✓ — إعادة الإرسال' : 'إرسال إلى نموذج الوزارة'}</button>}
                         <button type="button" className="secondary-button compact" disabled={pdf.busy} onClick={() => print([request])}>طباعة</button>
                         {!dayLocked && <button type="button" className="danger-button compact" disabled={busy} onClick={() => onDelete(request)}>حذف</button>}
                       </span>

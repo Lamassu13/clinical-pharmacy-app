@@ -7,6 +7,7 @@ import { DAY_LOCKED, isDayLocked } from '../day-lock.js'
 import { buildMeropenemForm, wardKeyOf } from '../meropenem.js'
 import { numberToArabicWords } from '../arabic-number.js'
 import { DRUG_REQUESTS, MAX_REQUEST_NOTE, cleanFields, cleanTicks } from '../../shared/drug-requests.js'
+import { FORM_URL, albuminFormAnswers } from '../../shared/albumin-google-form.js'
 
 const router = express.Router()
 
@@ -19,7 +20,7 @@ const idOf = (value) => String(value ?? '').replace(/\D/g, '').slice(0, 20)
 const kindOf = (value) => (Object.hasOwn(DRUG_REQUESTS, value) ? value : null)
 const BAD_KIND = { message: 'نوع الاستمارة غير معروف' }
 
-const SELECT = `SELECT r.id, r.kind, r.ward_key, r.request_date::text AS date, r.patient_name, r.patient_id, r.fields, r.ticks, r.note,
+const SELECT = `SELECT r.id, r.kind, r.ward_key, r.request_date::text AS date, r.patient_name, r.patient_id, r.fields, r.ticks, r.note, r.google_sent_at,
     r.created_at, r.updated_at, u.full_name AS created_by_name
   FROM drug_requests r LEFT JOIN users u ON u.id = r.created_by`
 const toRequest = (row) => {
@@ -30,7 +31,7 @@ const toRequest = (row) => {
     fields, ticks: cleanTicks(row.kind, row.ticks), note: row.note,
     // Albumin's «كتابة»: the count spelled out, as the requisition does.
     ...(row.kind === 'albumin' ? { words: Number.isInteger(count) && count > 0 ? numberToArabicWords(count) : '' } : {}),
-    createdByName: row.created_by_name || '', createdAt: row.created_at, updatedAt: row.updated_at,
+    googleSentAt: row.google_sent_at, createdByName: row.created_by_name || '', createdAt: row.created_at, updatedAt: row.updated_at,
   }
 }
 const loadRequest = async (id) => (await query(`${SELECT} WHERE r.id = $1`, [id])).rows[0]
@@ -160,6 +161,36 @@ router.patch('/drug-requests/:id/ticks', requireAuth, async (request, response) 
   const ticks = cleanTicks(own.row.kind, request.body.ticks)
   const note = request.body.note === undefined ? own.row.note : cleanText(request.body.note, MAX_REQUEST_NOTE).trim()
   await query('UPDATE drug_requests SET ticks = $2, note = $3, updated_at = NOW() WHERE id = $1', [own.row.id, JSON.stringify(ticks), note])
+  response.json({ request: toRequest(await loadRequest(own.row.id)) })
+})
+
+// «استمارة الالبومين» sent to the ministry's Google Form from here, so nobody retypes it there
+// (../../shared/albumin-google-form.js builds the answers). Sending is off unless GOOGLE_FORM_SEND=1;
+// otherwise the answers that would go are returned and nothing leaves the server. A form already sent is
+// refused unless `resend` is true, so a double tap cannot file the patient twice with the ministry.
+router.post('/drug-requests/:id/google-form', requireAuth, async (request, response) => {
+  const own = await ownRequest(request)
+  if (own.status) return refuse(response, own)
+  if (own.row.kind !== 'albumin') return response.status(400).json({ message: 'هذه الاستمارة لا تُرسل إلى نموذج Google' })
+  const form = toRequest(own.row)
+  if (form.googleSentAt && request.body?.resend !== true) return response.status(409).json({ message: 'أُرسلت هذه الاستمارة من قبل', sentAt: form.googleSentAt })
+  const answers = albuminFormAnswers(form)
+  if (!answers.ok) return response.status(422).json({ message: `أكمل أولًا: ${answers.missing.join('، ')}`, missing: answers.missing })
+  if (process.env.GOOGLE_FORM_SEND !== '1') return response.json({ dryRun: true, answers: answers.body })
+  let reply
+  try {
+    reply = await fetch(FORM_URL, { method: 'POST', body: new URLSearchParams(answers.body), signal: AbortSignal.timeout(15000) })
+  } catch (error) {
+    console.error('google form: not reached:', error.message)
+    return response.status(502).json({ message: 'تعذّر الوصول إلى Google — حاول مرة أخرى.' })
+  }
+  // Checked live on 2026-11-06: an accepted answer comes back 200 («your response has been recorded»), a refused one
+  // (a required question missing, an option text the form no longer has) 400 with the form drawn again.
+  if (!reply.ok) {
+    console.error('google form: refused:', reply.status)
+    return response.status(502).json({ message: 'رفض نموذج Google الإرسال — أخبر المسؤول (ربما تغيّر النموذج).' })
+  }
+  await query('UPDATE drug_requests SET google_sent_at = NOW() WHERE id = $1', [own.row.id])
   response.json({ request: toRequest(await loadRequest(own.row.id)) })
 })
 

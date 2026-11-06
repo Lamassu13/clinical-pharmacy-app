@@ -467,3 +467,5 @@ CREATE TABLE IF NOT EXISTS drug_requests (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (kind, ward_key, request_date, patient_name, patient_id)
 );
+-- When an albumin form was sent to the ministry's Google Form (routes/drug-requests.js); NULL = not yet.
+ALTER TABLE drug_requests ADD COLUMN IF NOT EXISTS google_sent_at TIMESTAMPTZ;
