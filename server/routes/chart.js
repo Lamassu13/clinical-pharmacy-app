@@ -921,7 +921,9 @@ const loadCharted = (start, end) => query(
 )
 const sortedSet = (values) => [...new Set(values.filter(Boolean))].sort()
 
-export const loadCourseRows = async ({ floor, wardName, chartDate }, { pattern, names, allWards = false }) => {
+// `keepIds`: IDs to follow from other wards although this ward's rows do not carry them (yet) — the
+// patient a «does this need a form?» check asks about, who may have just arrived.
+export const loadCourseRows = async ({ floor, wardName, chartDate }, { pattern, names, allWards = false, keepIds = [] }) => {
   const from = windowStart(chartDate)
   const today = todayInBaghdad()
   const { kept, fresh } = splitWindow(from, chartDate, today)
@@ -969,12 +971,42 @@ export const loadCourseRows = async ({ floor, wardName, chartDate }, { pattern, 
   const wards = await knowWards([cellRows, presenceRows, chartedRows])
   const placed = (row) => { const ward = wards.get(String(row.ward_id)); return { date: row.date, floor: ward.floor_number, ward: ward.name } }
   const toRow = (row) => ({ ...placed(row), name: row.name, patientId: row.patient_id })
+  // One ward's form only walks the patients that can change its rows: those charted on this ward, and
+  // anyone carrying an ID this ward has had (a transfer keeps counting from the ward they came from).
+  // The rest of the hospital's rows — most of the ~200k a cold window holds — would only be walked
+  // and thrown away: it was the seconds a follow-up form took to open. The answer is unchanged.
+  let keepCell = () => true
+  let keepPresence = keepCell
+  if (!allWards) {
+    let thisWard = null
+    wards.forEach((ward, id) => { if ((ward.floor_number ?? null) === (floor ?? null) && ward.name === wardName) thisWard = id })
+    if (thisWard !== null) {
+      const onWard = (row) => String(row.ward_id) === thisWard
+      const ids = new Set([...keepIds, ...[...cellRows, ...presenceRows].filter(onWard).map((row) => row.patient_id)].filter(Boolean))
+      keepCell = (row) => onWard(row) || (row.patient_id && ids.has(row.patient_id))
+      keepPresence = keepCell
+    }
+  }
   return {
     date: chartDate, floor, ward: wardName,
-    cells: cellRows.map((row) => ({ ...toRow(row), medicine: row.medicine, quantity: row.quantity })),
-    presence: presenceRows.map(toRow),
+    cells: cellRows.filter(keepCell).map((row) => ({ ...toRow(row), medicine: row.medicine, quantity: row.quantity })),
+    presence: presenceRows.filter(keepPresence).map(toRow),
     charted: chartedRows.map(placed),
   }
+}
+
+// Reads today's course window for the whole hospital once at start-up, so the first follow-up form a
+// pharmacist opens is not the one that pays for it (a free instance restarts every time it wakes, and
+// the kept rows are in memory). Only the parts every ward shares are kept by this; a ward's own rows
+// are read when it is opened.
+export const warmCourseRows = async () => {
+  const started = Date.now()
+  const where = { floor: null, wardName: '', chartDate: todayInBaghdad() }
+  await Promise.all([
+    loadCourseRows(where, { pattern: MEROPENEM_SQL_PATTERN }),
+    antibioticNames().then((names) => loadCourseRows(where, { names })),
+  ])
+  console.log(`course cache: warmed in ${Date.now() - started} ms`)
 }
 
 export const loadOverrides = async (drugKey) => (await query(

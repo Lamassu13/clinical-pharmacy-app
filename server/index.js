@@ -15,7 +15,7 @@ import {
   DOSE_TIMES, USAGE_METHODS, MAX_NOTE_LENGTH, clampInt, isIsoDate, cleanText,
   normalizeMedicineKey, medicineKeySql, SUPPLY_MATCH, SUPPLY_EXCEPT,
 } from './validation.js'
-import chartRoutes, { resolveChartId, readLocation, readWritableLocation, refuse, clearCourseRows } from './routes/chart.js'
+import chartRoutes, { resolveChartId, readLocation, readWritableLocation, refuse, clearCourseRows, warmCourseRows } from './routes/chart.js'
 import treatmentFormsRoutes from './routes/treatment-forms.js'
 import extraPillsRoutes from './routes/extra-pills.js'
 import drugRequestsRoutes from './routes/drug-requests.js'
@@ -902,6 +902,8 @@ app.use((error, request, response, next) => {
 if (import.meta.url === `file://${process.argv[1]}`) {
   app.listen(port, () => {
     console.log(`Clinical Pharmacy API listening on http://localhost:${port}`)
+    // After the first requests (login, the floor list) have been served; a failure only costs the head start.
+    if (process.env.NODE_ENV === 'production') setTimeout(() => warmCourseRows().catch((error) => console.error('course cache: warm-up failed:', error.message)), 3000)
   })
   // A deploy sends SIGTERM: write the not-yet-flushed usage counts before the process goes.
   process.once('SIGTERM', () => flushUsage().finally(() => process.exit(0)))
