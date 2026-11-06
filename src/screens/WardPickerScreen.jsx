@@ -25,7 +25,7 @@ export default function WardPickerScreen({
         {today && <div className="date-chip"><span>اليوم</span><strong>{today}</strong></div>}
       </div>
     </div>
-    <LongAntibioticPatients date={selectedDate} floor={floor.number} onOpen={onOpen} isExpired={isExpired} />
+    <LongAntibioticPatients date={selectedDate} floor={floor.number} isExpired={isExpired} />
     <PatientSearch floor={floor.number} date={selectedDate} onOpen={onOpen} isExpired={isExpired} />
     <div className="location-grid">{floor.wards.map((ward) => {
       const started = startedWards.has(ward)

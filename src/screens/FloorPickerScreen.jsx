@@ -50,7 +50,7 @@ export default function FloorPickerScreen({
       </button>
     )}
 
-    {isManager && <LongAntibioticPatients date={selectedDate} onOpen={onOpen} isExpired={isExpired} />}
+    {isManager && <LongAntibioticPatients date={selectedDate} isExpired={isExpired} />}
     {isManager && <PatientSearch date={selectedDate} onOpen={onOpen} isExpired={isExpired} />}
 
     {nothingAssigned && (
