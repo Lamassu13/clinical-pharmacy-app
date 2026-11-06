@@ -15,6 +15,8 @@ export const DRUG_REQUESTS = {
     // Asked on the first day of the course only; albumin is asked every day it is given.
     firstDayOnly: true,
     fields: [
+      // A two-way choice (chips, no typing); on the on-screen sheet only — the paper form has no box for it.
+      { key: 'sex', label: 'الجنس', max: 10, choices: ['ذكر', 'أنثى'], required: true },
       { key: 'age', label: 'العمر', max: 30, placeholder: 'مثال: 45', required: true },
       { key: 'weight', label: 'الوزن', unit: 'كغم', max: 20, decimal: true },
       { key: 'scr', label: 'S.cr', max: 30, ltr: true, placeholder: 'mg/dL' },
@@ -112,6 +114,7 @@ const toEnglish = (value) => String(value ?? '').replace(/[٠-٩]/g, (digit) => 
 // One field's typed value, cleaned the same way on both sides.
 export const cleanField = (field, value) => {
   const text = toEnglish(value)
+  if (field.choices) return field.choices.includes(text.trim()) ? text.trim() : ''
   if (field.digits) return text.replace(/\D/g, '').slice(0, field.max)
   // A comma (or the Arabic ٫) is a decimal point: «1,8» is 1.8, never 18.
   if (field.decimal) return text.replace(/[٫,]/g, '.').replace(/[^\d.]/g, '').slice(0, field.max)

@@ -4,7 +4,7 @@ import { DRUG_REQUESTS, cleanField } from '../../shared/drug-requests.js'
 // A request form's typed fields in a dialog (shared/drug-requests.js): opened by the patient-entry
 // form when the medicine is added (`screen` false: the fields marked screenOnly stay hidden), and by
 // the form's own screen to add or correct one. The name and any field marked `required` in the spec
-// (Meropenem's age) must be filled to save; the rest can be completed later from the form's screen.
+// (Meropenem's sex and age) must be filled to save; the rest can be completed later from the form's screen.
 // The server does not enforce it: forms saved before it became required stay editable.
 // A tap on the backdrop does not close it (a stray touch would throw the typing away); Escape and the
 // cancel button do.
@@ -20,7 +20,7 @@ export default function DrugRequestDialog({ kind, initial, screen = false, kicke
     // Numbers are cleaned as typed; free text only on the server (a trailing space mid-word is fine).
     setValues((current) => ({ ...current, [field.key]: field.digits || field.decimal ? cleanField(field, value) : value.slice(0, field.max) }))
   }
-  const firstEmpty = name ? fields.find((field) => !values[field.key])?.key : null
+  const firstEmpty = name ? fields.find((field) => !field.choices && !values[field.key])?.key : null
 
   const submit = async (event) => {
     event.preventDefault()
@@ -28,7 +28,7 @@ export default function DrugRequestDialog({ kind, initial, screen = false, kicke
     if (!name.trim()) { setError('اكتب اسم المريض.'); return }
     const missing = fields.find((field) => field.required && !values[field.key].trim())
     if (missing) {
-      setError(`${missing.label} مطلوب — اكتبه ثم احفظ.`)
+      setError(`${missing.label} مطلوب — ${missing.choices ? 'اختره' : 'اكتبه'} ثم احفظ.`)
       event.currentTarget.querySelector(`[data-field="${missing.key}"]`)?.focus()
       return
     }
@@ -50,6 +50,11 @@ export default function DrugRequestDialog({ kind, initial, screen = false, kicke
           <input value={name} maxLength={200} autoComplete="off" autoFocus={!name} onChange={(event) => { setError(''); setName(event.target.value) }} />
         </label>
         {fields.map((field) => {
+          // A fixed choice (the sex): chips only, no box to type in.
+          if (field.choices) return <div key={field.key} className="req-dialog-stack" role="group" aria-label={field.label} aria-required={field.required || undefined} data-field={field.key} tabIndex={-1}>
+            <span>{field.label}{field.required && <small> (مطلوب)</small>}</span>
+            <div className="req-chips">{field.choices.map((choice) => <button key={choice} type="button" className="req-chip" aria-pressed={values[field.key] === choice} onClick={() => set(field, choice)}>{choice}</button>)}</div>
+          </div>
           const input = <input data-field={field.key} aria-required={field.required || undefined} value={values[field.key]} maxLength={field.max} autoComplete="off" autoFocus={firstEmpty === field.key}
             inputMode={field.digits ? 'numeric' : field.decimal ? 'decimal' : undefined}
             dir={field.auto ? 'auto' : field.ltr || field.digits || field.decimal ? 'ltr' : undefined}

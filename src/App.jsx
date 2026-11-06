@@ -14,6 +14,7 @@ import AdminMedicinesScreen from './screens/AdminMedicinesScreen.jsx'
 import AdminFloorsScreen from './screens/AdminFloorsScreen.jsx'
 import ProfileScreen from './screens/ProfileScreen.jsx'
 import ReportsScreen from './screens/ReportsScreen.jsx'
+import WardPositionsScreen from './screens/WardPositionsScreen.jsx'
 import AdminUsageScreen from './screens/AdminUsageScreen.jsx'
 import AdminAuditScreen from './screens/AdminAuditScreen.jsx'
 import AdminErrorsScreen from './screens/AdminErrorsScreen.jsx'
@@ -1339,6 +1340,7 @@ function App() {
     else if (adminView === 'users') screen = 'جميع المستخدمين'
     else if (adminView === 'medicines') screen = 'إدارة الأدوية'
     else if (adminView === 'reports') screen = 'التقارير'
+    else if (adminView === 'wardPositions') screen = 'مواقف القسم'
     else if (adminView === 'usage') screen = 'استخدام المستخدمين'
     else if (adminView === 'audit') screen = 'سجل الإدارة'
     else if (adminView === 'errors') screen = 'الأخطاء'
@@ -2214,6 +2216,7 @@ function App() {
   if (adminView === 'users' && isManager) return <AdminUsersScreen adminHeader={appHeader} allUsers={allUsers} currentUser={currentUser} isAdmin={isAdmin} registrationsError={registrationsError} adminSuccess={adminSuccess} busy={busy} onReload={loadUsers} onChangeRole={changeUserRole} onAssignLocation={assignLocationToUser} onDeleteUser={deleteUser} confirmModal={confirmModal} />
 
   if (adminView === 'reports' && isManager) return <ReportsScreen adminHeader={appHeader} isExpired={isExpired} />
+  if (adminView === 'wardPositions' && isManager) return <WardPositionsScreen adminHeader={appHeader} isExpired={isExpired} />
   if (adminView === 'usage' && isManager) return <AdminUsageScreen adminHeader={appHeader} isExpired={isExpired} />
   if (adminView === 'audit' && isAdmin) return <AdminAuditScreen adminHeader={appHeader} isExpired={isExpired} />
   if (adminView === 'errors' && isAdmin) return <AdminErrorsScreen adminHeader={appHeader} isExpired={isExpired} askConfirm={askConfirm} />
