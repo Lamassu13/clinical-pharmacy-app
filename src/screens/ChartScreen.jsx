@@ -7,6 +7,7 @@ import MedicineSuggest from '../components/MedicineSuggest.jsx'
 import ChartHistoryDialog from '../components/ChartHistoryDialog.jsx'
 import IdClashNote, { useIdClashes } from '../components/IdClashNote.jsx'
 import { medicineMatches } from '../helpers.js'
+import { storage } from '../storage.js'
 
 // Presentational only: every piece of chart state, and the autosave/lock/draft logic that
 // maintains it, stays in App so that swapping in the sign-in card when a session lapses does
@@ -26,6 +27,13 @@ export default function ChartScreen({
   chartFrameRef, chartHeadRef, chartGridRef, chartDosesRef, chartFootRef,
 }) {
   const columnFocusValue = useRef('')
+  // «صفوف أكبر»: taller rows and larger type for a gloved thumb. A per-device choice, so it lives
+  // here rather than in App — nothing else reads it, and a remount just reads it back.
+  const [roomy, setRoomy] = useState(() => { try { return storage.getItem('cpa-chart-roomy') === '1' } catch { return false } })
+  const toggleRoomy = () => setRoomy((current) => {
+    try { storage.setItem('cpa-chart-roomy', current ? '0' : '1') } catch { /* storage unavailable */ }
+    return !current
+  })
   // The header cell being typed in ({ column, input }) and the highlighted suggestion.
   const [suggestFor, setSuggestFor] = useState(null)
   const [historyOpen, setHistoryOpen] = useState(false)
@@ -98,7 +106,7 @@ export default function ChartScreen({
     ? new Date(lockHolder.since).toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' })
     : ''
 
-  return <section className="chart-page">
+  return <section className={roomy ? 'chart-page chart-page--roomy' : 'chart-page'}>
     <ChartHistoryDialog open={historyOpen} selected={selected} selectedDate={selectedDate} onClose={() => setHistoryOpen(false)} />
     {dayLocked && <div className="chart-lock-banner chart-lock-banner--day" role="status">
       جارت {today} — للعرض فقط. لا يُعدَّل إلا جارت اليوم.
@@ -138,6 +146,7 @@ export default function ChartScreen({
         <label className="date-field" title="تاريخ الجارت"><input type="date" aria-label="تاريخ الجارت" value={selectedDate} onChange={(event) => onChangeDate(event.target.value)} /></label>
         {!readOnly && <button type="button" className="meta-button" data-tip={isOnline ? 'نسخ الأدوية إلى اليوم التالي' : 'النسخ يحتاج اتصالًا'} aria-label="نسخ الأدوية إلى اليوم التالي" onClick={onCopyToNextDay} disabled={!isOnline}><Glyph icon="copy-next" /></button>}
         <button type="button" className="meta-button" data-tip={isOnline ? 'سجل التعديلات' : 'السجل يحتاج اتصالًا'} aria-label="سجل التعديلات" onClick={() => setHistoryOpen(true)} disabled={!isOnline}><Glyph icon="history" /></button>
+        <button type="button" className="meta-button" data-tip={roomy ? 'الصفوف الكبيرة مفعّلة' : 'صفوف أكبر'} aria-label="صفوف أكبر" aria-pressed={roomy} onClick={toggleRoomy}><Glyph icon="density" /></button>
         {!readOnly && <button type="button" className="meta-button" data-tip={isOnline ? 'القوالب' : 'القوالب تحتاج اتصالًا'} aria-label="القوالب" onClick={onOpenTemplates} disabled={!isOnline}><Glyph icon="templates" /></button>}
       </span>
     </div>
@@ -239,6 +248,19 @@ export default function ChartScreen({
           if (!event.currentTarget.contains(event.relatedTarget)) { setActiveRow(-1); setActiveColumn(-1) }
         }}
         onKeyDown={(event) => {
+          // Enter in a patient's fields goes on to the next one (room → name → ID), and from the
+          // ID to that row's first dose cell, so a row can be filled without lifting a finger
+          // to the screen. A composing keyboard's Enter confirms the word, not the field.
+          if (event.key === 'Enter' && !event.nativeEvent.isComposing && event.keyCode !== 229 && event.target.tagName === 'INPUT') {
+            const fields = event.target.closest('.patient-fields')
+            const row = event.target.closest('tr[data-row]')?.dataset.row
+            if (fields && row != null) {
+              const inputs = Array.from(fields.querySelectorAll('input'))
+              const next = inputs[inputs.indexOf(event.target) + 1] || chartDosesRef.current?.querySelector(`tr[data-row="${row}"] td[data-col="0"] input`)
+              if (next) { event.preventDefault(); next.focus(); next.select() }
+              return
+            }
+          }
           // Arrow / Enter move between dose cells (the grid is one Tab stop). RTL: ArrowLeft
           // is visually left = the next, higher-index column. Left/Right take over from
           // in-cell caret movement, which a 4-digit-capped quantity field does not need.
@@ -253,13 +275,13 @@ export default function ChartScreen({
           if (next) { event.preventDefault(); next.focus(); next.select() }
         }}>
         <div className="chart-names"><table className="chart-table" role="presentation"><tbody>{patientNames.map((name, rowIndex) => <tr key={rowIndex} data-row={rowIndex} className={[activeRow === rowIndex && 'active-row', rowIndex >= printRowCount && 'print-hide-row'].filter(Boolean).join(' ') || undefined}>
-          <th className="patient-cell">
+          <th className={chartAlerts[rowIndex] ? 'patient-cell has-alert' : 'patient-cell'}>
             {/* Name and ID side by side, as on the printed sheet. The ID is screen-only here:
                 .patient-id is in the print block's display: none list. */}
             <div className="patient-fields">
-              <input className="patient-room" value={chartRooms[rowIndex + 1] || ''} onChange={(event) => onSetRoom(rowIndex, event.target.value)} onBlur={onSaveRooms}
+              <input className="patient-room" enterKeyHint="next" value={chartRooms[rowIndex + 1] || ''} onChange={(event) => onSetRoom(rowIndex, event.target.value)} onBlur={onSaveRooms}
                 placeholder={roomLabel} title={roomLabel} aria-label={`${roomLabel}، صف ${rowIndex + 1}`} />
-              <input className="patient-name" value={name} onChange={(event) => onSetPatientName(rowIndex, event.target.value)}
+              <input className="patient-name" enterKeyHint="next" value={name} onChange={(event) => onSetPatientName(rowIndex, event.target.value)}
                 onFocus={(event) => { patientFocusEmpty.current = !event.target.value.trim() }}
                 onBlur={(event) => { if (patientFocusEmpty.current && event.target.value.trim()) onCheckPreviousDay(rowIndex, event.target.value) }}
                 placeholder={`مريض ${rowIndex + 1}`} aria-label={`اسم المريض، صف ${rowIndex + 1}`} />
@@ -267,7 +289,7 @@ export default function ChartScreen({
                 onPointerDown={(event) => event.preventDefault()} onMouseDown={(event) => event.preventDefault()} onClick={() => onShowAlerts(rowIndex)}
                 title="تنبيه دوائي" aria-label={`تنبيه دوائي، صف ${rowIndex + 1}: ${chartAlerts[rowIndex].length}`}>⚠</button>}
               <input className="patient-id" value={patientIds[rowIndex] || ''} onChange={(event) => onSetPatientId(rowIndex, event.target.value)}
-                inputMode="numeric" pattern="[0-9]*" dir="ltr"
+                inputMode="numeric" enterKeyHint="next" pattern="[0-9]*" dir="ltr"
                 onFocus={(event) => { patientFocusEmpty.current = !event.target.value.trim() }}
                 onBlur={(event) => { if (patientFocusEmpty.current && event.target.value.trim()) onCheckPreviousDay(rowIndex, event.target.value, 'id') }}
                 placeholder="رقم المريض" aria-label={`رقم المريض، صف ${rowIndex + 1}`} />

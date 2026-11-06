@@ -28,7 +28,7 @@ import RenalDoseScreen from './screens/RenalDoseScreen.jsx'
 import { INTERACTION_RULES } from './interactions.js'
 import { reportError } from './error-reporter.js'
 import { storage, queueWrite, forgetWrite, pendingWrites, flushWrites } from './storage.js'
-import { useDocumentVisible, useOnlineStatus } from './hooks/browser.js'
+import { useDocumentVisible, useOnlineStatus, useWakeLock } from './hooks/browser.js'
 import useTheme from './hooks/useTheme.js'
 import useAnnouncements from './hooks/useAnnouncements.js'
 import useDashboardData from './hooks/useDashboardData.js'
@@ -91,6 +91,7 @@ function App() {
   const [busy, setBusy] = useState(false)
   const [floor, setFloor] = useState(null)
   const [selected, setSelected] = useState(null)
+  useWakeLock(Boolean(selected))
   // The patient-entry form over the chart. Its own state, never a field on `selected`: every chart
   // effect (load, lock, heartbeat, poll) re-runs on a new `selected`, so toggling the form there
   // reloaded the chart and released the edit lock on each open and close.
@@ -357,6 +358,10 @@ function App() {
     setUndo({ message, undoFn })
     undoTimerRef.current = setTimeout(() => setUndo(null), 10000)
   }, [])
+  // An undo restores whole-grid snapshots, so it must not outlive the chart it belongs to: leaving
+  // for another ward or slot (or picking another date) within the window would write this chart's
+  // rows into that one. The date clears it in changeDate — copy-forward moves the date itself.
+  useEffect(() => { clearTimeout(undoTimerRef.current); setUndo(null) }, [selected?.floor, selected?.ward, selected?.slot])
   const takeUndo = useCallback(() => {
     clearTimeout(undoTimerRef.current)
     setUndo((current) => { current?.undoFn(); return null })
@@ -1975,6 +1980,8 @@ function App() {
 
   const changeDate = useCallback((nextDate) => {
     flushChart()
+    clearTimeout(undoTimerRef.current)
+    setUndo(null)
     setSelectedDate(nextDate)
   }, [flushChart])
   const copyToNextDay = useCallback(async () => {
