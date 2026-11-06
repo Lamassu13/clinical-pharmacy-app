@@ -3,8 +3,9 @@ import { DRUG_REQUESTS, cleanField } from '../../shared/drug-requests.js'
 
 // A request form's typed fields in a dialog (shared/drug-requests.js): opened by the patient-entry
 // form when the medicine is added (`screen` false: the fields marked screenOnly stay hidden), and by
-// the form's own screen to add or correct one. Only the name is required — the rest can be completed
-// later from the form's screen.
+// the form's own screen to add or correct one. The name and any field marked `required` in the spec
+// (Meropenem's age) must be filled to save; the rest can be completed later from the form's screen.
+// The server does not enforce it: forms saved before it became required stay editable.
 // A tap on the backdrop does not close it (a stray touch would throw the typing away); Escape and the
 // cancel button do.
 export default function DrugRequestDialog({ kind, initial, screen = false, kicker, title, note, saveLabel = 'حفظ الاستمارة', cancelLabel = 'لاحقًا', onSave, onClose }) {
@@ -25,6 +26,12 @@ export default function DrugRequestDialog({ kind, initial, screen = false, kicke
     event.preventDefault()
     if (busy) return
     if (!name.trim()) { setError('اكتب اسم المريض.'); return }
+    const missing = fields.find((field) => field.required && !values[field.key].trim())
+    if (missing) {
+      setError(`${missing.label} مطلوب — اكتبه ثم احفظ.`)
+      event.currentTarget.querySelector(`[data-field="${missing.key}"]`)?.focus()
+      return
+    }
     setBusy(true)
     const result = await onSave({ name: name.trim(), patientId: initial.patientId || '', fields: values })
     setBusy(false)
@@ -43,14 +50,14 @@ export default function DrugRequestDialog({ kind, initial, screen = false, kicke
           <input value={name} maxLength={200} autoComplete="off" autoFocus={!name} onChange={(event) => { setError(''); setName(event.target.value) }} />
         </label>
         {fields.map((field) => {
-          const input = <input value={values[field.key]} maxLength={field.max} autoComplete="off" autoFocus={firstEmpty === field.key}
+          const input = <input data-field={field.key} aria-required={field.required || undefined} value={values[field.key]} maxLength={field.max} autoComplete="off" autoFocus={firstEmpty === field.key}
             inputMode={field.digits ? 'numeric' : field.decimal ? 'decimal' : undefined}
             dir={field.auto ? 'auto' : field.ltr || field.digits || field.decimal ? 'ltr' : undefined}
             placeholder={field.placeholder} onChange={(event) => set(field, event.target.value)} />
           const chips = field.chips && <div className="req-chips" role="group" aria-label={`${field.label} — اختيار سريع`}>
             {field.chips.map((chip) => <button key={chip} type="button" className="req-chip" aria-pressed={values[field.key] === chip} onClick={() => set(field, chip)}>{chip}</button>)}
           </div>
-          const label = <span>{field.label}{field.unit && <small> ({field.unit})</small>}</span>
+          const label = <span>{field.label}{field.unit && <small> ({field.unit})</small>}{field.required && <small> (مطلوب)</small>}</span>
           // One quick choice sits beside its box; several go in a row under it.
           if (field.chips?.length > 1) return <div key={field.key} className={`req-dialog-stack${field.wide ? ' req-dialog-wide' : ''}`}><label>{label}{input}</label>{chips}</div>
           return <label key={field.key} className={field.wide ? 'req-dialog-wide' : undefined}>{label}
