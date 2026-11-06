@@ -27,3 +27,43 @@ export function useOnlineStatus() {
   }, [])
   return online
 }
+
+// Keeps the screen on while `active` (a ward screen is open), so the tablet does not lock
+// mid-chart during the round. Where the API is missing (older iPads, Safari before 16.4) it does
+// nothing. Released after `idleMs` without a touch or key, so a tablet left open on a chart does
+// not stay lit (and keep renewing its chart edit lock); the next touch takes the lock again. The browser drops it when the tab is hidden,
+// so it is re-taken when the tab comes back.
+export function useWakeLock(active, idleMs = 5 * 60 * 1000) {
+  useEffect(() => {
+    if (!active || typeof navigator === 'undefined' || !navigator.wakeLock) return undefined
+    let lock = null
+    let asking = false
+    let stopped = false
+    let idle = null
+    const release = () => { const held = lock; lock = null; if (held) held.release().catch(() => undefined) }
+    const acquire = () => {
+      if (lock || asking || stopped || document.hidden) return
+      asking = true
+      navigator.wakeLock.request('screen').then((granted) => {
+        asking = false
+        if (stopped) { granted.release().catch(() => undefined); return }
+        lock = granted
+        granted.addEventListener('release', () => { if (lock === granted) lock = null })
+      }).catch(() => { asking = false })
+    }
+    const touch = () => { clearTimeout(idle); idle = setTimeout(release, idleMs); acquire() }
+    const onVisible = () => { if (!document.hidden) touch() }
+    touch()
+    window.addEventListener('pointerdown', touch, true)
+    window.addEventListener('keydown', touch, true)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      stopped = true
+      clearTimeout(idle)
+      window.removeEventListener('pointerdown', touch, true)
+      window.removeEventListener('keydown', touch, true)
+      document.removeEventListener('visibilitychange', onVisible)
+      release()
+    }
+  }, [active, idleMs])
+}
