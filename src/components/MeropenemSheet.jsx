@@ -31,11 +31,21 @@ export default function MeropenemSheet({ request, wardName, paper = false, onTog
       onBlur={(event) => { if (event.target.value.trim() !== request.note) onNote(event.target.value.trim()) }}
       onKeyDown={(event) => { if (event.key === 'Enter') event.target.blur() }} />)
 
+  const sexField = fieldOf.sex
   return <div className="req-paper">
     <div className="req-paper-head">
       <img className="hospital-logo" width="34" height="34" src={hospitalLogo} alt="" />
       <span>مستشفى بغداد التعليمي — وحدة الصيدلة السريرية</span>
     </div>
+
+    {/* On screen only: the paper form has no box for the sex, but «مواقف القسم» reports it, so a
+        form saved before it was asked can be completed here. Never drawn for the PDF (`paper`). */}
+    {!paper && <div className="req-extra-row">
+      <span className="req-label">الجنس <small>(للتقرير — لا يُطبع)</small></span>
+      <div className="req-chips" role="group" aria-label="الجنس">
+        {sexField.choices.map((choice) => <button key={choice} type="button" className="req-chip" aria-pressed={fields.sex === choice} onClick={() => onField({ fields: { sex: choice } })}>{choice}</button>)}
+      </div>
+    </div>}
 
     <table className="req-form">
       <tbody>

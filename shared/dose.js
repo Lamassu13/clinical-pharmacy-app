@@ -24,3 +24,18 @@ export const doseText = (medicine, quantity, perDay = 3) => {
   if (!mg) return `× ${quantity}`
   return perDay && quantity % perDay === 0 ? `${formatMg(mg * quantity / perDay)} × ${perDay}` : `${formatMg(mg)} × ${quantity}`
 }
+
+// A day's total Meronem (mg: Σ vial strength × vials) read as one dose × times a day, for the
+// department's course report. The chart records only vials, so this is an inference, not a record:
+// try 3, then 2, then 1 times a day and take the first that makes the dose 1 g or 500 mg (the two
+// doses in use); a total that fits none (6 g, say) is split by 3 if it divides, else by 2 if even,
+// else given once. 1 g of vials in a day therefore reads «500 mg × 2», never «1 g × 1».
+export const inferDose = (totalMg) => {
+  if (!(totalMg > 0)) return null
+  for (const perDay of [3, 2, 1]) {
+    const doseMg = totalMg / perDay
+    if (doseMg === 1000 || doseMg === 500) return { doseMg, perDay }
+  }
+  const perDay = totalMg % 3 === 0 ? 3 : totalMg % 2 === 0 ? 2 : 1
+  return { doseMg: totalMg / perDay, perDay }
+}

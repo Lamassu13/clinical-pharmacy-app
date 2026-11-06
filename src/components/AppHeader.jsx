@@ -13,6 +13,7 @@ const ADMIN_GROUPS = [
   { id: 'overview', label: 'نظرة عامة', sections: [
     { view: 'dashboard', label: 'لوحة التحكم' },
     { view: 'reports', label: 'التقارير' },
+    { view: 'wardPositions', label: 'مواقف القسم' },
   ] },
   { id: 'people', label: 'المستخدمون', sections: [
     { view: 'requests', label: 'طلبات الانضمام', adminOnly: true, counted: true },

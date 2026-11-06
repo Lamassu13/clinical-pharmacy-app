@@ -20,6 +20,7 @@ import treatmentFormsRoutes from './routes/treatment-forms.js'
 import extraPillsRoutes from './routes/extra-pills.js'
 import drugRequestsRoutes from './routes/drug-requests.js'
 import reportsRoutes from './routes/reports.js'
+import wardPositionsRoutes from './routes/ward-positions.js'
 import { bridgedDailyCounts, MAX_BRIDGE_DAYS } from './dashboard-bridge.js'
 import templatesRoutes from './routes/templates.js'
 import interactionsRoutes from './routes/interactions.js'
@@ -694,6 +695,7 @@ app.use('/api', treatmentFormsRoutes)
 app.use('/api', extraPillsRoutes)
 app.use('/api', drugRequestsRoutes)
 app.use('/api', reportsRoutes)
+app.use('/api', wardPositionsRoutes)
 app.use('/api', templatesRoutes)
 app.use('/api', interactionsRoutes)
 app.use('/api', pushRoutes)

@@ -122,12 +122,16 @@ router.post('/drug-requests', requireAuth, async (request, response) => {
   const name = nameKey(cleanText(request.body.name, 200))
   if (!name) return response.status(400).json({ message: 'اسم المريض مطلوب' })
   const { floor, wardName, chartDate } = location
+  // A client that predates the sex box sends no `sex`: keep the stored one (the merge below only
+  // overwrites keys that are present) instead of blanking it on a resend.
+  const fields = cleanFields(kind, request.body.fields)
+  if (!(request.body.fields && 'sex' in request.body.fields)) delete fields.sex
   const result = await query(
     `INSERT INTO drug_requests (kind, ward_key, request_date, patient_name, patient_id, fields, created_by)
      VALUES ($1, $2, $3, $4, $5, $6, $7)
-     ON CONFLICT (kind, ward_key, request_date, patient_name, patient_id) DO UPDATE SET fields = EXCLUDED.fields, updated_at = NOW()
+     ON CONFLICT (kind, ward_key, request_date, patient_name, patient_id) DO UPDATE SET fields = drug_requests.fields || EXCLUDED.fields, updated_at = NOW()
      RETURNING id, (xmax = 0) AS created`,
-    [kind, wardKeyOf(floor, wardName), chartDate, name, idOf(request.body.patientId), JSON.stringify(cleanFields(kind, request.body.fields)), request.session.user.id],
+    [kind, wardKeyOf(floor, wardName), chartDate, name, idOf(request.body.patientId), JSON.stringify(fields), request.session.user.id],
   )
   response.status(result.rows[0].created ? 201 : 200).json({ request: toRequest(await loadRequest(result.rows[0].id)) })
 })
