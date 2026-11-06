@@ -4,6 +4,7 @@ import app from './index.js'
 import { pool } from './db.js'
 import { startServer, resetDatabase, createUser, ApiClient } from './test-helpers.js'
 import { cleanTicks, toggleTick } from '../shared/drug-requests.js'
+import { albuminFormAnswers } from '../shared/albumin-google-form.js'
 
 const FLOOR = 5
 const WARD = 'ردهة رجال'
@@ -73,10 +74,10 @@ test('albumin: the treatment day counts up day by day; fields cleaned per kind; 
 
   const sent = await pharmacist.post('/api/drug-requests', {
     kind: 'albumin', floor: FLOOR, ward: WARD, date: '2026-09-26', name: 'سارة', patientId: '44',
-    fields: { treatmentDay: '٣', count: '4 vials', serumAlbumin: '1,8x', weight: '70.5', scr: '1.1', doctor: ' د. سعد كاظم ', diagnosis: 'Liver cirrhosis', age: '54' },
+    fields: { treatmentDay: '٣', count: '4 vials', serumAlbumin: '1,8x', weight: '70.5', scr: '1.1', doctor: ' د. سعد كاظم ', diagnosis: 'Liver cirrhosis', sex: 'ذكر', age: '54,5', bogus: '1' },
   })
   assert.equal(sent.status, 201)
-  assert.deepEqual(sent.body.request.fields, { treatmentDay: '3', count: '4', serumAlbumin: '1.8', weight: '70.5', scr: '1.1', doctor: 'د. سعد كاظم', diagnosis: 'Liver cirrhosis' })
+  assert.deepEqual(sent.body.request.fields, { sex: 'ذكر', age: '54.5', treatmentDay: '3', count: '4', serumAlbumin: '1.8', weight: '70.5', scr: '1.1', doctor: 'د. سعد كاظم', diagnosis: 'Liver cirrhosis' })
   assert.equal(sent.body.request.words, 'أربعة')
   assert.deepEqual(sent.body.request.ticks, [])
   assert.deepEqual(await check(pharmacist, 'albumin', '2026-09-26', { name: 'سارة', id: '44' }), { day: 3, requested: true })
@@ -174,4 +175,45 @@ test('list: a form saved before the رقم الطبلة was typed shows the one 
   await saveChart(pharmacist, '2026-09-23', ALBUMIN, [{ name: 'زينب', id: '300' }])
   const list = (await pharmacist.get(`/api/drug-requests?${where('albumin', '2026-09-24')}`)).body.requests
   assert.deepEqual(list.map((r) => [r.name, r.patientId]), [['اخلاص علي', '901'], ['سارة', '55'], ['زينب', '']])
+})
+
+test('google form: the answers an albumin form makes, the page the diagnosis leads to, what is missing', () => {
+  const form = { name: 'علي حسين', patientId: '123', date: '2026-11-06', fields: { doctor: 'د. سعد', sex: 'أنثى', age: '0.08', count: '3' }, ticks: ['i2', 'i17'] }
+  const sent = albuminFormAnswers(form)
+  const answer = (name) => sent.body.find(([key]) => key === name)?.[1]
+  // i2 comes first in the spec's order: Part I (the user's choice), whose page is 6.
+  assert.equal(answer('entry.181711708'), 'Part I')
+  assert.match(answer('entry.405609873'), /^large volume paracentesis/)
+  assert.equal(answer('pageHistory'), '0,1,6')
+  assert.equal(answer('entry.589084363'), 'الفصل الرابع')
+  assert.equal(answer('entry.1792534844'), 'الشهر الحادي عشر: تشرين الثاني')
+  assert.equal(answer('entry.1143953533'), 'انثى')
+  assert.equal(answer('entry.1161018343'), '3')
+  assert.equal(answer('entry.1124900641'), '0')
+  assert.equal(albuminFormAnswers({ ...form, ticks: ['i11'] }).body.find(([key]) => key === 'pageHistory')[1], '0,1,5')
+  assert.deepEqual(albuminFormAnswers({ ...form, fields: { count: '0' }, ticks: [] }).missing, ['اسم الطبيب الاختصاص', 'الجنس', 'العمر', 'العدد المطلوب', 'الاستطباب (علّم مربعًا)'])
+  // Every app indication maps to an option the form really has.
+  for (const key of ['i1', 'i2', 'i3', 'i4', 'i5', 'i6', 'i7', 'i8', 'i9', 'i10', 'i11', 'i12', 'i13', 'i14', 'i15', 'i16', 'i17']) {
+    const result = albuminFormAnswers({ ...form, ticks: [key] })
+    assert.ok(result.ok && result.body.every(([, value]) => value && value !== 'undefined'), key)
+  }
+})
+
+test('google form: the route sends nothing unless GOOGLE_FORM_SEND=1, names what is missing, refuses another floor', async () => {
+  const pharmacist = await loginAs({ role: 'user', floor: FLOOR })
+  const base = { kind: 'albumin', floor: FLOOR, ward: WARD, date: '2026-11-06', name: 'سارة', patientId: '44' }
+  const saved = (await pharmacist.post('/api/drug-requests', { ...base, fields: { count: '2' } })).body.request
+  const missing = await pharmacist.post(`/api/drug-requests/${saved.id}/google-form`, {})
+  assert.equal(missing.status, 422)
+  assert.match(missing.body.message, /الجنس.*العمر/)
+  await pharmacist.put(`/api/drug-requests/${saved.id}`, { name: 'سارة', patientId: '44', fields: { count: '2', doctor: 'د. سعد', sex: 'أنثى', age: '30' } })
+  await pharmacist.patch(`/api/drug-requests/${saved.id}/ticks`, { ticks: ['i4'] })
+  const dry = await pharmacist.post(`/api/drug-requests/${saved.id}/google-form`, {})
+  assert.equal(dry.status, 200)
+  assert.equal(dry.body.dryRun, true)
+  assert.equal(dry.body.answers.find(([key]) => key === 'pageHistory')[1], '0,1,5')
+  assert.equal((await pharmacist.get(`/api/drug-requests?${where('albumin', '2026-11-06')}`)).body.requests[0].googleSentAt, null)
+  assert.equal((await (await loginAs({ role: 'user', floor: 6 })).post(`/api/drug-requests/${saved.id}/google-form`, {})).status, 403)
+  const meropenem = (await pharmacist.post('/api/drug-requests', { ...base, kind: 'meropenem', fields: { sex: 'ذكر', age: '5' } })).body.request
+  assert.equal((await pharmacist.post(`/api/drug-requests/${meropenem.id}/google-form`, {})).status, 400)
 })
