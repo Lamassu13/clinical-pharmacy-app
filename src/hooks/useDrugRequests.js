@@ -121,7 +121,8 @@ export default function useDrugRequests({ selected, selectedDate, isExpired, use
   }, [isExpired, enqueue])
 
   const remove = useCallback(async (request) => {
-    if (!(await askConfirm(`حذف ${DRUG_REQUESTS[request.kind].label} للمريض «${request.name}»؟`, { danger: true, confirmLabel: 'حذف' }))) return
+    const sent = request.googleSentAt ? ' (أُرسلت إلى نموذج وزارة الصحة — الحذف لا يسحبها من هناك)' : ''
+    if (!(await askConfirm(`حذف ${DRUG_REQUESTS[request.kind].label} للمريض «${request.name}»؟${sent}`, { danger: true, confirmLabel: 'حذف' }))) return
     setBusy(true)
     setActionError('')
     try {
@@ -144,14 +145,19 @@ export default function useDrugRequests({ selected, selectedDate, isExpired, use
     setActionError('')
     setNotice('')
     try {
+      // The server sends what it has stored: wait for the edits still on their way for this form (the field
+      // being typed saved when the button was tapped), and do not send if one of them failed.
+      try { await chains.current.get(request.id) } catch { return }
       const response = await fetch(`${apiUrl}/drug-requests/${request.id}/google-form`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ resend }),
       })
       if (isExpired(response)) return
       const result = await response.json().catch(() => ({}))
+      if (response.status === 409) putLocal(request.id, { googleSentAt: result.sentAt })
       if (!response.ok) { setActionError(result.message || 'تعذّر الإرسال — حاول مرة أخرى.'); return }
       if (result.dryRun) { setNotice('وضع التجربة: لم يُرسل شيء إلى Google.'); return }
-      putLocal(request.id, result.request)
+      // Only the mark: the reply's other values could undo an edit still in the queue.
+      putLocal(request.id, { googleSentAt: result.request.googleSentAt })
       setNotice(`أُرسلت استمارة «${request.name}» إلى نموذج وزارة الصحة.`)
     } catch {
       setActionError('لا يوجد اتصال — الإرسال يحتاج اتصالًا.')
