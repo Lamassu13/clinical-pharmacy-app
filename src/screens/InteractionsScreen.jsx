@@ -3,7 +3,7 @@ import hospitalLogo from '../assets/hospital-logo.png'
 // «التداخلات الدوائية» — read-only and never stored: App.jsx fetches the ward's chart(s) for the
 // chosen day and interactionsForChart (helpers.js) checks each patient's medicines against the
 // DDInter pairs from GET /api/interactions plus the bundled rule list (interactions.js) for notes. `data` is [{ slot, patients }], one entry per chart.
-export default function InteractionsScreen({ header, wardLabel, onBack, selectedDate, onChangeDate, loading, data, loadError, onPrint }) {
+export default function InteractionsScreen({ header, footer, wardLabel, onBack, selectedDate, onChangeDate, loading, data, loadError, onPrint }) {
   const charts = data || []
   const total = charts.reduce((sum, chart) => sum + chart.patients.length, 0)
 
@@ -45,5 +45,6 @@ export default function InteractionsScreen({ header, wardLabel, onBack, selected
           </div>}
       <p className="interactions-disclaimer">قائمة التداخلات المعروفة داخل البرنامج للتنبيه فقط وليست شاملة — راجع المرجع الدوائي قبل أي قرار.</p>
     </section>
+    {footer}
   </main>
 }

@@ -17,7 +17,7 @@ const Icon = ({ children }) => <svg width="18" height="18" viewBox="0 0 24 24" f
 const GivenIcon = () => <Icon><path d="M5 12.5l4.5 4.5L19 7.5" /></Icon>
 const MissedIcon = () => <Icon><path d="M7 7l10 10M17 7L7 17" /></Icon>
 
-export default function ReceiptsScreen({ dayLocked = false, header, wardLabel, roomLabel, onBack, selectedDate, onChangeDate, loading, patients, loadError, saveError, savingRows, onSetReceived }) {
+export default function ReceiptsScreen({ dayLocked = false, header, footer, wardLabel, roomLabel, onBack, selectedDate, onChangeDate, loading, patients, loadError, saveError, savingRows, onSetReceived }) {
   const [filter, setFilter] = useState('all')
   const all = patients || []
   const active = FILTERS.find((item) => item.key === filter)
@@ -73,5 +73,6 @@ export default function ReceiptsScreen({ dayLocked = false, header, wardLabel, r
             </ul></fieldset>}
         </>}
     </section>
+    {footer}
   </main>
 }

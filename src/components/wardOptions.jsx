@@ -9,8 +9,9 @@ const CHART_ITEMS = [
 ]
 // `needsConnection`: PRODUCT.md lists these as the ones that cannot work offline; the ward page says so
 // in words while the device is offline (everything else here is kept on the device or fails on its own).
-// Order: the pill forms together, then the order and the request forms with the two Meropenem rows last,
-// so «متابعة الميروبينيم» (first of the next group) follows them; the two lookup tools stay at the end.
+// Order: the pill forms together, then the order and the request forms with the two Meropenem rows last.
+// The follow-up group runs in the order of its steps (wardSteps.js), from «متابعة الاستلام»; the two
+// lookup tools stay at the end.
 // `count`: a drug-request kind whose forms are counted for the day and shown on the row (WardHubScreen).
 const GROUPS = [
   { id: 'forms', label: 'الاستمارات اليومية', items: [
@@ -22,9 +23,9 @@ const GROUPS = [
     { label: 'استمارة الميرونيم', icon: 'vial', open: { mode: 'meropenem-forms' }, count: 'meropenem' },
   ] },
   { id: 'clinical', label: 'المتابعة السريرية', items: [
+    { label: 'متابعة الاستلام', icon: 'receipt', open: { mode: 'receipts' }, needsConnection: true },
     { label: 'متابعة الميروبينيم', icon: 'trend', open: { mode: 'meropenem' }, needsConnection: true },
     { label: 'متابعة المضادات الحيوية', icon: 'calendar', open: { mode: 'antibiotics' } },
-    { label: 'متابعة الاستلام', icon: 'receipt', open: { mode: 'receipts' }, needsConnection: true },
     { label: 'التداخلات الدوائية', icon: 'overlap', open: { mode: 'interactions' } },
     { label: 'تعديل الجرعة الكلوية', icon: 'kidney', open: { mode: 'renal' } },
   ] },
