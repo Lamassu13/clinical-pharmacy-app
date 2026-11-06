@@ -100,7 +100,7 @@ router.get('/drug-requests/check', requireAuth, async (request, response) => {
   const patientId = idOf(request.query.id)
   if (!name && !patientId) return response.status(400).json({ message: 'اسم المريض أو رقمه مطلوب' })
   const { floor, wardName, chartDate } = location
-  const rows = await loadCourseRows(location, { pattern: DRUG_REQUESTS[kind].sqlPattern })
+  const rows = await loadCourseRows(location, { pattern: DRUG_REQUESTS[kind].sqlPattern, keepIds: [patientId] })
   const probe = { date: chartDate, floor, ward: wardName, name, patientId, medicine: kind, quantity: 1 }
   const form = buildMeropenemForm({ ...rows, cells: [...rows.cells, probe], overrides: await loadOverrides(kind) })
   const patient = form.patients.find((row) => (patientId ? row.patientId === patientId : row.name === name))

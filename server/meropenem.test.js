@@ -5,7 +5,8 @@ import { pool } from './db.js'
 import { startServer, resetDatabase, createUser, ApiClient } from './test-helpers.js'
 import { buildMeropenemForm, doseText, MEROPENEM_SQL_PATTERN, windowStart } from './meropenem.js'
 import { todayInBaghdad } from './push.js'
-import { loadCourseRows } from './routes/chart.js'
+import { loadCourseRows, warmCourseRows } from './routes/chart.js'
+import { FLOOR_WARDS } from './validation.js'
 
 const FLOOR = 5
 const WARD = 'ردهة رجال'
@@ -352,6 +353,15 @@ const referenceCourseRows = async ({ floor, wardName, chartDate }, { pattern, na
   return { cells: cells.map((row) => ({ ...toRow(row), medicine: row.medicine, quantity: row.quantity })), presence: presence.map(toRow), charted }
 }
 
+// A ward's form keeps the rows on that ward and the rows of anyone carrying an ID it has had (see loadCourseRows).
+const narrowedToWard = (rows, { floor, wardName }, { allWards = false }) => {
+  if (allWards) return rows
+  const onWard = (row) => row.floor === (floor ?? null) && row.ward === wardName
+  const ids = new Set([...rows.cells, ...rows.presence].filter(onWard).map((row) => row.patientId).filter(Boolean))
+  const mine = (row) => onWard(row) || (row.patientId && ids.has(row.patientId))
+  return { ...rows, cells: rows.cells.filter(mine), presence: rows.presence.filter(mine) }
+}
+
 test('loadCourseRows: kept days + today read fresh give the same rows as one read of the whole window', async () => {
   const seeder = await createUser({ role: 'admin' })
   const medicineId = (await pool.query("INSERT INTO medicines (name) VALUES ('Meronem 1000gm Vial') RETURNING id")).rows[0].id
@@ -389,7 +399,7 @@ test('loadCourseRows: kept days + today read fresh give the same rows as one rea
   const compare = async (label) => {
     for (const [location, options] of views) {
       const got = await loadCourseRows(location, options)
-      const want = await referenceCourseRows(location, options)
+      const want = narrowedToWard(await referenceCourseRows(location, options), location, options)
       const where = `${label} ${location.wardName || 'all'} ${location.chartDate}`
       assert.deepEqual(got.cells.map((row) => JSON.stringify(row)).sort(), want.cells.map((row) => JSON.stringify(row)).sort(), `${where}: cells`)
       assert.deepEqual(got.cells.map((row) => row.date), [...got.cells.map((row) => row.date)].sort(), `${where}: cells in date order`)
@@ -402,4 +412,30 @@ test('loadCourseRows: kept days + today read fresh give the same rows as one rea
   // A change to today, behind the app's back: read fresh, so still identical.
   await pool.query("INSERT INTO chart_patients (chart_id, row_number, patient_name, patient_id) SELECT id, 4, 'خالد', '789' FROM daily_charts WHERE ward_id = $1 AND chart_date = $2", [wardB, today])
   await compare('after a change today')
+})
+
+test('GET /api/meropenem: a ward\'s form reads only its own patients and their transfers — a transfer keeps its D-number, a bystander ward changes nothing', async () => {
+  const seeder = await createUser({ role: 'admin' })
+  const medicineId = (await pool.query("INSERT INTO medicines (name) VALUES ('Meronem 1000gm Vial') RETURNING id")).rows[0].id
+  const ward = async (floor, name) => (await pool.query('INSERT INTO wards (floor_number, name, is_special) VALUES ($1, $2, false) RETURNING id', [floor, name])).rows[0].id
+  const [bystanderName] = FLOOR_WARDS[6]
+  const [from, to, other] = [await ward(FLOOR, WARD), await ward(8, 'الردهة الخامسة'), await ward(6, bystanderName)]
+  const ali = [{ row: 1, name: 'علي', id: '123' }]
+  await seedDay({ wardId: from, createdBy: seeder.id, date: '2026-09-21', patients: ali, meronemRows: [1], medicineId })
+  await seedDay({ wardId: from, createdBy: seeder.id, date: '2026-09-22', patients: ali, meronemRows: [1], medicineId })
+  await seedDay({ wardId: to, createdBy: seeder.id, date: '2026-09-23', patients: ali, meronemRows: [1], medicineId }) // moved ward, still on it
+  await seedDay({ wardId: from, createdBy: seeder.id, date: '2026-09-23', patients: [{ row: 2, name: 'بديل' }], meronemRows: [], medicineId }) // the first ward is charted that day, without him
+  const bystander = [{ row: 1, name: 'علي', id: '555' }, { row: 2, name: 'حسن' }] // the same name, another patient, on a third ward
+  for (const day of ['21', '22', '23']) await seedDay({ wardId: other, createdBy: seeder.id, date: `2026-09-${day}`, patients: bystander, meronemRows: [1, 2], medicineId })
+  const manager = await loginAs({ role: 'supervisor' })
+  const there = (await manager.get('/api/meropenem?floor=8&ward=%D8%A7%D9%84%D8%B1%D8%AF%D9%87%D8%A9%20%D8%A7%D9%84%D8%AE%D8%A7%D9%85%D8%B3%D8%A9&date=2026-09-23')).body.form.patients
+  assert.deepEqual(there.map((patient) => [patient.patientId, patient.days]), [['123', { '2026-09-23': 3 }]]) // D3: the course began on the other ward
+  const here = (await manager.get(`/api/meropenem?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=2026-09-23`)).body.form.patients
+  assert.deepEqual(here.map((patient) => [patient.patientId, patient.status]), [['123', { kind: 'transferred', to: 'الطابق 8 — الردهة الخامسة' }]])
+  const third = (await manager.get(`/api/meropenem?floor=6&ward=${encodeURIComponent(bystanderName)}&date=2026-09-23`)).body.form.patients
+  assert.deepEqual(third.map((patient) => [patient.name, patient.patientId, patient.days]), [['حسن', '', { '2026-09-21': 1, '2026-09-22': 2, '2026-09-23': 3 }], ['علي', '555', { '2026-09-21': 1, '2026-09-22': 2, '2026-09-23': 3 }]]) // the namesake is its own patient
+})
+
+test('warmCourseRows: reads the shared window without a ward and without failing on an empty database', async () => {
+  await warmCourseRows()
 })
