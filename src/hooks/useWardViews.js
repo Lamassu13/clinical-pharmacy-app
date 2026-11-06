@@ -57,7 +57,7 @@ export function useMeropenemOrder({ selected, selectedDate, isExpired }) {
   return { meroOrderData, meroOrderLoading, meroOrderError }
 }
 
-// «متابعة الميروبينيم» and «متابعة المضادات الحيوية»: one form, plus the typed course day.
+// «متابعة الميروبينيم»: the form, plus the typed course day.
 // refreshCourseForms reloads it — App's write queue calls it after sending a queued course day.
 export function useCourseForms({ selected, selectedDate, isExpired, userId }) {
   // «متابعة الميروبينيم» — read-only, derived from the ward's charts for the chosen date's month.
@@ -66,14 +66,13 @@ export function useCourseForms({ selected, selectedDate, isExpired, userId }) {
   const [meropenemError, setMeropenemError] = useState(false)
   const [meropenemNonce, setMeropenemNonce] = useState(0)
   useEffect(() => {
-    // «متابعة المضادات الحيوية» is the same form for every followed antibiotic; it shares this state.
-    if (!selected || (selected.mode !== 'meropenem' && selected.mode !== 'antibiotics')) return undefined
+    if (!selected || selected.mode !== 'meropenem') return undefined
     let cancelled = false
     setMeropenemData(null)
     setMeropenemLoading(true)
     setMeropenemError(false)
     const params = new URLSearchParams({ floor: selected.floor || '', ward: selected.ward, date: selectedDate })
-    fetch(`${apiUrl}/${selected.mode}?${params}`, { credentials: 'include' })
+    fetch(`${apiUrl}/meropenem?${params}`, { credentials: 'include' })
       .then((response) => { isExpired(response); return response.ok ? response.json() : null })
       .then((result) => {
         if (cancelled) return

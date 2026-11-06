@@ -2521,8 +2521,7 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
   .long-abx--note span { color: var(--text-muted); font-weight: 700; font-size: var(--text-sm); }
   .long-abx-count { display: grid; place-items: center; min-width: 28px; height: 28px; padding: 0 var(--space-2); border-radius: 999px; background: var(--warning); color: var(--on-warning, #fff); font-weight: 800; font-variant-numeric: tabular-nums; }
   .long-abx-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: var(--space-2); margin: 0; padding: 0 var(--space-3) var(--space-3); list-style: none; }
-  .long-abx-row { display: grid; grid-template-columns: 1fr auto; gap: var(--space-1) var(--space-3); width: 100%; min-height: 44px; padding: var(--space-3) var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); text-align: start; cursor: pointer; }
-  .long-abx-row:hover, .long-abx-row:focus-visible { border-color: var(--warning); }
+  .long-abx-row { display: grid; grid-template-columns: 1fr auto; gap: var(--space-1) var(--space-3); width: 100%; min-height: 44px; padding: var(--space-3) var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); text-align: start; }
   .long-abx-who { display: flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap; min-width: 0; }
   .long-abx-day { color: var(--warning-text); font-weight: 700; white-space: nowrap; }
   .long-abx-day b { font-size: var(--text-lg); font-variant-numeric: tabular-nums; }
