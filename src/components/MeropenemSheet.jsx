@@ -14,6 +14,8 @@ const GRID = [
   ['liver-abscess', 'resection', 'cap'],
   ['diabetic-foot', 'peritonitis', 'sepsis'],
 ]
+// The patient's «رقم الطبلة», beside the name as on the albumin form.
+const ID_FIELD = { key: 'patientId', max: 20, digits: true }
 const SPEC = DRUG_REQUESTS.meropenem
 const [DIAGNOSIS, CULTURE] = SPEC.groups
 const textOf = Object.fromEntries(DIAGNOSIS.options.map((option) => [option.key, option.text]))
@@ -62,14 +64,15 @@ export default function MeropenemSheet({ request, wardName, paper = false, onTog
         </tr>
         <tr>
           <td><Field label="اسم المريض:" value={request.name} paper={paper} required onSave={(next) => onField({ name: next })} /></td>
+          <td><Field label="رقم الطبلة:" value={request.patientId} field={ID_FIELD} paper={paper} onSave={(next) => onField({ patientId: next })} /></td>
           <td>{value('العمر:', 'age')}</td>
-          <td>{value('الوزن:', 'weight', { unit: 'كغم' })}</td>
         </tr>
         <tr>
-          <td><Field paper label="التاريخ:" value={dayMonthYear(request.date)} /></td>
+          <td>{value('الوزن:', 'weight', { unit: 'كغم' })}</td>
           <td>{value('S.cr:', 'scr', { ltr: true })}</td>
-          <td>{value('التحسس:', 'allergy')}</td>
+          <td><Field paper label="التاريخ:" value={dayMonthYear(request.date)} /></td>
         </tr>
+        <tr><td colSpan={3}>{value('التحسس:', 'allergy')}</td></tr>
       </tbody>
     </table>
 

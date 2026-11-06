@@ -46,7 +46,7 @@ export default function DrugRequestDialog({ kind, initial, screen = false, kicke
       {note && <p className="req-dialog-note" role="status">{note}</p>}
 
       <div className="req-dialog-grid">
-        <label className="req-dialog-wide">اسم المريض
+        <label className="req-dialog-wide"><span>اسم المريض{initial.patientId && <small> — رقم الطبلة <bdi>{initial.patientId}</bdi></small>}</span>
           <input value={name} maxLength={200} autoComplete="off" autoFocus={!name} onChange={(event) => { setError(''); setName(event.target.value) }} />
         </label>
         {fields.map((field) => {

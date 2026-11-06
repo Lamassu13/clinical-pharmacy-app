@@ -19,7 +19,7 @@ const statusText = (status, antibiotics) => ({
   transferred: `نُقل إلى ${status.to || 'ردهة أخرى'}`,
 }[status.kind] || '')
 
-export default function MeropenemScreen({ header, wardLabel, today, onBack, selectedDate, onChangeDate, loading, data, loadError, onPrint, drugs, onEditDay }) {
+export default function MeropenemScreen({ header, footer, wardLabel, today, onBack, selectedDate, onChangeDate, loading, data, loadError, onPrint, drugs, onEditDay }) {
   const [drugFilter, setDrugFilter] = useState('')
   const antibiotics = Boolean(drugs)
   const shownDrugs = (drugs || []).filter((drug) => !drugFilter || drug.key === drugFilter)
@@ -99,5 +99,6 @@ export default function MeropenemScreen({ header, wardLabel, today, onBack, sele
             </table>
           </div>}
     </section>
+    {footer}
   </main>
 }

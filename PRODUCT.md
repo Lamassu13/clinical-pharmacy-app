@@ -27,7 +27,7 @@ Built around the specific artifact and ritual of this teaching-hospital pharmacy
 - **Devices are mixed and not all new:** iPads (including older ones on iPadOS 14/15), Android tablets, and phones. Everything must work on all of them — the build targets Safari 14 / Chrome 87, and newer CSS such as `:has()` may only enhance, never be required.
 - **Building:** 8 numbered floors (2–6, 8, 9, 10 — there is no floor 1 or 7), each with 2–3 sub-wards ("أروقة فرعية"), plus 3 independent special wards ("ردهة مستقلة"): dialysis (الديلزة), ICU (العناية المركزة), neonatal (الخدج). ~26 wards total.
 - **Assignment:** one pharmacist ↔ one floor (or one set of special wards); the hub hides every card outside their assignment. Managers see the whole unit.
-- **Core flow:** log in → floor/ward hub → pick floor → pick ward → open its "جارت" (main slot or "الجارت الإضافي" second slot) or its pill form ("الحبوب").
+- **Core flow:** log in → floor/ward hub → pick floor → pick ward → open its "جارت" (main slot or "الجارت الإضافي" second slot) or its pill form ("الحبوب"). A ward's work runs as two step flows, each with a step bar and «الخطوة التالية»: the daily work (الجارت … الحبوب) and the clinical follow-up «المتابعة السريرية», which starts at «متابعة الاستلام» and goes on to the Meropenem follow-up, the antibiotics, the interactions and the renal dose.
 - **Charts:** per ward / date / slot, weekday-keyed, autosaved, versioned with conflict resolution; a chart can be copied forward to the next day.
 - **Output:** a printed A4 sheet. Print layout is a fixed, separately-maintained concern.
 - **Manager surface:** a "which wards have started today" status view (ward-granularity) plus the announcements feed.

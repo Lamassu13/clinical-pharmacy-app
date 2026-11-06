@@ -10,7 +10,7 @@ const latin = (value) => toEnglishDigits(value).replace(/[٫،]/g, '.')
 const INPUTS = [['age', 'العمر (سنة)'], ['weight', 'الوزن الفعلي (كغم)'], ['height', 'الطول (سم)'], ['scr', 'الكرياتينين'], ['scr2', 'الكرياتينين الأحدث (للمتغيّر)'], ['hours', 'الفاصل بين القياسين (ساعة)']]
 const FIELD_NAMES = { age: 'Age', weight: 'Weight', height: 'Height', scr: 'Creatinine', scr2: 'Recent creatinine', hours: 'Hours between' }
 
-export default function RenalDoseScreen({ header, wardLabel, onBack }) {
+export default function RenalDoseScreen({ header, footer, wardLabel, onBack }) {
   const [labs, setLabs] = useState(BLANK)
   const set = (field) => (event) => setLabs((current) => ({ ...current, [field]: latin(event.target.value) }))
   const choose = (field, value) => setLabs((current) => ({ ...current, [field]: value }))
@@ -63,5 +63,6 @@ export default function RenalDoseScreen({ header, wardLabel, onBack }) {
       </div>
       <p className="interactions-disclaimer">تقدير للبالغين — لا يغني عن مراجعة الصيدلي للمرجع الدوائي. معادلات CKD-EPI وMDRD وJelliffe 1973 تُحوَّل إلى mL/min عند إدخال الطول والوزن، وإلا تُعرض كما هي (mL/min/1.73 m²). لا تُحفظ أي قيمة مُدخلة.</p>
     </section>
+    {footer}
   </main>
 }
