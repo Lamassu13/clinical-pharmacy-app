@@ -15,7 +15,7 @@ export const DRUG_REQUESTS = {
     // Asked on the first day of the course only; albumin is asked every day it is given.
     firstDayOnly: true,
     fields: [
-      { key: 'age', label: 'العمر', max: 30, placeholder: 'مثال: 45' },
+      { key: 'age', label: 'العمر', max: 30, placeholder: 'مثال: 45', required: true },
       { key: 'weight', label: 'الوزن', unit: 'كغم', max: 20, decimal: true },
       { key: 'scr', label: 'S.cr', max: 30, ltr: true, placeholder: 'mg/dL' },
       { key: 'allergy', label: 'التحسس', max: 200, chips: ['لا يوجد'] },
