@@ -123,10 +123,10 @@ router.post('/drug-requests', requireAuth, async (request, response) => {
   const name = nameKey(cleanText(request.body.name, 200))
   if (!name) return response.status(400).json({ message: 'اسم المريض مطلوب' })
   const { floor, wardName, chartDate } = location
-  // A client that predates the sex box sends no `sex`: keep the stored one (the merge below only
-  // overwrites keys that are present) instead of blanking it on a resend.
+  // A client that predates a box (the sex, the age) or an offline save from before it sends no such key: keep
+  // the stored value (the merge below only overwrites keys that are present) instead of blanking it on a resend.
   const fields = cleanFields(kind, request.body.fields)
-  if (!(request.body.fields && 'sex' in request.body.fields)) delete fields.sex
+  Object.keys(fields).forEach((key) => { if (!(key in (request.body.fields || {}))) delete fields[key] })
   const result = await query(
     `INSERT INTO drug_requests (kind, ward_key, request_date, patient_name, patient_id, fields, created_by)
      VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -172,25 +172,38 @@ router.post('/drug-requests/:id/google-form', requireAuth, async (request, respo
   const own = await ownRequest(request)
   if (own.status) return refuse(response, own)
   if (own.row.kind !== 'albumin') return response.status(400).json({ message: 'هذه الاستمارة لا تُرسل إلى نموذج Google' })
-  const form = toRequest(own.row)
-  if (form.googleSentAt && request.body?.resend !== true) return response.status(409).json({ message: 'أُرسلت هذه الاستمارة من قبل', sentAt: form.googleSentAt })
+  // The رقم الطبلة the screen shows (the stored one, else the day's chart's) is the one sent.
+  const [floorText, ...ward] = own.row.ward_key.split('|')
+  const patientId = own.row.patient_id || (await chartIds(floorText ? Number(floorText) : null, ward.join('|'), own.row.date)).get(own.row.patient_name) || ''
+  const form = toRequest({ ...own.row, patient_id: patientId })
   const answers = albuminFormAnswers(form)
   if (!answers.ok) return response.status(422).json({ message: `أكمل أولًا: ${answers.missing.join('، ')}`, missing: answers.missing })
   if (process.env.GOOGLE_FORM_SEND !== '1') return response.json({ dryRun: true, answers: answers.body })
+  // The form is marked sent BEFORE it is posted, in one statement, so two taps (or two devices) cannot both
+  // post it, and an answer Google recorded but we never heard about cannot be posted again by a retry.
+  // The mark is undone only when the send definitely did not happen. `resend` allows a form already sent.
+  const resend = request.body?.resend === true
+  const claimed = await query('UPDATE drug_requests SET google_sent_at = NOW() WHERE id = $1 AND (google_sent_at IS NULL OR $2::boolean) RETURNING id', [own.row.id, resend])
+  if (!claimed.rowCount) return response.status(409).json({ message: 'أُرسلت هذه الاستمارة من قبل', sentAt: form.googleSentAt })
+  const release = () => query('UPDATE drug_requests SET google_sent_at = $2 WHERE id = $1', [own.row.id, own.row.google_sent_at]).catch(() => {})
   let reply
   try {
     reply = await fetch(FORM_URL, { method: 'POST', body: new URLSearchParams(answers.body), signal: AbortSignal.timeout(15000) })
   } catch (error) {
-    console.error('google form: not reached:', error.message)
+    console.error('google form: no answer:', error.name)
+    // A timeout may have come after Google recorded it: keep the mark and say so rather than invite a duplicate.
+    if (error.name === 'TimeoutError') return response.status(504).json({ message: 'لم يتأكد الإرسال — راجع ردود النموذج قبل إعادة الإرسال.' })
+    await release()
     return response.status(502).json({ message: 'تعذّر الوصول إلى Google — حاول مرة أخرى.' })
   }
-  // Checked live on 2026-11-06: an accepted answer comes back 200 («your response has been recorded»), a refused one
-  // (a required question missing, an option text the form no longer has) 400 with the form drawn again.
-  if (!reply.ok) {
-    console.error('google form: refused:', reply.status)
+  // Checked live on 2026-11-06: an accepted answer comes back 200 from …/formResponse («your response has been
+  // recorded»); a refused one (a required question missing, an option text the form no longer has) 400 with the
+  // form drawn again. A redirect (the form now asks for a sign-in, or is closed) is a 200 page too, but not from there.
+  if (!reply.ok || reply.redirected || !new URL(reply.url).pathname.endsWith('/formResponse')) {
+    console.error('google form: refused:', reply.status, reply.redirected)
+    await release()
     return response.status(502).json({ message: 'رفض نموذج Google الإرسال — أخبر المسؤول (ربما تغيّر النموذج).' })
   }
-  await query('UPDATE drug_requests SET google_sent_at = NOW() WHERE id = $1', [own.row.id])
   response.json({ request: toRequest(await loadRequest(own.row.id)) })
 })
 

@@ -4,7 +4,7 @@ import app from './index.js'
 import { pool } from './db.js'
 import { startServer, resetDatabase, createUser, ApiClient } from './test-helpers.js'
 import { cleanTicks, toggleTick } from '../shared/drug-requests.js'
-import { albuminFormAnswers } from '../shared/albumin-google-form.js'
+import { FORM_URL, albuminFormAnswers } from '../shared/albumin-google-form.js'
 
 const FLOOR = 5
 const WARD = 'ردهة رجال'
@@ -216,4 +216,87 @@ test('google form: the route sends nothing unless GOOGLE_FORM_SEND=1, names what
   assert.equal((await (await loginAs({ role: 'user', floor: 6 })).post(`/api/drug-requests/${saved.id}/google-form`, {})).status, 403)
   const meropenem = (await pharmacist.post('/api/drug-requests', { ...base, kind: 'meropenem', fields: { sex: 'ذكر', age: '5' } })).body.request
   assert.equal((await pharmacist.post(`/api/drug-requests/${meropenem.id}/google-form`, {})).status, 400)
+})
+
+// A fake Google: only calls to the form's URL are answered here; the test client's own calls go through.
+const fakeGoogle = (answer) => {
+  const real = globalThis.fetch
+  const calls = []
+  globalThis.fetch = async (url, options) => {
+    if (String(url) !== FORM_URL) return real(url, options)
+    calls.push(options.body.toString())
+    return answer(calls.length)
+  }
+  return { calls, restore: () => { globalThis.fetch = real } }
+}
+const recorded = { ok: true, status: 200, redirected: false, url: FORM_URL }
+const readyAlbumin = async (pharmacist, patientId = '44') => {
+  const saved = (await pharmacist.post('/api/drug-requests', { kind: 'albumin', floor: FLOOR, ward: WARD, date: '2026-11-06', name: 'سارة', patientId, fields: { count: '2', doctor: 'د. سعد', sex: 'أنثى', age: '30' } })).body.request
+  await pharmacist.patch(`/api/drug-requests/${saved.id}/ticks`, { ticks: ['i4'] })
+  return saved
+}
+
+test('google form send: marked sent once, a second send needs resend, a refused or unconfirmed send is handled', async (t) => {
+  process.env.GOOGLE_FORM_SEND = '1'
+  t.after(() => { delete process.env.GOOGLE_FORM_SEND })
+  const pharmacist = await loginAs({ role: 'user', floor: FLOOR })
+  const sentAt = async (id) => (await pharmacist.get(`/api/drug-requests?${where('albumin', '2026-11-06')}`)).body.requests.find((r) => r.id === id).googleSentAt
+  const send = (id, body = {}) => pharmacist.post(`/api/drug-requests/${id}/google-form`, body)
+
+  // Accepted: marked sent; a second tap is refused without posting; resend posts again.
+  let google = fakeGoogle(() => recorded)
+  const form = await readyAlbumin(pharmacist)
+  assert.equal((await send(form.id)).status, 200)
+  assert.ok(await sentAt(form.id))
+  const again = await send(form.id)
+  assert.equal(again.status, 409)
+  assert.ok(again.body.sentAt)
+  assert.equal(google.calls.length, 1)
+  assert.equal((await send(form.id, { resend: true })).status, 200)
+  assert.equal(google.calls.length, 2)
+  google.restore()
+
+  // Two at once: only one reaches Google.
+  const second = await readyAlbumin(pharmacist, '45')
+  google = fakeGoogle(async () => { await new Promise((resolve) => setTimeout(resolve, 100)); return recorded })
+  const both = await Promise.all([send(second.id), send(second.id)])
+  assert.deepEqual(both.map((r) => r.status).sort(), [200, 409])
+  assert.equal(google.calls.length, 1)
+  google.restore()
+
+  // Refused (400) and a redirect (a sign-in page): not sent, the mark is undone so it can be retried.
+  for (const bad of [{ ok: false, status: 400, redirected: false, url: FORM_URL }, { ok: true, status: 200, redirected: true, url: 'https://accounts.google.com/signin' }]) {
+    const third = await readyAlbumin(pharmacist, `9${google.calls.length}`)
+    google = fakeGoogle(() => bad)
+    assert.equal((await send(third.id)).status, 502)
+    assert.equal(await sentAt(third.id), null)
+    google.restore()
+  }
+
+  // Not reached at all: undone. Timed out: the mark stays (Google may have it), with a message not to resend blindly.
+  const fourth = await readyAlbumin(pharmacist, '71')
+  google = fakeGoogle(() => { throw Object.assign(new Error('refused'), { name: 'TypeError' }) })
+  assert.equal((await send(fourth.id)).status, 502)
+  assert.equal(await sentAt(fourth.id), null)
+  google.restore()
+  google = fakeGoogle(() => { throw Object.assign(new Error('timeout'), { name: 'TimeoutError' }) })
+  const timedOut = await send(fourth.id)
+  assert.equal(timedOut.status, 504)
+  assert.ok(await sentAt(fourth.id))
+  google.restore()
+})
+
+test('google form send: the رقم الطبلة the screen shows is the one sent; an old client does not blank a stored age', async () => {
+  const pharmacist = await loginAs({ role: 'user', floor: FLOOR })
+  await (await loginAs({ role: 'admin' })).post('/api/medicines', { name: ALBUMIN })
+  await saveChart(pharmacist, '2026-11-06', ALBUMIN, [{ name: 'سارة', id: '77', qty: 2 }])
+  const saved = (await pharmacist.post('/api/drug-requests', { kind: 'albumin', floor: FLOOR, ward: WARD, date: '2026-11-06', name: 'سارة', patientId: '', fields: { count: '2', doctor: 'د. سعد', sex: 'أنثى', age: '30' } })).body.request
+  await pharmacist.patch(`/api/drug-requests/${saved.id}/ticks`, { ticks: ['i4'] })
+  const dry = await pharmacist.post(`/api/drug-requests/${saved.id}/google-form`, {})
+  assert.equal(dry.status, 200)
+  assert.equal(dry.body.answers.find(([key]) => key === 'entry.1062167645')[1], '77')
+  // A resend of the same patient from a client that knows no `age`: the stored one stays.
+  await pharmacist.post('/api/drug-requests', { kind: 'albumin', floor: FLOOR, ward: WARD, date: '2026-11-06', name: 'سارة', patientId: '', fields: { count: '3' } })
+  const listed = (await pharmacist.get(`/api/drug-requests?${where('albumin', '2026-11-06')}`)).body.requests[0]
+  assert.deepEqual([listed.fields.count, listed.fields.age, listed.fields.sex], ['3', '30', 'أنثى'])
 })
