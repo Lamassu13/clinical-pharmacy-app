@@ -2845,7 +2845,6 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
 .fu-edit { display: block; min-width: 3ch; min-height: 1.6em; padding: 2px 4px; font: inherit; cursor: text; unicode-bidi: plaintext; }
 .fu-edit:focus { outline: 2px solid var(--primary); outline-offset: -2px; background: var(--primary-tint); }
 .fu-notes { min-height: 5.5rem; padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-sm); white-space: pre-wrap; text-align: start; }
-.fu-remove { min-height: 36px; padding: 0 var(--space-3); border: 1px solid var(--danger-border); border-radius: var(--radius-sm); background: var(--danger-tint); color: var(--danger); font: inherit; font-size: var(--text-sm); cursor: pointer; }
 .fu-frame { max-height: none; overflow-x: auto; -webkit-overflow-scrolling: touch; direction: ltr; } /* scrolls from the left edge, like the table reads */
 .albumin-follow-link { margin-bottom: var(--space-4); }
 
