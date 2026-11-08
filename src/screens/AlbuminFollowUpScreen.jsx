@@ -46,7 +46,7 @@ function EditBox({ value, onCommit, className, direction, label, multiline }) {
 
 // The sheet itself (title, the two tables, the notes) — what is on screen and what the PDF draws. Shown by
 // the screen below; given plain data and handlers so it can be rendered on its own.
-export function FollowUpSheet({ sheetRef, stale, date, floor, data, saveRow, setListCell, removeFrom, saveDoc, setNonce }) {
+export function FollowUpSheet({ sheetRef, stale, date, floor, data, saveRow, setListCell, saveDoc, setNonce }) {
   const { doc } = data
   const extraRows = doc.extraRows
   const notRows = [...doc.notIndicated, ...Array.from({ length: Math.max(0, MIN_NOT_INDICATED - doc.notIndicated.length) }, () => ({ ...BLANK_NOT }))]
@@ -64,7 +64,7 @@ export function FollowUpSheet({ sheetRef, stale, date, floor, data, saveRow, set
     <section className="report-section" data-section="follow">
       {empty && <p className="report-note">لا توجد استمارات الالبومين لهذا الطابق في هذا اليوم — أضف صفًّا بيدك أو عبّئ الاستمارات من الردهات.</p>}
       <div className="table-frame fu-frame"><table className="requests-table report-table fu-table" dir="ltr">
-        <thead><tr>{MAIN_COLUMNS.map(([key, header]) => <th key={key} scope="col">{header}</th>)}<th className="report-print-skip" /></tr></thead>
+        <thead><tr>{MAIN_COLUMNS.map(([key, header]) => <th key={key} scope="col">{header}</th>)}</tr></thead>
         <tbody>
           {data.rows.map((row) => <tr key={row.id}>
             <Cell label="Treatment day" ltr value={row.fields.treatmentDay ? `D${row.fields.treatmentDay}` : ''} onCommit={(text) => saveRow(row.id, { fields: { treatmentDay: digits(text) } })} />
@@ -76,11 +76,9 @@ export function FollowUpSheet({ sheetRef, stale, date, floor, data, saveRow, set
             <Cell label="S.Creat" ltr value={row.fields.scr} onCommit={(text) => saveRow(row.id, { fields: { scr: text } })} />
             <Cell label="No of vials" ltr value={row.fields.count} onCommit={(text) => saveRow(row.id, { fields: { count: digits(text) } })} />
             <Cell label="No of indication" ltr value={indicationText(row.ticks)} onCommit={(text) => saveRow(row.id, { ticks: ticksOf(text) })} />
-            <td className="report-print-skip" />
           </tr>)}
           {[...extraRows, { ...BLANK_EXTRA }].map((row, index) => <tr key={`extra-${index}`} className={index === extraRows.length ? 'fu-new-row' : undefined}>
             {MAIN_COLUMNS.map(([key, label]) => <Cell key={key} label={label} value={row[key]} ltr={NUMBER_KEYS.includes(key)} onCommit={(text) => setListCell('extraRows', BLANK_EXTRA, index, key, text)} />)}
-            <td className="report-print-skip">{index < extraRows.length && <button type="button" className="fu-remove" aria-label="حذف الصف" onClick={() => removeFrom('extraRows', index)}>حذف</button>}</td>
           </tr>)}
         </tbody>
       </table></div>
@@ -89,11 +87,10 @@ export function FollowUpSheet({ sheetRef, stale, date, floor, data, saveRow, set
     <section className="report-section fu-band" data-section="not-indicated">
       <div className="report-section-head"><h2 dir="ltr">Not indicated</h2></div>
       <div className="table-frame fu-frame"><table className="requests-table report-table fu-table" dir="ltr">
-        <thead><tr><th scope="col">No.</th>{NOT_COLUMNS.map(([key, header]) => <th key={key} scope="col">{header}</th>)}<th className="report-print-skip" /></tr></thead>
+        <thead><tr><th scope="col">No.</th>{NOT_COLUMNS.map(([key, header]) => <th key={key} scope="col">{header}</th>)}</tr></thead>
         <tbody>{notRows.map((row, index) => <tr key={`not-${index}`}>
           <td data-label="No.">{index + 1}</td>
           {NOT_COLUMNS.map(([key, label]) => <Cell key={key} label={label} value={row[key]} ltr={NUMBER_KEYS.includes(key)} onCommit={(text) => setListCell('notIndicated', BLANK_NOT, index, key, text)} />)}
-          <td className="report-print-skip">{index < doc.notIndicated.length && <button type="button" className="fu-remove" aria-label="حذف الصف" onClick={() => removeFrom('notIndicated', index)}>حذف</button>}</td>
         </tr>)}</tbody>
       </table></div>
     </section>
@@ -168,7 +165,6 @@ export default function AlbuminFollowUpScreen({ adminHeader, isExpired, floor, o
     next[index] = { ...next[index], [key]: text }
     saveDoc({ ...data.doc, [list]: next })
   }
-  const removeFrom = (list, index) => saveDoc({ ...data.doc, [list]: data.doc[list].filter((_, at) => at !== index) })
 
   const print = async () => {
     if (!articleRef.current || pdfBusy) return
@@ -191,6 +187,6 @@ export default function AlbuminFollowUpScreen({ adminHeader, isExpired, floor, o
     {error && <p className="form-error" role="alert">{error}</p>}
 
     {loading && !data ? <div className="dashboard-skeleton report-skeleton" aria-hidden="true">{Array.from({ length: 6 }, (_, i) => <span key={i} className="skeleton-row" />)}</div>
-      : !data ? null : <FollowUpSheet sheetRef={articleRef} stale={loading} date={date} floor={floor} data={data} saveRow={saveRow} setListCell={setListCell} removeFrom={removeFrom} saveDoc={saveDoc} setNonce={setNonce} />}
+      : !data ? null : <FollowUpSheet sheetRef={articleRef} stale={loading} date={date} floor={floor} data={data} saveRow={saveRow} setListCell={setListCell} saveDoc={saveDoc} setNonce={setNonce} />}
   </section></main>
 }
