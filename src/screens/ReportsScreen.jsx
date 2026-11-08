@@ -192,7 +192,7 @@ function ReportDocument({ ref, report, stale, sections, printing, onPrint }) {
   const shows = (key) => sections.includes(key)
   const part = (key) => ({ printKey: key, onPrint, printing, disabled: stale || Boolean(printing) })
   const [trendDrug, setTrendDrug] = useState('')
-  // «أرقام الطبلة المكررة»: the IDs left unticked, which the PDF skips (everything is ticked at first).
+  // «أرقام الطبلة المكررة»: the rows (ID + name + ward) left unticked, which the PDF skips (everything is ticked at first).
   const [skipped, setSkipped] = useState(() => new Set())
   const { summary, range, thresholds, trend } = report
   const trendLine = trend.medicines.find((line) => line.name === trendDrug)
@@ -260,21 +260,30 @@ function ReportDocument({ ref, report, stale, sections, printing, onPrint }) {
         )}
       </Section>}
 
-      {shows('sameIds') && <Section {...part('sameIds')} title="أرقام الطبلة المكررة" note="رقم طبلة كُتب لمريضين باسمين مختلفين في طابقين مختلفين خلال هذه المدة — خطأ في الرقم أو مريضان بالرقم نفسه. الاسم نفسه في ردهتين (نقل) أو الاسمان في الطابق نفسه لا يظهران هنا. علّم الأرقام التي تريد طباعتها.">
-        {report.sameIds.length === 0 ? <Empty>لا يوجد رقم طبلة مكرر لمرضى مختلفين في هذه المدة.</Empty> : (
-          <div className="table-frame"><table className="requests-table report-table">
+      {shows('sameIds') && <Section {...part('sameIds')} title="أرقام الطبلة المكررة" note="رقم طبلة كُتب لمريضين باسمين مختلفين في طابقين مختلفين خلال هذه المدة — خطأ في الرقم أو مريضان بالرقم نفسه. الاسم نفسه في ردهتين (نقل) أو الاسمان في الطابق نفسه لا يظهران هنا. علّم الأرقام أو الأسماء التي تريد طباعتها.">
+        {report.sameIds.length === 0 ? <Empty>لا يوجد رقم طبلة مكرر لمرضى مختلفين في هذه المدة.</Empty> : (() => {
+          const keyOf = (group, entry) => `${group.patientId}|${entry.patient}|${entry.floor}|${entry.ward}`
+          const allKeys = report.sameIds.flatMap((group) => group.entries.map((entry) => keyOf(group, entry)))
+          const flip = (keys, on) => setSkipped((current) => { const next = new Set(current); keys.forEach((key) => (on ? next.delete(key) : next.add(key))); return next })
+          return <div className="table-frame"><table className="requests-table report-table">
             <thead><tr>
-              <th className="report-print-skip"><input type="checkbox" aria-label="تحديد الكل للطباعة" checked={skipped.size === 0} onChange={() => setSkipped(skipped.size ? new Set() : new Set(report.sameIds.map((group) => group.patientId)))} /></th>
-              <th>رقم الطبلة</th><th>المريض</th><th>الطابق</th><th>الردهة</th><th>من — إلى</th><th>الأيام</th>
+              <th className="report-print-skip"><input type="checkbox" aria-label="تحديد كل الأرقام للطباعة" checked={skipped.size === 0} onChange={(event) => flip(allKeys, event.target.checked)} /></th>
+              <th>رقم الطبلة</th><th className="report-print-skip" /><th>المريض</th><th>الطابق</th><th>الردهة</th><th>من — إلى</th><th>الأيام</th>
             </tr></thead>
-            <tbody>{report.sameIds.flatMap((group) => group.entries.map((entry, index) => <tr key={`${group.patientId}|${entry.patient}|${entry.floor}|${entry.ward}`} data-print-skip={skipped.has(group.patientId) || undefined}>
-              {index === 0 && <td rowSpan={group.entries.length} className="report-print-skip"><input type="checkbox" aria-label={`طباعة رقم الطبلة ${group.patientId}`} checked={!skipped.has(group.patientId)} onChange={() => setSkipped((current) => { const next = new Set(current); if (!next.delete(group.patientId)) next.add(group.patientId); return next })} /></td>}
-              {index === 0 && <td rowSpan={group.entries.length} className="num">{group.patientId}</td>}
-              <td>{entry.patient}</td><td>{entry.floor ?? '—'}</td><td>{entry.ward}</td>
-              <td>{entry.from === entry.to ? formatDate(entry.from) : `${formatDate(entry.from)} — ${formatDate(entry.to)}`}</td><td className="num">{entry.days}</td>
-            </tr>))}</tbody>
+            <tbody>{report.sameIds.flatMap((group) => {
+              const keys = group.entries.map((entry) => keyOf(group, entry))
+              const ticked = keys.filter((key) => !skipped.has(key)).length
+              // The ID is written on every row (not spanned) so a row left out of the PDF never takes it with it.
+              return group.entries.map((entry, index) => <tr key={keys[index]} data-print-skip={skipped.has(keys[index]) || undefined}>
+                {index === 0 ? <td rowSpan={keys.length} className="report-print-skip"><input type="checkbox" aria-label={`طباعة كل أسماء رقم الطبلة ${group.patientId}`} checked={ticked === keys.length} ref={(box) => { if (box) box.indeterminate = ticked > 0 && ticked < keys.length }} onChange={(event) => flip(keys, event.target.checked)} /></td> : null}
+                <td className="num">{group.patientId}</td>
+                <td className="report-print-skip"><input type="checkbox" aria-label={`طباعة ${entry.patient}`} checked={!skipped.has(keys[index])} onChange={(event) => flip([keys[index]], event.target.checked)} /></td>
+                <td>{entry.patient}</td><td>{entry.floor ?? '—'}</td><td>{entry.ward}</td>
+                <td>{entry.from === entry.to ? formatDate(entry.from) : `${formatDate(entry.from)} — ${formatDate(entry.to)}`}</td><td className="num">{entry.days}</td>
+              </tr>)
+            })}</tbody>
           </table></div>
-        )}
+        })()}
       </Section>}
 
       {shows('trend') && <Section {...part('trend')} title="اتجاه استهلاك دواء" note="الكمية الأسبوعية في الجارت للدواء المختار، تبدأ الأسابيع من أول يوم في المدة.">
