@@ -19,6 +19,7 @@ import chartRoutes, { resolveChartId, readLocation, readWritableLocation, refuse
 import treatmentFormsRoutes from './routes/treatment-forms.js'
 import extraPillsRoutes from './routes/extra-pills.js'
 import drugRequestsRoutes from './routes/drug-requests.js'
+import albuminFollowupRoutes from './routes/albumin-followup.js'
 import reportsRoutes from './routes/reports.js'
 import wardPositionsRoutes from './routes/ward-positions.js'
 import { bridgedDailyCounts, MAX_BRIDGE_DAYS } from './dashboard-bridge.js'
@@ -694,6 +695,7 @@ app.use('/api', chartRoutes)
 app.use('/api', treatmentFormsRoutes)
 app.use('/api', extraPillsRoutes)
 app.use('/api', drugRequestsRoutes)
+app.use('/api', albuminFollowupRoutes)
 app.use('/api', reportsRoutes)
 app.use('/api', wardPositionsRoutes)
 app.use('/api', templatesRoutes)

@@ -7,7 +7,7 @@ import LongAntibioticPatients from '../components/LongAntibioticPatients.jsx'
 // from the floor grid into a floor doesn't feel like a different screen. The floor number
 // is in the heading, so the cards don't repeat it — each carries the ward glyph instead.
 export default function WardPickerScreen({
-  floor, today, selectedDate, isExpired, dashboard, dashboardError, onBack, onOpen, onOpenWard,
+  onOpenAlbuminFollowUp, floor, today, selectedDate, isExpired, dashboard, dashboardError, onBack, onOpen, onOpenWard,
   announcements, isManager, announcementDraft, setAnnouncementDraft, announcementError, announcementBusy,
   onPostAnnouncement, onEditAnnouncement, onDeleteAnnouncement,
 }) {
@@ -25,6 +25,7 @@ export default function WardPickerScreen({
         {today && <div className="date-chip"><span>اليوم</span><strong>{today}</strong></div>}
       </div>
     </div>
+    <button type="button" className="secondary-button albumin-follow-link" onClick={onOpenAlbuminFollowUp}>متابعة الالبومين</button>
     <LongAntibioticPatients date={selectedDate} floor={floor.number} isExpired={isExpired} />
     <PatientSearch floor={floor.number} date={selectedDate} onOpen={onOpen} isExpired={isExpired} />
     <div className="location-grid">{floor.wards.map((ward) => {
