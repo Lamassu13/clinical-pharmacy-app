@@ -286,3 +286,13 @@ test('GET /api/reports: one name spelled two ways under the same ID is not a cla
   await saveChart(admin, 5, '2026-05-03', [{ name: 'احمد على', id: '700', meds }])
   assert.deepEqual((await admin.get('/api/reports?scope=all&from=2026-05-01&to=2026-05-05')).body.sameIds, [])
 })
+
+test('GET /api/reports: the same ID on two patients of one floor is not listed; on two floors it is', async () => {
+  const admin = await loginAs({ role: 'admin' })
+  const meds = { 'Aspirin 100mg Tab': 1 }
+  await saveChart(admin, 2, '2026-05-02', [{ name: 'سامي', id: '800', meds }, { name: 'ليث', id: '800', meds }]) // one floor
+  await saveChart(admin, 2, '2026-05-04', [{ name: 'نور', id: '900', meds }])
+  await saveChart(admin, 5, '2026-05-03', [{ name: 'هدى', id: '900', meds }])
+  const { body } = await admin.get('/api/reports?scope=all&from=2026-05-01&to=2026-05-05')
+  assert.deepEqual(body.sameIds.map((group) => group.patientId), ['900'])
+})

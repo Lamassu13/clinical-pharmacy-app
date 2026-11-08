@@ -43,7 +43,8 @@ const resolveScope = (scope) => {
 
 // «أرقام الطبلة المكررة»: a patient ID (رقم الطبلة) charted for more than one patient name in the range —
 // a mistyped ID, or two patients given the same one. One group per ID, with each name's floor/ward and
-// the days it was charted. The same name on two wards is a transfer, not a clash, so it is not listed, and
+// the days it was charted — only when two different names sit on different floors (a special ward counts as
+// its own place); two names on one floor are not listed. The same name on two wards is a transfer, not a clash, and
 // neither is one name spelled two ways («احمد»/«أحمد», «علي»/«على»): names are compared with the alef, ya,
 // ta-marbuta, harakat and tatweel variants folded away.
 const foldName = (name) => name.toLowerCase().replace(/[\u064B-\u0652\u0640]/g, '').replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/\s+/g, ' ').trim()
@@ -61,7 +62,9 @@ export const sameIdGroups = (rows, from) => {
     entries.set(key, entry)
     byId.set(row.patient_id, entries)
   })
-  return [...byId].filter(([, entries]) => new Set([...entries.values()].map((entry) => foldName(entry.patient))).size > 1)
+  const place = (entry) => entry.floor ?? `ward:${entry.ward}`
+  const clash = (entries) => entries.some((a) => entries.some((b) => foldName(a.patient) !== foldName(b.patient) && place(a) !== place(b)))
+  return [...byId].filter(([, entries]) => clash([...entries.values()]))
     .map(([patientId, entries]) => ({ patientId, entries: [...entries.values()].map(({ days, ...entry }) => ({ ...entry, days: days.size })).sort((a, b) => a.from.localeCompare(b.from) || a.patient.localeCompare(b.patient, 'ar')) }))
     .sort((a, b) => a.patientId.localeCompare(b.patientId, undefined, { numeric: true }))
 }

@@ -21,7 +21,7 @@ const LEAD = '.report-section-head, .report-note, .report-trend-pick, .report-co
 // the chosen option).
 const paperCopy = (node) => {
   const copy = node.cloneNode(true)
-  copy.querySelectorAll('.report-print-one').forEach((button) => button.remove())
+  copy.querySelectorAll('.report-print-one, .report-print-skip').forEach((cell) => cell.remove())
   const selects = node.querySelectorAll('select')
   copy.querySelectorAll('select').forEach((select, index) => select.replaceWith(el('strong', '', selects[index].selectedOptions[0]?.textContent || '')))
   return copy
@@ -83,6 +83,7 @@ const paginate = (article, root, only, title) => {
       }
       let frameCopy = open()
       for (const row of table.tBodies[0]?.rows || []) {
+        if (row.dataset.printSkip) continue // a row the reader left unticked
         const copy = paperCopy(row)
         tbody.append(copy)
         if (fits()) continue
