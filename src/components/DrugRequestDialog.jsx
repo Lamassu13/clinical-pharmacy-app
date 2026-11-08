@@ -12,6 +12,8 @@ export default function DrugRequestDialog({ kind, initial, screen = false, kicke
   const spec = DRUG_REQUESTS[kind]
   const fields = spec.fields.filter((field) => screen || !field.screenOnly)
   const [name, setName] = useState(initial.name || '')
+  // رقم الطبلة: filled from the chart when it has one, typed here when it does not (digits only, as the server keeps it).
+  const [patientId, setPatientId] = useState(initial.patientId || '')
   const [values, setValues] = useState(() => Object.fromEntries(spec.fields.map((field) => [field.key, initial.fields?.[field.key] || ''])))
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -33,7 +35,7 @@ export default function DrugRequestDialog({ kind, initial, screen = false, kicke
       return
     }
     setBusy(true)
-    const result = await onSave({ name: name.trim(), patientId: initial.patientId || '', fields: values })
+    const result = await onSave({ name: name.trim(), patientId: patientId.replace(/\D/g, '').slice(0, 20), fields: values })
     setBusy(false)
     if (!result.ok) setError(result.message)
   }
@@ -46,8 +48,12 @@ export default function DrugRequestDialog({ kind, initial, screen = false, kicke
       {note && <p className="req-dialog-note" role="status">{note}</p>}
 
       <div className="req-dialog-grid">
-        <label className="req-dialog-wide"><span>اسم المريض{initial.patientId && <small> — رقم الطبلة <bdi>{initial.patientId}</bdi></small>}</span>
+        <label className="req-dialog-wide"><span>اسم المريض</span>
           <input value={name} maxLength={200} autoComplete="off" autoFocus={!name} onChange={(event) => { setError(''); setName(event.target.value) }} />
+        </label>
+        <label><span>رقم الطبلة</span>
+          <input value={patientId} maxLength={20} autoComplete="off" inputMode="numeric" dir="ltr"
+            onChange={(event) => { setError(''); setPatientId(event.target.value.replace(/\D/g, '')) }} />
         </label>
         {fields.map((field) => {
           // A fixed choice (the sex): chips only, no box to type in.
