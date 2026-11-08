@@ -9,7 +9,7 @@ import { wardAttention } from '../helpers.js'
 // user may see (their assignment, or the whole unit for a manager) — no post-paint DOM hiding.
 export default function FloorPickerScreen({
   today, selectedDate, isExpired, floors = [], specialWards = [], resumeDraft, onResume,
-  onOpenAlbuminFollowUp, onPickFloor, onOpen, onOpenWard, dashboard, dashboardError,
+  onPickFloor, onOpen, onOpenWard, dashboard, dashboardError,
   announcements, isManager, announcementDraft, setAnnouncementDraft, announcementError, announcementBusy,
   onPostAnnouncement, onEditAnnouncement, onDeleteAnnouncement,
 }) {
@@ -50,7 +50,6 @@ export default function FloorPickerScreen({
       </button>
     )}
 
-    <button type="button" className="secondary-button albumin-follow-link" onClick={onOpenAlbuminFollowUp}>متابعة الالبومين</button>
     {isManager && <LongAntibioticPatients date={selectedDate} isExpired={isExpired} />}
     {isManager && <PatientSearch date={selectedDate} onOpen={onOpen} isExpired={isExpired} />}
 
