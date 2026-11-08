@@ -10,7 +10,7 @@ import { exportReportPdf } from '../reportPdf.js'
 // cell of one of them saves to that form, so the sheet and the form never disagree (the ward is the
 // form's, so it is not editable). Rows can also be added by hand; the «Not indicated» list and the notes
 // are typed here and kept per day and floor (routes/albumin-followup.js). The tables read left to right
-// like the paper sheet; on a phone each row becomes a card. Cells are contentEditable so what is typed is
+// like the paper sheet; on a phone the same table slides sideways with the name column pinned. Cells are contentEditable so what is typed is
 // plain DOM text and the PDF (the reports' A4 route) draws it as it stands.
 const MAIN_COLUMNS = [['day', 'Treatment day'], ['name', 'Pt. Name'], ['fileNo', 'File no.'], ['ward', 'Ward'], ['diagnosis', 'Diagnosis'], ['sAlb', 'S.alb'], ['sCreat', 'S.Creat'], ['vials', 'No of vials'], ['indication', 'No of indication']]
 const NOT_COLUMNS = [['name', 'Pt.name'], ['fileNo', 'File no.'], ['ward', 'Ward'], ['diagnosis', 'Diagnosis'], ['sAlb', 'S.albumin'], ['sCreat', 'S.creat.'], ['reason', 'Reasons']]
@@ -90,7 +90,7 @@ export function FollowUpSheet({ sheetRef, stale, date, floor, data, saveRow, set
       <div className="report-section-head"><h2 dir="ltr">Not indicated</h2></div>
       <div className="table-frame fu-frame"><table className="requests-table report-table fu-table" dir="ltr">
         <thead><tr><th scope="col">No.</th>{NOT_COLUMNS.map(([key, header]) => <th key={key} scope="col">{header}</th>)}<th className="report-print-skip" /></tr></thead>
-        <tbody>{notRows.map((row, index) => <tr key={`not-${index}`} className={index > doc.notIndicated.length ? 'fu-spare' : undefined}>
+        <tbody>{notRows.map((row, index) => <tr key={`not-${index}`}>
           <td data-label="No.">{index + 1}</td>
           {NOT_COLUMNS.map(([key, label]) => <Cell key={key} label={label} value={row[key]} ltr={NUMBER_KEYS.includes(key)} onCommit={(text) => setListCell('notIndicated', BLANK_NOT, index, key, text)} />)}
           <td className="report-print-skip">{index < doc.notIndicated.length && <button type="button" className="fu-remove" aria-label="حذف الصف" onClick={() => removeFrom('notIndicated', index)}>حذف</button>}</td>

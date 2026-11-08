@@ -2843,27 +2843,21 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
 .fu-edit:focus { outline: 2px solid var(--primary); outline-offset: -2px; background: var(--primary-tint); }
 .fu-notes { min-height: 5.5rem; padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-sm); white-space: pre-wrap; text-align: start; }
 .fu-remove { min-height: 36px; padding: 0 var(--space-3); border: 1px solid var(--danger-border); border-radius: var(--radius-sm); background: var(--danger-tint); color: var(--danger); font: inherit; font-size: var(--text-sm); cursor: pointer; }
-.fu-frame { max-height: none; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.fu-frame { max-height: none; overflow-x: auto; -webkit-overflow-scrolling: touch; direction: ltr; } /* scrolls from the left edge, like the table reads */
 .albumin-follow-link { margin-bottom: var(--space-4); }
 
-/* A phone: each row is a card — the column's name on one side, the cell to type in on the other, 44px tall. */
+/* A phone: the same table as on paper, slid sideways with a finger. The patient's name column is pinned to the
+   edge (sticky) so the row stays known; where a device does not pin it, the table just scrolls like any other. */
 @media (max-width: 700px) {
-  .fu-sheet .fu-frame { overflow: visible; border: 0; background: none; }
-  .fu-sheet .fu-table, .fu-sheet .fu-table tbody, .fu-sheet .fu-table tr, .fu-sheet .fu-table td { display: block; width: 100%; }
-  .fu-sheet .fu-table thead { display: none; }
-  .fu-sheet .fu-table tr { margin-bottom: var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); direction: rtl; overflow: hidden; }
-  .fu-sheet .fu-table td { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); min-height: 48px; padding: var(--space-2) var(--space-3); border: 0; border-bottom: 1px dashed var(--border); text-align: start; }
-  .fu-sheet .fu-table td:last-child { border-bottom: 0; }
-  .fu-sheet .fu-table td::before { content: attr(data-label); flex: 0 0 36%; color: var(--text-muted); font-size: var(--text-sm); font-weight: 700; direction: ltr; text-align: start; unicode-bidi: isolate; }
-  .fu-sheet .fu-table td:empty, .fu-sheet .fu-table td.report-print-skip:empty { display: none; }
-  .fu-sheet .fu-table td.report-print-skip { justify-content: flex-end; }
-  .fu-sheet .fu-table td.report-print-skip::before { content: none; }
-  .fu-sheet .fu-table td > .fu-edit { flex: 1; min-height: 40px; padding: var(--space-2); border-radius: var(--radius-sm); background: var(--surface-alt); font-size: 16px; text-align: start; }
-  .fu-sheet .fu-edit--fixed { background: none; color: var(--text-muted); }
-  .fu-sheet .fu-new-row { border-style: dashed; }
-  .fu-sheet .fu-spare { display: none; } /* the paper's spare numbered lines: one blank row is enough on a phone */
-  .fu-sheet .fu-new-row td { background: none; }
-  .fu-sheet .fu-band h2 { border-radius: var(--radius-md); }
+  .fu-sheet .fu-table { min-width: 680px; }
+  .fu-sheet .fu-table th, .fu-sheet .fu-table td { padding: 6px 8px; }
+  .fu-sheet .fu-table th { font-size: var(--text-xs); }
+  .fu-sheet .fu-table tbody tr { height: 52px; }
+  .fu-sheet .fu-edit { min-height: 40px; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+  .fu-sheet .fu-table th:nth-child(2), .fu-sheet .fu-table td:nth-child(2) { position: sticky; left: 0; z-index: 1; min-width: 108px; background: var(--surface); box-shadow: 1px 0 0 var(--border-strong); }
+  .fu-sheet .fu-table tbody tr:nth-child(even) td:nth-child(2) { background: var(--surface-alt); }
+  .fu-sheet .fu-table thead th:nth-child(2) { background: #f4b8b3; z-index: 2; }
+  .fu-sheet .fu-band .fu-table thead th:nth-child(2) { background: var(--surface-alt); }
   .fu-sheet .fu-notes { font-size: 16px; }
   .fu-sheet .report-doc-head { grid-template-columns: auto 1fr; }
   .fu-controls input[type="date"] { min-height: 44px; font-size: 16px; }
