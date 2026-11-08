@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import hospitalLogo from '../assets/hospital-logo.png'
 import ChartDoseRow from '../components/ChartDoseRow.jsx'
@@ -100,6 +100,21 @@ export default function ChartScreen({
   // exceeds what the 41-row case already used, so this can't newly overflow onto page two.
   const PRINT_GRID_BUDGET_MM = 41 * 2.8
   const printRowHeightMM = PRINT_GRID_BUDGET_MM / printRowCount
+  // Opened from a patient search (`selected.row`, the result's «سطر N»): once the chart is on screen, bring that
+  // patient's row to the middle and mark it for a few seconds. Once per opening, so changing the date or a reload
+  // does not pull the page back. The mark is a data attribute (React draws the row's classes and would drop a class).
+  const foundFor = useRef(null)
+  useEffect(() => {
+    const rowNumber = selected.row
+    if (!chartReady || !rowNumber || foundFor.current === selected || !chartGridRef.current) return undefined
+    const rows = [...chartGridRef.current.querySelectorAll(`tr[data-row="${rowNumber - 1}"]`)]
+    if (!rows.length) return undefined
+    foundFor.current = selected
+    rows[0].scrollIntoView({ block: 'center', behavior: 'smooth' })
+    rows.forEach((row) => row.setAttribute('data-found', ''))
+    const timer = setTimeout(() => rows.forEach((row) => row.removeAttribute('data-found')), 4000)
+    return () => { clearTimeout(timer); rows.forEach((row) => row.removeAttribute('data-found')) }
+  }, [chartReady, selected])
   const hasDropped = droppedCells && Object.keys(droppedCells).length > 0
   const frameClass = ['chart-frame', readOnly && 'chart-frame-held', hasDropped && 'chart-frame--clash'].filter(Boolean).join(' ')
   const since = lockHolder?.since
@@ -210,7 +225,9 @@ export default function ChartScreen({
       {chartReady && !readOnly && patientNames.every((name) => !name.trim()) && columnMedicines.every((medicine) => !medicine.trim()) && (
         <p className="chart-empty-hint">جارت جديد — اكتب اسم أول مريض في أقصى اليمين، ثم اسم الدواء في رأس العمود.</p>
       )}
-      <div className="chart-head" inert={(!chartReady || readOnly) || undefined}>
+      {/* Only a chart that has not loaded is inert. A read-only one (a past day, or another device editing) must
+          still scroll — an inert element ignores a finger — so there the boxes just cannot take focus or a tap. */}
+      <div className="chart-head" inert={!chartReady || undefined} onFocusCapture={(event) => { if (readOnly) event.target.blur?.() }}>
         <div className="chart-head-corner"><img className="patient-header-logo" src={hospitalLogo} alt="" /><span>مستشفى بغداد التعليمي</span><span>وحدة الصيدلة السريرية</span>{selected.floor && <span>الطابق {selected.floor}</span>}<span>{selected.ward}</span><span>{today}</span><span>{todayWeekday}</span></div>
         <div className="chart-head-scroll" ref={chartHeadRef}><table className="chart-table" role="presentation"><thead><tr>{Array.from({ length: columnMedicines.length }, (_, index) => <th key={index} className={activeColumn === index ? 'col-active' : undefined}><input className="medicine-select" value={columnMedicines[index]}
           autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
@@ -235,9 +252,9 @@ export default function ChartScreen({
           }}
           placeholder="دواء" title="اكتب أول حروف الدواء واختر من القائمة" aria-label={`اسم الدواء، عمود ${index + 1}`} /></th>)}</tr></thead></table></div>
       </div>
-      {/* inert while another device holds the lock — the poll keeps this view current. */}
-      <div className="chart-grid" ref={chartGridRef} inert={(!chartReady || readOnly) || undefined}
-        onFocusCapture={(event) => { const row = event.target.closest('tr[data-row]'); if (row) setActiveRow(Number(row.dataset.row)); const cell = event.target.closest('td[data-col]'); setActiveColumn(cell ? Number(cell.dataset.col) : -1); if (cell && chartGridRef.current) setLabelBelow(cell.getBoundingClientRect().top - chartGridRef.current.getBoundingClientRect().top < 34); const dose = doseCellOf(event.target); doseFocus.current = dose && { ...dose, value: event.target.value } }}
+      {/* Read-only while another device holds the lock or on a past day — the poll keeps this view current. */}
+      <div className="chart-grid" ref={chartGridRef} inert={!chartReady || undefined}
+        onFocusCapture={(event) => { if (readOnly) { event.target.blur?.(); return } const row = event.target.closest('tr[data-row]'); if (row) setActiveRow(Number(row.dataset.row)); const cell = event.target.closest('td[data-col]'); setActiveColumn(cell ? Number(cell.dataset.col) : -1); if (cell && chartGridRef.current) setLabelBelow(cell.getBoundingClientRect().top - chartGridRef.current.getBoundingClientRect().top < 34); const dose = doseCellOf(event.target); doseFocus.current = dose && { ...dose, value: event.target.value } }}
         onBlurCapture={(event) => {
           const dose = doseCellOf(event.target)
           const was = doseFocus.current

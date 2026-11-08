@@ -85,7 +85,7 @@ export default function PatientSearch({ floor = null, date, onOpen, isExpired })
     {active && !error && !history && shown && shown.length > 0 && <ul className="patient-search-results">
       {shown.map((patient) => (
         <li key={`${patient.floor}-${patient.ward}-${patient.slot}-${patient.rowNumber}`}>
-          <button type="button" className="patient-search-result" onClick={() => onOpen({ floor: patient.floor, ward: patient.ward, mode: 'chart', slot: patient.slot })}>
+          <button type="button" className="patient-search-result" onClick={() => onOpen({ floor: patient.floor, ward: patient.ward, mode: 'chart', slot: patient.slot, row: patient.rowNumber })}>
             <span className="patient-search-who">
               <strong>{patient.name || 'بلا اسم'}</strong>
               {patient.patientId && <span className="patient-search-id">رقم الطبلة <bdi>{patient.patientId}</bdi></span>}
