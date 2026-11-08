@@ -41,6 +41,28 @@ const resolveScope = (scope) => {
   return { wards: everyWard.filter(({ floor, ward }) => keys.includes(String(floor ?? ward))), sql: 'COALESCE(w.floor_number::text, w.name) = ANY($3::text[])', value: keys }
 }
 
+// «أرقام الطبلة المكررة»: a patient ID (رقم الطبلة) charted for more than one patient name in the range —
+// a mistyped ID, or two patients given the same one. One group per ID, with each name's floor/ward and
+// the days it was charted. The same name on two wards is a transfer, not a clash, so it is not listed.
+// `rows`: { floor, ward, date, patient, patient_id } per patient per ward per day.
+export const sameIdGroups = (rows, from) => {
+  const byId = new Map()
+  rows.forEach((row) => {
+    if (!row.patient_id || !row.patient || row.date < from) return
+    const entries = byId.get(row.patient_id) || new Map()
+    const key = `${row.patient}|${row.floor ?? ''}|${row.ward}`
+    const entry = entries.get(key) || { patient: row.patient, floor: row.floor, ward: row.ward, from: row.date, to: row.date, days: new Set() }
+    entry.from = entry.from < row.date ? entry.from : row.date
+    entry.to = entry.to > row.date ? entry.to : row.date
+    entry.days.add(row.date)
+    entries.set(key, entry)
+    byId.set(row.patient_id, entries)
+  })
+  return [...byId].filter(([, entries]) => new Set([...entries.values()].map((entry) => entry.patient)).size > 1)
+    .map(([patientId, entries]) => ({ patientId, entries: [...entries.values()].map(({ days, ...entry }) => ({ ...entry, days: days.size })).sort((a, b) => a.from.localeCompare(b.from) || a.patient.localeCompare(b.patient, 'ar')) }))
+    .sort((a, b) => a.patientId.localeCompare(b.patientId, undefined, { numeric: true }))
+}
+
 router.get('/reports', requireManager, async (request, response) => {
   const { from, to } = request.query
   if (!isIsoDate(from) || !isIsoDate(to)) return response.status(400).json({ message: 'التاريخ مطلوب' })
@@ -540,6 +562,7 @@ router.get('/reports', requireManager, async (request, response) => {
     trend,
     stayRows: stayRows.sort((a, b) => b.median - a.median || b.max - a.max),
     stayBuckets: STAY_BUCKETS.map(([low, high]) => (high === Infinity ? `${low}+` : low === high ? `${low}` : `${low}–${high}`)),
+    sameIds: sameIdGroups(patientRows.rows, from),
     readmissions: readmissions.sort((a, b) => b.count - a.count || a.patient.localeCompare(b.patient, 'ar')),
     antibiotics,
   })
