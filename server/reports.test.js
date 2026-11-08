@@ -267,3 +267,14 @@ test('GET /api/reports: antibiotics per floor, and every antibacterial course ov
   assert.ok(Math.abs(floor2[0].ddds - (wards2[0].ddds + wards2[1].ddds)) <= 0.1)
   assert.equal(floor2[0].dddPer100, Math.round((floor2[0].ddds / floor2[0].patientDays) * 1000) / 10)
 })
+
+test('GET /api/reports: the same patient ID on different patients lists each one with its floor; a transfer of one patient does not', async () => {
+  const admin = await loginAs({ role: 'admin' })
+  const meds = { 'Aspirin 100mg Tab': 1 }
+  await saveChart(admin, 2, '2026-05-02', [{ name: 'سامي', id: '500', meds }, { name: 'نور', id: '600', meds }])
+  await saveChart(admin, 5, '2026-05-03', [{ name: 'ليث', id: '500', meds }, { name: 'نور', id: '600', meds }]) // 600: one patient moved ward
+  await saveChart(admin, 5, '2026-05-04', [{ name: 'ليث', id: '500', meds }])
+  const { body } = await admin.get('/api/reports?scope=all&from=2026-05-01&to=2026-05-05')
+  assert.deepEqual(body.sameIds.map((group) => [group.patientId, group.entries.map((e) => [e.patient, e.floor, e.from, e.to, e.days])]),
+    [['500', [['سامي', 2, '2026-05-02', '2026-05-02', 1], ['ليث', 5, '2026-05-03', '2026-05-04', 2]]]])
+})

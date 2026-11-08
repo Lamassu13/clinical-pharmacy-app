@@ -25,6 +25,7 @@ const SECTIONS = [
   { key: 'longStays', label: 'الإقامة الطويلة' },
   { key: 'stays', label: 'مدة البقاء' },
   { key: 'readmissions', label: 'المرضى العائدون' },
+  { key: 'sameIds', label: 'أرقام الطبلة المكررة' },
   { key: 'trend', label: 'اتجاه استهلاك دواء' },
   { key: 'consumption', label: 'استهلاك الأدوية' },
   { key: 'ddd', label: 'استهلاك المضادات (DDD)' },
@@ -253,6 +254,19 @@ function ReportDocument({ ref, report, stale, sections, printing, onPrint }) {
             <tbody>{report.readmissions.map((row) => <tr key={`${row.floor}|${row.ward}|${row.patientId}|${row.patient}`}>
               <td>{row.patient}{row.patientId && <span className="report-patient-id"> · {row.patientId}</span>}</td><td>{wardName(row, scopedToFloor)}</td><td className="num">{row.count}</td><td>{row.returns.map((item) => `${formatDate(item.date)} (${item.gap})`).join('، ')}</td>
             </tr>)}</tbody>
+          </table></div>
+        )}
+      </Section>}
+
+      {shows('sameIds') && <Section {...part('sameIds')} title="أرقام الطبلة المكررة" note="رقم طبلة كُتب لأكثر من اسم مريض في هذه المدة — خطأ في الرقم أو مريضان بالرقم نفسه. الاسم نفسه في ردهتين (نقل) لا يظهر هنا.">
+        {report.sameIds.length === 0 ? <Empty>لا يوجد رقم طبلة مكرر لمرضى مختلفين في هذه المدة.</Empty> : (
+          <div className="table-frame"><table className="requests-table report-table">
+            <thead><tr><th>رقم الطبلة</th><th>المريض</th><th>الطابق</th><th>الردهة</th><th>من — إلى</th><th>الأيام</th></tr></thead>
+            <tbody>{report.sameIds.flatMap((group) => group.entries.map((entry, index) => <tr key={`${group.patientId}|${entry.patient}|${entry.floor}|${entry.ward}`}>
+              {index === 0 && <td rowSpan={group.entries.length} className="num">{group.patientId}</td>}
+              <td>{entry.patient}</td><td>{entry.floor ?? '—'}</td><td>{entry.ward}</td>
+              <td>{entry.from === entry.to ? formatDate(entry.from) : `${formatDate(entry.from)} — ${formatDate(entry.to)}`}</td><td className="num">{entry.days}</td>
+            </tr>))}</tbody>
           </table></div>
         )}
       </Section>}
