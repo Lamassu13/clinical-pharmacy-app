@@ -43,14 +43,17 @@ const resolveScope = (scope) => {
 
 // «أرقام الطبلة المكررة»: a patient ID (رقم الطبلة) charted for more than one patient name in the range —
 // a mistyped ID, or two patients given the same one. One group per ID, with each name's floor/ward and
-// the days it was charted. The same name on two wards is a transfer, not a clash, so it is not listed.
+// the days it was charted. The same name on two wards is a transfer, not a clash, so it is not listed, and
+// neither is one name spelled two ways («احمد»/«أحمد», «علي»/«على»): names are compared with the alef, ya,
+// ta-marbuta, harakat and tatweel variants folded away.
+const foldName = (name) => name.toLowerCase().replace(/[\u064B-\u0652\u0640]/g, '').replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/\s+/g, ' ').trim()
 // `rows`: { floor, ward, date, patient, patient_id } per patient per ward per day.
 export const sameIdGroups = (rows, from) => {
   const byId = new Map()
   rows.forEach((row) => {
     if (!row.patient_id || !row.patient || row.date < from) return
     const entries = byId.get(row.patient_id) || new Map()
-    const key = `${row.patient}|${row.floor ?? ''}|${row.ward}`
+    const key = `${foldName(row.patient)}|${row.floor ?? ''}|${row.ward}`
     const entry = entries.get(key) || { patient: row.patient, floor: row.floor, ward: row.ward, from: row.date, to: row.date, days: new Set() }
     entry.from = entry.from < row.date ? entry.from : row.date
     entry.to = entry.to > row.date ? entry.to : row.date
@@ -58,7 +61,7 @@ export const sameIdGroups = (rows, from) => {
     entries.set(key, entry)
     byId.set(row.patient_id, entries)
   })
-  return [...byId].filter(([, entries]) => new Set([...entries.values()].map((entry) => entry.patient)).size > 1)
+  return [...byId].filter(([, entries]) => new Set([...entries.values()].map((entry) => foldName(entry.patient))).size > 1)
     .map(([patientId, entries]) => ({ patientId, entries: [...entries.values()].map(({ days, ...entry }) => ({ ...entry, days: days.size })).sort((a, b) => a.from.localeCompare(b.from) || a.patient.localeCompare(b.patient, 'ar')) }))
     .sort((a, b) => a.patientId.localeCompare(b.patientId, undefined, { numeric: true }))
 }
