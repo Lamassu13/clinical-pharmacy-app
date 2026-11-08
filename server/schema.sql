@@ -472,7 +472,7 @@ ALTER TABLE drug_requests ADD COLUMN IF NOT EXISTS google_sent_at TIMESTAMPTZ;
 
 -- «Albumin follow up» (routes/albumin-followup.js): what is typed on the day's sheet beyond the albumin
 -- forms — rows added by hand, the «Not indicated» list, the notes. One document per day and scope:
--- 'all' for a manager (the whole hospital), 'floor:N' for a floor's pharmacist.
+-- 'floor:N' (a floor's sheet; managers open it from inside the floor).
 CREATE TABLE IF NOT EXISTS albumin_followups (
   day DATE NOT NULL,
   scope TEXT NOT NULL,

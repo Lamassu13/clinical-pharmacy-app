@@ -2830,14 +2830,41 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
 .rpt-sheet td.alb-i12 { font-size: 8.5pt; }
 .rpt-sheet .alb-signatures { row-gap: 24mm; }
 
-/* «Albumin follow up» (AlbuminFollowUpScreen): the unit's paper sheet — a pink header, a blue «Not indicated» band, plain editable cells. */
-.fu-sheet .fu-table th { background: #f4b8b3; color: #1b1b1b; text-align: center; font-weight: 700; }
-.fu-sheet .fu-table td { text-align: center; vertical-align: middle; font-weight: 600; }
-.fu-sheet .fu-band .report-section-head { display: block; }
-.fu-sheet .fu-band h2 { margin: 0; padding: var(--space-3); background: #a8def6; color: #1b1b1b; text-align: center; }
-.fu-sheet .fu-band .fu-table th { background: none; }
-.fu-edit { min-width: 3ch; min-height: 1.6em; cursor: text; }
+/* «Albumin follow up» (AlbuminFollowUpScreen): the unit's paper sheet — a pink header, a blue «Not indicated» band, plain
+   editable cells, read left to right like the paper. The colours and the table are NOT scoped to .fu-sheet: the PDF draws
+   copies of these rows outside it. Only the phone's card layout is, so the PDF never takes it. */
+.fu-table { width: 100%; border-collapse: collapse; table-layout: auto; }
+.fu-table thead th { position: static; background: #f4b8b3; color: #1b1b1b; text-align: center; font-weight: 700; white-space: normal; }
+.fu-table td { text-align: center; vertical-align: middle; font-weight: 600; }
+.fu-band .report-section-head { display: block; }
+.fu-band h2 { margin: 0; padding: var(--space-3); background: #a8def6; color: #1b1b1b; text-align: center; }
+.fu-band .fu-table thead th { background: var(--surface-alt); }
+.fu-edit { display: block; min-width: 3ch; min-height: 1.6em; padding: 2px 4px; font: inherit; cursor: text; unicode-bidi: plaintext; }
 .fu-edit:focus { outline: 2px solid var(--primary); outline-offset: -2px; background: var(--primary-tint); }
-.fu-notes { min-height: 5.5rem; padding: var(--space-3); border: 1px solid var(--border); white-space: pre-wrap; text-align: start; }
-.fu-remove { min-width: 32px; min-height: 32px; border: 0; background: none; color: var(--danger); font-size: 20px; line-height: 1; cursor: pointer; }
+.fu-notes { min-height: 5.5rem; padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-sm); white-space: pre-wrap; text-align: start; }
+.fu-remove { min-height: 36px; padding: 0 var(--space-3); border: 1px solid var(--danger-border); border-radius: var(--radius-sm); background: var(--danger-tint); color: var(--danger); font: inherit; font-size: var(--text-sm); cursor: pointer; }
+.fu-frame { max-height: none; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .albumin-follow-link { margin-bottom: var(--space-4); }
+
+/* A phone: each row is a card — the column's name on one side, the cell to type in on the other, 44px tall. */
+@media (max-width: 700px) {
+  .fu-sheet .fu-frame { overflow: visible; border: 0; background: none; }
+  .fu-sheet .fu-table, .fu-sheet .fu-table tbody, .fu-sheet .fu-table tr, .fu-sheet .fu-table td { display: block; width: 100%; }
+  .fu-sheet .fu-table thead { display: none; }
+  .fu-sheet .fu-table tr { margin-bottom: var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); direction: rtl; overflow: hidden; }
+  .fu-sheet .fu-table td { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); min-height: 48px; padding: var(--space-2) var(--space-3); border: 0; border-bottom: 1px dashed var(--border); text-align: start; }
+  .fu-sheet .fu-table td:last-child { border-bottom: 0; }
+  .fu-sheet .fu-table td::before { content: attr(data-label); flex: 0 0 36%; color: var(--text-muted); font-size: var(--text-sm); font-weight: 700; direction: ltr; text-align: start; unicode-bidi: isolate; }
+  .fu-sheet .fu-table td:empty, .fu-sheet .fu-table td.report-print-skip:empty { display: none; }
+  .fu-sheet .fu-table td.report-print-skip { justify-content: flex-end; }
+  .fu-sheet .fu-table td.report-print-skip::before { content: none; }
+  .fu-sheet .fu-table td > .fu-edit { flex: 1; min-height: 40px; padding: var(--space-2); border-radius: var(--radius-sm); background: var(--surface-alt); font-size: 16px; text-align: start; }
+  .fu-sheet .fu-edit--fixed { background: none; color: var(--text-muted); }
+  .fu-sheet .fu-new-row { border-style: dashed; }
+  .fu-sheet .fu-spare { display: none; } /* the paper's spare numbered lines: one blank row is enough on a phone */
+  .fu-sheet .fu-new-row td { background: none; }
+  .fu-sheet .fu-band h2 { border-radius: var(--radius-md); }
+  .fu-sheet .fu-notes { font-size: 16px; }
+  .fu-sheet .report-doc-head { grid-template-columns: auto 1fr; }
+  .fu-controls input[type="date"] { min-height: 44px; font-size: 16px; }
+}
