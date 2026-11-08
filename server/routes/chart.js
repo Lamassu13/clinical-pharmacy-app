@@ -14,6 +14,7 @@ import { notifyLater, todayInBaghdad, MANAGER_ROLES } from '../push.js'
 import { recordChartChanges } from '../chart-history.js'
 import { recordAudit } from '../audit.js'
 import { medicineCatalogue } from '../medicine-catalogue.js'
+import { foldName, foldedSql } from '../name-fold.js'
 import { DAY_LOCKED, isDayLocked, tomorrowInBaghdad } from '../day-lock.js'
 
 const router = express.Router()
@@ -1161,7 +1162,8 @@ router.get('/patients/search', requireAuth, async (request, response) => {
   if (floor === null ? !isManager : !canAccessLocation(user, floor, null)) return response.status(403).json({ message: 'لا تملك صلاحية لهذا الطابق' })
   if (q.length < 2) return response.json({ patients: [] })
   const byId = /^\d+$/.test(q)
-  const pattern = byId ? `${q}%` : `%${q.replace(/[\\%_]/g, '\\$&')}%`
+  // A name is matched with its spellings folded (name-fold.js): «احمد» finds «أحمد», a doubled space does not hide it.
+  const pattern = byId ? `${q}%` : `%${foldName(q).replace(/[\\%_]/g, '\\$&')}%`
   const result = await query(
     `SELECT w.floor_number AS floor, w.name AS ward, dc.slot, cp.row_number, cp.patient_name AS name, cp.patient_id,
             COALESCE(json_agg(json_build_object('name', COALESCE(m.name, cc.custom_name), 'quantity', cq.quantity) ORDER BY cc.column_number)
@@ -1174,7 +1176,7 @@ router.get('/patients/search', requireAuth, async (request, response) => {
      LEFT JOIN medicines m ON m.id = cc.medicine_id
      WHERE dc.chart_date = $1::date
        AND ($2::int IS NULL OR w.floor_number = $2)
-       AND ${byId ? 'cp.patient_id LIKE $3' : 'cp.patient_name ILIKE $3'}
+       AND ${byId ? 'cp.patient_id LIKE $3' : `${foldedSql('cp.patient_name')} LIKE $3`}
      GROUP BY w.floor_number, w.name, dc.slot, cp.row_number, cp.patient_name, cp.patient_id
      ORDER BY w.floor_number NULLS LAST, w.name, dc.slot = 'extra', cp.row_number
      LIMIT 30`,
@@ -1238,7 +1240,7 @@ router.get('/patients/history', requireAuth, async (request, response) => {
   // patients are picked in SQL (most recently seen first), so Neon never sends more than their
   // stays and medicines to the app, however common the term.
   if (q.length < (byId ? 2 : 3)) return response.json({ patients: [] })
-  const pattern = byId ? `${q}%` : `%${q.replace(/[\\%_]/g, '\\$&')}%`
+  const pattern = byId ? `${q}%` : `%${foldName(q).replace(/[\\%_]/g, '\\$&')}%`
   const result = await query(
     `WITH hits AS (
        SELECT CASE WHEN cp.patient_id <> '' THEN 'id:' || cp.patient_id ELSE 'name:' || btrim(cp.patient_name) END AS key,
@@ -1246,7 +1248,7 @@ router.get('/patients/history', requireAuth, async (request, response) => {
        FROM chart_patients cp
        JOIN daily_charts dc ON dc.id = cp.chart_id
        JOIN wards w ON w.id = dc.ward_id
-       WHERE ${byId ? 'cp.patient_id LIKE $1' : "cp.patient_name ILIKE $1 AND btrim(cp.patient_name) <> ''"}
+       WHERE ${byId ? 'cp.patient_id LIKE $1' : `${foldedSql('cp.patient_name')} LIKE $1 AND btrim(cp.patient_name) <> ''`}
      ), top AS (
        SELECT key FROM hits GROUP BY key ORDER BY max(chart_date) DESC, key LIMIT ${HISTORY_LIMIT}
      )

@@ -86,3 +86,19 @@ test('patient history: one patient across dates and wards, newest first; manager
   const pharmacist = await loginAs({ role: 'user', floor: 5 })
   assert.equal((await pharmacist.get('/api/patients/history?q=123')).status, 403)
 })
+
+test('patient search: a name is found whichever way it was spelled, an ID by its start; a doubled space does not hide it', async () => {
+  const admin = await loginAs({ role: 'admin' })
+  assert.equal((await saveChart(admin, A, 'main', [{ name: 'أحمد  علي', patientId: '41355' }])).status, 200)
+  assert.equal((await saveChart(admin, B, 'main', [{ name: 'فاطمة الزهراء', patientId: '50021' }])).status, 200)
+  const found = async (q) => (await search(admin, { q })).body.patients.map((patient) => patient.name)
+  assert.deepEqual(await found('احمد'), ['أحمد  علي'])
+  assert.deepEqual(await found('احمد علي'), ['أحمد  علي'])
+  assert.deepEqual(await found('أحمد علي'), ['أحمد  علي'])
+  assert.deepEqual(await found('فاطمه'), ['فاطمة الزهراء'])
+  assert.deepEqual(await found('413'), ['أحمد  علي'])
+  assert.deepEqual(await found('٥٠٠'), []) // Arabic digits are turned into 500 by the app before they are sent
+  // The all-dates search folds the same way.
+  const history = (await admin.get(`/api/patients/history?${new URLSearchParams({ q: 'فاطمه' })}`)).body.patients
+  assert.deepEqual(history.map((patient) => patient.name), ['فاطمة الزهراء'])
+})

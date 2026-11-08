@@ -1503,6 +1503,9 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
    dose numbers' contrast (an earlier opacity:.55 dropped them below AA). grayscale pulls the
    green tints out so it reads "not live"; the faint wash is the fallback where backdrop-filter
    is unsupported. Covers all three strips (head / grid / foot) via .chart-frame's inset:0. */
+/* Read-only (a past day, another device editing): the strips stay scrollable, the boxes ignore taps — an
+   inert container would have frozen the finger too. A box reached by keyboard is blurred (ChartScreen). */
+.chart-frame-held :is(.chart-head, .chart-grid) :is(input, textarea, select, button) { pointer-events: none; caret-color: transparent; }
 .chart-frame-held::after {
   content: '';
   position: absolute;
@@ -2861,4 +2864,10 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
   .fu-sheet .fu-notes { font-size: 16px; }
   .fu-sheet .report-doc-head { grid-template-columns: auto 1fr; }
   .fu-controls input[type="date"] { min-height: 44px; font-size: 16px; }
+}
+
+/* A patient opened from the search: their row, marked for a few seconds (ChartScreen). Screen only — never on paper. */
+@media screen {
+  .chart-table tr[data-found] td, .chart-table tr[data-found] input { background: var(--warning-tint); }
+  .chart-table tr[data-found] td:first-child { box-shadow: inset 4px 0 0 var(--warning); }
 }

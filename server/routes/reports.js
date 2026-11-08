@@ -3,6 +3,7 @@ import { query } from '../db.js'
 import { dddLine, antibioticOf } from '../ddd.js'
 import { antibioticNames, longCourses } from './chart.js'
 import { requireManager } from '../auth.js'
+import { foldName } from '../name-fold.js'
 import { MAX_BRIDGE_DAYS } from '../dashboard-bridge.js'
 import { LOOKBACK_DAYS } from '../meropenem.js'
 import { ALLOWED_FLOORS, FLOOR_WARDS, SPECIAL_WARDS, SUPPLY_MATCH, SUPPLY_EXCEPT, isIsoDate } from '../validation.js'
@@ -47,7 +48,6 @@ const resolveScope = (scope) => {
 // its own place); two names on one floor are not listed. The same name on two wards is a transfer, not a clash, and
 // neither is one name spelled two ways («احمد»/«أحمد», «علي»/«على»): names are compared with the alef, ya,
 // ta-marbuta, harakat and tatweel variants folded away.
-const foldName = (name) => name.toLowerCase().replace(/[\u064B-\u0652\u0640]/g, '').replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/\s+/g, ' ').trim()
 // `rows`: { floor, ward, date, patient, patient_id } per patient per ward per day.
 export const sameIdGroups = (rows, from) => {
   const byId = new Map()
