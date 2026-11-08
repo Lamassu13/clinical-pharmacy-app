@@ -2829,3 +2829,15 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
 .rpt-sheet .alb-grid td.req-tick-cell { height: 11mm; vertical-align: top; }
 .rpt-sheet td.alb-i12 { font-size: 8.5pt; }
 .rpt-sheet .alb-signatures { row-gap: 24mm; }
+
+/* «Albumin follow up» (AlbuminFollowUpScreen): the unit's paper sheet — a pink header, a blue «Not indicated» band, plain editable cells. */
+.fu-sheet .fu-table th { background: #f4b8b3; color: #1b1b1b; text-align: center; font-weight: 700; }
+.fu-sheet .fu-table td { text-align: center; vertical-align: middle; font-weight: 600; }
+.fu-sheet .fu-band .report-section-head { display: block; }
+.fu-sheet .fu-band h2 { margin: 0; padding: var(--space-3); background: #a8def6; color: #1b1b1b; text-align: center; }
+.fu-sheet .fu-band .fu-table th { background: none; }
+.fu-edit { min-width: 3ch; min-height: 1.6em; cursor: text; }
+.fu-edit:focus { outline: 2px solid var(--primary); outline-offset: -2px; background: var(--primary-tint); }
+.fu-notes { min-height: 5.5rem; padding: var(--space-3); border: 1px solid var(--border); white-space: pre-wrap; text-align: start; }
+.fu-remove { min-width: 32px; min-height: 32px; border: 0; background: none; color: var(--danger); font-size: 20px; line-height: 1; cursor: pointer; }
+.albumin-follow-link { margin-bottom: var(--space-4); }
