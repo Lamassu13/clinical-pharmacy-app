@@ -58,7 +58,7 @@ const ownWritableRequest = async (request) => {
 
 // رقم الطبلة as the ward's charts for that day carry it (main chart first), by the patient's name:
 // a form saved before the ID was typed on the chart still shows it. name -> ID.
-const chartIds = async (floor, wardName, chartDate) => new Map((await query(
+export const chartIds = async (floor, wardName, chartDate) => new Map((await query(
   `SELECT DISTINCT ON (name) regexp_replace(btrim(cp.patient_name), '\\s+', ' ', 'g') AS name, cp.patient_id
    FROM daily_charts dc
    JOIN wards w ON w.id = dc.ward_id

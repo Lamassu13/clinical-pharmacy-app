@@ -4,6 +4,7 @@ import { requireAuth, requireManager } from '../auth.js'
 import { checkAll, readHealth, refreshIfStale } from '../google-form-health.js'
 import { isIsoDate } from '../validation.js'
 import { readLocation } from './chart.js'
+import { chartIds } from './drug-requests.js'
 import { wardKeyOf } from '../meropenem.js'
 import { DRUG_REQUESTS, cleanFields, cleanTicks } from '../../shared/drug-requests.js'
 import { formProblems, needsFollowUp, GOOGLE_KINDS } from '../../shared/form-problems.js'
@@ -136,5 +137,33 @@ router.get('/drug-requests/missing', requireAuth, async (request, response) => {
   )
   response.json({ patients: result.rows.slice(0, MAX_ROWS).map((row) => ({ floor: row.floor, ward: row.ward, date: row.date, name: row.name, patientId: row.patient_id })), more: result.rows.length > MAX_ROWS })
 })
+
+// A floor user's own pending forms for `date` (today, in practice): how many need following up on each ward they can open — a Google form not
+// sent / not confirmed, or any form still lacking what it needs (the same rule as the ward page's counts, shared/form-problems.js).
+// Read from the one small set of today's forms; added to the dashboard answer the floor page already loads, so it costs no request.
+// { total, wards: [{ floor, ward, n }] } — wards with nothing pending are left out.
+export const pendingFormsFor = async (user, date) => {
+  const floor = Number.isInteger(user.assignedFloor) ? user.assignedFloor : null
+  const wards = floor === null && Array.isArray(user.assignedWards) ? user.assignedWards : []
+  if (floor === null && !wards.length) return { total: 0, wards: [] }
+  const rows = (await query(
+    `SELECT kind, ward_key, patient_name, patient_id, fields, ticks, note, google_sent_at, google_error FROM drug_requests
+     WHERE request_date = $1::date AND ${floor !== null ? 'ward_key LIKE $2' : 'ward_key = ANY($2::text[])'}`,
+    [date, floor !== null ? `${floor}|%` : wards.map((ward) => `|${ward}`)],
+  )).rows
+  const ids = new Map() // a form with no رقم الطبلة of its own takes the chart's, ward by ward
+  for (const key of new Set(rows.filter((row) => !row.patient_id).map((row) => row.ward_key))) {
+    const [floorText, ...ward] = key.split('|')
+    ids.set(key, await chartIds(floorText ? Number(floorText) : null, ward.join('|'), date))
+  }
+  const counts = new Map()
+  for (const row of rows) {
+    const form = { name: row.patient_name, patientId: row.patient_id || ids.get(row.ward_key)?.get(row.patient_name) || '', date, fields: cleanFields(row.kind, row.fields), ticks: cleanTicks(row.kind, row.ticks), note: row.note, googleSentAt: row.google_sent_at, googleError: row.google_error }
+    if (needsFollowUp(row.kind, form)) counts.set(row.ward_key, (counts.get(row.ward_key) || 0) + 1)
+  }
+  const list = [...counts].map(([key, n]) => { const [floorText, ...ward] = key.split('|'); return { floor: floorText ? Number(floorText) : null, ward: ward.join('|'), n } })
+    .sort((a, b) => (a.floor ?? 99) - (b.floor ?? 99) || a.ward.localeCompare(b.ward, 'ar'))
+  return { total: list.reduce((sum, item) => sum + item.n, 0), wards: list }
+}
 
 export default router

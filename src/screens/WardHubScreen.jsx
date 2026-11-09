@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { formsBadge } from '../helpers.js'
+import { formsBadge, formsWord, isoDate } from '../helpers.js'
+import { Glyph } from '../components/ToolbarIcons.jsx'
 import { ChevronStart, CardStatus } from '../components/WardGlyph.jsx'
 import { CHART_ITEMS, GROUPS, Icon } from '../components/wardOptions.jsx'
 
@@ -28,6 +29,9 @@ export default function WardHubScreen({ floor, ward, selectedDate, weekday, coun
   const dateText = `${weekday} ${Number(day)}/${Number(month)}`
   const open = (extra) => onOpen({ floor, ward, ...extra })
   const badge = (kind) => formsBadge(counts, kind)
+  // Today's forms still to follow up on this ward (the counts' `attention`, already loaded for the rows' badges) — a past day is not an alert.
+  const isToday = selectedDate === isoDate(new Date())
+  const attentionTotal = isToday ? Object.values(counts?.attention ?? {}).reduce((sum, n) => sum + n, 0) : 0
   const row = (item) => <li key={item.label}>
     <button type="button" className="ward-menu-item" onClick={() => open(item.open)}>
       <Icon name={item.icon} />
@@ -56,6 +60,9 @@ export default function WardHubScreen({ floor, ward, selectedDate, weekday, coun
         <Icon name={item.icon} /> <span>{item.label}</span>
       </button>)}
     </div>
+    {attentionTotal > 0 && <button type="button" className="forms-pending-link" onClick={() => toggleGroup('forms', true)}>
+      <Glyph icon="warn" /><strong>{formsWord(attentionTotal)} تحتاج متابعة اليوم</strong><small>افتح «الاستمارات اليومية»</small>
+    </button>}
     <div className="ward-hub-groups">
       {GROUPS.map((group) => {
         const items = group.items.filter((item) => !item.show || item.show(floor))
