@@ -39,6 +39,20 @@ const Z0 = { meropenem: 0, albumin: 0, tigecycline: 0, colistin: 0, ivig: 0 }
 const MERONEM = 'Meronem 1000gm Vial'
 const ALBUMIN = 'Human albumin 20% I.V.'
 
+test('PUT keeps the stored fields a request does not send (an old client), and a `fields` that is not an object changes none — never a 500', async () => {
+  const pharmacist = await loginAs({ role: 'user', floor: FLOOR })
+  const saved = (await pharmacist.post('/api/drug-requests', { kind: 'meropenem', floor: FLOOR, ward: WARD, date: '2026-09-24', name: 'علي', patientId: '1', fields: { sex: 'ذكر', age: '40', dose: '1g × 3' } })).body.request
+  const edited = await pharmacist.put(`/api/drug-requests/${saved.id}`, { name: 'علي', patientId: '1', fields: { dose: '2g × 3' } })
+  assert.equal(edited.status, 200)
+  assert.deepEqual([edited.body.request.fields.sex, edited.body.request.fields.age, edited.body.request.fields.dose], ['ذكر', '40', '2g × 3'])
+  // A key sent empty is cleared (that is how a box is emptied).
+  assert.equal((await pharmacist.put(`/api/drug-requests/${saved.id}`, { name: 'علي', patientId: '1', fields: { age: '' } })).body.request.fields.age, '')
+  for (const fields of ['nope', ['x'], null]) {
+    assert.equal((await pharmacist.put(`/api/drug-requests/${saved.id}`, { name: 'علي', patientId: '1', fields })).status, 200)
+    assert.equal((await pharmacist.post('/api/drug-requests', { kind: 'meropenem', floor: FLOOR, ward: WARD, date: '2026-09-24', name: 'علي', patientId: '1', fields })).status, 200)
+  }
+})
+
 test('shared ticks: unknown keys dropped, one culture choice, spec order kept', () => {
   assert.deepEqual(cleanTicks('meropenem', ['cap', 'nope', 'culture-after', 'mastoiditis', 'culture-none', 'cap']), ['mastoiditis', 'cap', 'culture-none'])
   assert.deepEqual(cleanTicks('meropenem', 'cap'), [])

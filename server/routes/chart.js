@@ -148,6 +148,11 @@ router.post('/charts/purge', requireManager, async (request, response) => {
        AND ($3::boolean OR split_part(ward_key, '|', 1) = ANY($4::text[]) OR (split_part(ward_key, '|', 1) = '' AND split_part(ward_key, '|', 2) = ANY($5::text[])))`,
     [from, to, all, floors.map(String), wards],
   )
+  // «Albumin follow up» sheets (one per day and floor) hold names and file numbers typed on them: they go with the floor's charts.
+  await query(
+    `DELETE FROM albumin_followups WHERE day BETWEEN $1 AND $2 AND ($3::boolean OR split_part(scope, ':', 2) = ANY($4::text[]))`,
+    [from, to, all, floors.map(String)],
+  )
   await recordAudit(request, 'charts.purged', purgeScope(all, floors, wards), `${from} ← ${to} · حُذف ${result.rowCount} جارت`)
   response.json({ deleted: result.rowCount })
 })
@@ -970,7 +975,8 @@ export const loadCourseRows = async ({ floor, wardName, chartDate }, { pattern, 
   const presenceRows = [...wardPart, ...matchedPart, ...newcomerPart, ...freshPresence]
   const chartedRows = [...keptDays, ...freshDays]
   const wards = await knowWards([cellRows, presenceRows, chartedRows])
-  const placed = (row) => { const ward = wards.get(String(row.ward_id)); return { date: row.date, floor: ward.floor_number, ward: ward.name } }
+  // (A ward id the table no longer has — only after a manual restore — leaves the row unplaced instead of failing every form.)
+  const placed = (row) => { const ward = wards.get(String(row.ward_id)); return { date: row.date, floor: ward?.floor_number ?? null, ward: ward?.name ?? '' } }
   const toRow = (row) => ({ ...placed(row), name: row.name, patientId: row.patient_id })
   // One ward's form only walks the patients that can change its rows: those charted on this ward, and
   // anyone carrying an ID this ward has had (a transfer keeps counting from the ward they came from).
@@ -1261,7 +1267,8 @@ router.get('/patients/history', requireAuth, async (request, response) => {
   )
   const keys = [...new Set(result.rows.map((row) => row.key))]
   // Treatment per stay: each medicine's total charted quantity and the days it was charted (as
-  // charted — Thursday already holds Friday's doses). Same match as above, one row per medicine.
+  // charted — Thursday already holds Friday's doses). The SAME match as above (the folded name: «فاطمه» finds «فاطمة»), one row
+  // per medicine — matching the raw name against the folded pattern found the patient but none of their medicines.
   const treatment = await query(
     `SELECT CASE WHEN cp.patient_id <> '' THEN 'id:' || cp.patient_id ELSE 'name:' || btrim(cp.patient_name) END AS key,
             w.floor_number AS floor, w.name AS ward, dc.slot, COALESCE(m.name, cc.custom_name) AS medicine,
@@ -1272,7 +1279,7 @@ router.get('/patients/history', requireAuth, async (request, response) => {
      JOIN chart_quantities cq ON cq.chart_id = dc.id AND cq.row_number = cp.row_number AND cq.quantity > 0
      JOIN chart_columns cc ON cc.chart_id = dc.id AND cc.column_number = cq.column_number
      LEFT JOIN medicines m ON m.id = cc.medicine_id
-     WHERE ${byId ? 'cp.patient_id LIKE $1' : "cp.patient_name ILIKE $1 AND btrim(cp.patient_name) <> ''"}
+     WHERE ${byId ? 'cp.patient_id LIKE $1' : `${foldedSql('cp.patient_name')} LIKE $1 AND btrim(cp.patient_name) <> ''`}
        AND COALESCE(m.name, cc.custom_name, '') <> ''
        AND (CASE WHEN cp.patient_id <> '' THEN 'id:' || cp.patient_id ELSE 'name:' || btrim(cp.patient_name) END) = ANY($2::text[])
      GROUP BY 1, 2, 3, 4, 5

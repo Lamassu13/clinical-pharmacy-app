@@ -2,6 +2,7 @@ import express from 'express'
 import { query } from '../db.js'
 import { requireAuth } from '../auth.js'
 import { canAccessLocation, cleanText, isIsoDate } from '../validation.js'
+import { DAY_LOCKED, isDayLocked } from '../day-lock.js'
 import { cleanFields, cleanTicks } from '../../shared/drug-requests.js'
 import { isNotIndicated } from '../../shared/form-problems.js'
 
@@ -42,7 +43,7 @@ router.get('/albumin-followup', requireAuth, async (request, response) => {
     query(
       `SELECT id, ward_key, patient_name, patient_id, fields, ticks FROM drug_requests
        WHERE kind = 'albumin' AND request_date = $1 AND ward_key LIKE $2 ORDER BY ward_key, created_at, id`, [date, `${floor}|%`]),
-    query('SELECT doc FROM albumin_followups WHERE day = $1 AND scope = $2', [date, `floor:${floor}`]),
+    query('SELECT doc, updated_at::text AS version FROM albumin_followups WHERE day = $1 AND scope = $2', [date, `floor:${floor}`]),
   ])
   const all = forms.rows.map((row) => {
     const [, ...ward] = row.ward_key.split('|')
@@ -51,7 +52,9 @@ router.get('/albumin-followup', requireAuth, async (request, response) => {
   // The forms marked «Not indicated» are the sheet's «Not indicated» list (with their reason); the rest are its main rows.
   const rows = all.filter((row) => !isNotIndicated('albumin', row))
   const notForms = all.filter((row) => isNotIndicated('albumin', row))
-  return response.json({ date, floor, rows, notForms, doc: cleanDoc(saved.rows[0]?.doc) })
+  // `version`: what a save must name, so two devices on the same sheet never overwrite each other unseen. `locked`: a past day, for a
+  // floor user — shown, not edited (the same rule as the forms and the charts).
+  return response.json({ date, floor, rows, notForms, doc: cleanDoc(saved.rows[0]?.doc), version: saved.rows[0]?.version ?? '', locked: isDayLocked(request.session.user, date) })
 })
 
 router.put('/albumin-followup', requireAuth, async (request, response) => {
@@ -59,13 +62,32 @@ router.put('/albumin-followup', requireAuth, async (request, response) => {
   if (!isIsoDate(date)) return response.status(400).json({ message: 'التاريخ مطلوب' })
   const floor = readFloor(request, response, request.body.floor)
   if (floor === null) return undefined
+  if (isDayLocked(request.session.user, date)) return response.status(403).json(DAY_LOCKED)
   const doc = cleanDoc(request.body.doc)
-  await query(
-    `INSERT INTO albumin_followups (day, scope, doc) VALUES ($1, $2, $3)
-     ON CONFLICT (day, scope) DO UPDATE SET doc = EXCLUDED.doc, updated_at = NOW()`,
-    [date, `floor:${floor}`, JSON.stringify(doc)],
-  )
-  return response.json({ doc })
+  // Saved only over the version the device last read (`version`: '' = no sheet yet). Another device's save in between is a 409 with the
+  // sheet as it now is — the device shows it and says so, rather than silently writing over it.
+  // (A device still running the app from before this check sends no `version` at all: it saves as it always did, until it updates.)
+  if (request.body.version === undefined) {
+    await query(
+      `INSERT INTO albumin_followups (day, scope, doc) VALUES ($1, $2, $3)
+       ON CONFLICT (day, scope) DO UPDATE SET doc = EXCLUDED.doc, updated_at = NOW()`,
+      [date, `floor:${floor}`, JSON.stringify(doc)],
+    )
+    return response.json({ doc })
+  }
+  const version = typeof request.body.version === 'string' ? request.body.version : ''
+  const saved = version
+    ? await query(
+      `UPDATE albumin_followups SET doc = $3, updated_at = NOW() WHERE day = $1 AND scope = $2 AND updated_at::text = $4 RETURNING updated_at::text AS version`,
+      [date, `floor:${floor}`, JSON.stringify(doc), version])
+    : await query(
+      `INSERT INTO albumin_followups (day, scope, doc) VALUES ($1, $2, $3) ON CONFLICT (day, scope) DO NOTHING RETURNING updated_at::text AS version`,
+      [date, `floor:${floor}`, JSON.stringify(doc)])
+  if (!saved.rowCount) {
+    const current = await query('SELECT doc, updated_at::text AS version FROM albumin_followups WHERE day = $1 AND scope = $2', [date, `floor:${floor}`])
+    return response.status(409).json({ message: 'عدّل جهاز آخر هذه الصفحة في الوقت نفسه — عُرضت كما حُفظت، أعد كتابة آخر تعديل.', doc: cleanDoc(current.rows[0]?.doc), version: current.rows[0]?.version ?? '' })
+  }
+  return response.json({ doc, version: saved.rows[0].version })
 })
 
 export default router
