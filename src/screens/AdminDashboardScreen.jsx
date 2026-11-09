@@ -84,7 +84,7 @@ export default function AdminDashboardScreen({
       {isAdmin && (
         <StatCard icon={<RequestsIcon />} value={registrations.length} label="طلبات بانتظار الموافقة" onClick={() => onNavigate('requests')} />
       )}
-      {dashboard && dashboard.formsToSend !== undefined && <StatCard icon={<FormsIcon />} value={dashboard.formsToSend} label="استمارات Google لم تُرسل" detail="آخر ٧ أيام — اضغط للتفاصيل" onClick={() => onNavigate('forms')} />}
+      {dashboard && dashboard.formsToSend !== undefined && <StatCard icon={<FormsIcon />} value={dashboard.formsToSend} label="استمارات Google لم تُرسل" detail={dashboard.formsChanged > 0 ? `⚠ تغيّر ${dashboard.formsChanged === 1 ? 'نموذج Google' : `${dashboard.formsChanged} نماذج Google`} — اضغط للتفاصيل` : 'آخر ٧ أيام — اضغط للتفاصيل'} onClick={() => onNavigate('forms')} />}
       <StatCard icon={<UsersIcon />} value={allUsers.length} label="المستخدمون" detail={roleBreakdown} onClick={() => onNavigate('users')} />
       <StatCard icon={<MedicineIcon />} value={adminMedicines.length} label="الأدوية في القائمة" onClick={() => onNavigate('medicines')} />
     </div>

@@ -1,7 +1,7 @@
 // Helpers shared by the Google Form senders (albumin-google-form.js, tigecycline-google-form.js).
 
 // The form's live structure from its page: { entries: Map(entry id → Set of its option texts, or null for a free box),
-// signIn }. `signIn`: the form collects VERIFIED email addresses (its setting is 2; 1 = no email, which the albumin
+// required: Set(entry ids of the questions that must be answered), titles: Map(entry id → the question's title), pages: Map(entry id → the page it is on, counting the section breaks before it — what a body's pageHistory lists), signIn }. `signIn`: the form collects VERIFIED email addresses (its setting is 2; 1 = no email, which the albumin
 // form has), so Google asks every filler to sign in and a post from the server is refused. Seen on 2026-11-09 on the
 // tigecycline form: its page opens a «you must sign in» box.
 export const liveForm = (html) => {
@@ -10,12 +10,20 @@ export const liveForm = (html) => {
   try {
     const data = JSON.parse(match[1])
     const entries = new Map()
+    const required = new Set()
+    const titles = new Map()
+    const pages = new Map()
+    let page = 0
     for (const question of data[1][1]) {
-      if (question[3] === 8 || !question[4]) continue // a section break, or a text block with no question
+      if (question[3] === 8) page += 1 // a section break: the next page
+      if (question[3] === 8 || !question[4]) continue // (or a text block with no question)
       const [entry] = question[4]
       entries.set(String(entry[0]), entry[1] ? new Set(entry[1].map((option) => option[0]).filter(Boolean)) : null)
+      titles.set(String(entry[0]), String(question[1] || '').trim())
+      pages.set(String(entry[0]), page)
+      if (entry[2] === 1) required.add(String(entry[0]))
     }
-    return { entries, signIn: data[1][10]?.[6] === 2 }
+    return { entries, required, titles, pages, signIn: data[1][10]?.[6] === 2 }
   } catch { return null }
 }
 export const liveEntries = (html) => liveForm(html)?.entries ?? null
@@ -40,4 +48,16 @@ export const mismatches = (body, entries) => {
 export const prefillUrl = (formResponseUrl, body) => {
   const query = new URLSearchParams([['usp', 'pp_url'], ...body.filter(([name]) => name !== 'pageHistory' && name !== 'fvv')])
   return `${formResponseUrl.replace(/formResponse$/, 'viewform')}?${query}`
+}
+
+// The question ids an answer body carries (a date's month/day parts and an «other» text belong to their question).
+export const answeredIds = (body) => new Set(body.map(([name]) => /^entry\.(\d+)/.exec(name)?.[1]).filter(Boolean))
+
+// The titles of the live form's required questions that none of `bodies` (sample answers covering every branch) answers: a question
+// added to the form since the app was written. Only the pages the samples visit count (their pageHistory): a required question on a
+// branch page the app never takes (the albumin form's «other diagnosis») is not asked of it. [] = nothing new is asked.
+export const newRequired = (bodies, live) => {
+  const answered = new Set(bodies.flatMap((body) => [...answeredIds(body)]))
+  const visited = new Set(bodies.flatMap((body) => String(body.find(([name]) => name === 'pageHistory')?.[1] ?? '').split(',').filter(Boolean).map(Number)))
+  return [...live.required].filter((id) => !answered.has(id) && (!visited.size || visited.has(live.pages.get(id) ?? 0))).map((id) => live.titles.get(id) || id)
 }

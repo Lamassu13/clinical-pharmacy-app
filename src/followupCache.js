@@ -4,5 +4,5 @@
 const KEEP_MS = 5 * 60_000
 const answers = new Map()
 export const readFollowup = (days) => { const hit = answers.get(days); return hit && Date.now() - hit.at < KEEP_MS ? hit : null }
-export const keepFollowup = (days, rows, more) => { answers.set(days, { at: Date.now(), rows, more }) }
+export const keepFollowup = (days, rows, more, health) => { answers.set(days, { at: Date.now(), rows, more, health }) }
 export const clearFollowup = () => { answers.clear() }
