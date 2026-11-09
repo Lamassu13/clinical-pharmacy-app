@@ -229,13 +229,14 @@ export default function ChartScreen({
           still scroll — an inert element ignores a finger — so there the boxes just cannot take focus or a tap. */}
       <div className="chart-head" inert={!chartReady || undefined} onFocusCapture={(event) => { if (readOnly) event.target.blur?.() }}>
         <div className="chart-head-corner"><img className="patient-header-logo" src={hospitalLogo} alt="" /><span>مستشفى بغداد التعليمي</span><span>وحدة الصيدلة السريرية</span>{selected.floor && <span>الطابق {selected.floor}</span>}<span>{selected.ward}</span><span>{today}</span><span>{todayWeekday}</span></div>
-        <div className="chart-head-scroll" ref={chartHeadRef}><table className="chart-table" role="presentation"><thead><tr>{Array.from({ length: columnMedicines.length }, (_, index) => <th key={index} className={activeColumn === index ? 'col-active' : undefined}><input className="medicine-select" value={columnMedicines[index]}
+        <div className="chart-head-scroll" ref={chartHeadRef}><table className="chart-table" role="presentation"><thead><tr>{Array.from({ length: columnMedicines.length }, (_, index) => <th key={index} className={activeColumn === index ? 'col-active' : undefined}><input className="medicine-select" readOnly={readOnly} value={columnMedicines[index]}
           autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
           role="combobox" aria-autocomplete="list" aria-expanded={suggestFor?.column === index && suggestOptions.length > 0}
           aria-controls="medicine-suggest" aria-activedescendant={suggestFor?.column === index && suggestOptions.length ? `medicine-suggest-${suggestHighlight}` : undefined}
           onChange={(event) => { onSetColumnMedicine(index, event.target.value); setSuggestHighlight(0) }}
-          onFocus={(event) => { columnFocusValue.current = event.target.value; setActiveColumn(index); setSuggestFor({ column: index, input: event.target }); setSuggestHighlight(0) }}
-          onBlur={(event) => { setSuggestFor(null); onCommitColumnMedicine(index, event.target.value, columnFocusValue.current) }}
+          // Read-only (a past day, another device editing): a tap neither opens the list nor commits a stale name on the way out.
+          onFocus={(event) => { if (readOnly) return; columnFocusValue.current = event.target.value; setActiveColumn(index); setSuggestFor({ column: index, input: event.target }); setSuggestHighlight(0) }}
+          onBlur={(event) => { setSuggestFor(null); if (!readOnly) onCommitColumnMedicine(index, event.target.value, columnFocusValue.current) }}
           onKeyDown={(event) => {
             if (suggestFor?.column !== index || !suggestOptions.length) return
             if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -296,25 +297,25 @@ export default function ChartScreen({
             {/* Name and ID side by side, as on the printed sheet. The ID is screen-only here:
                 .patient-id is in the print block's display: none list. */}
             <div className="patient-fields">
-              <input className="patient-room" enterKeyHint="next" value={chartRooms[rowIndex + 1] || ''} onChange={(event) => onSetRoom(rowIndex, event.target.value)} onBlur={onSaveRooms}
+              <input className="patient-room" readOnly={readOnly} enterKeyHint="next" value={chartRooms[rowIndex + 1] || ''} onChange={(event) => onSetRoom(rowIndex, event.target.value)} onBlur={onSaveRooms}
                 placeholder={roomLabel} title={roomLabel} aria-label={`${roomLabel}، صف ${rowIndex + 1}`} />
-              <input className="patient-name" enterKeyHint="next" value={name} onChange={(event) => onSetPatientName(rowIndex, event.target.value)}
+              <input className="patient-name" readOnly={readOnly} enterKeyHint="next" value={name} onChange={(event) => onSetPatientName(rowIndex, event.target.value)}
                 onFocus={(event) => { patientFocusEmpty.current = !event.target.value.trim() }}
-                onBlur={(event) => { if (patientFocusEmpty.current && event.target.value.trim()) onCheckPreviousDay(rowIndex, event.target.value) }}
+                onBlur={(event) => { if (!readOnly && patientFocusEmpty.current && event.target.value.trim()) onCheckPreviousDay(rowIndex, event.target.value) }}
                 placeholder={`مريض ${rowIndex + 1}`} aria-label={`اسم المريض، صف ${rowIndex + 1}`} />
               {chartAlerts[rowIndex] && <button type="button" className={`patient-alert${chartAlerts[rowIndex].some((pair) => pair.severity === 'major') ? ' patient-alert--major' : ''}`}
                 onPointerDown={(event) => event.preventDefault()} onMouseDown={(event) => event.preventDefault()} onClick={() => onShowAlerts(rowIndex)}
                 title="تنبيه دوائي" aria-label={`تنبيه دوائي، صف ${rowIndex + 1}: ${chartAlerts[rowIndex].length}`}>⚠</button>}
-              <input className="patient-id" value={patientIds[rowIndex] || ''} onChange={(event) => onSetPatientId(rowIndex, event.target.value)}
+              <input className="patient-id" readOnly={readOnly} value={patientIds[rowIndex] || ''} onChange={(event) => onSetPatientId(rowIndex, event.target.value)}
                 inputMode="numeric" enterKeyHint="next" pattern="[0-9]*" dir="ltr"
                 onFocus={(event) => { patientFocusEmpty.current = !event.target.value.trim() }}
-                onBlur={(event) => { if (patientFocusEmpty.current && event.target.value.trim()) onCheckPreviousDay(rowIndex, event.target.value, 'id') }}
+                onBlur={(event) => { if (!readOnly && patientFocusEmpty.current && event.target.value.trim()) onCheckPreviousDay(rowIndex, event.target.value, 'id') }}
                 placeholder="رقم المريض" aria-label={`رقم المريض، صف ${rowIndex + 1}`} />
             </div>
-            {activeRow === rowIndex && name.trim() && <button type="button" className="row-delete" aria-label={`حذف صف ${rowIndex + 1}`} title="حذف الصف" onPointerDown={(event) => event.preventDefault()} onMouseDown={(event) => event.preventDefault()} onClick={() => onCollapseRow(rowIndex)}>✕</button>}
+            {!readOnly && activeRow === rowIndex && name.trim() && <button type="button" className="row-delete" aria-label={`حذف صف ${rowIndex + 1}`} title="حذف الصف" onPointerDown={(event) => event.preventDefault()} onMouseDown={(event) => event.preventDefault()} onClick={() => onCollapseRow(rowIndex)}>✕</button>}
           </th>
         </tr>)}</tbody></table></div>
-        <div className="chart-doses" ref={chartDosesRef}><table className="chart-table" role="grid" aria-label="جدول الجرعات — الأسهم للتنقّل بين الخلايا" aria-rowcount={patientNames.length} aria-colcount={columnMedicines.length}>{/* one grid; each cell's aria-label already carries its patient + medicine */}<tbody>{patientNames.map((name, rowIndex) => <ChartDoseRow key={rowIndex} rowIndex={rowIndex} patientName={name} quantities={quantities[rowIndex]} columnMedicines={columnMedicines} isActiveRow={activeRow === rowIndex} activeColumn={activeColumn} gridInactive={activeRow < 0} labelBelow={labelBelow} droppedCells={droppedCells} onUpdateQuantity={onUpdateQuantity} printHidden={rowIndex >= printRowCount} />)}</tbody></table></div>
+        <div className="chart-doses" ref={chartDosesRef}><table className="chart-table" role="grid" aria-label="جدول الجرعات — الأسهم للتنقّل بين الخلايا" aria-rowcount={patientNames.length} aria-colcount={columnMedicines.length}>{/* one grid; each cell's aria-label already carries its patient + medicine */}<tbody>{patientNames.map((name, rowIndex) => <ChartDoseRow key={rowIndex} rowIndex={rowIndex} patientName={name} quantities={quantities[rowIndex]} columnMedicines={columnMedicines} isActiveRow={activeRow === rowIndex} activeColumn={activeColumn} gridInactive={activeRow < 0} labelBelow={labelBelow} droppedCells={droppedCells} onUpdateQuantity={onUpdateQuantity} printHidden={rowIndex >= printRowCount} readOnly={readOnly} />)}</tbody></table></div>
       </div>
       <div className="chart-foot">
         <div className="chart-foot-corner"><span>المجموع</span>{isThursday && <span>المجموع المضاعف</span>}</div>
