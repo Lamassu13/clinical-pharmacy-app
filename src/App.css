@@ -2911,3 +2911,5 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
 .rpt-sheet .tige-warning { margin: 4mm 0 1mm; font-size: 10.5pt; }
 .rpt-sheet .tige-committee { font-size: 10.5pt; }
 .rpt-sheet .tige-signatures { margin-top: 10mm; }
+
+.req-manual { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }

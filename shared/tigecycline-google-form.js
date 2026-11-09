@@ -72,5 +72,9 @@ export function tigecyclineFormAnswers(request, { ward, email }) {
     entry('scr', fields.scr), entry('culture', CULTURE[fields.culture]),
     ['emailAddress', email], ['pageHistory', '0,1'], ['fvv', '1'],
   ]
-  return { ok: true, body }
+  // The same answers as a pre-filled link takes them: its date is yyyy-mm-dd (a link with month and day parts
+  // opened the form with the date empty), and the routing fields are left out.
+  const start = `entry.${ENTRY.start}`
+  const prefill = [...body.filter(([name]) => !name.startsWith(`${start}_`)), [start, request.date]]
+  return { ok: true, body, prefill }
 }

@@ -8,7 +8,7 @@ import { buildMeropenemForm, wardKeyOf } from '../meropenem.js'
 import { numberToArabicWords } from '../arabic-number.js'
 import { DRUG_REQUESTS, MAX_REQUEST_NOTE, cleanFields, cleanTicks } from '../../shared/drug-requests.js'
 import { FORM_URL as ALBUMIN_FORM_URL, albuminFormAnswers } from '../../shared/albumin-google-form.js'
-import { liveEntries, mismatches, prefillUrl } from '../../shared/google-form-check.js'
+import { liveForm, mismatches, prefillUrl } from '../../shared/google-form-check.js'
 import { FORM_URL as TIGECYCLINE_FORM_URL, tigecyclineFormAnswers } from '../../shared/tigecycline-google-form.js'
 
 const router = express.Router()
@@ -180,6 +180,11 @@ router.post('/drug-requests/:id/google-form', requireAuth, async (request, respo
   if (own.status) return refuse(response, own)
   const target = GOOGLE_FORMS[own.row.kind]
   if (!target) return response.status(400).json({ message: 'هذه الاستمارة لا تُرسل إلى نموذج Google' })
+  // Sent by hand from the pre-filled form (the form asks for a sign-in): the pharmacist says so, and the form is marked.
+  if (request.body?.confirmManual === true) {
+    await query('UPDATE drug_requests SET google_sent_at = NOW() WHERE id = $1', [own.row.id])
+    return response.json({ request: toRequest(await loadRequest(own.row.id)) })
+  }
   // The رقم الطبلة the screen shows (the stored one, else the day's chart's) is the one sent.
   const [floorText, ...ward] = own.row.ward_key.split('|')
   const patientId = own.row.patient_id || (await chartIds(floorText ? Number(floorText) : null, ward.join('|'), own.row.date)).get(own.row.patient_name) || ''
@@ -188,6 +193,13 @@ router.post('/drug-requests/:id/google-form', requireAuth, async (request, respo
   const answers = target.answers(form, `${floorText ? `الطابق ${floorText} — ` : ''}${ward.join('|')}`, sending)
   if (!answers.ok) return response.status(422).json({ message: answers.invalid ? `صحّح أولًا: ${answers.invalid.join('، ')}` : `أكمل أولًا: ${answers.missing.join('، ')}`, missing: answers.missing, invalid: answers.invalid })
   if (!sending) return response.json({ dryRun: true, answers: answers.body })
+  // A form that collects verified emails makes every filler sign in: the server cannot post to it. Nothing is sent
+  // and nothing is marked; the pre-filled form is offered, to be submitted from the pharmacist's own browser.
+  let live = null
+  try { live = liveForm(await (await fetch(target.url.replace(/formResponse$/, 'viewform'), { signal: AbortSignal.timeout(8000) })).text()) } catch { /* unread: try the post */ }
+  if (live?.signIn) {
+    return response.json({ signIn: true, manualUrl: prefillUrl(target.url, answers.prefill || answers.body), message: 'نموذج Google هذا يشترط تسجيل الدخول بحساب Google، فلا يمكن إرساله من التطبيق. افتح النموذج المُعبّأ وأرسله من متصفحك، ثم سجّل أنه أُرسل.' })
+  }
   // The form is marked sent BEFORE it is posted, in one statement, so two taps (or two devices) cannot both
   // post it, and an answer Google recorded but we never heard about cannot be posted again by a retry.
   // The mark is undone only when the send definitely did not happen. `resend` allows a form already sent.
@@ -214,13 +226,13 @@ router.post('/drug-requests/:id/google-form', requireAuth, async (request, respo
     // the same and one of the values was refused. Either way a link opens the form with the answers filled in,
     // so the send can be finished by hand there — Google then says itself which box it did not accept.
     let changed = []
-    try { changed = mismatches(answers.body, liveEntries(await (await fetch(target.url.replace(/formResponse$/, 'viewform'), { signal: AbortSignal.timeout(8000) })).text())) } catch { /* unread: treated as a refused value */ }
+    changed = mismatches(answers.body, live?.entries ?? null)
     console.error('google form: refused:', reply.status, reply.redirected, changed)
     return response.status(502).json({
       message: changed.length
         ? `تغيّر نموذج Google ولم تعد الاستمارة تطابقه (${changed.join('، ')}) — أخبر المسؤول، ويمكنك إكمال الإرسال يدويًا.`
         : 'رفض نموذج Google إحدى القيم (راجع العمر أرقام صحيحة، والوزن وS.Cr أرقام) — صحّحها أو أكمل الإرسال يدويًا.',
-      manualUrl: prefillUrl(target.url, answers.body),
+      manualUrl: prefillUrl(target.url, answers.prefill || answers.body),
     })
   }
   response.json({ request: toRequest(await loadRequest(own.row.id)) })

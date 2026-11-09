@@ -21,7 +21,8 @@ export default function useDrugRequests({ selected, selectedDate, isExpired, use
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState('')
   const [notice, setNotice] = useState('')
-  const [manualUrl, setManualUrl] = useState('') // the Google Form pre-filled, offered when a send was refused
+  const [manualUrl, setManualUrl] = useState('') // the Google Form pre-filled, offered when it cannot be posted
+  const [manualId, setManualId] = useState(null) // the form that link is for
   const [nonce, setNonce] = useState(0)
   const wardFloor = selected?.floor || ''
   const wardName = selected?.ward || ''
@@ -146,6 +147,7 @@ export default function useDrugRequests({ selected, selectedDate, isExpired, use
     setActionError('')
     setNotice('')
     setManualUrl('')
+    setManualId(null)
     try {
       // The server sends what it has stored: wait for the edits still on their way for this form (the field
       // being typed saved when the button was tapped), and do not send if one of them failed.
@@ -156,8 +158,9 @@ export default function useDrugRequests({ selected, selectedDate, isExpired, use
       if (isExpired(response)) return
       const result = await response.json().catch(() => ({}))
       if (response.status === 409) putLocal(request.id, { googleSentAt: result.sentAt })
-      if (!response.ok) { setActionError(result.message || 'تعذّر الإرسال — حاول مرة أخرى.'); setManualUrl(result.manualUrl || ''); return }
+      if (!response.ok) { setActionError(result.message || 'تعذّر الإرسال — حاول مرة أخرى.'); setManualUrl(result.manualUrl || ''); setManualId(request.id); return }
       if (result.dryRun) { setNotice('وضع التجربة: لم يُرسل شيء إلى Google.'); return }
+      if (result.signIn) { setNotice(result.message); setManualUrl(result.manualUrl); setManualId(request.id); return }
       // Only the mark: the reply's other values could undo an edit still in the queue.
       putLocal(request.id, { googleSentAt: result.request.googleSentAt })
       setNotice(`أُرسلت استمارة «${request.name}» إلى نموذج وزارة الصحة.`)
@@ -166,5 +169,21 @@ export default function useDrugRequests({ selected, selectedDate, isExpired, use
     } finally { setBusy(false) }
   }, [askConfirm, isExpired])
 
-  return { listKind, requests, loading, loadError, busy, actionError, notice, manualUrl, check, save, setTicks, saveField, remove, sendToGoogle }
+  // «أُرسلت من Google»: the pharmacist submitted the pre-filled form by hand; the form is marked sent here too.
+  const confirmManualSent = useCallback(async (request) => {
+    setBusy(true)
+    setActionError('')
+    try {
+      const response = await fetch(`${apiUrl}/drug-requests/${request.id}/google-form`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ confirmManual: true }) })
+      if (isExpired(response)) return
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok) { setActionError(result.message || 'تعذّر التسجيل — حاول مرة أخرى.'); return }
+      putLocal(request.id, { googleSentAt: result.request.googleSentAt })
+      setManualUrl('')
+      setManualId(null)
+      setNotice(`سُجّلت استمارة «${request.name}» كمُرسلة.`)
+    } catch { setActionError('لا يوجد اتصال — التسجيل يحتاج اتصالًا.') } finally { setBusy(false) }
+  }, [isExpired])
+
+  return { listKind, requests, loading, loadError, busy, actionError, notice, manualUrl, manualId, confirmManualSent, check, save, setTicks, saveField, remove, sendToGoogle }
 }

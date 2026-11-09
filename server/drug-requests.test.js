@@ -436,3 +436,34 @@ test('google forms: a refused send is released, says whether the form changed, a
   assert.ok(refused.body.manualUrl)
   assert.equal(await sentAt(), null)
 })
+
+test('tigecycline google form: a form that asks every filler to sign in is not posted to — the pre-filled form is offered, and a hand-sent form can be marked sent', async (t) => {
+  process.env.GOOGLE_FORM_SEND = '1'
+  process.env.GOOGLE_FORM_EMAIL = 'unit@example.org'
+  const real = globalThis.fetch
+  t.after(() => { globalThis.fetch = real; delete process.env.GOOGLE_FORM_SEND; delete process.env.GOOGLE_FORM_EMAIL })
+  const pharmacist = await loginAs({ role: 'user', floor: FLOOR })
+  const saved = (await pharmacist.post('/api/drug-requests', { kind: 'tigecycline', floor: FLOOR, ward: WARD, date: '2026-11-09', name: 'سارة', patientId: '44', fields: { sex: 'أنثى', age: '40', weight: '70', scr: '1.1', dose: '50mg × 2', culture: 'Not done', committee: 'ص. ليث', doctor: 'د. سعد' } })).body.request
+  await pharmacist.patch(`/api/drug-requests/${saved.id}/ticks`, { ticks: ['skin'] })
+  // The form's email setting is 2 (verified): the page has [1][10] = [.., 2] at index 6.
+  const html = `<script>var FB_PUBLIC_LOAD_DATA_ = ${JSON.stringify([null, [null, [[1, 't', null, 0, [[1572102836, null, 1]]]], null, null, null, null, null, null, null, null, [null, null, null, 2, null, null, 2]]])};</script>`
+  const posted = []
+  globalThis.fetch = async (url, options) => {
+    if (!String(url).includes('docs.google.com')) return real(url, options)
+    if (String(url).endsWith('formResponse')) { posted.push(url); return { ok: true, status: 200, redirected: false, url: String(url) } }
+    return { ok: true, text: async () => html }
+  }
+  const result = await pharmacist.post(`/api/drug-requests/${saved.id}/google-form`, {})
+  assert.equal(result.status, 200)
+  assert.equal(result.body.signIn, true)
+  assert.deepEqual(posted, []) // nothing was posted
+  const link = new URL(result.body.manualUrl)
+  assert.equal(link.searchParams.get('entry.1833893625'), '2026-11-09') // the date as Google's own link writes it
+  assert.equal(link.searchParams.has('entry.1833893625_month'), false)
+  assert.equal(link.searchParams.get('entry.813402020'), '40')
+  const sentAt = async () => (await pharmacist.get(`/api/drug-requests?${where('tigecycline', '2026-11-09')}`)).body.requests[0].googleSentAt
+  assert.equal(await sentAt(), null)
+  // Sent by hand, the pharmacist marks it.
+  assert.equal((await pharmacist.post(`/api/drug-requests/${saved.id}/google-form`, { confirmManual: true })).status, 200)
+  assert.ok(await sentAt())
+})
