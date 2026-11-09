@@ -511,12 +511,15 @@ test('colistin google form: the answers (its own ids and case texts, daily dose 
   const answer = (name) => sent.body.find(([key]) => key === name)?.[1]
   assert.equal(sent.ok, true)
   assert.equal(answer('entry.1668545535'), 'management of chronic pulmonary infection due to pseudomonas aeruginosa in patient with cystic fibrosis')
-  assert.deepEqual([answer('entry.275553482'), answer('entry.703290303'), answer('entry.1765020922'), answer('entry.2011704287')], ['1000000', '1000000', '0', 'لا'])
+  // The request holds IU; the form takes mg of colistin base (1 million IU = 30 mg).
+  assert.deepEqual([answer('entry.275553482'), answer('entry.703290303'), answer('entry.1765020922'), answer('entry.2011704287')], ['30', '30', '0', 'لا'])
+  const mgFor = (dose) => colistinFormAnswers({ ...form, fields: { ...form.fields, dose } }, unit).body.find(([key]) => key === 'entry.275553482')[1]
+  assert.deepEqual(['6000000', '4500000', '500000', '3333333'].map(mgFor), ['180', '135', '15', '100'])
   assert.deepEqual([answer('entry.120145077_month'), answer('entry.120145077_day')], ['11', '9'])
   assert.equal(answer('entry.78709220'), 'not done')
   assert.equal(answer('entry.2071414154'), 'مستشفى بغداد التعليمي العام')
   assert.ok(COLISTIN_URL.includes('1FAIpQLScKnP4IrG9HDHYlHnGr7AYPIVwAMRQTWEYRzm8J0P9fd1B20w'))
-  assert.deepEqual(colistinFormAnswers({ ...form, fields: { ...form.fields, dose: '' }, ticks: [] }, unit).missing, ['الحالة المصرح بها (علّم مربعًا)', 'الجرعة المطلوبة يوميًا (رقم، مثل 1000000)'])
+  assert.deepEqual(colistinFormAnswers({ ...form, fields: { ...form.fields, dose: '' }, ticks: [] }, unit).missing, ['الحالة المصرح بها (علّم مربعًا)', 'الجرعة المطلوبة يوميًا (رقم بالوحدات الدولية، مثل 1000000)'])
 
   const pharmacist = await loginAs({ role: 'user', floor: FLOOR })
   const saved = (await pharmacist.post('/api/drug-requests', { kind: 'colistin', floor: FLOOR, ward: WARD, date: '2026-11-09', name: 'ليلى', patientId: '55', fields: form.fields })).body.request

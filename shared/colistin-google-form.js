@@ -16,4 +16,7 @@ const DIAGNOSIS = {
   serious: 'serious infections due to selected aerobic Gram negative bacteria in patients with limited treatment options',
   cf: 'management of chronic pulmonary infection due to pseudomonas aeruginosa in patient with cystic fibrosis',
 }
-export const colistinFormAnswers = vialFormAnswers({ ENTRY, DIAGNOSIS, doseLabel: 'الجرعة المطلوبة يوميًا (رقم، مثل 1000000)' })
+// The form asks the daily dose in mg; the request holds IU. The paper form's own equations: 1 million IU = 80 mg
+// colistimethate = 30 mg colistin base — the colistin base is sent (decided with the pharmacists).
+const MG_BASE_PER_IU = 30 / 1e6
+export const colistinFormAnswers = vialFormAnswers({ ENTRY, DIAGNOSIS, doseLabel: 'الجرعة المطلوبة يوميًا (رقم بالوحدات الدولية، مثل 1000000)', toMg: (iu) => Math.round(iu * MG_BASE_PER_IU * 100) / 100 })
