@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import app from './index.js'
 import { pool } from './db.js'
 import { startServer, resetDatabase, createUser, ApiClient } from './test-helpers.js'
-import { cleanTicks, toggleTick } from '../shared/drug-requests.js'
+import { cleanTicks, toggleTick, DRUG_REQUESTS } from '../shared/drug-requests.js'
 import { FORM_URL, albuminFormAnswers } from '../shared/albumin-google-form.js'
 import { tigecyclineFormAnswers, dailyMg, FORM_URL as TIGECYCLINE_URL } from '../shared/tigecycline-google-form.js'
 import { liveEntries, mismatches, prefillUrl } from '../shared/google-form-check.js'
@@ -143,11 +143,11 @@ test('requests: list per kind, resend updates in place and keeps ticks, edit, ti
 test('counts: forms per kind for the ward and day; zeros when none; another floor refused', async () => {
   const pharmacist = await loginAs({ role: 'user', floor: FLOOR })
   const counts = async (date, client = pharmacist, floor = FLOOR, ward = WARD) => client.get(`/api/drug-requests/counts?floor=${floor}&ward=${encodeURIComponent(ward)}&date=${date}`)
-  assert.deepEqual((await counts('2026-09-24')).body, { meropenem: 0, albumin: 0, tigecycline: 0 })
+  assert.deepEqual((await counts('2026-09-24')).body, { meropenem: 0, albumin: 0, tigecycline: 0, colistin: 0 })
   const form = { floor: FLOOR, ward: WARD, date: '2026-09-24', fields: {} }
   for (const [kind, name] of [['meropenem', 'علي'], ['albumin', 'علي'], ['albumin', 'حسن']]) assert.equal((await pharmacist.post('/api/drug-requests', { ...form, kind, name })).status, 201)
-  assert.deepEqual((await counts('2026-09-24')).body, { meropenem: 1, albumin: 2, tigecycline: 0 })
-  assert.deepEqual((await counts('2026-09-25')).body, { meropenem: 0, albumin: 0, tigecycline: 0 })
+  assert.deepEqual((await counts('2026-09-24')).body, { meropenem: 1, albumin: 2, tigecycline: 0, colistin: 0 })
+  assert.deepEqual((await counts('2026-09-25')).body, { meropenem: 0, albumin: 0, tigecycline: 0, colistin: 0 })
   assert.equal((await counts('2026-09-24', pharmacist, 8, 'الردهة الخامسة')).status, 403)
   assert.equal((await counts('not-a-date')).status, 400)
 })
@@ -336,7 +336,7 @@ test('tigecycline: a third kind — asked on the first day only, dose prefilled 
   assert.deepEqual(ticked.body.request.ticks, ['abdominal'])
   assert.deepEqual(await check(pharmacist, 'tigecycline', '2026-09-24', { name: 'سارة', id: '44' }), { day: 1, requested: true })
   const counts = (await pharmacist.get(`/api/drug-requests/counts?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=2026-09-24`)).body
-  assert.deepEqual(counts, { meropenem: 0, albumin: 0, tigecycline: 1 })
+  assert.deepEqual(counts, { meropenem: 0, albumin: 0, tigecycline: 1, colistin: 0 })
   assert.equal((await pharmacist.get(`/api/drug-requests?${where('tigecycline', '2026-09-24')}`)).body.requests.length, 1)
 })
 
@@ -466,4 +466,30 @@ test('tigecycline google form: a form that asks every filler to sign in is not p
   // Sent by hand, the pharmacist marks it.
   assert.equal((await pharmacist.post(`/api/drug-requests/${saved.id}/google-form`, { confirmManual: true })).status, 200)
   assert.ok(await sentAt())
+})
+
+test('colistin: a fourth kind — asked on the first day only, dose prefilled in million units, one case chosen, counted', async () => {
+  const admin = await loginAs({ role: 'admin' })
+  await admin.post('/api/medicines', { name: 'Colistin 1000000 IU vial' })
+  const pharmacist = await loginAs({ role: 'user', floor: FLOOR })
+  assert.deepEqual(await check(pharmacist, 'colistin', '2026-09-24', { name: 'ليلى', id: '55' }), { day: 1, requested: false })
+  await saveChart(pharmacist, '2026-09-24', 'Colistin 1000000 IU vial', [{ name: 'ليلى', id: '55', qty: 6 }])
+  assert.deepEqual(await check(pharmacist, 'colistin', '2026-09-25', { name: 'ليلى', id: '55' }), { day: 2, requested: false })
+
+  // The popup's prefill: 6 vials of 1,000,000 IU = 6 MU; the same drug under its other names is matched.
+  assert.deepEqual(DRUG_REQUESTS.colistin.prefill([{ medicine: 'Colistin 1000000 IU vial', quantity: 6 }]), { dose: '6 MU' })
+  assert.deepEqual(DRUG_REQUESTS.colistin.prefill([{ medicine: 'Colistin vial', quantity: 2 }]), { dose: '× 2' })
+  assert.ok(['Colistin 1000000 IU vial', 'Colomycin 2MU', 'colistimethate'].every((name) => DRUG_REQUESTS.colistin.pattern.test(name)))
+
+  const sent = await pharmacist.post('/api/drug-requests', {
+    kind: 'colistin', floor: FLOOR, ward: WARD, date: '2026-09-24', name: 'ليلى', patientId: '55',
+    fields: { sex: 'أنثى', age: '40', diagnosis: 'VAP', weight: '70,5', scr: '1.1', dose: '6 MU', duration: '7 أيام', culture: 'Acinetobacter — Sensitive', doctor: 'د. سعد', bogus: 'x' },
+  })
+  assert.equal(sent.status, 201)
+  assert.deepEqual(sent.body.request.fields, { sex: 'أنثى', age: '40', diagnosis: 'VAP', weight: '70.5', scr: '1.1', dose: '6 MU', duration: '7 أيام', culture: 'Acinetobacter — Sensitive', doctor: 'د. سعد', hideDoctor: '' })
+  const ticked = await pharmacist.patch(`/api/drug-requests/${sent.body.request.id}/ticks`, { ticks: ['serious', 'cf', 'nope'] })
+  assert.deepEqual(ticked.body.request.ticks, ['cf'])
+  assert.deepEqual(await check(pharmacist, 'colistin', '2026-09-24', { name: 'ليلى', id: '55' }), { day: 1, requested: true })
+  const counts = (await pharmacist.get(`/api/drug-requests/counts?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=2026-09-24`)).body
+  assert.deepEqual(counts, { meropenem: 0, albumin: 0, tigecycline: 0, colistin: 1 })
 })

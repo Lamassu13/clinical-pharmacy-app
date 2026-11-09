@@ -1,7 +1,7 @@
-// The restricted-medicine request forms: «استمارة الميرونيم» and «استمارة الالبومين». One spec per
+// The restricted-medicine request forms: «استمارة الميرونيم», «استمارة التايجيسايكلين», «استمارة الكوليستين» and «استمارة الالبومين». One spec per
 // kind, read by the server (which fields and boxes it accepts) and by the app (the popup's fields, the
 // paper form's boxes). The paper layouts themselves live in src/components/*Sheet.jsx.
-import { MEROPENEM_PATTERN, TIGECYCLINE_PATTERN, doseText } from './dose.js'
+import { MEROPENEM_PATTERN, TIGECYCLINE_PATTERN, COLISTIN_PATTERN, doseText, colistinDoseText } from './dose.js'
 
 // Tick groups: `multiple` false means one choice at most (ticking another replaces it). Option keys
 // are what is stored, so they must never change meaning; their text is the paper form's own.
@@ -93,6 +93,38 @@ export const DRUG_REQUESTS = {
       { id: 'indication', multiple: false, options: [
         { key: 'skin', text: 'Complicated **skin and soft tissue** infections (when other antibiotics are not suitable)' },
         { key: 'abdominal', text: 'Complicated **intra-abdominal** infections (when other antibiotics are not suitable)' },
+      ] },
+    ],
+  },
+  colistin: {
+    label: 'استمارة الكوليستين',
+    popupKicker: 'أول يوم كوليستين',
+    offlineNote: 'تعذّر التحقق من يوم الكورس (لا يوجد اتصال) — املأها إن كان هذا اليوم الأول للكوليستين.',
+    pattern: COLISTIN_PATTERN,
+    sqlPattern: '(colistin|colistimethate|colomycin|coly-?mycin)',
+    // Asked on the first day of the course, like Meropenem and Tigecycline.
+    firstDayOnly: true,
+    fields: [
+      { key: 'sex', label: 'الجنس', max: 10, choices: ['ذكر', 'أنثى'], required: true },
+      { key: 'age', label: 'العمر', max: 30, placeholder: 'مثال: 45', required: true },
+      { key: 'diagnosis', label: 'التشخيص', max: 200, wide: true, auto: true },
+      { key: 'weight', label: 'الوزن', unit: 'كغم', max: 20, decimal: true },
+      { key: 'scr', label: 'S.Cr.', unit: 'mg/dL', max: 10, decimal: true },
+      { key: 'dose', label: 'الجرعة المطلوبة يوميًا', max: 120, wide: true, auto: true, placeholder: '9 MU' },
+      { key: 'duration', label: 'عدد الأيام المطلوب أخذ العلاج فيها', max: 120, wide: true, placeholder: 'مثال: 7 أيام', chips: ['5 أيام', '7 أيام', '10 أيام', '14 يومًا'] },
+      // Free text on the paper form's box («نتيجة الزرع البكتيري»).
+      { key: 'culture', label: 'نتيجة الزرع البكتيري', max: 200, wide: true, auto: true, chips: ['Sensitive', 'Resistant', 'Not done'] },
+      // Printed above the specialist's signature («الطبيب الاختصاص»).
+      { key: 'doctor', label: 'اسم الطبيب الاختصاص', max: 120, wide: true },
+      { key: 'hideDoctor', label: 'عدم طباعة اسم الطبيب', max: 1, noDialog: true },
+    ],
+    // One 1,000,000 IU vial is 1 MU: 6 vials → «6 MU».
+    prefill: (lines) => ({ dose: lines.map((line) => colistinDoseText(line.medicine, line.quantity)).join(' + ') }),
+    // The paper form's two permitted cases; one is chosen.
+    groups: [
+      { id: 'indication', multiple: false, options: [
+        { key: 'serious', text: 'Serious infections due to selected aerobic G-ve bacteria in patients with limited treatment options' },
+        { key: 'cf', text: 'Management of chronic pulmonary infections due to Pseudomonas aeruginosa in patients with cystic fibrosis' },
       ] },
     ],
   },

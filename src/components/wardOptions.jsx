@@ -22,6 +22,7 @@ const GROUPS = [
     { label: 'طلبية الميرونيم', icon: 'clipboard', open: { mode: 'meropenem-order', slot: 'main' } },
     { label: 'استمارة الميرونيم', icon: 'vial', open: { mode: 'meropenem-forms' }, count: 'meropenem' },
     { label: 'استمارة التايجيسايكلين', icon: 'vial', open: { mode: 'tigecycline-forms' }, count: 'tigecycline' },
+    { label: 'استمارة الكوليستين', icon: 'vial', open: { mode: 'colistin-forms' }, count: 'colistin' },
   ] },
   { id: 'clinical', label: 'المتابعة السريرية', items: [
     { label: 'متابعة الاستلام', icon: 'receipt', open: { mode: 'receipts' }, needsConnection: true },

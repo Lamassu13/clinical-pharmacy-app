@@ -6,6 +6,18 @@
 export const MEROPENEM_PATTERN = /(meronem|meropenem)/i
 // Tigecycline: the catalogue writes the brand «Tygacil …»; a typed column may say «Tigecycline …».
 export const TIGECYCLINE_PATTERN = /(tygacil|tigecycline|tigacyl)/i
+// Colistin: the catalogue writes «Colistin 1000000 IU vial»; colistimethate and the brand Colomycin are the same drug.
+export const COLISTIN_PATTERN = /(colistin|colistimethate|colomycin|coly-?mycin)/i
+
+// Colistin's daily dose as the form words it, in million units: 1,000,000 IU vial × 6 → «6 MU». A vial
+// strength the name does not give (no «IU» / «MU») stays as vials × count.
+export const colistinDoseText = (medicine, quantity) => {
+  const name = String(medicine)
+  const iu = name.match(/(\d[\d,]*(?:\.\d+)?)\s*(?:IU|units?)\b/i)
+  const mu = name.match(/(\d+(?:\.\d+)?)\s*(?:MU|MIU)\b/i)
+  const perVial = iu ? Number(iu[1].replace(/,/g, '')) / 1e6 : mu ? Number(mu[1]) : 0
+  return perVial ? `${Math.round(perVial * quantity * 100) / 100} MU` : `× ${quantity}`
+}
 
 // Vial strength in mg: "Meronem 1000gm Vial" → 1000, "Meronem 500gm Vial" → 500. The catalogue
 // writes gm where it means mg, so a small number with "g" or "gm" ("1g", "Tazocin 4.5gm",
