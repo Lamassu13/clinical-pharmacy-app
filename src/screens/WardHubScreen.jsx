@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { formsWord } from '../helpers.js'
+import { formsBadge } from '../helpers.js'
 import { ChevronStart, CardStatus } from '../components/WardGlyph.jsx'
 import { CHART_ITEMS, GROUPS, Icon } from '../components/wardOptions.jsx'
 
@@ -27,12 +27,13 @@ export default function WardHubScreen({ floor, ward, selectedDate, weekday, coun
   const [, month, day] = selectedDate.split('-')
   const dateText = `${weekday} ${Number(day)}/${Number(month)}`
   const open = (extra) => onOpen({ floor, ward, ...extra })
+  const badge = (kind) => formsBadge(counts, kind)
   const row = (item) => <li key={item.label}>
     <button type="button" className="ward-menu-item" onClick={() => open(item.open)}>
       <Icon name={item.icon} />
       <span>{item.label}</span>
       {!isOnline && item.needsConnection && <span className="card-status card-status--muted">يتطلب اتصالاً</span>}
-      {item.count && counts?.[item.count] > 0 && <span className="card-status card-status--partial">{formsWord(counts[item.count])}</span>}
+      {item.count && badge(item.count) && <span className={`card-status card-status--${badge(item.count).tone}`}>{badge(item.count).text}</span>}
       <span className="arrow" aria-hidden="true"><ChevronStart /></span>
     </button>
   </li>
@@ -58,12 +59,12 @@ export default function WardHubScreen({ floor, ward, selectedDate, weekday, coun
     <div className="ward-hub-groups">
       {GROUPS.map((group) => {
         const items = group.items.filter((item) => !item.show || item.show(floor))
-        const forms = items.reduce((sum, item) => sum + (item.count ? counts?.[item.count] || 0 : 0), 0)
+        const groupBadge = formsBadge(counts, items.filter((item) => item.count).map((item) => item.count))
         const isOpen = Boolean(openGroups[group.id])
         return <details key={group.id} className="ward-hub-group" open={isOpen} onToggle={(event) => { if (event.currentTarget.open !== isOpen) toggleGroup(group.id, event.currentTarget.open) }}>
           <summary className="ward-hub-label">
             <span>{group.label}</span>
-            {!isOpen && forms > 0 && <span className="card-status card-status--partial">{formsWord(forms)}</span>}
+            {!isOpen && groupBadge && <span className={`card-status card-status--${groupBadge.tone}`}>{groupBadge.text}</span>}
             <span className="ward-hub-chevron" aria-hidden="true"><ChevronStart /></span>
           </summary>
           <ul className="ward-hub-list" role="list">{items.map(row)}</ul>

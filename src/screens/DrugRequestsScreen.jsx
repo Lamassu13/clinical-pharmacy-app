@@ -9,6 +9,7 @@ import ColistinSheet from '../components/ColistinSheet.jsx'
 import IvigSheet from '../components/IvigSheet.jsx'
 import RequestPrintTemplate from '../components/RequestPrintTemplate.jsx'
 import usePdfSheets from '../usePdfSheets.js'
+import { formProblems, GOOGLE_KINDS } from '../../shared/form-problems.js'
 
 // «استمارة الميرونيم» / «استمارة الالبومين»: the ward's forms of one kind for a day, each drawn as its
 // paper form. The patient-entry form and the chart fill them; here a value is corrected where it
@@ -18,8 +19,16 @@ import usePdfSheets from '../usePdfSheets.js'
 // open (and again to close it), so a ward with several patients reads as a list, not a stack of pages.
 const SHEETS = { meropenem: MeropenemSheet, albumin: AlbuminSheet, tigecycline: TigecyclineSheet, colistin: ColistinSheet, ivig: IvigSheet }
 const savedAt = (iso) => new Date(iso).toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' })
+// Where a form stands, for its row: sent (and how), not sent, still lacking something, or refused. One chip, the most pressing first.
+const standing = (request, google, problems) => {
+  if (request.googleError && !request.googleSentAt) return { tone: 'danger', text: 'رُفضت', title: request.googleError }
+  if (google && !request.googleSentAt) return problems.length ? { tone: 'pending', text: `ناقصة: ${problems.join('، ')}` } : { tone: 'pending', text: 'لم تُرسل' }
+  if (problems.length) return { tone: 'pending', text: `ناقصة: ${problems.join('، ')}` }
+  if (google) return { tone: 'done', text: `${request.googleSentHow === 'manual' ? 'أُرسلت يدويًا' : 'أُرسلت'} ✓ ${savedAt(request.googleSentAt)}`, title: [request.googleSentBy, request.googleError].filter(Boolean).join(' — ') }
+  return null
+}
 
-export default function DrugRequestsScreen({ footer, dayLocked = false, kind, header, wardLabel, wardName, onBack, selectedDate, onChangeDate, isOnline, loading, loadError, requests, busy, actionError, notice, manualUrl, manualId, onConfirmManual, onSendToGoogle, onSave, onSetTicks, onSaveField, onDelete, confirmModal }) {
+export default function DrugRequestsScreen({ footer, dayLocked = false, kind, header, wardLabel, wardName, onBack, selectedDate, onChangeDate, isOnline, loading, loadError, requests, busy, actionError, notice, manualUrl, manualId, onConfirmManual, onSendToGoogle, onSendAll, onSave, onSetTicks, onSaveField, onDelete, confirmModal }) {
   const spec = DRUG_REQUESTS[kind]
   const Sheet = SHEETS[kind]
   const [adding, setAdding] = useState(false)
@@ -27,6 +36,10 @@ export default function DrugRequestsScreen({ footer, dayLocked = false, kind, he
   const setOpen = (id, open) => setOpenIds((current) => { const next = new Set(current); if (open) next.add(id); else next.delete(id); return next })
   const pdf = usePdfSheets()
   const list = requests || []
+  const google = GOOGLE_KINDS.includes(kind)
+  const problemsOf = new Map(list.map((request) => [request.id, formProblems(kind, request)]))
+  const unsent = google ? list.filter((request) => !request.googleSentAt) : []
+  const incomplete = list.filter((request) => problemsOf.get(request.id).length)
   const print = (forms) => {
     // A value still being typed is saved by its blur first, so the page carries it.
     document.activeElement?.blur?.()
@@ -60,6 +73,10 @@ export default function DrugRequestsScreen({ footer, dayLocked = false, kind, he
         : loadError ? <div className="empty-state"><strong>تعذّر تحميل الاستمارات</strong><span>{isOnline ? 'حدّث الصفحة وحاول مجددًا.' : 'لا يوجد اتصال — تُعرض الاستمارات عند عودته.'}</span></div>
         : !list.length ? <div className="empty-state"><strong>لا توجد {spec.label} لهذا اليوم</strong><span>تُملأ من «إدخال مريض» أو الجارت عند إضافة {kind === 'albumin' ? 'الالبومين لمريض' : `${{ meropenem: 'Meronem', tigecycline: 'Tygacil', colistin: 'Colistin', ivig: 'IVIG' }[kind]} لمريض في أول يوم له`}، أو أضِفها من «+ استمارة جديدة».</span></div>
         : <>
+            {(unsent.length > 0 || incomplete.length > 0) && <p className="req-hint req-attention" role="status">
+              <strong>{[unsent.length > 0 && `${unsent.length} لم تُرسل`, incomplete.length > 0 && `${incomplete.length} ناقصة`].filter(Boolean).join(' · ')}</strong>
+              {unsent.length > 0 && <button type="button" className="secondary-button compact" disabled={busy || !isOnline} onClick={() => onSendAll(unsent)}>{unsent.length === 1 ? 'إرسالها' : 'إرسال المتبقي'}</button>}
+            </p>}
             <p className="req-hint">المس اسم المريض لفتح استمارته، ثم اكتب في أي حقل لتعديله والمس أي مربع لوضع علامة ✓ أو إزالتها — يُحفظ كل ذلك فورًا.</p>
             <div className="req-sheets">
               {list.map((request) => {
@@ -69,6 +86,7 @@ export default function DrugRequestsScreen({ footer, dayLocked = false, kind, he
                     <button type="button" className="req-sheet-toggle" aria-expanded={open} aria-controls={`req-sheet-${request.id}`} onClick={() => setOpen(request.id, !open)}>
                       <strong>{request.name}</strong>
                       {request.patientId && <span>رقم الطبلة <bdi>{request.patientId}</bdi></span>}
+                      {(() => { const state = standing(request, google, problemsOf.get(request.id)); return state && <span className={`card-status card-status--${state.tone}`} title={state.title}>{state.text}</span> })()}
                       <span className="req-sheet-chevron" aria-hidden="true"><ChevronStart /></span>
                     </button>
                   </h2>
@@ -76,7 +94,7 @@ export default function DrugRequestsScreen({ footer, dayLocked = false, kind, he
                     <div className="req-sheet-tools">
                       <p className="req-sheet-meta">{request.createdByName && <span>أدخلها {request.createdByName} · {savedAt(request.createdAt)}</span>}</p>
                       <span className="req-sheet-actions">
-                        {kind !== 'meropenem' && <button type="button" className="secondary-button compact" disabled={busy || !isOnline} onClick={() => onSendToGoogle(request)}>{request.googleSentAt ? 'أُرسلت ✓ — إعادة الإرسال' : 'إرسال إلى نموذج الوزارة'}</button>}
+                        {google && <button type="button" className="secondary-button compact" disabled={busy || !isOnline} onClick={() => onSendToGoogle(request)}>{request.googleSentAt ? 'أُرسلت ✓ — إعادة الإرسال' : 'إرسال إلى نموذج الوزارة'}</button>}
                         <button type="button" className="secondary-button compact" disabled={pdf.busy} onClick={() => print([request])}>طباعة</button>
                         {!dayLocked && <button type="button" className="danger-button compact" disabled={busy} onClick={() => onDelete(request)}>حذف</button>}
                       </span>

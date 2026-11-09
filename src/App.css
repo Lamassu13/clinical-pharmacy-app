@@ -556,6 +556,7 @@ button.topbar-user:hover { color: var(--primary); }
 /* Some wards started, not all — leaning toward done, distinct from an untouched floor. */
 .card-status--partial { background: var(--green-100); color: var(--primary-hover); }
 /* Dashboard data failed to load — say so rather than showing a card that looks fresh. */
+.card-status--danger { background: var(--danger-tint); color: var(--danger); }
 .card-status--muted { background: var(--surface-alt); color: var(--text-muted); }
 .card-status--done { background: var(--success-tint); color: var(--primary-hover); } /* 13px text: --success on its own tint is 4.3:1 in light */
 .card-status svg { flex: 0 0 auto; }
@@ -2931,6 +2932,8 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
 .rpt-sheet .tige-committee { font-size: 10.5pt; }
 .rpt-sheet .tige-signatures { margin-top: 10mm; }
 
+.req-attention { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; }
+.req-attention strong { color: var(--warning-text); }
 .req-manual { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
 .rpt-sheet .coli-equations { font-size: 10pt; }
 .rpt-sheet .tige-patient td.req-tick-cell { vertical-align: top; height: 24mm; }

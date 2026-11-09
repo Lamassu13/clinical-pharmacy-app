@@ -727,3 +727,13 @@ export const averagePatients = (rows, keys) => {
 // A count of request forms worded for a row or a step: 1 and 2 are special in Arabic, 3-10 take the
 // plural, 11+ the singular again.
 export const formsWord = (n) => (n === 1 ? 'استمارة واحدة' : n === 2 ? 'استمارتان' : `${n} ${n <= 10 ? 'استمارات' : 'استمارة'}`)
+// The badge a form row shows from the day's counts ({ kind: n, attention: { kind: n } }, useRequestCounts): the forms still to
+// follow up (unsent or lacking something) when there are any, else how many there are; null for none. `kinds` is one kind or
+// several (a group of rows).
+export const formsBadge = (counts, kinds) => {
+  const list = [].concat(kinds)
+  const attention = list.reduce((sum, kind) => sum + (counts?.attention?.[kind] || 0), 0)
+  if (attention > 0) return { tone: 'pending', text: `${attention} تحتاج متابعة` }
+  const total = list.reduce((sum, kind) => sum + (counts?.[kind] || 0), 0)
+  return total > 0 ? { tone: 'partial', text: formsWord(total) } : null
+}
