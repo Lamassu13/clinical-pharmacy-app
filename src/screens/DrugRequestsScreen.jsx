@@ -30,10 +30,19 @@ const standing = (request, google, problems) => {
   return lacking ? { tone: 'pending', text: lacking } : null
 }
 
-export default function DrugRequestsScreen({ footer, dayLocked = false, kind, header, wardLabel, wardName, onBack, selectedDate, onChangeDate, isOnline, loading, loadError, requests, busy, actionError, notice, manualUrl, manualId, onConfirmManual, onSendToGoogle, onSendAll, onSave, onSetTicks, onSaveField, onDelete, confirmModal }) {
+export default function DrugRequestsScreen({ footer, dayLocked = false, kind, header, wardLabel, wardName, onBack, selectedDate, onChangeDate, isOnline, loading, loadError, requests, busy, actionError, notice, manualUrl, manualId, onConfirmManual, onSendToGoogle, onSendAll, onFindMissing, onSave, onSetTicks, onSaveField, onDelete, confirmModal }) {
   const spec = DRUG_REQUESTS[kind]
   const Sheet = SHEETS[kind]
   const [adding, setAdding] = useState(false)
+  // The patient a form is being added for from «مرضى بلا استمارة» (null: a blank form).
+  const [addFor, setAddFor] = useState(null)
+  const [missing, setMissing] = useState(null)
+  const [missingBusy, setMissingBusy] = useState(false)
+  const searchMissing = async () => {
+    setMissingBusy(true)
+    setMissing({ ...(await onFindMissing(kind)), date: selectedDate })
+    setMissingBusy(false)
+  }
   const [openIds, setOpenIds] = useState(() => new Set())
   const setOpen = (id, open) => setOpenIds((current) => { const next = new Set(current); if (open) next.add(id); else next.delete(id); return next })
   const pdf = usePdfSheets()
@@ -61,11 +70,21 @@ export default function DrugRequestsScreen({ footer, dayLocked = false, kind, he
         <div><p className="modal-kicker">{spec.label}</p><h1>{wardLabel}</h1></div>
         <div className="toolbar-actions">
           <label className="pills-date">التاريخ <input type="date" value={selectedDate} onChange={(event) => onChangeDate(event.target.value)} /></label>
-          {!dayLocked && <button type="button" className="secondary-button compact" disabled={!isOnline || loadError || loading} onClick={() => setAdding(true)}>+ استمارة جديدة</button>}
+          {!dayLocked && <button type="button" className="secondary-button compact" disabled={!isOnline || loadError || loading} onClick={() => { setAddFor(null); setAdding(true) }}>+ استمارة جديدة</button>}
           <button type="button" className="primary-button compact" disabled={!list.length || pdf.busy} onClick={() => print(list)}>{pdf.busy ? 'جارٍ التحضير…' : list.length > 1 ? 'طباعة الكل' : 'طباعة'}</button>
         </div>
       </div>
 
+      {spec.firstDayOnly && !dayLocked && !loading && !loadError && <div className="req-missing">
+        <button type="button" className="text-button" disabled={!isOnline || missingBusy} onClick={searchMissing}>{missingBusy ? 'جارٍ البحث…' : 'مرضى بلا استمارة؟'}</button>
+        {missing?.date === selectedDate && !missing.ok && <span className="form-error" role="alert">{missing.message}</span>}
+        {missing?.date === selectedDate && missing.ok && (missing.patients.length === 0
+          ? <span className="req-hint">كل مريض أُعطي {spec.label.replace('استمارة ', '')} لديه استمارة.</span>
+          : <ul className="req-missing-list">{missing.patients.map((patient) => <li key={`${patient.name}|${patient.patientId}`}>
+            <span>{patient.name}{patient.patientId && <small> · <bdi>{patient.patientId}</bdi></small>}</span>
+            <button type="button" className="secondary-button compact" disabled={busy} onClick={() => { setAddFor(patient); setAdding(true) }}>+ استمارة</button>
+          </li>)}</ul>)}
+      </div>}
       {actionError && <p className="form-error" role="alert">{actionError}</p>}
       {notice && <p className="req-hint" role="status">{notice}</p>}
       {manualUrl && <p className="req-hint req-manual">
@@ -116,8 +135,8 @@ export default function DrugRequestsScreen({ footer, dayLocked = false, kind, he
     </section>
     {footer}
 
-    {adding && <DrugRequestDialog kind={kind} screen initial={{}} kicker={wardLabel} title={`${spec.label} — جديدة`} saveLabel="حفظ" cancelLabel="إلغاء"
-      onSave={async (payload) => { const result = await onSave(kind, payload); if (result.ok) { setAdding(false); if (result.request) setOpen(result.request.id, true) } return result }}
+    {adding && <DrugRequestDialog kind={kind} screen initial={addFor ? { name: addFor.name, patientId: addFor.patientId } : {}} kicker={wardLabel} title={`${spec.label} — جديدة`} saveLabel="حفظ" cancelLabel="إلغاء"
+      onSave={async (payload) => { const result = await onSave(kind, payload); if (result.ok) { setAdding(false); if (addFor) setMissing((current) => current?.ok ? { ...current, patients: current.patients.filter((patient) => patient !== addFor) } : current); if (result.request) setOpen(result.request.id, true) } return result }}
       onClose={() => setAdding(false)} />}
     {pdf.sheets && <RequestPrintTemplate ref={pdf.ref} sheets={pdf.sheets} />}
     {confirmModal}

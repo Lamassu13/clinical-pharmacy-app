@@ -2933,6 +2933,13 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
 .rpt-sheet .tige-signatures { margin-top: 10mm; }
 
 .req-attention { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; }
+.req-missing { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); margin-bottom: var(--space-3); }
+.req-missing-list { flex: 1 0 100%; margin: 0; padding: 0; list-style: none; display: grid; gap: var(--space-2); }
+.req-missing-list li { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-2) var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); }
+.forms-kind { margin: var(--space-3) 0; max-width: 26rem; }
+.forms-detail { display: block; margin-top: 2px; color: var(--text-muted); }
+.forms-detail--error { color: var(--danger); }
+.forms-missing-controls { display: flex; gap: var(--space-2); align-items: center; margin-bottom: var(--space-3); }
 .req-attention strong { color: var(--warning-text); }
 .req-error-note { color: var(--danger); font-weight: 600; }
 .req-manual { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }

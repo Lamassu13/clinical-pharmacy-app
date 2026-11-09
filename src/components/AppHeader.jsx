@@ -14,6 +14,7 @@ const ADMIN_GROUPS = [
     { view: 'dashboard', label: 'لوحة التحكم' },
     { view: 'reports', label: 'التقارير' },
     { view: 'wardPositions', label: 'مواقف القسم' },
+    { view: 'forms', label: 'متابعة الاستمارات' },
   ] },
   { id: 'people', label: 'المستخدمون', sections: [
     { view: 'requests', label: 'طلبات الانضمام', adminOnly: true, counted: true },

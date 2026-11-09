@@ -14,6 +14,8 @@ export const DRUG_REQUESTS = {
     sqlPattern: '(meronem|meropenem)',
     // Asked on the first day of the course only; albumin is asked every day it is given.
     firstDayOnly: true,
+    // The day the form went live: a patient whose course began before it never had one (the follow-up does not ask for it).
+    formsSince: '2026-11-02',
     fields: [
       // A two-way choice (chips, no typing); on the on-screen sheet only — the paper form has no box for it.
       { key: 'sex', label: 'الجنس', max: 10, choices: ['ذكر', 'أنثى'], required: true },
@@ -69,6 +71,7 @@ export const DRUG_REQUESTS = {
     sqlPattern: '(tygacil|tigecycline|tigacyl)',
     // Asked on the first day of the course, like Meropenem.
     firstDayOnly: true,
+    formsSince: '2026-11-09',
     fields: [
       { key: 'sex', label: 'الجنس', max: 10, choices: ['ذكر', 'أنثى'], required: true },
       // Whole years, digits only: the ministry's Google Form refuses anything else.
@@ -105,6 +108,7 @@ export const DRUG_REQUESTS = {
     sqlPattern: '(colistin|colistimethate|colomycin|coly-?mycin)',
     // Asked on the first day of the course, like Meropenem and Tigecycline.
     firstDayOnly: true,
+    formsSince: '2026-11-09',
     fields: [
       { key: 'sex', label: 'الجنس', max: 10, choices: ['ذكر', 'أنثى'], required: true },
       // Whole years, digits only: the ministry's Google Form refuses anything else.
@@ -141,6 +145,7 @@ export const DRUG_REQUESTS = {
     sqlPattern: '(ivig|immunoglobulin|immune globulin|gamma ?globulin|octagam|intratect|privigen|gammagard|kiovig|flebogamma|gamunex|sandoglobulin|nanogam|pentaglobin)',
     // Asked on the first day of the course, like Meropenem.
     firstDayOnly: true,
+    formsSince: '2026-11-09',
     // The boxes are the ministry's Google Form's own (shared/ivig-google-form.js).
     fields: [
       { key: 'sex', label: 'الجنس', max: 10, choices: ['ذكر', 'أنثى'], required: true },

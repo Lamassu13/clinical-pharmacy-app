@@ -19,6 +19,7 @@ import chartRoutes, { resolveChartId, readLocation, readWritableLocation, refuse
 import treatmentFormsRoutes from './routes/treatment-forms.js'
 import extraPillsRoutes from './routes/extra-pills.js'
 import drugRequestsRoutes from './routes/drug-requests.js'
+import drugRequestFollowupRoutes from './routes/drug-request-followup.js'
 import albuminFollowupRoutes from './routes/albumin-followup.js'
 import reportsRoutes from './routes/reports.js'
 import wardPositionsRoutes from './routes/ward-positions.js'
@@ -32,6 +33,7 @@ import { usageMiddleware, usageReport, flushUsage } from './usage.js'
 import { recordAudit, readAudit, ROLE_AR } from './audit.js'
 import { medicineCatalogue } from './medicine-catalogue.js'
 import { dashboardRows } from './dashboard-rows.js'
+import { GOOGLE_KINDS } from '../shared/form-problems.js'
 
 const app = express()
 const port = Number(process.env.PORT || 3001)
@@ -634,8 +636,17 @@ app.get('/api/dashboard', requireAuth, async (request, response) => {
         [request.query.rangeFrom, SPECIAL_WARDS, request.query.rangeTo, MAX_BRIDGE_DAYS],
       ))
       : Promise.resolve({ rows: [] }),
+    // The dashboard card of the forms' follow-up: Google forms of the last 7 days not sent yet or not confirmed. One count, a few
+    // bytes in this same answer (the follow-up screen has the detail); managers only.
+    isManager
+      ? timeQuery('formsToSend', query(
+        `SELECT COUNT(*)::int AS count FROM drug_requests WHERE request_date > $1::date - 7 AND request_date <= $1::date
+           AND kind = ANY($2::text[]) AND (google_sent_at IS NULL OR google_error <> '')`,
+        [date, GOOGLE_KINDS],
+      ))
+      : Promise.resolve({ rows: [{ count: 0 }] }),
   ]
-  const [started, topMedicines, patientsByFloor, totalPatients, dailyPatientsByFloor, patientsByFloorRange] = await Promise.all(pending)
+  const [started, topMedicines, patientsByFloor, totalPatients, dailyPatientsByFloor, patientsByFloorRange, formsToSend] = await Promise.all(pending)
   response.json({
     startedWards: started.rows.map((row) => ({
       floor: row.floor_number, ward: row.name, slot: row.slot,
@@ -646,6 +657,7 @@ app.get('/api/dashboard', requireAuth, async (request, response) => {
     medicinesScope: isManager ? 'all' : 'own',
     patientsByFloor: patientsByFloor.rows.map((row) => ({ floor: row.floor, count: row.count })),
     totalPatients: totalPatients.rows[0]?.count ?? 0,
+    ...(isManager ? { formsToSend: formsToSend.rows[0]?.count ?? 0 } : {}),
     patientsPeriod: isManager ? (PERIOD_DAYS[request.query.patientsPeriod] ? request.query.patientsPeriod : 'month') : 'today',
     dailyPatientsByFloor: bridgedDailyCounts(dailyPatientsByFloor.rows, addDays(date, -5), date),
     patientsByFloorRange: isManager && isIsoDate(request.query.rangeFrom) && isIsoDate(request.query.rangeTo)
@@ -694,6 +706,7 @@ app.delete('/api/announcements/:id', requireManager, async (request, response) =
 app.use('/api', chartRoutes)
 app.use('/api', treatmentFormsRoutes)
 app.use('/api', extraPillsRoutes)
+app.use('/api', drugRequestFollowupRoutes) // before the others: '/drug-requests/followup' and '/missing' are not ids
 app.use('/api', drugRequestsRoutes)
 app.use('/api', albuminFollowupRoutes)
 app.use('/api', reportsRoutes)
