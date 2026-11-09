@@ -2951,6 +2951,8 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
 .forms-pending-ward b { min-width: 1.6em; padding: 0 6px; border-radius: 999px; background: var(--warning-tint); color: var(--warning-text); text-align: center; }
 .forms-pending-link { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-3); width: 100%; min-height: 48px; margin-bottom: var(--space-4); padding: var(--space-2) var(--space-4); border: 1px solid var(--warning-border); border-radius: var(--radius-md); background: var(--warning-tint); color: var(--warning-text); font: inherit; text-align: start; cursor: pointer; }
 .forms-pending-link small { color: var(--text-muted); }
+/* Tablets: the follow-up's cells and the form sheets' boxes are tapped with a finger (often gloved): 44px at least. */
+@media (pointer: coarse) { .fu-edit, .req-input { min-height: 44px; } .fu-edit:not(.fu-notes) { display: flex; align-items: center; } }
 .forms-kind { margin: var(--space-3) 0; max-width: 26rem; }
 .forms-detail { display: block; margin-top: 2px; color: var(--text-muted); }
 .forms-detail--error { color: var(--danger); }

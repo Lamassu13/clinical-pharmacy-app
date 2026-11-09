@@ -101,4 +101,10 @@ test('patient search: a name is found whichever way it was spelled, an ID by its
   // The all-dates search folds the same way.
   const history = (await admin.get(`/api/patients/history?${new URLSearchParams({ q: 'فاطمه' })}`)).body.patients
   assert.deepEqual(history.map((patient) => patient.name), ['فاطمة الزهراء'])
+  // …and so does the treatment of each stay: the medicines are found too, however the name is typed (they came back empty for any
+  // name with ة / أ / ى when the medicines were matched on the raw name).
+  for (const q of ['فاطمه', 'فاطمة']) {
+    const [patient] = (await admin.get(`/api/patients/history?${new URLSearchParams({ q })}`)).body.patients
+    assert.deepEqual(patient.stays.flatMap((stay) => stay.medicines.map((medicine) => [medicine.name, medicine.quantity])), [['Amoxicillin Cap', 3]], q)
+  }
 })

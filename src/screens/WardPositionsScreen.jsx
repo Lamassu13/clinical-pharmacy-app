@@ -139,7 +139,7 @@ export default function WardPositionsScreen({ adminHeader, isExpired }) {
                 <td className="report-dx" dir="ltr" lang="en">{row.diagnoses.length ? row.diagnoses.join('; ') : '—'}</td>
                 <td dir="ltr">{dash(doseLabel(row.doseMg))}</td>
                 <td className="num">{dash(row.perDay)}</td>
-                <td className="num">{dash(stayText(row))}</td>
+                <td className="num"><bdi dir="ltr">{dash(stayText(row))}</bdi></td>
               </tr>)}</tbody>
             </table></div>
           )}

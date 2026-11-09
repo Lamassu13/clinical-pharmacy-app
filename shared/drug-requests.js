@@ -206,7 +206,7 @@ export const DRUG_REQUESTS = {
       // Written on the form's screen («تعديل»), not asked in the popup.
       { key: 'diagnosis', label: 'Diagnosis', max: 200, wide: true, auto: true, screenOnly: true },
     ],
-    prefill: (lines) => ({ count: String(lines.reduce((sum, line) => sum + (Number(line.quantity) || 0), 0) || ''), indicated: 'Indicated' }),
+    prefill: (lines) => ({ count: String(lines.reduce((sum, line) => sum + (Number(line.quantity) || 0), 0) || '') }),
     // The protocol's numbered indications. `title` prints bold, `inline` follows it in normal weight,
     // `lines` go underneath; **…** marks a bold word inside them, as on the paper form.
     groups: [

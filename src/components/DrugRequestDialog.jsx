@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { DRUG_REQUESTS, cleanField } from '../../shared/drug-requests.js'
+import { toEnglishDigits } from '../helpers.js'
 
 // A request form's typed fields in a dialog (shared/drug-requests.js): opened by the patient-entry
 // form when the medicine is added (`screen` false: the fields marked screenOnly stay hidden), and by
@@ -37,7 +38,9 @@ export default function DrugRequestDialog({ kind, initial, screen = false, kicke
       return
     }
     setBusy(true)
-    const result = await onSave({ name: name.trim(), patientId: patientId.replace(/\D/g, '').slice(0, 20), fields: Object.fromEntries(fields.map((field) => [field.key, values[field.key]])) })
+    // Only the boxes filled here are sent: the server keeps what a save does not send, so an empty box (a popup opened offline,
+    // «+ استمارة جديدة» for a patient who already has one) never blanks a value typed for this patient on another device.
+    const result = await onSave({ name: name.trim(), patientId: toEnglishDigits(patientId).replace(/\D/g, '').slice(0, 20), fields: Object.fromEntries(shown.filter((field) => String(values[field.key] ?? '').trim() !== '').map((field) => [field.key, values[field.key]])) })
     setBusy(false)
     if (!result.ok) setError(result.message)
   }
@@ -55,7 +58,7 @@ export default function DrugRequestDialog({ kind, initial, screen = false, kicke
         </label>
         <label><span>رقم الطبلة</span>
           <input value={patientId} maxLength={20} autoComplete="off" inputMode="numeric" dir="ltr"
-            onChange={(event) => { setError(''); setPatientId(event.target.value.replace(/\D/g, '')) }} />
+            onChange={(event) => { setError(''); setPatientId(toEnglishDigits(event.target.value).replace(/\D/g, '')) }} />
         </label>
         {shown.map((field) => {
           // A fixed choice (the sex): chips only, no box to type in.

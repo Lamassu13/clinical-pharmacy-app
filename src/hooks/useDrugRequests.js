@@ -43,6 +43,9 @@ export default function useDrugRequests({ selected, selectedDate, isExpired, use
     setLoadError(false)
     setActionError('')
     setNotice('')
+    // A pre-filled Google link is for the form it was made for: it never follows to another ward, day or kind.
+    setManualUrl('')
+    setManualId(null)
     const params = new URLSearchParams({ kind: listKind, floor: wardFloor, ward: wardName, date: selectedDate })
     fetch(`${apiUrl}/drug-requests?${params}`, { credentials: 'include' })
       .then((response) => { isExpired(response); return response.ok ? response.json() : null })
@@ -101,6 +104,8 @@ export default function useDrugRequests({ selected, selectedDate, isExpired, use
     const next = (chains.current.get(id) || Promise.resolve()).catch(() => {}).then(send)
     chains.current.set(id, next)
     next.catch((error) => {
+      // The list reloads (the form back to what is saved): the failed edit is over, so it must not block this form's next send.
+      if (chains.current.get(id) === next) chains.current.delete(id)
       setActionError(error.message || 'لم يُحفظ آخر تعديل — تحقّق من الاتصال وحاول مرة أخرى.')
       setNonce((value) => value + 1)
     })
@@ -227,6 +232,7 @@ export default function useDrugRequests({ selected, selectedDate, isExpired, use
 
   // «أُرسلت من Google»: the pharmacist submitted the pre-filled form by hand; the form is marked sent here too.
   const confirmManualSent = useCallback(async (request) => {
+    if (!request) { setManualUrl(''); setManualId(null); return }
     setBusy(true)
     setActionError('')
     try {

@@ -19,7 +19,16 @@ const router = express.Router()
 // edits them, ticks their boxes and prints them. Same access as the ward's chart.
 
 const nameKey = (value) => String(value ?? '').trim().replace(/\s+/g, ' ')
-const idOf = (value) => String(value ?? '').replace(/\D/g, '').slice(0, 20)
+// (Arabic-Indic digits are digits: «١٢٣» is 123, not nothing.)
+const idOf = (value) => String(value ?? '').replace(/[٠-٩]/g, (digit) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(digit))).replace(/[۰-۹]/g, (digit) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(digit))).replace(/\D/g, '').slice(0, 20)
+// The typed fields a save sends, cleaned — only the keys it actually sends (an older client, or an offline save from before a box
+// existed, sends no such key: the stored value stays instead of being blanked). Anything but an object sends none.
+const givenFields = (kind, given) => {
+  const sent = given && typeof given === 'object' && !Array.isArray(given) ? given : {}
+  const fields = cleanFields(kind, sent)
+  Object.keys(fields).forEach((key) => { if (!Object.hasOwn(sent, key)) delete fields[key] })
+  return fields
+}
 const kindOf = (value) => (Object.hasOwn(DRUG_REQUESTS, value) ? value : null)
 const BAD_KIND = { message: 'نوع الاستمارة غير معروف' }
 
@@ -140,8 +149,7 @@ router.post('/drug-requests', requireAuth, async (request, response) => {
   const { floor, wardName, chartDate } = location
   // A client that predates a box (the sex, the age) or an offline save from before it sends no such key: keep
   // the stored value (the merge below only overwrites keys that are present) instead of blanking it on a resend.
-  const fields = cleanFields(kind, request.body.fields)
-  Object.keys(fields).forEach((key) => { if (!(key in (request.body.fields || {}))) delete fields[key] })
+  const fields = givenFields(kind, request.body.fields)
   const result = await query(
     `INSERT INTO drug_requests (kind, ward_key, request_date, patient_name, patient_id, fields, created_by)
      VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -159,8 +167,8 @@ router.put('/drug-requests/:id', requireAuth, async (request, response) => {
   if (!name) return response.status(400).json({ message: 'اسم المريض مطلوب' })
   try {
     await query(
-      'UPDATE drug_requests SET patient_name = $2, patient_id = $3, fields = $4, updated_at = NOW() WHERE id = $1',
-      [own.row.id, name, idOf(request.body.patientId), JSON.stringify(cleanFields(own.row.kind, request.body.fields))],
+      'UPDATE drug_requests SET patient_name = $2, patient_id = $3, fields = fields || $4, updated_at = NOW() WHERE id = $1',
+      [own.row.id, name, idOf(request.body.patientId), JSON.stringify(givenFields(own.row.kind, request.body.fields))],
     )
   } catch (error) {
     if (error.code === '23505') return response.status(409).json({ message: 'توجد استمارة أخرى لهذا المريض في هذا اليوم' })

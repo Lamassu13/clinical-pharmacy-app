@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import hospitalLogo from '../assets/hospital-logo.png'
 import { Glyph } from '../components/ToolbarIcons.jsx'
 import { apiUrl } from '../constants.js'
-import { isoDate } from '../helpers.js'
+import { isoDate, toEnglishDigits } from '../helpers.js'
 import { exportReportPdf } from '../reportPdf.js'
 
 // «Albumin follow up»: one floor's albumin sheet for the day, as the unit keeps it on paper. The main rows
@@ -20,21 +20,22 @@ const BLANK_EXTRA = Object.fromEntries(MAIN_COLUMNS.map(([key]) => [key, '']))
 const BLANK_NOT = Object.fromEntries(NOT_COLUMNS.map(([key]) => [key, '']))
 const MIN_NOT_INDICATED = 3
 const SAVE_DELAY = 700
-const digits = (text) => text.replace(/\D/g, '')
+// Arabic-Indic digits (١٢٣) are digits too: they used to be stripped, which saved an empty رقم الطبلة / day / ticks over the form's.
+const digits = (text) => toEnglishDigits(text).replace(/\D/g, '')
 
 const dateHeading = (iso) => {
   const day = new Date(`${iso}T12:00:00`)
   return `${day.toLocaleDateString('ar-IQ', { weekday: 'long' })} ${(day.getMonth() + 1).toLocaleString('ar-IQ')}/${day.getDate().toLocaleString('ar-IQ')}`
 }
 const indicationText = (ticks) => ticks.map((key) => `#${key.slice(1)}`).join(', ')
-const ticksOf = (text) => [...new Set((text.match(/\d+/g) || []).map(Number))].filter((n) => n >= 1 && n <= 17).map((n) => `i${n}`)
+const ticksOf = (text) => [...new Set((toEnglishDigits(text).match(/\d+/g) || []).map(Number))].filter((n) => n >= 1 && n <= 17).map((n) => `i${n}`)
 
 // One editable cell: plain text in a box inside the cell, saved when the cursor leaves it (only if it
 // changed); Enter ends the edit. Keyed by its value so a saved/reset value is drawn fresh rather than
 // patched under the cursor. `label` names it for screen readers and, on a phone, heads its line on the card.
 function Cell({ value, onCommit, className, ltr, readOnly, multiline = false, label }) {
   const direction = ltr ? 'ltr' : 'auto'
-  if (multiline) return <EditBox value={value} onCommit={onCommit} className={className} direction={direction} label={label} multiline />
+  if (multiline) return readOnly ? <div className={`fu-edit fu-edit--fixed${className ? ` ${className}` : ''}`} dir={direction}>{value}</div> : <EditBox value={value} onCommit={onCommit} className={className} direction={direction} label={label} multiline />
   return <td className={className} data-label={label}>{readOnly
     ? <span className="fu-edit fu-edit--fixed" dir={direction}>{value}</span>
     : <EditBox value={value} onCommit={onCommit} direction={direction} label={label} />}</td>
@@ -49,12 +50,16 @@ function EditBox({ value, onCommit, className, direction, label, multiline }) {
 // the screen below; given plain data and handlers so it can be rendered on its own.
 export function FollowUpSheet({ sheetRef, stale, date, floor, data, saveRow, setListCell, saveDoc, setNonce }) {
   const { doc } = data
+  // A past day, for a floor user: shown as it was, nothing editable (the server refuses it too).
+  const locked = Boolean(data.locked)
   const extraRows = doc.extraRows
   // The forms marked «Not indicated» (استمارة الالبومين) come first — their cells edit the form — then the rows typed here.
   const notForms = data.notForms || []
-  const notRows = [...doc.notIndicated, ...Array.from({ length: Math.max(0, MIN_NOT_INDICATED - notForms.length - doc.notIndicated.length) }, () => ({ ...BLANK_NOT }))]
+  // Always at least one blank row to type the next one into (at least three rows in all, as on paper).
+  const notRows = [...doc.notIndicated, ...Array.from({ length: Math.max(1, MIN_NOT_INDICATED - notForms.length - doc.notIndicated.length) }, () => ({ ...BLANK_NOT }))]
   const empty = !data.rows.length && !extraRows.length && !notForms.length
-  return <article ref={sheetRef} className={stale ? 'report-doc fu-sheet is-stale' : 'report-doc fu-sheet'} aria-busy={stale || undefined}>
+  // While another day loads the old sheet stays in view, dimmed and inert: an edit made then would be saved on the day now being opened.
+  return <article ref={sheetRef} className={stale ? 'report-doc fu-sheet is-stale' : 'report-doc fu-sheet'} aria-busy={stale || undefined} inert={stale || undefined}>
     <header className="report-doc-head">
       <img className="hospital-logo" width="52" height="52" src={hospitalLogo} alt="" />
       <div>
@@ -70,18 +75,18 @@ export function FollowUpSheet({ sheetRef, stale, date, floor, data, saveRow, set
         <thead><tr>{MAIN_COLUMNS.map(([key, header]) => <th key={key} scope="col">{header}</th>)}</tr></thead>
         <tbody>
           {data.rows.map((row) => <tr key={row.id}>
-            <Cell label="Treatment day" ltr value={row.fields.treatmentDay ? `D${row.fields.treatmentDay}` : ''} onCommit={(text) => saveRow(row.id, { fields: { treatmentDay: digits(text) } })} />
-            <Cell label="Pt. Name" value={row.name} onCommit={(text) => (text ? saveRow(row.id, { name: text }) : setNonce((n) => n + 1))} />
-            <Cell label="File no." ltr value={row.patientId} onCommit={(text) => saveRow(row.id, { patientId: digits(text) })} />
+            <Cell readOnly={locked} label="Treatment day" ltr value={row.fields.treatmentDay ? `D${row.fields.treatmentDay}` : ''} onCommit={(text) => saveRow(row.id, { fields: { treatmentDay: digits(text) } })} />
+            <Cell readOnly={locked} label="Pt. Name" value={row.name} onCommit={(text) => (text ? saveRow(row.id, { name: text }) : setNonce((n) => n + 1))} />
+            <Cell readOnly={locked} label="File no." ltr value={row.patientId} onCommit={(text) => saveRow(row.id, { patientId: digits(text) })} />
             <Cell label="Ward" value={row.ward} readOnly />
-            <Cell label="Diagnosis" value={row.fields.diagnosis} onCommit={(text) => saveRow(row.id, { fields: { diagnosis: text } })} />
-            <Cell label="S.alb" ltr value={row.fields.serumAlbumin} onCommit={(text) => saveRow(row.id, { fields: { serumAlbumin: text } })} />
-            <Cell label="S.Creat" ltr value={row.fields.scr} onCommit={(text) => saveRow(row.id, { fields: { scr: text } })} />
-            <Cell label="No of vials" ltr value={row.fields.count} onCommit={(text) => saveRow(row.id, { fields: { count: digits(text) } })} />
-            <Cell label="No of indication" ltr value={indicationText(row.ticks)} onCommit={(text) => saveRow(row.id, { ticks: ticksOf(text) })} />
+            <Cell readOnly={locked} label="Diagnosis" value={row.fields.diagnosis} onCommit={(text) => saveRow(row.id, { fields: { diagnosis: text } })} />
+            <Cell readOnly={locked} label="S.alb" ltr value={row.fields.serumAlbumin} onCommit={(text) => saveRow(row.id, { fields: { serumAlbumin: text } })} />
+            <Cell readOnly={locked} label="S.Creat" ltr value={row.fields.scr} onCommit={(text) => saveRow(row.id, { fields: { scr: text } })} />
+            <Cell readOnly={locked} label="No of vials" ltr value={row.fields.count} onCommit={(text) => saveRow(row.id, { fields: { count: digits(text) } })} />
+            <Cell readOnly={locked} label="No of indication" ltr value={indicationText(row.ticks)} onCommit={(text) => saveRow(row.id, { ticks: ticksOf(text) })} />
           </tr>)}
           {[...extraRows, { ...BLANK_EXTRA }].map((row, index) => <tr key={`extra-${index}`} className={index === extraRows.length ? 'fu-new-row' : undefined}>
-            {MAIN_COLUMNS.map(([key, label]) => <Cell key={key} label={label} value={row[key]} ltr={NUMBER_KEYS.includes(key)} onCommit={(text) => setListCell('extraRows', BLANK_EXTRA, index, key, text)} />)}
+            {MAIN_COLUMNS.map(([key, label]) => <Cell readOnly={locked} key={key} label={label} value={row[key]} ltr={NUMBER_KEYS.includes(key)} onCommit={(text) => setListCell('extraRows', BLANK_EXTRA, index, key, text)} />)}
           </tr>)}
         </tbody>
       </table></div>
@@ -93,24 +98,24 @@ export function FollowUpSheet({ sheetRef, stale, date, floor, data, saveRow, set
         <thead><tr><th scope="col">No.</th>{NOT_COLUMNS.map(([key, header]) => <th key={key} scope="col">{header}</th>)}</tr></thead>
         <tbody>{notForms.map((row, index) => <tr key={row.id}>
           <td data-label="No.">{index + 1}</td>
-          <Cell label="Pt.name" value={row.name} onCommit={(text) => (text ? saveRow(row.id, { name: text }) : setNonce((n) => n + 1))} />
-          <Cell label="File no." ltr value={row.patientId} onCommit={(text) => saveRow(row.id, { patientId: digits(text) })} />
+          <Cell readOnly={locked} label="Pt.name" value={row.name} onCommit={(text) => (text ? saveRow(row.id, { name: text }) : setNonce((n) => n + 1))} />
+          <Cell readOnly={locked} label="File no." ltr value={row.patientId} onCommit={(text) => saveRow(row.id, { patientId: digits(text) })} />
           <Cell label="Ward" value={row.ward} readOnly />
-          <Cell label="Diagnosis" value={row.fields.diagnosis} onCommit={(text) => saveRow(row.id, { fields: { diagnosis: text } })} />
-          <Cell label="S.albumin" ltr value={row.fields.serumAlbumin} onCommit={(text) => saveRow(row.id, { fields: { serumAlbumin: text } })} />
-          <Cell label="S.creat." ltr value={row.fields.scr} onCommit={(text) => saveRow(row.id, { fields: { scr: text } })} />
-          <Cell label="Reasons" value={row.fields.reason} onCommit={(text) => saveRow(row.id, { fields: { reason: text } })} />
+          <Cell readOnly={locked} label="Diagnosis" value={row.fields.diagnosis} onCommit={(text) => saveRow(row.id, { fields: { diagnosis: text } })} />
+          <Cell readOnly={locked} label="S.albumin" ltr value={row.fields.serumAlbumin} onCommit={(text) => saveRow(row.id, { fields: { serumAlbumin: text } })} />
+          <Cell readOnly={locked} label="S.creat." ltr value={row.fields.scr} onCommit={(text) => saveRow(row.id, { fields: { scr: text } })} />
+          <Cell readOnly={locked} label="Reasons" value={row.fields.reason} onCommit={(text) => saveRow(row.id, { fields: { reason: text } })} />
         </tr>)}
         {notRows.map((row, index) => <tr key={`not-${index}`}>
           <td data-label="No.">{notForms.length + index + 1}</td>
-          {NOT_COLUMNS.map(([key, label]) => <Cell key={key} label={label} value={row[key]} ltr={NUMBER_KEYS.includes(key)} onCommit={(text) => setListCell('notIndicated', BLANK_NOT, index, key, text)} />)}
+          {NOT_COLUMNS.map(([key, label]) => <Cell readOnly={locked} key={key} label={label} value={row[key]} ltr={NUMBER_KEYS.includes(key)} onCommit={(text) => setListCell('notIndicated', BLANK_NOT, index, key, text)} />)}
         </tr>)}</tbody>
       </table></div>
     </section>
 
     <section className="report-section" data-section="notes">
       <div className="report-section-head"><h2>ملاحظات</h2></div>
-      <Cell multiline label="ملاحظات" className="fu-notes" value={doc.notes} onCommit={(text) => saveDoc({ ...doc, notes: text })} />
+      <Cell readOnly={locked} multiline label="ملاحظات" className="fu-notes" value={doc.notes} onCommit={(text) => saveDoc({ ...doc, notes: text })} />
     </section>
   </article>
 }
@@ -139,39 +144,78 @@ export default function AlbuminFollowUpScreen({ adminHeader, isExpired, floor, o
   }, [date, floor, isExpired, nonce])
   rowsRef.current = [...(data?.rows || []), ...(data?.notForms || [])]
 
-  // A cell of a form's row: saved to the form itself (the same routes the form's screen uses).
-  const saveRow = useCallback(async (id, patch) => {
+  // A cell of a form's row: saved to the form itself (the same routes the form's screen uses). The change shows at once and each row's
+  // saves go one after another, each built on the one before — two quick edits on a slow network no longer undo each other. The
+  // server's answer is taken only when no newer edit of that row is still on its way.
+  const rowChains = useRef(new Map())
+  const saveRow = useCallback((id, patch) => {
     const row = rowsRef.current.find((item) => item.id === id)
     if (!row) return
     setError('')
-    try {
+    const next = { ...row, name: patch.name ?? row.name, patientId: patch.patientId ?? row.patientId, fields: { ...row.fields, ...patch.fields }, ticks: patch.ticks ?? row.ticks }
+    const swap = (item) => (item.id === id ? { ...item, name: next.name, patientId: next.patientId, fields: next.fields, ticks: next.ticks } : item)
+    rowsRef.current = rowsRef.current.map(swap)
+    setData((current) => current && { ...current, rows: current.rows.map(swap), notForms: (current.notForms || []).map(swap) })
+    const run = async () => {
       const response = patch.ticks
-        ? await fetch(`${apiUrl}/drug-requests/${id}/ticks`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ ticks: patch.ticks }) })
+        ? await fetch(`${apiUrl}/drug-requests/${id}/ticks`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ ticks: next.ticks }) })
         : await fetch(`${apiUrl}/drug-requests/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-          body: JSON.stringify({ name: patch.name ?? row.name, patientId: patch.patientId ?? row.patientId, fields: { ...row.fields, ...patch.fields } }) })
+          body: JSON.stringify({ name: next.name, patientId: next.patientId, fields: next.fields }) })
       if (isExpired(response)) return
       const result = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(result.message || 'لم يُحفظ التعديل.')
+      if (rowChains.current.get(id) !== chained) return // a newer edit of this row follows: its answer will be the one shown
       const saved = (item) => (item.id === id ? { ...item, name: result.request.name, patientId: result.request.patientId, fields: result.request.fields, ticks: result.request.ticks } : item)
       setData((current) => current && { ...current, rows: current.rows.map(saved), notForms: (current.notForms || []).map(saved) })
-    } catch (caught) {
+    }
+    const chained = (rowChains.current.get(id) || Promise.resolve()).catch(() => {}).then(run)
+    rowChains.current.set(id, chained)
+    chained.catch((caught) => {
+      if (rowChains.current.get(id) === chained) rowChains.current.delete(id)
       setError(caught.message === 'Failed to fetch' ? 'لا يوجد اتصال — التعديل يحتاج اتصالًا.' : caught.message)
       setNonce((value) => value + 1) // back to what is saved
-    }
+    })
   }, [isExpired])
 
-  // The typed parts, saved a moment after the last edit.
+  // The typed parts, saved a moment after the last edit — over the version this device last read (another device's save in between
+  // comes back as the sheet as it now is, shown with a note, instead of being written over). One save at a time; a save still waiting
+  // when the screen is left (back, another screen) is sent at once rather than dropped.
+  // The version last read or saved, per sheet (day and floor): a save still in flight for the day just left uses that day's own.
+  const versions = useRef(new Map())
+  const sheetKey = (day, onFloor) => `${day}|${onFloor}`
+  const pending = useRef(null) // { date, floor, doc } not sent yet
+  const chain = useRef(Promise.resolve())
+  useEffect(() => { if (data) versions.current.set(sheetKey(data.date, data.floor), data.version ?? '') }, [data])
+  const send = useCallback((save) => {
+    chain.current = chain.current.then(async () => {
+      try {
+        const response = await fetch(`${apiUrl}/albumin-followup`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', keepalive: true,
+          body: JSON.stringify({ ...save, version: versions.current.get(sheetKey(save.date, save.floor)) ?? '' }) })
+        if (isExpired(response)) return
+        const result = await response.json().catch(() => ({}))
+        if (response.status === 409) {
+          versions.current.set(sheetKey(save.date, save.floor), result.version ?? '')
+          setData((current) => current && current.date === save.date && current.floor === save.floor ? { ...current, doc: result.doc, version: result.version } : current)
+          setError(result.message)
+          return
+        }
+        if (!response.ok) throw new Error(result.message || 'save')
+        if (result.version) {
+          versions.current.set(sheetKey(save.date, save.floor), result.version)
+          // (kept on the sheet's data too: the next edit re-reads it from there)
+          setData((current) => current && current.date === save.date && current.floor === save.floor ? { ...current, version: result.version } : current)
+        }
+      } catch (caught) { setError(caught.message && caught.message !== 'save' && caught.message !== 'Failed to fetch' ? caught.message : 'لم يُحفظ آخر تعديل — تحقّق من الاتصال وحاول مرة أخرى.') }
+    })
+  }, [isExpired])
   const saveDoc = useCallback((doc) => {
     setData((current) => current && { ...current, doc })
+    pending.current = { date, floor, doc }
     clearTimeout(saveTimer.current)
-    saveTimer.current = setTimeout(async () => {
-      try {
-        const response = await fetch(`${apiUrl}/albumin-followup`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ date, floor, doc }) })
-        if (!isExpired(response) && !response.ok) throw new Error('save')
-      } catch { setError('لم يُحفظ آخر تعديل — تحقّق من الاتصال وحاول مرة أخرى.') }
-    }, SAVE_DELAY)
-  }, [date, floor, isExpired])
-  useEffect(() => () => clearTimeout(saveTimer.current), [])
+    saveTimer.current = setTimeout(() => { const save = pending.current; pending.current = null; if (save) send(save) }, SAVE_DELAY)
+  }, [date, floor, send])
+  // Leaving the screen (or changing the day) never drops an edit that is still waiting.
+  useEffect(() => () => { clearTimeout(saveTimer.current); const save = pending.current; pending.current = null; if (save) send(save) }, [date, floor, send])
 
   const setListCell = (list, blank, index, key, text) => {
     const next = [...data.doc[list]]

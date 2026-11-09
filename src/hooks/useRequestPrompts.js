@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { DRUG_REQUESTS } from '../../shared/drug-requests.js'
 
 // When to open the request-form popups, for both places a dose is added: «إدخال مريض» (a patient
@@ -15,8 +15,14 @@ export default function useRequestPrompts({ check, save, scope }) {
   // back there when the last one closes.
   const opener = useRef(null)
 
+  // The ward and day being charted, as of now: an answer that comes back after the pharmacist moved on is dropped, and moving on
+  // drops the questions still waiting — they would be saved on the ward / day now open, not the one they were asked on.
+  const scopeRef = useRef(scope)
+  useEffect(() => { scopeRef.current = scope; setQueue([]) }, [scope])
+
   const ask = useCallback(async (patient, lines) => {
     if (!patient.name && !patient.patientId) return
+    const askedOn = scope
     const asks = []
     for (const [kind, spec] of Object.entries(DRUG_REQUESTS)) {
       const mine = lines.filter((line) => Number(line.quantity) > 0 && spec.pattern.test(line.medicine))
@@ -25,11 +31,12 @@ export default function useRequestPrompts({ check, save, scope }) {
       if (asked.current.has(key)) continue
       asked.current.add(key)
       const result = await check(kind, patient.name, patient.patientId)
+      if (scopeRef.current !== askedOn) return
       if (result && (result.requested || (spec.firstDayOnly && result.day !== 1))) continue
       const fields = { ...spec.prefill(mine), ...(spec.dayField && result ? { [spec.dayField]: String(result.day) } : {}) }
       asks.push({ id: `${key}|${Date.now()}`, kind, ...patient, fields, note: result ? '' : spec.offlineNote })
     }
-    if (!asks.length) return
+    if (!asks.length || scopeRef.current !== askedOn) return
     setQueue((current) => {
       if (!current.length) opener.current = document.activeElement
       return [...current, ...asks]
