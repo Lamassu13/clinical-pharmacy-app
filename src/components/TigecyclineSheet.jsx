@@ -67,7 +67,7 @@ export default function TigecyclineSheet({ request, wardName, paper = false, onT
           <td>{value('الوزن:', 'weight', { unit: 'كغم' })}</td>
           <td />
         </tr>
-        <tr><td colSpan={3}>{value('الجرعة المطلوبة يوميًا:', 'dose')}</td></tr>
+        <tr><td colSpan={3}>{value('الجرعة المطلوبة يوميًا:', 'dose', { unit: 'mg' })}</td></tr>
         <tr>
           <td>{value('عدد الأيام المطلوب أخذ العلاج فيها:', 'duration')}</td>
           <td>{value('S.Cr.', 'scr', { ltr: true })}</td>

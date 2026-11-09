@@ -10,6 +10,7 @@ import { DRUG_REQUESTS, MAX_REQUEST_NOTE, cleanFields, cleanTicks } from '../../
 import { FORM_URL as ALBUMIN_FORM_URL, albuminFormAnswers } from '../../shared/albumin-google-form.js'
 import { liveForm, mismatches, prefillUrl } from '../../shared/google-form-check.js'
 import { FORM_URL as TIGECYCLINE_FORM_URL, tigecyclineFormAnswers } from '../../shared/tigecycline-google-form.js'
+import { FORM_URL as COLISTIN_FORM_URL, colistinFormAnswers } from '../../shared/colistin-google-form.js'
 
 const router = express.Router()
 
@@ -166,14 +167,15 @@ router.patch('/drug-requests/:id/ticks', requireAuth, async (request, response) 
   response.json({ request: toRequest(await loadRequest(own.row.id)) })
 })
 
-// «استمارة الالبومين» and «استمارة التايجيسايكلين» sent to their ministry Google Forms from here, so nobody retypes
-// them there (../../shared/*-google-form.js build the answers; the tigecycline form also needs the unit's email,
+// «استمارة الالبومين», «استمارة التايجيسايكلين» and «استمارة الكوليستين» sent to their ministry Google Forms from here, so nobody retypes
+// them there (../../shared/*-google-form.js build the answers; the tigecycline and colistin forms also need the unit's email,
 // GOOGLE_FORM_EMAIL). Sending is off unless GOOGLE_FORM_SEND=1; otherwise the answers that would go are returned
 // and nothing leaves the server. A form already sent is refused unless `resend` is true, so a double tap cannot
 // file the patient twice with the ministry.
 const GOOGLE_FORMS = {
   albumin: { url: ALBUMIN_FORM_URL, answers: (form) => albuminFormAnswers(form) },
   tigecycline: { url: TIGECYCLINE_FORM_URL, answers: (form, ward, sending) => tigecyclineFormAnswers(form, { ward, email: process.env.GOOGLE_FORM_EMAIL || (sending ? '' : 'dry-run@example.invalid') }) },
+  colistin: { url: COLISTIN_FORM_URL, answers: (form, ward, sending) => colistinFormAnswers(form, { ward, email: process.env.GOOGLE_FORM_EMAIL || (sending ? '' : 'dry-run@example.invalid') }) },
 }
 router.post('/drug-requests/:id/google-form', requireAuth, async (request, response) => {
   const own = await ownRequest(request)

@@ -1,7 +1,7 @@
 // The restricted-medicine request forms: «استمارة الميرونيم», «استمارة التايجيسايكلين», «استمارة الكوليستين» and «استمارة الالبومين». One spec per
 // kind, read by the server (which fields and boxes it accepts) and by the app (the popup's fields, the
 // paper form's boxes). The paper layouts themselves live in src/components/*Sheet.jsx.
-import { MEROPENEM_PATTERN, TIGECYCLINE_PATTERN, COLISTIN_PATTERN, doseText, colistinDoseText } from './dose.js'
+import { MEROPENEM_PATTERN, TIGECYCLINE_PATTERN, COLISTIN_PATTERN, doseText, strengthMg, colistinIU, tigecyclineDoseNumber, colistinDoseNumber } from './dose.js'
 
 // Tick groups: `multiple` false means one choice at most (ticking another replaces it). Option keys
 // are what is stored, so they must never change meaning; their text is the paper form's own.
@@ -76,7 +76,8 @@ export const DRUG_REQUESTS = {
       { key: 'diagnosis', label: 'التشخيص', max: 200, wide: true, auto: true },
       { key: 'weight', label: 'الوزن', unit: 'كغم', max: 20, decimal: true },
       { key: 'scr', label: 'S.Cr.', unit: 'mg/dL', max: 10, decimal: true },
-      { key: 'dose', label: 'الجرعة المطلوبة يوميًا', max: 120, wide: true, auto: true, placeholder: '50mg × 2' },
+      // A number only (the ministry's Google Form takes mg a day): 50, 100. Rows saved as «50mg × 2» read as 100.
+      { key: 'dose', label: 'الجرعة المطلوبة يوميًا', unit: 'mg', max: 8, decimal: true, legacy: tigecyclineDoseNumber, placeholder: '100' },
       { key: 'duration', label: 'عدد الأيام المطلوب أخذ العلاج فيها', max: 120, wide: true, placeholder: 'مثال: 7 أيام', chips: ['5 أيام', '7 أيام', '10 أيام', '14 يومًا'] },
       // One of three (chips): the ministry's Google Form takes exactly these.
       { key: 'culture', label: 'نتيجة الزرع البكتيري', max: 20, choices: ['Resistant', 'Sensitive', 'Not done'] },
@@ -86,8 +87,8 @@ export const DRUG_REQUESTS = {
       { key: 'doctor', label: 'اسم الطبيب الاختصاص', max: 120, wide: true },
       { key: 'hideDoctor', label: 'عدم طباعة اسم الطبيب', max: 1, noDialog: true },
     ],
-    // Tigecycline is given twice a day: 50mg vial × 2 → «50mg × 2».
-    prefill: (lines) => ({ dose: lines.map((line) => doseText(line.medicine, line.quantity, 2)).join(' + ') }),
+    // The day's mg: 50mg vial × 2 → «100».
+    prefill: (lines) => ({ dose: String(lines.reduce((sum, line) => sum + strengthMg(line.medicine) * line.quantity, 0) || '') }),
     // The paper form's two permitted cases; one is chosen.
     groups: [
       { id: 'indication', multiple: false, options: [
@@ -106,20 +107,24 @@ export const DRUG_REQUESTS = {
     firstDayOnly: true,
     fields: [
       { key: 'sex', label: 'الجنس', max: 10, choices: ['ذكر', 'أنثى'], required: true },
-      { key: 'age', label: 'العمر', max: 30, placeholder: 'مثال: 45', required: true },
+      // Whole years, digits only: the ministry's Google Form refuses anything else.
+      { key: 'age', label: 'العمر', max: 3, digits: true, placeholder: 'مثال: 45', required: true },
       { key: 'diagnosis', label: 'التشخيص', max: 200, wide: true, auto: true },
       { key: 'weight', label: 'الوزن', unit: 'كغم', max: 20, decimal: true },
       { key: 'scr', label: 'S.Cr.', unit: 'mg/dL', max: 10, decimal: true },
-      { key: 'dose', label: 'الجرعة المطلوبة يوميًا', max: 120, wide: true, auto: true, placeholder: '9 MU' },
+      // A number only, in IU a day: 1000000, 6000000. Rows saved as «6 MU» read as 6000000.
+      { key: 'dose', label: 'الجرعة المطلوبة يوميًا', unit: 'IU', max: 10, digits: true, legacy: colistinDoseNumber, placeholder: '1000000' },
       { key: 'duration', label: 'عدد الأيام المطلوب أخذ العلاج فيها', max: 120, wide: true, placeholder: 'مثال: 7 أيام', chips: ['5 أيام', '7 أيام', '10 أيام', '14 يومًا'] },
-      // Free text on the paper form's box («نتيجة الزرع البكتيري»).
-      { key: 'culture', label: 'نتيجة الزرع البكتيري', max: 200, wide: true, auto: true, chips: ['Sensitive', 'Resistant', 'Not done'] },
+      // One of three (chips): the ministry's Google Form takes exactly these.
+      { key: 'culture', label: 'نتيجة الزرع البكتيري', max: 20, choices: ['Resistant', 'Sensitive', 'Not done'] },
+      // The antibiotics committee member the Google Form asks for (not printed on the paper form).
+      { key: 'committee', label: 'اسم عضو لجنة المضادات الحياتية', max: 120, wide: true },
       // Printed above the specialist's signature («الطبيب الاختصاص»).
       { key: 'doctor', label: 'اسم الطبيب الاختصاص', max: 120, wide: true },
       { key: 'hideDoctor', label: 'عدم طباعة اسم الطبيب', max: 1, noDialog: true },
     ],
-    // One 1,000,000 IU vial is 1 MU: 6 vials → «6 MU».
-    prefill: (lines) => ({ dose: lines.map((line) => colistinDoseText(line.medicine, line.quantity)).join(' + ') }),
+    // The day's IU: 6 vials of 1,000,000 IU → «6000000» (empty when the vial's strength is not in its name).
+    prefill: (lines) => ({ dose: String(lines.reduce((sum, line) => sum + colistinIU(line.medicine) * line.quantity, 0) || '') }),
     // The paper form's two permitted cases; one is chosen.
     groups: [
       { id: 'indication', multiple: false, options: [
@@ -187,7 +192,7 @@ const toEnglish = (value) => String(value ?? '').replace(/[٠-٩]/g, (digit) => 
 
 // One field's typed value, cleaned the same way on both sides.
 export const cleanField = (field, value) => {
-  const text = toEnglish(value)
+  const text = field.legacy ? field.legacy(toEnglish(value)) : toEnglish(value)
   if (field.choices) return field.choices.includes(text.trim()) ? text.trim() : ''
   if (field.digits) return text.replace(/\D/g, '').slice(0, field.max)
   // A comma (or the Arabic ٫) is a decimal point: «1,8» is 1.8, never 18.
