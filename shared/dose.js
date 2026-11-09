@@ -4,6 +4,8 @@
 // Which chart medicines are Meropenem: the catalogue writes it «Meronem …», a typed column may say
 // «Meropenem …». The server matches the same words in SQL (MEROPENEM_SQL_PATTERN).
 export const MEROPENEM_PATTERN = /(meronem|meropenem)/i
+// Tigecycline: the catalogue writes the brand «Tygacil …»; a typed column may say «Tigecycline …».
+export const TIGECYCLINE_PATTERN = /(tygacil|tigecycline|tigacyl)/i
 
 // Vial strength in mg: "Meronem 1000gm Vial" → 1000, "Meronem 500gm Vial" → 500. The catalogue
 // writes gm where it means mg, so a small number with "g" or "gm" ("1g", "Tazocin 4.5gm",

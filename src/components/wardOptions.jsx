@@ -21,6 +21,7 @@ const GROUPS = [
     { label: 'استمارة الالبومين', icon: 'drop', open: { mode: 'albumin-forms' }, count: 'albumin' },
     { label: 'طلبية الميرونيم', icon: 'clipboard', open: { mode: 'meropenem-order', slot: 'main' } },
     { label: 'استمارة الميرونيم', icon: 'vial', open: { mode: 'meropenem-forms' }, count: 'meropenem' },
+    { label: 'استمارة التايجيسايكلين', icon: 'vial', open: { mode: 'tigecycline-forms' }, count: 'tigecycline' },
   ] },
   { id: 'clinical', label: 'المتابعة السريرية', items: [
     { label: 'متابعة الاستلام', icon: 'receipt', open: { mode: 'receipts' }, needsConnection: true },

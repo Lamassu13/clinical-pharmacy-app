@@ -2805,6 +2805,33 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
   .req-signatures { font-size: 11px; gap: var(--space-2); }
 }
 
+/* «Tigecycline vial prescription» (TigecyclineSheet). */
+.tige-head td { vertical-align: middle; }
+.tige-head-ministry strong, .tige-head-title strong { display: block; }
+.tige-line { display: block; margin-top: 2px; }
+.tige-patient .req-field { flex-wrap: wrap; }
+.tige-patient .req-field .req-label { white-space: normal; }
+.tige-head-logo { width: 22%; text-align: center; }
+.tige-head-title { text-align: center; font-size: 1.05em; }
+.tige-patient td { height: 2.6em; }
+.tige-indication { margin-top: 0; border-top: 0; table-layout: auto; }
+.req-form.tige-indication { margin-top: 0; }
+.tige-indication th.tige-red { color: #d4271b; font-weight: 700; font-size: 1.05em; }
+.tige-indication th:nth-child(1) { width: 38%; }
+.tige-indication th:nth-child(2) { width: 14%; white-space: nowrap; }
+.tige-indication .tige-route { font-weight: 700; vertical-align: top; }
+.tige-indication .tige-dose { vertical-align: top; }
+.tige-dose-line { display: block; margin-bottom: 4px; }
+.tige-indication .tige-cases { width: 20%; text-align: start; vertical-align: top; }
+.tige-cases strong { display: block; font-weight: 700; }
+.tige-choose { text-decoration: underline; }
+.tige-indication .req-tick { min-height: 5em; align-items: flex-start; }
+.tige-note { font-size: 0.95em; }
+.tige-warning { margin: var(--space-3) 0 var(--space-1); text-align: start; }
+.tige-warning strong { text-decoration: underline; }
+.tige-committee { margin: 0; }
+.tige-signatures { margin-top: var(--space-6); }
+
 /* The forms as paper, drawn off-screen for the PDF (RequestPrintTemplate in .ppt-root): one fixed
    A4 portrait page each, black on white, sized in mm so a form never runs onto a second page. */
 .rpt-sheet { width: 210mm; height: 297mm; box-sizing: border-box; padding: 12mm 12mm 10mm; overflow: hidden; background: #fff; color: #000; font-family: var(--font-sans); }
@@ -2874,3 +2901,13 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
 /* The tick that leaves the doctor's name off the printed form (screen only). */
 .req-doctor-toggle { display: flex; align-items: center; gap: var(--space-2); min-height: 44px; color: var(--text-muted); font-size: var(--text-sm); cursor: pointer; }
 .req-doctor-toggle input { width: 20px; height: 20px; }
+.rpt-sheet .tige-head td { padding: 2mm 3mm; }
+.rpt-sheet .tige-head-ministry { font-size: 10.5pt; }
+.rpt-sheet .tige-patient td { height: 11mm; }
+.rpt-sheet .tige-indication th, .rpt-sheet .tige-indication td { font-size: 10pt; }
+.rpt-sheet .tige-indication th.tige-red, .rpt-sheet .tige-indication th.tige-red * { color: #000; }
+.rpt-sheet .tige-indication td.req-tick-cell { vertical-align: top; height: 36mm; }
+.rpt-sheet .tige-note { font-size: 9.5pt; }
+.rpt-sheet .tige-warning { margin: 4mm 0 1mm; font-size: 10.5pt; }
+.rpt-sheet .tige-committee { font-size: 10.5pt; }
+.rpt-sheet .tige-signatures { margin-top: 10mm; }
