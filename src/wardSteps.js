@@ -1,13 +1,14 @@
 import { GROUPS } from './components/wardOptions.jsx'
 
-// A ward's work as steps, in two flows. The daily work: the chart, the order, the Meropenem order, the two
-// request forms, then the pill forms. The clinical follow-up: dose receipt, the Meropenem follow-up, the
+// A ward's work as steps, in two flows. The daily work: the chart, the order, the Meropenem order, Meropenem and
+// albumin forms, the pill forms, then the newer request forms. The clinical follow-up: dose receipt, the Meropenem follow-up, the
 // interactions, the renal dose. Each has its own bar and «الخطوة التالية». The labels, icons and `open` targets are the ward page's own (wardOptions.jsx), so a step
 // opens exactly what its row does; only the order differs. «استمارة الحبوب الإضافي» is a step only where the
 // ward page lists it (floors 3, 6, 8, 9).
 const CHART_STEP = { label: 'الجارت', icon: 'grid', open: { mode: 'chart', slot: 'main' } }
-// The pill forms come last: the order and the request forms are done first, then the pills.
-const DAILY_MODES = ['chart', 'order', 'meropenem-order', 'meropenem-forms', 'tigecycline-forms', 'colistin-forms', 'ivig-forms', 'albumin-forms', 'pills', 'extra-pills']
+// The order, Meropenem and albumin come first, then the pill forms, then the newer request forms
+// (Tigecycline, Colistin, IVIG) after «استمارة الحبوب الإضافي».
+const DAILY_MODES = ['chart', 'order', 'meropenem-order', 'meropenem-forms', 'albumin-forms', 'pills', 'extra-pills', 'tigecycline-forms', 'colistin-forms', 'ivig-forms']
 // The follow-up starts where the doses were handed over: «متابعة الاستلام».
 const CLINICAL_MODES = ['receipts', 'meropenem', 'interactions', 'renal']
 // The steps of the flow that `mode` belongs to (the daily flow for any other mode, e.g. none open yet).
