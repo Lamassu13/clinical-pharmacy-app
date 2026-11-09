@@ -17,7 +17,7 @@ import usePdfSheets from '../usePdfSheets.js'
 const SHEETS = { meropenem: MeropenemSheet, albumin: AlbuminSheet, tigecycline: TigecyclineSheet }
 const savedAt = (iso) => new Date(iso).toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' })
 
-export default function DrugRequestsScreen({ footer, dayLocked = false, kind, header, wardLabel, wardName, onBack, selectedDate, onChangeDate, isOnline, loading, loadError, requests, busy, actionError, notice, onSendToGoogle, onSave, onSetTicks, onSaveField, onDelete, confirmModal }) {
+export default function DrugRequestsScreen({ footer, dayLocked = false, kind, header, wardLabel, wardName, onBack, selectedDate, onChangeDate, isOnline, loading, loadError, requests, busy, actionError, notice, manualUrl, onSendToGoogle, onSave, onSetTicks, onSaveField, onDelete, confirmModal }) {
   const spec = DRUG_REQUESTS[kind]
   const Sheet = SHEETS[kind]
   const [adding, setAdding] = useState(false)
@@ -48,6 +48,7 @@ export default function DrugRequestsScreen({ footer, dayLocked = false, kind, he
 
       {actionError && <p className="form-error" role="alert">{actionError}</p>}
       {notice && <p className="req-hint" role="status">{notice}</p>}
+      {manualUrl && <p className="req-hint"><a className="secondary-button compact" href={manualUrl} target="_blank" rel="noopener noreferrer">فتح نموذج Google مُعبّأ لإكمال الإرسال يدويًا</a></p>}
       {pdf.error && <p className="form-error" role="alert">{pdf.error}</p>}
 
       {loading ? <div className="empty-state"><span className="spinner" /><span>جارٍ تحميل الاستمارات…</span></div>

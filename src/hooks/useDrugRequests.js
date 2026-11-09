@@ -21,6 +21,7 @@ export default function useDrugRequests({ selected, selectedDate, isExpired, use
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState('')
   const [notice, setNotice] = useState('')
+  const [manualUrl, setManualUrl] = useState('') // the Google Form pre-filled, offered when a send was refused
   const [nonce, setNonce] = useState(0)
   const wardFloor = selected?.floor || ''
   const wardName = selected?.ward || ''
@@ -144,6 +145,7 @@ export default function useDrugRequests({ selected, selectedDate, isExpired, use
     setBusy(true)
     setActionError('')
     setNotice('')
+    setManualUrl('')
     try {
       // The server sends what it has stored: wait for the edits still on their way for this form (the field
       // being typed saved when the button was tapped), and do not send if one of them failed.
@@ -154,7 +156,7 @@ export default function useDrugRequests({ selected, selectedDate, isExpired, use
       if (isExpired(response)) return
       const result = await response.json().catch(() => ({}))
       if (response.status === 409) putLocal(request.id, { googleSentAt: result.sentAt })
-      if (!response.ok) { setActionError(result.message || 'تعذّر الإرسال — حاول مرة أخرى.'); return }
+      if (!response.ok) { setActionError(result.message || 'تعذّر الإرسال — حاول مرة أخرى.'); setManualUrl(result.manualUrl || ''); return }
       if (result.dryRun) { setNotice('وضع التجربة: لم يُرسل شيء إلى Google.'); return }
       // Only the mark: the reply's other values could undo an edit still in the queue.
       putLocal(request.id, { googleSentAt: result.request.googleSentAt })
@@ -164,5 +166,5 @@ export default function useDrugRequests({ selected, selectedDate, isExpired, use
     } finally { setBusy(false) }
   }, [askConfirm, isExpired])
 
-  return { listKind, requests, loading, loadError, busy, actionError, notice, check, save, setTicks, saveField, remove, sendToGoogle }
+  return { listKind, requests, loading, loadError, busy, actionError, notice, manualUrl, check, save, setTicks, saveField, remove, sendToGoogle }
 }

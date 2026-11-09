@@ -8,6 +8,7 @@ import { buildMeropenemForm, wardKeyOf } from '../meropenem.js'
 import { numberToArabicWords } from '../arabic-number.js'
 import { DRUG_REQUESTS, MAX_REQUEST_NOTE, cleanFields, cleanTicks } from '../../shared/drug-requests.js'
 import { FORM_URL as ALBUMIN_FORM_URL, albuminFormAnswers } from '../../shared/albumin-google-form.js'
+import { liveEntries, mismatches, prefillUrl } from '../../shared/google-form-check.js'
 import { FORM_URL as TIGECYCLINE_FORM_URL, tigecyclineFormAnswers } from '../../shared/tigecycline-google-form.js'
 
 const router = express.Router()
@@ -185,7 +186,7 @@ router.post('/drug-requests/:id/google-form', requireAuth, async (request, respo
   const form = toRequest({ ...own.row, patient_id: patientId })
   const sending = process.env.GOOGLE_FORM_SEND === '1'
   const answers = target.answers(form, `${floorText ? `الطابق ${floorText} — ` : ''}${ward.join('|')}`, sending)
-  if (!answers.ok) return response.status(422).json({ message: `أكمل أولًا: ${answers.missing.join('، ')}`, missing: answers.missing })
+  if (!answers.ok) return response.status(422).json({ message: answers.invalid ? `صحّح أولًا: ${answers.invalid.join('، ')}` : `أكمل أولًا: ${answers.missing.join('، ')}`, missing: answers.missing, invalid: answers.invalid })
   if (!sending) return response.json({ dryRun: true, answers: answers.body })
   // The form is marked sent BEFORE it is posted, in one statement, so two taps (or two devices) cannot both
   // post it, and an answer Google recorded but we never heard about cannot be posted again by a retry.
@@ -208,9 +209,19 @@ router.post('/drug-requests/:id/google-form', requireAuth, async (request, respo
   // recorded»); a refused one (a required question missing, an option text the form no longer has) 400 with the
   // form drawn again. A redirect (the form now asks for a sign-in, or is closed) is a 200 page too, but not from there.
   if (!reply.ok || reply.redirected || !new URL(reply.url).pathname.endsWith('/formResponse')) {
-    console.error('google form: refused:', reply.status, reply.redirected)
     await release()
-    return response.status(502).json({ message: 'رفض نموذج Google الإرسال — أخبر المسؤول (ربما تغيّر النموذج).' })
+    // Why: read the live form and compare. The form changed (a question or option the app sends is gone), or it is
+    // the same and one of the values was refused. Either way a link opens the form with the answers filled in,
+    // so the send can be finished by hand there — Google then says itself which box it did not accept.
+    let changed = []
+    try { changed = mismatches(answers.body, liveEntries(await (await fetch(target.url.replace(/formResponse$/, 'viewform'), { signal: AbortSignal.timeout(8000) })).text())) } catch { /* unread: treated as a refused value */ }
+    console.error('google form: refused:', reply.status, reply.redirected, changed)
+    return response.status(502).json({
+      message: changed.length
+        ? `تغيّر نموذج Google ولم تعد الاستمارة تطابقه (${changed.join('، ')}) — أخبر المسؤول، ويمكنك إكمال الإرسال يدويًا.`
+        : 'رفض نموذج Google إحدى القيم (راجع العمر أرقام صحيحة، والوزن وS.Cr أرقام) — صحّحها أو أكمل الإرسال يدويًا.',
+      manualUrl: prefillUrl(target.url, answers.body),
+    })
   }
   response.json({ request: toRequest(await loadRequest(own.row.id)) })
 })
