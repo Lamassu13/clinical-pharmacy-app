@@ -9,15 +9,17 @@ const CULTURE = { Resistant: 'Resistant', Sensitive: 'sensetive', 'Not done': 'n
 const SEX = { 'ذكر': 'ذكر', 'أنثى': 'انثى' }
 const DAYS_NOT_SET = 'غير محدد من قبل الطبيب'
 
-// `config`: { ENTRY: question ids, DIAGNOSIS: tick key → the form's option text, doseLabel }. Returns the builder:
+// `config`: { ENTRY: question ids, DIAGNOSIS: tick key → the form's option text, doseLabel, toMg? }. `toMg` turns the
+// daily dose as the request holds it into the mg the form asks for (colistin: IU → mg of colistin base). Returns the builder:
 // (request, { ward, email }) → { ok: true, body: [[name, value], …], prefill } or { ok: false, missing | invalid }.
 // `request`: one stored request (name, patientId, date, fields, ticks), `ward` its ward's label; `email` the unit's.
 // The quantity dispensed is the daily dose and nothing is wasted; the sharing system is not applied — both decided
 // with the pharmacists.
-export const vialFormAnswers = ({ ENTRY, DIAGNOSIS, doseLabel }) => (request, { ward, email }) => {
+export const vialFormAnswers = ({ ENTRY, DIAGNOSIS, doseLabel, toMg = (dose) => dose }) => (request, { ward, email }) => {
   const { fields } = request
   const tick = request.ticks.find((key) => DIAGNOSIS[key])
-  const mg = dailyMg(fields.dose)
+  const dose = dailyMg(fields.dose)
+  const mg = dose && toMg(dose)
   const missing = [
     [email, 'بريد النموذج (GOOGLE_FORM_EMAIL على الخادم)'], [request.name, 'اسم المريض'], [request.patientId, 'رقم الطبلة'], [fields.committee, 'اسم عضو لجنة المضادات'],
     [fields.doctor, 'اسم الطبيب الاختصاص'], [fields.sex && SEX[fields.sex], 'الجنس'], [fields.age, 'العمر'], [tick, 'الحالة المصرح بها (علّم مربعًا)'],
