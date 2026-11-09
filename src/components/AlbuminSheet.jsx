@@ -62,7 +62,7 @@ export default function AlbuminSheet({ request, wardLabel, paper = false, onTogg
 
     <div className="req-signatures alb-signatures">
       <p><strong>الصيدلي السريري</strong></p>
-      <p className="req-sign-doctor">{value('اسم الطبيب الاختصاص', 'doctor', { bare: true })}<strong>الطبيب الاختصاص</strong></p>
+      <p className="req-sign-doctor">{value('اسم الطبيب الاختصاص', 'doctor', { bare: true, ...(paper && fields.hideDoctor ? { value: '' } : {}) })}{!paper && <label className="req-doctor-toggle"><input type="checkbox" checked={!fields.hideDoctor} onChange={(event) => onField({ fields: { hideDoctor: event.target.checked ? '' : '1' } })} /> طباعة اسم الطبيب</label>}<strong>الطبيب الاختصاص</strong></p>
       <p><strong>مسؤول وحدة الصيدلة السريرية</strong></p>
       <p><strong>مسؤول القسم</strong></p>
       <p />

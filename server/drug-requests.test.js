@@ -77,7 +77,7 @@ test('albumin: the treatment day counts up day by day; fields cleaned per kind; 
     fields: { treatmentDay: '٣', count: '4 vials', serumAlbumin: '1,8x', weight: '70.5', scr: '1.1', doctor: ' د. سعد كاظم ', diagnosis: 'Liver cirrhosis', sex: 'ذكر', age: '54,5', bogus: '1' },
   })
   assert.equal(sent.status, 201)
-  assert.deepEqual(sent.body.request.fields, { sex: 'ذكر', age: '54.5', treatmentDay: '3', count: '4', serumAlbumin: '1.8', weight: '70.5', scr: '1.1', doctor: 'د. سعد كاظم', diagnosis: 'Liver cirrhosis' })
+  assert.deepEqual(sent.body.request.fields, { sex: 'ذكر', age: '54.5', treatmentDay: '3', count: '4', serumAlbumin: '1.8', weight: '70.5', scr: '1.1', doctor: 'د. سعد كاظم', hideDoctor: '', diagnosis: 'Liver cirrhosis' })
   assert.equal(sent.body.request.words, 'أربعة')
   assert.deepEqual(sent.body.request.ticks, [])
   assert.deepEqual(await check(pharmacist, 'albumin', '2026-09-26', { name: 'سارة', id: '44' }), { day: 3, requested: true })
@@ -299,4 +299,18 @@ test('google form send: the رقم الطبلة the screen shows is the one sent
   await pharmacist.post('/api/drug-requests', { kind: 'albumin', floor: FLOOR, ward: WARD, date: '2026-11-06', name: 'سارة', patientId: '', fields: { count: '3' } })
   const listed = (await pharmacist.get(`/api/drug-requests?${where('albumin', '2026-11-06')}`)).body.requests[0]
   assert.deepEqual([listed.fields.count, listed.fields.age, listed.fields.sex], ['3', '30', 'أنثى'])
+})
+
+test('the doctor’s name can be left off the printed form: the setting is kept, a resend does not undo it, the name itself stays stored', async () => {
+  const pharmacist = await loginAs({ role: 'user', floor: FLOOR })
+  const base = { floor: FLOOR, ward: WARD, date: '2026-09-26', name: 'سارة', patientId: '44' }
+  for (const kind of ['albumin', 'meropenem']) {
+    const saved = (await pharmacist.post('/api/drug-requests', { ...base, kind, fields: { doctor: 'د. سعد', sex: 'ذكر', age: '5' } })).body.request
+    assert.equal(saved.fields.hideDoctor, '')
+    const hidden = (await pharmacist.put(`/api/drug-requests/${saved.id}`, { name: 'سارة', patientId: '44', fields: { ...saved.fields, hideDoctor: '1' } })).body.request
+    assert.deepEqual([hidden.fields.hideDoctor, hidden.fields.doctor], ['1', 'د. سعد'])
+    // The patient entry popup resends without the setting: it is kept.
+    const resent = (await pharmacist.post('/api/drug-requests', { ...base, kind, fields: { doctor: 'د. سعد' } })).body.request
+    assert.equal(resent.fields.hideDoctor, '1')
+  }
 })

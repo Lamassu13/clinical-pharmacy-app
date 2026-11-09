@@ -10,7 +10,7 @@ import { DRUG_REQUESTS, cleanField } from '../../shared/drug-requests.js'
 // cancel button do.
 export default function DrugRequestDialog({ kind, initial, screen = false, kicker, title, note, saveLabel = 'حفظ الاستمارة', cancelLabel = 'لاحقًا', onSave, onClose }) {
   const spec = DRUG_REQUESTS[kind]
-  const fields = spec.fields.filter((field) => screen || !field.screenOnly)
+  const fields = spec.fields.filter((field) => (screen || !field.screenOnly) && !field.noDialog)
   const [name, setName] = useState(initial.name || '')
   // رقم الطبلة: filled from the chart when it has one, typed here when it does not (digits only, as the server keeps it).
   const [patientId, setPatientId] = useState(initial.patientId || '')
@@ -35,7 +35,7 @@ export default function DrugRequestDialog({ kind, initial, screen = false, kicke
       return
     }
     setBusy(true)
-    const result = await onSave({ name: name.trim(), patientId: patientId.replace(/\D/g, '').slice(0, 20), fields: values })
+    const result = await onSave({ name: name.trim(), patientId: patientId.replace(/\D/g, '').slice(0, 20), fields: Object.fromEntries(fields.map((field) => [field.key, values[field.key]])) })
     setBusy(false)
     if (!result.ok) setError(result.message)
   }
