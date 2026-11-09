@@ -8,7 +8,7 @@ import { FORM_URL, albuminFormAnswers } from '../shared/albumin-google-form.js'
 import { tigecyclineFormAnswers, FORM_URL as TIGECYCLINE_URL } from '../shared/tigecycline-google-form.js'
 import { colistinFormAnswers, FORM_URL as COLISTIN_URL } from '../shared/colistin-google-form.js'
 import { ivigFormAnswers } from '../shared/ivig-google-form.js'
-import { formProblems, GOOGLE_KINDS } from '../shared/form-problems.js'
+import { formProblems, needsFollowUp, GOOGLE_KINDS } from '../shared/form-problems.js'
 import { dailyMg, tigecyclineDoseNumber, colistinDoseNumber } from '../shared/dose.js'
 import { liveEntries, mismatches, prefillUrl } from '../shared/google-form-check.js'
 
@@ -282,15 +282,22 @@ test('google form send: marked sent once, a second send needs resend, a refused 
 
   // Not reached at all: undone. Timed out: the mark stays (Google may have it), with a message not to resend blindly.
   const fourth = await readyAlbumin(pharmacist, '71')
-  google = fakeGoogle(() => { throw Object.assign(new Error('refused'), { name: 'TypeError' }) })
+  google = fakeGoogle(() => { throw Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNREFUSED' } }) })
   assert.equal((await send(fourth.id)).status, 502)
   assert.equal(await sentAt(fourth.id), null)
   google.restore()
-  google = fakeGoogle(() => { throw Object.assign(new Error('timeout'), { name: 'TimeoutError' }) })
-  const timedOut = await send(fourth.id)
-  assert.equal(timedOut.status, 504)
-  assert.ok(await sentAt(fourth.id))
-  google.restore()
+  // A timeout, or a connection dropped after the request left (no code from before it): Google may have it — the mark stays,
+  // and the reply is the form itself, marked sent but unconfirmed (shown as «لم يتأكد الإرسال», counted as needing follow-up).
+  for (const [index, failure] of [Object.assign(new Error('timeout'), { name: 'TimeoutError' }), Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNRESET' } })].entries()) {
+    const unsure = await readyAlbumin(pharmacist, `8${index}`)
+    google = fakeGoogle(() => { throw failure })
+    const timedOut = await send(unsure.id)
+    assert.equal(timedOut.status, 504)
+    assert.ok(await sentAt(unsure.id))
+    assert.ok(timedOut.body.request.googleSentAt)
+    assert.match(timedOut.body.request.googleError, /لم يتأكد/)
+    google.restore()
+  }
 })
 
 test('google form send: the رقم الطبلة the screen shows is the one sent; an old client does not blank a stored age', async () => {
@@ -596,6 +603,15 @@ test('ivig google form: the route posts it with no email (the form asks none), t
   assert.ok(result.body.request.googleSentAt)
 })
 
+test('needsFollowUp: a Google form until Google has taken it (and while unconfirmed); Meropenem while it lacks what «مواقف القسم» shows', () => {
+  const ivig = { name: 'نور', patientId: '66', date: '2026-11-09', ticks: [], note: '', fields: {}, googleSentAt: null, googleError: '' }
+  assert.equal(needsFollowUp('ivig', ivig), true)
+  assert.equal(needsFollowUp('ivig', { ...ivig, googleSentAt: '2026-11-09T09:00:00Z' }), false) // sent, though it still lacks things
+  assert.equal(needsFollowUp('ivig', { ...ivig, googleSentAt: '2026-11-09T09:00:00Z', googleError: 'لم يتأكد' }), true)
+  assert.equal(needsFollowUp('meropenem', { ...ivig, fields: { sex: 'ذكر', age: '4' }, ticks: ['cap'] }), false)
+  assert.equal(needsFollowUp('meropenem', ivig), true)
+})
+
 test('formProblems: Meropenem lacks what «مواقف القسم» shows; the Google kinds lack what their form would refuse', () => {
   const meropenem = (fields, ticks = [], note = '') => formProblems('meropenem', { name: 'علي', patientId: '1', date: '2026-11-09', fields, ticks, note })
   assert.deepEqual(meropenem({}), ['الجنس', 'العمر', 'التشخيص'])
@@ -652,5 +668,15 @@ test('google send follow-up: who sent it and how, why a try failed (kept, then c
   const manual = (await pharmacist.get(`/api/drug-requests?${where('ivig', '2026-11-09')}`)).body.requests.find((item) => item.id === second.id)
   assert.equal(manual.googleSentHow, 'manual')
   assert.ok(manual.googleSentBy)
-  assert.equal((await countsOf()).attention.ivig, 1) // still incomplete (no diagnosis, no sex…), though marked sent
+  assert.equal((await countsOf()).attention.ivig, 0) // Google has taken it: what the app's own copy lacks no longer matters
+
+  // A refused resend gives back who sent it and how; it never wipes a sent mark.
+  const third = (await pharmacist.post('/api/drug-requests', { kind: 'ivig', floor: FLOOR, ward: WARD, date: '2026-11-09', name: 'هدى', patientId: '68', fields: { sex: 'أنثى', age: '5', vials: '4', doctor: 'د. سعد' } })).body.request
+  await pharmacist.patch(`/api/drug-requests/${third.id}/ticks`, { ticks: ['gbs'] })
+  assert.equal((await pharmacist.post(`/api/drug-requests/${third.id}/google-form`, { confirmManual: true })).status, 200)
+  answer = { ok: false, status: 400, redirected: false }
+  assert.equal((await pharmacist.post(`/api/drug-requests/${third.id}/google-form`, { resend: true })).status, 502)
+  const kept = (await pharmacist.get(`/api/drug-requests?${where('ivig', '2026-11-09')}`)).body.requests.find((item) => item.id === third.id)
+  assert.deepEqual([Boolean(kept.googleSentAt), kept.googleSentHow, kept.googleSentBy === manual.googleSentBy], [true, 'manual', true])
+  assert.equal((await countsOf()).attention.ivig, 1) // sent, but the last try left a reason: follow it up
 })

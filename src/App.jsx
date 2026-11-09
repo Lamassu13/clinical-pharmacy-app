@@ -40,6 +40,7 @@ import useRequestPrompts from './hooks/useRequestPrompts.js'
 import DrugRequestDialog from './components/DrugRequestDialog.jsx'
 import AlbuminFollowUpScreen from './screens/AlbuminFollowUpScreen.jsx'
 import { DRUG_REQUESTS } from '../shared/drug-requests.js'
+import { needsFollowUp } from '../shared/form-problems.js'
 import { useOrder, useMeropenemOrder, useCourseForms, useInteractions, useReceipts } from './hooks/useWardViews.js'
 import { syncPushSubscription } from './push.js'
 import ExtraPillsScreen from './screens/ExtraPillsScreen.jsx'
@@ -2204,7 +2205,7 @@ function App() {
     setSelected({ floor: selected.floor, ward: selected.ward, ...step.open })
   }
   const onMainChart = selected?.mode === 'chart' && (selected.slot || 'main') === 'main'
-  const stepBar = stepIndex >= 0 ? <WardStepBar steps={steps} current={stepIndex} isOnline={isOnline} counts={drugRequests.listKind && drugRequests.requests ? { ...requestCounts, [drugRequests.listKind]: drugRequests.requests.length } : requestCounts} chartDone={onMainChart ? chartCompleted : wasCompleted(wardKey({ ...selected, slot: 'main' }, selectedDate))} onStep={goToStep} /> : null
+  const stepBar = stepIndex >= 0 ? <WardStepBar steps={steps} current={stepIndex} isOnline={isOnline} counts={drugRequests.listKind && drugRequests.requests ? { ...requestCounts, [drugRequests.listKind]: drugRequests.requests.length, attention: { ...requestCounts?.attention, [drugRequests.listKind]: drugRequests.requests.filter((request) => needsFollowUp(drugRequests.listKind, request)).length } } : requestCounts} chartDone={onMainChart ? chartCompleted : wasCompleted(wardKey({ ...selected, slot: 'main' }, selectedDate))} onStep={goToStep} /> : null
   const stepFooter = stepIndex >= 0 ? <NextStep steps={steps} current={stepIndex} onStep={goToStep} onDone={leaveWork} /> : null
   const appHeader = stepBar ? <>{appTopBar}{stepBar}</> : appTopBar
 

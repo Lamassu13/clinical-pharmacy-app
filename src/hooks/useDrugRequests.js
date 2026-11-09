@@ -13,6 +13,12 @@ export const kindOfMode = (mode) => Object.keys(DRUG_REQUESTS).find((kind) => fo
 const queueKeyOf = (body) => `drug-request:${body.kind}|${body.floor}|${body.ward}|${body.date}|${body.name.trim()}|${body.patientId || ''}`
 // What a reply says about the send (not its other values: they could undo an edit still in the queue).
 const sendMark = (request) => ({ googleSentAt: request.googleSentAt, googleSentBy: request.googleSentBy, googleSentHow: request.googleSentHow, googleError: request.googleError })
+// A send that did not go through: the form the reply carries (an unconfirmed one is marked sent, with its reason), else just
+// the reason — except a 409 / 422, which are about the form as it stands, not about this try.
+const refusedFor = (putLocal, id, response, result) => {
+  if (result.request) putLocal(id, sendMark(result.request))
+  else if (response.status !== 409 && response.status !== 422) putLocal(id, { googleError: result.message || '' })
+}
 const byCreated = (a, b) => String(a.createdAt).localeCompare(String(b.createdAt))
 
 export default function useDrugRequests({ selected, selectedDate, isExpired, userId, askConfirm }) {
@@ -98,6 +104,7 @@ export default function useDrugRequests({ selected, selectedDate, isExpired, use
     })
   }, [])
   const putLocal = (id, change) => setRequests((current) => current && current.map((item) => (item.id === id ? { ...item, ...change } : item)))
+  const refusedMark = (id, response, result) => refusedFor(putLocal, id, response, result)
 
   const setTicks = useCallback((request, ticks, note = request.note) => {
     setActionError('')
@@ -160,7 +167,7 @@ export default function useDrugRequests({ selected, selectedDate, isExpired, use
       if (isExpired(response)) return
       const result = await response.json().catch(() => ({}))
       if (response.status === 409) putLocal(request.id, { googleSentAt: result.sentAt })
-      if (!response.ok) { setActionError(result.message || 'تعذّر الإرسال — حاول مرة أخرى.'); setManualUrl(result.manualUrl || ''); setManualId(request.id); if (response.status !== 409 && response.status !== 422) putLocal(request.id, { googleError: result.message || '' }); return }
+      if (!response.ok) { setActionError(result.message || 'تعذّر الإرسال — حاول مرة أخرى.'); setManualUrl(result.manualUrl || ''); setManualId(request.id); refusedMark(request.id, response, result); return }
       if (result.dryRun) { setNotice('وضع التجربة: لم يُرسل شيء إلى Google.'); return }
       if (result.signIn) { setNotice(result.message); setManualUrl(result.manualUrl); setManualId(request.id); return }
       putLocal(request.id, sendMark(result.request))
@@ -184,13 +191,15 @@ export default function useDrugRequests({ selected, selectedDate, isExpired, use
     let sent = 0
     try {
       for (const request of unsent) {
-        try { await chains.current.get(request.id) } catch { return }
+        try { await chains.current.get(request.id) } catch { setActionError(`${sent ? `أُرسلت ${sent}. ` : ''}لم يُحفظ آخر تعديل على استمارة «${request.name}» — صحّحها ثم أعد المحاولة.`); return }
         const response = await fetch(`${apiUrl}/drug-requests/${request.id}/google-form`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({}) })
         if (isExpired(response)) return
         const result = await response.json().catch(() => ({}))
         if (result.dryRun) { setNotice('وضع التجربة: لم يُرسل شيء إلى Google.'); return }
         if (result.signIn) { setNotice(`${sent ? `أُرسلت ${sent}. ` : ''}استمارة «${request.name}» تحتاج إكمالًا يدويًا: ${result.message}`); setManualUrl(result.manualUrl); setManualId(request.id); return }
-        if (!response.ok) { setActionError(`${sent ? `أُرسلت ${sent}. ` : ''}«${request.name}»: ${result.message || 'تعذّر الإرسال — حاول مرة أخرى.'}`); setManualUrl(result.manualUrl || ''); setManualId(request.id); if (response.status !== 409 && response.status !== 422) putLocal(request.id, { googleError: result.message || '' }); return }
+        // Already sent meanwhile (another device, or a tap before): take the mark and go on to the next.
+        if (response.status === 409) { putLocal(request.id, { googleSentAt: result.sentAt }); continue }
+        if (!response.ok) { setActionError(`${sent ? `أُرسلت ${sent}. ` : ''}«${request.name}»: ${result.message || 'تعذّر الإرسال — حاول مرة أخرى.'}`); setManualUrl(result.manualUrl || ''); setManualId(request.id); refusedMark(request.id, response, result); return }
         putLocal(request.id, sendMark(result.request))
         sent += 1
       }

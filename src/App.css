@@ -2934,6 +2934,7 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
 
 .req-attention { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; }
 .req-attention strong { color: var(--warning-text); }
+.req-error-note { color: var(--danger); font-weight: 600; }
 .req-manual { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
 .rpt-sheet .coli-equations { font-size: 10pt; }
 .rpt-sheet .tige-patient td.req-tick-cell { vertical-align: top; height: 24mm; }
