@@ -8,7 +8,7 @@ import { buildMeropenemForm, wardKeyOf } from '../meropenem.js'
 import { numberToArabicWords } from '../arabic-number.js'
 import { DRUG_REQUESTS, MAX_REQUEST_NOTE, cleanFields, cleanTicks } from '../../shared/drug-requests.js'
 import { liveForm, mismatches, newRequired, prefillUrl } from '../../shared/google-form-check.js'
-import { needsFollowUp } from '../../shared/form-problems.js'
+import { needsFollowUp, isNotIndicated } from '../../shared/form-problems.js'
 import { GOOGLE_FORMS } from '../google-forms.js'
 import { compareForm, saveHealth } from '../google-form-health.js'
 
@@ -195,6 +195,7 @@ router.post('/drug-requests/:id/google-form', requireAuth, async (request, respo
   if (own.status) return refuse(response, own)
   const target = GOOGLE_FORMS[own.row.kind]
   if (!target) return response.status(400).json({ message: 'هذه الاستمارة لا تُرسل إلى نموذج Google' })
+  if (isNotIndicated(own.row.kind, { fields: own.row.fields })) return response.status(422).json({ message: 'استمارة غير مستطبّة — لا تُرسل إلى نموذج الوزارة وتظهر في «Not indicated» بمتابعة الالبومين' })
   // Sent by hand from the pre-filled form (the form asks for a sign-in): the pharmacist says so, and the form is marked.
   if (request.body?.confirmManual === true) {
     await query("UPDATE drug_requests SET google_sent_at = NOW(), google_sent_by_name = $2, google_sent_how = 'manual', google_error = '' WHERE id = $1", [own.row.id, senderName(request)])

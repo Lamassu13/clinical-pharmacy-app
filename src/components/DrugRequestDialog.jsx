@@ -22,7 +22,9 @@ export default function DrugRequestDialog({ kind, initial, screen = false, kicke
     // Numbers are cleaned as typed; free text only on the server (a trailing space mid-word is fine).
     setValues((current) => ({ ...current, [field.key]: field.digits || field.decimal ? cleanField(field, value) : value.slice(0, field.max) }))
   }
-  const firstEmpty = name ? fields.find((field) => !field.choices && !values[field.key])?.key : null
+  // A field with `showWhen` is asked only while the choice it depends on is made (the reason for «Not indicated»).
+  const shown = fields.filter((field) => !field.showWhen || values[field.showWhen.key] === field.showWhen.value)
+  const firstEmpty = name ? shown.find((field) => !field.choices && !values[field.key])?.key : null
 
   const submit = async (event) => {
     event.preventDefault()
@@ -55,7 +57,7 @@ export default function DrugRequestDialog({ kind, initial, screen = false, kicke
           <input value={patientId} maxLength={20} autoComplete="off" inputMode="numeric" dir="ltr"
             onChange={(event) => { setError(''); setPatientId(event.target.value.replace(/\D/g, '')) }} />
         </label>
-        {fields.map((field) => {
+        {shown.map((field) => {
           // A fixed choice (the sex): chips only, no box to type in.
           if (field.choices) return <div key={field.key} className="req-dialog-stack" role="group" aria-label={field.label} aria-required={field.required || undefined} data-field={field.key} tabIndex={-1}>
             <span>{field.label}{field.required && <small> (مطلوب)</small>}</span>

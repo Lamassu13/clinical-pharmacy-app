@@ -8,7 +8,8 @@ import { exportReportPdf } from '../reportPdf.js'
 // «Albumin follow up»: one floor's albumin sheet for the day, as the unit keeps it on paper. The main rows
 // are the day's albumin forms (استمارة الالبومين) of this floor's wards and every cell is editable here — a
 // cell of one of them saves to that form, so the sheet and the form never disagree (the ward is the
-// form's, so it is not editable). Rows can also be added by hand; the «Not indicated» list and the notes
+// form's, so it is not editable). Forms marked «Not indicated» lead the «Not indicated» list (their cells edit the form too; they are not
+// sent to the ministry's Google Form). Rows can also be added by hand; the rest of that list and the notes
 // are typed here and kept per day and floor (routes/albumin-followup.js). The tables read left to right
 // like the paper sheet; on a phone the same table slides sideways with the name column pinned. Cells are contentEditable so what is typed is
 // plain DOM text and the PDF (the reports' A4 route) draws it as it stands.
@@ -49,8 +50,10 @@ function EditBox({ value, onCommit, className, direction, label, multiline }) {
 export function FollowUpSheet({ sheetRef, stale, date, floor, data, saveRow, setListCell, saveDoc, setNonce }) {
   const { doc } = data
   const extraRows = doc.extraRows
-  const notRows = [...doc.notIndicated, ...Array.from({ length: Math.max(0, MIN_NOT_INDICATED - doc.notIndicated.length) }, () => ({ ...BLANK_NOT }))]
-  const empty = !data.rows.length && !extraRows.length
+  // The forms marked «Not indicated» (استمارة الالبومين) come first — their cells edit the form — then the rows typed here.
+  const notForms = data.notForms || []
+  const notRows = [...doc.notIndicated, ...Array.from({ length: Math.max(0, MIN_NOT_INDICATED - notForms.length - doc.notIndicated.length) }, () => ({ ...BLANK_NOT }))]
+  const empty = !data.rows.length && !extraRows.length && !notForms.length
   return <article ref={sheetRef} className={stale ? 'report-doc fu-sheet is-stale' : 'report-doc fu-sheet'} aria-busy={stale || undefined}>
     <header className="report-doc-head">
       <img className="hospital-logo" width="52" height="52" src={hospitalLogo} alt="" />
@@ -88,8 +91,18 @@ export function FollowUpSheet({ sheetRef, stale, date, floor, data, saveRow, set
       <div className="report-section-head"><h2 dir="ltr">Not indicated</h2></div>
       <div className="table-frame fu-frame"><table className="requests-table report-table fu-table" dir="ltr">
         <thead><tr><th scope="col">No.</th>{NOT_COLUMNS.map(([key, header]) => <th key={key} scope="col">{header}</th>)}</tr></thead>
-        <tbody>{notRows.map((row, index) => <tr key={`not-${index}`}>
+        <tbody>{notForms.map((row, index) => <tr key={row.id}>
           <td data-label="No.">{index + 1}</td>
+          <Cell label="Pt.name" value={row.name} onCommit={(text) => (text ? saveRow(row.id, { name: text }) : setNonce((n) => n + 1))} />
+          <Cell label="File no." ltr value={row.patientId} onCommit={(text) => saveRow(row.id, { patientId: digits(text) })} />
+          <Cell label="Ward" value={row.ward} readOnly />
+          <Cell label="Diagnosis" value={row.fields.diagnosis} onCommit={(text) => saveRow(row.id, { fields: { diagnosis: text } })} />
+          <Cell label="S.albumin" ltr value={row.fields.serumAlbumin} onCommit={(text) => saveRow(row.id, { fields: { serumAlbumin: text } })} />
+          <Cell label="S.creat." ltr value={row.fields.scr} onCommit={(text) => saveRow(row.id, { fields: { scr: text } })} />
+          <Cell label="Reasons" value={row.fields.reason} onCommit={(text) => saveRow(row.id, { fields: { reason: text } })} />
+        </tr>)}
+        {notRows.map((row, index) => <tr key={`not-${index}`}>
+          <td data-label="No.">{notForms.length + index + 1}</td>
           {NOT_COLUMNS.map(([key, label]) => <Cell key={key} label={label} value={row[key]} ltr={NUMBER_KEYS.includes(key)} onCommit={(text) => setListCell('notIndicated', BLANK_NOT, index, key, text)} />)}
         </tr>)}</tbody>
       </table></div>
@@ -124,7 +137,7 @@ export default function AlbuminFollowUpScreen({ adminHeader, isExpired, floor, o
       .catch(() => { if (!cancelled) { setData(null); setError('تعذّر تحميل الصفحة — تحقّق من الاتصال وحاول مرة أخرى.'); setLoading(false) } })
     return () => { cancelled = true }
   }, [date, floor, isExpired, nonce])
-  rowsRef.current = data?.rows || []
+  rowsRef.current = [...(data?.rows || []), ...(data?.notForms || [])]
 
   // A cell of a form's row: saved to the form itself (the same routes the form's screen uses).
   const saveRow = useCallback(async (id, patch) => {
@@ -139,7 +152,8 @@ export default function AlbuminFollowUpScreen({ adminHeader, isExpired, floor, o
       if (isExpired(response)) return
       const result = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(result.message || 'لم يُحفظ التعديل.')
-      setData((current) => current && { ...current, rows: current.rows.map((item) => (item.id === id ? { ...item, name: result.request.name, patientId: result.request.patientId, fields: result.request.fields, ticks: result.request.ticks } : item)) })
+      const saved = (item) => (item.id === id ? { ...item, name: result.request.name, patientId: result.request.patientId, fields: result.request.fields, ticks: result.request.ticks } : item)
+      setData((current) => current && { ...current, rows: current.rows.map(saved), notForms: (current.notForms || []).map(saved) })
     } catch (caught) {
       setError(caught.message === 'Failed to fetch' ? 'لا يوجد اتصال — التعديل يحتاج اتصالًا.' : caught.message)
       setNonce((value) => value + 1) // back to what is saved

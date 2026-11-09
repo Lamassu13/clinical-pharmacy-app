@@ -19,10 +19,17 @@ const GOOGLE_BUILDERS = {
 }
 export const GOOGLE_KINDS = Object.keys(GOOGLE_BUILDERS)
 
+// An albumin form marked «Not indicated»: it is not sent to the Google Form (the protocol does not indicate it) and is listed under
+// «Not indicated» on the albumin follow-up instead, so nothing about sending applies to it.
+export const isNotIndicated = (kind, request) => kind === 'albumin' && request.fields?.indicated === 'Not indicated'
+// Does this form go to a Google Form at all.
+export const sendsToGoogle = (kind, request) => GOOGLE_KINDS.includes(kind) && !isNotIndicated(kind, request)
+
 const MEROPENEM_DIAGNOSES = new Set(DRUG_REQUESTS.meropenem.groups.find((group) => group.id === 'diagnosis').options.map((option) => option.key))
 
 // `request`: { name, patientId, date, fields, ticks, note, googleSentAt, googleError } as the server and the screens hold it.
 export const formProblems = (kind, request) => {
+  if (isNotIndicated(kind, request)) return []
   if (kind === 'meropenem') {
     const diagnosed = request.ticks.some((key) => MEROPENEM_DIAGNOSES.has(key))
     return [
@@ -37,6 +44,6 @@ export const formProblems = (kind, request) => {
 // A Google form not sent (or sent but unconfirmed: the post may not have arrived) needs following up; once Google has taken it
 // that is settled — what the app's own copy still lacks no longer matters, and on a past day cannot be edited. Meropenem is
 // sent nowhere: it needs following up while it lacks what «مواقف القسم» shows. Used by the counts, the screens and the steps bar.
-export const needsFollowUp = (kind, request) => (GOOGLE_KINDS.includes(kind)
+export const needsFollowUp = (kind, request) => (isNotIndicated(kind, request) ? false : GOOGLE_KINDS.includes(kind)
   ? !request.googleSentAt || Boolean(request.googleError)
   : formProblems(kind, request).length > 0)

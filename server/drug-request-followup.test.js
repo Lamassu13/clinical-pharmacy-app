@@ -6,6 +6,7 @@ import { startServer, resetDatabase, createUser, ApiClient } from './test-helper
 import { sampleBodies, compareForm, allowCheckNow, saveHealth } from './google-form-health.js'
 import { liveForm } from '../shared/google-form-check.js'
 import { ivigFormAnswers } from '../shared/ivig-google-form.js'
+import { needsFollowUp, formProblems } from '../shared/form-problems.js'
 import { GOOGLE_FORMS } from './google-forms.js'
 
 const FLOOR = 5
@@ -251,4 +252,32 @@ test('dashboard: a floor user gets their own wards’ forms still to follow up t
   // A user with no assignment has nothing pending.
   const nobody = await loginAs({ role: 'user' })
   assert.deepEqual((await nobody.get(`/api/dashboard?date=${today}`)).body.formsPending, { total: 0, wards: [] })
+})
+
+test('albumin «Not indicated»: not sent to Google, not an alert, not a follow-up item — and listed under «Not indicated» on the albumin follow-up', async () => {
+  const today = new Date().toISOString().slice(0, 10)
+  const pharmacist = await loginAs({ role: 'user', floor: FLOOR })
+  const manager = await loginAs({ role: 'admin' })
+  const indicated = (await form(pharmacist, { kind: 'albumin', date: today, name: 'مستطبّة', patientId: '1', fields: { sex: 'أنثى', age: '30', count: '2', doctor: 'د. سعد' } })).body.request
+  await pharmacist.patch(`/api/drug-requests/${indicated.id}/ticks`, { ticks: ['i4'] })
+  const not = (await form(pharmacist, { kind: 'albumin', date: today, name: 'غير مستطبّة', patientId: '2', fields: { indicated: 'Not indicated', reason: 'Albumin > 2.5 g/dl', serumAlbumin: '3.1' } })).body.request
+  assert.deepEqual([not.fields.indicated, not.fields.reason], ['Not indicated', 'Albumin > 2.5 g/dl'])
+
+  // Not sent (nothing to send), and not counted anywhere as pending: the ward's counts, the floor alert, the dashboard, the admin list.
+  const refused = await pharmacist.post(`/api/drug-requests/${not.id}/google-form`, {})
+  assert.equal(refused.status, 422)
+  assert.match(refused.body.message, /غير مستطبّة/)
+  const counts = (await pharmacist.get(`/api/drug-requests/counts?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=${today}`)).body
+  assert.deepEqual([counts.albumin, counts.attention.albumin], [2, 1]) // both are forms; only the indicated one (unsent) needs following up
+  assert.deepEqual((await pharmacist.get(`/api/dashboard?date=${today}`)).body.formsPending, { total: 1, wards: [{ floor: FLOOR, ward: WARD, n: 1 }] })
+  assert.equal((await manager.get(`/api/dashboard?date=${today}`)).body.formsToSend, 1)
+  assert.deepEqual((await manager.get(`/api/drug-requests/followup?from=${today}&to=${today}`)).body.rows.map((row) => row.name), ['مستطبّة'])
+  assert.deepEqual([needsFollowUp('albumin', { ...not, fields: not.fields }), formProblems('albumin', not)], [false, []])
+
+  // The albumin follow-up: the indicated form is a main row, the other leads the «Not indicated» list.
+  const sheet = (await pharmacist.get(`/api/albumin-followup?date=${today}&floor=${FLOOR}`)).body
+  assert.deepEqual([sheet.rows.map((row) => row.name), sheet.notForms.map((row) => [row.name, row.fields.reason])], [['مستطبّة'], [['غير مستطبّة', 'Albumin > 2.5 g/dl']]])
+  // Flipped back to indicated, it is a main row again and an unsent form again.
+  await pharmacist.put(`/api/drug-requests/${not.id}`, { name: 'غير مستطبّة', patientId: '2', fields: { ...not.fields, indicated: 'Indicated' } })
+  assert.equal((await pharmacist.get(`/api/albumin-followup?date=${today}&floor=${FLOOR}`)).body.notForms.length, 0)
 })
