@@ -84,7 +84,7 @@ test('albumin: the treatment day counts up day by day; fields cleaned per kind; 
     fields: { treatmentDay: '٣', count: '4 vials', serumAlbumin: '1,8x', weight: '70.5', scr: '1.1', doctor: ' د. سعد كاظم ', diagnosis: 'Liver cirrhosis', sex: 'ذكر', age: '54,5', bogus: '1' },
   })
   assert.equal(sent.status, 201)
-  assert.deepEqual(sent.body.request.fields, { sex: 'ذكر', age: '54.5', treatmentDay: '3', count: '4', serumAlbumin: '1.8', weight: '70.5', scr: '1.1', doctor: 'د. سعد كاظم', hideDoctor: '', diagnosis: 'Liver cirrhosis' })
+  assert.deepEqual(sent.body.request.fields, { sex: 'ذكر', age: '54.5', treatmentDay: '3', count: '4', serumAlbumin: '1.8', weight: '70.5', scr: '1.1', doctor: 'د. سعد كاظم', hideDoctor: '', diagnosis: 'Liver cirrhosis', indicated: '', reason: '' })
   assert.equal(sent.body.request.words, 'أربعة')
   assert.deepEqual(sent.body.request.ticks, [])
   assert.deepEqual(await check(pharmacist, 'albumin', '2026-09-26', { name: 'سارة', id: '44' }), { day: 3, requested: true })
@@ -554,7 +554,7 @@ test('ivig: a fifth kind — asked on the first day only, vials prefilled, one d
 
   const sent = await pharmacist.post('/api/drug-requests', { kind: 'ivig', floor: FLOOR, ward: WARD, date: '2026-09-24', name: 'نور', patientId: '66', fields: { sex: 'أنثى', age: '0,08', vials: '4 vials', doctor: 'د. سعد', bogus: 'x' } })
   assert.equal(sent.status, 201)
-  assert.deepEqual(sent.body.request.fields, { sex: 'أنثى', age: '0.08', vials: '4', doctor: 'د. سعد', hideDoctor: '' })
+  assert.deepEqual(sent.body.request.fields, { sex: 'أنثى', age: '0.08', vials: '4', doctor: 'د. سعد' })
   const ticked = await pharmacist.patch(`/api/drug-requests/${sent.body.request.id}/ticks`, { ticks: ['itp', 'kawasaki', 'nope'] })
   assert.deepEqual(ticked.body.request.ticks, ['kawasaki'])
   assert.deepEqual(await check(pharmacist, 'ivig', '2026-09-24', { name: 'نور', id: '66' }), { day: 1, requested: true })

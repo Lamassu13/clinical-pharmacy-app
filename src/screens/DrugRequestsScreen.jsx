@@ -9,7 +9,7 @@ import ColistinSheet from '../components/ColistinSheet.jsx'
 import IvigSheet from '../components/IvigSheet.jsx'
 import RequestPrintTemplate from '../components/RequestPrintTemplate.jsx'
 import usePdfSheets from '../usePdfSheets.js'
-import { formProblems, needsFollowUp, GOOGLE_KINDS } from '../../shared/form-problems.js'
+import { formProblems, needsFollowUp, sendsToGoogle, isNotIndicated, GOOGLE_KINDS } from '../../shared/form-problems.js'
 
 // «استمارة الميرونيم» / «استمارة الالبومين»: the ward's forms of one kind for a day, each drawn as its
 // paper form. The patient-entry form and the chart fill them; here a value is corrected where it
@@ -22,6 +22,7 @@ const savedAt = (iso) => new Date(iso).toLocaleTimeString('ar-IQ', { hour: '2-di
 // Where a form stands, for its row — one chip, the most pressing first: a send Google may or may not have received (check its
 // responses before sending again), a refused one, not sent yet, or sent (and how). A form still lacking something says so too.
 const standing = (request, google, problems) => {
+  if (isNotIndicated(request.kind, request)) return { tone: 'muted', text: 'غير مستطبّة — لا تُرسل', title: request.fields.reason }
   const lacking = problems.length ? `ناقصة: ${problems.join('، ')}` : ''
   if (google && request.googleSentAt && request.googleError) return { tone: 'pending', text: 'لم يتأكد الإرسال', title: request.googleError }
   if (google && request.googleError) return { tone: 'danger', text: 'تعذّر الإرسال', title: request.googleError }
@@ -48,11 +49,14 @@ export default function DrugRequestsScreen({ footer, dayLocked = false, kind, he
   const pdf = usePdfSheets()
   const list = requests || []
   const google = GOOGLE_KINDS.includes(kind)
+  // The IVIG form is not printed: it only goes to the ministry's Google Form.
+  const printable = kind !== 'ivig'
   const problemsOf = new Map(list.map((request) => [request.id, formProblems(kind, request)]))
-  const unsent = google ? list.filter((request) => !request.googleSentAt) : []
+  const sends = (request) => sendsToGoogle(kind, request)
+  const unsent = list.filter((request) => sends(request) && !request.googleSentAt)
   // «إرسال المتبقي» sends the unsent forms that are complete (an incomplete one is refused before it leaves, and would stop the run).
   const sendable = unsent.filter((request) => !problemsOf.get(request.id).length)
-  const unconfirmed = google ? list.filter((request) => request.googleSentAt && request.googleError) : []
+  const unconfirmed = list.filter((request) => sends(request) && request.googleSentAt && request.googleError)
   const incomplete = list.filter((request) => problemsOf.get(request.id).length && needsFollowUp(kind, request))
   const print = (forms) => {
     // A value still being typed is saved by its blur first, so the page carries it.
@@ -71,7 +75,7 @@ export default function DrugRequestsScreen({ footer, dayLocked = false, kind, he
         <div className="toolbar-actions">
           <label className="pills-date">التاريخ <input type="date" value={selectedDate} onChange={(event) => onChangeDate(event.target.value)} /></label>
           {!dayLocked && <button type="button" className="secondary-button compact" disabled={!isOnline || loadError || loading} onClick={() => { setAddFor(null); setAdding(true) }}>+ استمارة جديدة</button>}
-          <button type="button" className="primary-button compact" disabled={!list.length || pdf.busy} onClick={() => print(list)}>{pdf.busy ? 'جارٍ التحضير…' : list.length > 1 ? 'طباعة الكل' : 'طباعة'}</button>
+          {printable && <button type="button" className="primary-button compact" disabled={!list.length || pdf.busy} onClick={() => print(list)}>{pdf.busy ? 'جارٍ التحضير…' : list.length > 1 ? 'طباعة الكل' : 'طباعة'}</button>}
         </div>
       </div>
 
@@ -116,10 +120,10 @@ export default function DrugRequestsScreen({ footer, dayLocked = false, kind, he
                   </h2>
                   {open && <div className="req-sheet-body" id={`req-sheet-${request.id}`}>
                     <div className="req-sheet-tools">
-                      <p className="req-sheet-meta">{request.createdByName && <span>أدخلها {request.createdByName} · {savedAt(request.createdAt)}</span>}{google && request.googleSentAt && request.googleSentBy && <span>{request.googleSentHow === 'manual' ? 'أكمل إرسالها يدويًا' : 'أرسلها'} {request.googleSentBy}</span>}{request.googleError && <span className="req-error-note">{request.googleError}</span>}</p>
+                      <p className="req-sheet-meta">{request.createdByName && <span>أدخلها {request.createdByName} · {savedAt(request.createdAt)}</span>}{sends(request) && request.googleSentAt && request.googleSentBy && <span>{request.googleSentHow === 'manual' ? 'أكمل إرسالها يدويًا' : 'أرسلها'} {request.googleSentBy}</span>}{request.googleError && <span className="req-error-note">{request.googleError}</span>}</p>
                       <span className="req-sheet-actions">
-                        {google && <button type="button" className="secondary-button compact" disabled={busy || !isOnline} onClick={() => onSendToGoogle(request)}>{request.googleSentAt ? 'أُرسلت ✓ — إعادة الإرسال' : 'إرسال إلى نموذج الوزارة'}</button>}
-                        <button type="button" className="secondary-button compact" disabled={pdf.busy} onClick={() => print([request])}>طباعة</button>
+                        {sends(request) && <button type="button" className="secondary-button compact" disabled={busy || !isOnline} onClick={() => onSendToGoogle(request)}>{request.googleSentAt ? 'أُرسلت ✓ — إعادة الإرسال' : 'إرسال إلى نموذج الوزارة'}</button>}
+                        {printable && <button type="button" className="secondary-button compact" disabled={pdf.busy} onClick={() => print([request])}>طباعة</button>}
                         {!dayLocked && <button type="button" className="danger-button compact" disabled={busy} onClick={() => onDelete(request)}>حذف</button>}
                       </span>
                     </div>

@@ -642,7 +642,8 @@ app.get('/api/dashboard', requireAuth, async (request, response) => {
     isManager
       ? timeQuery('formsToSend', query(
         `SELECT (SELECT COUNT(*)::int FROM drug_requests WHERE request_date > $1::date - 7 AND request_date <= $1::date
-                   AND kind = ANY($2::text[]) AND (google_sent_at IS NULL OR google_error <> '')) AS count,
+                   AND kind = ANY($2::text[]) AND (google_sent_at IS NULL OR google_error <> '')
+                   AND (kind <> 'albumin' OR COALESCE(fields->>'indicated', '') <> 'Not indicated')) AS count,
                 (SELECT COUNT(*)::int FROM google_form_health WHERE status = 'changed') AS changed`,
         [date, GOOGLE_KINDS],
       ))

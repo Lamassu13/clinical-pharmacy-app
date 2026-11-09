@@ -3,13 +3,14 @@ import { query } from '../db.js'
 import { requireAuth } from '../auth.js'
 import { canAccessLocation, cleanText, isIsoDate } from '../validation.js'
 import { cleanFields, cleanTicks } from '../../shared/drug-requests.js'
+import { isNotIndicated } from '../../shared/form-problems.js'
 
 const router = express.Router()
 
 // «Albumin follow up»: one sheet per day. Its main rows are the day's albumin request forms
 // (drug-requests.js) — the screen edits them through those routes, so the two never disagree. What
 // the forms cannot hold is typed on the sheet and kept here, one document per day and floor: rows
-// added by hand, the «Not indicated» list and the notes. It is a floor's sheet — its own patients only,
+// added by hand, the «Not indicated» rows typed on the sheet and the notes (the forms marked «Not indicated» are listed there too, from the forms). It is a floor's sheet — its own patients only,
 // for a manager too, who opens it from inside the floor.
 const MAX_ROWS = 100
 const EXTRA_KEYS = ['day', 'name', 'fileNo', 'ward', 'diagnosis', 'sAlb', 'sCreat', 'vials', 'indication']
@@ -43,11 +44,14 @@ router.get('/albumin-followup', requireAuth, async (request, response) => {
        WHERE kind = 'albumin' AND request_date = $1 AND ward_key LIKE $2 ORDER BY ward_key, created_at, id`, [date, `${floor}|%`]),
     query('SELECT doc FROM albumin_followups WHERE day = $1 AND scope = $2', [date, `floor:${floor}`]),
   ])
-  const rows = forms.rows.map((row) => {
+  const all = forms.rows.map((row) => {
     const [, ...ward] = row.ward_key.split('|')
     return { id: row.id, name: row.patient_name, patientId: row.patient_id, floor, ward: ward.join('|'), fields: cleanFields('albumin', row.fields), ticks: cleanTicks('albumin', row.ticks) }
   })
-  return response.json({ date, floor, rows, doc: cleanDoc(saved.rows[0]?.doc) })
+  // The forms marked «Not indicated» are the sheet's «Not indicated» list (with their reason); the rest are its main rows.
+  const rows = all.filter((row) => !isNotIndicated('albumin', row))
+  const notForms = all.filter((row) => isNotIndicated('albumin', row))
+  return response.json({ date, floor, rows, notForms, doc: cleanDoc(saved.rows[0]?.doc) })
 })
 
 router.put('/albumin-followup', requireAuth, async (request, response) => {

@@ -34,6 +34,15 @@ export default function AlbuminSheet({ request, wardLabel, paper = false, onTogg
       </div>
       {value('العمر (بالسنة):', 'age')}
     </div>}
+    {/* Whether the protocol indicates it (empty counts as indicated). «Not indicated» is not sent to the ministry's form and is listed
+        under «Not indicated» on the albumin follow-up, with its reason. Screen only, like the sex. */}
+    {!paper && <div className="req-extra-row">
+      <span className="req-label">الاستطباب <small>(غير المستطبّة لا تُرسل إلى نموذج الوزارة)</small></span>
+      <div className="req-chips" role="group" aria-label="الاستطباب">
+        {fieldOf.indicated.choices.map((choice) => <button key={choice} type="button" className="req-chip" aria-pressed={choice === 'Not indicated' ? fields.indicated === choice : fields.indicated !== 'Not indicated'} onClick={() => onField({ fields: { indicated: choice } })}>{choice}</button>)}
+      </div>
+      {fields.indicated === 'Not indicated' && value('السبب:', 'reason')}
+    </div>}
     <p className="alb-title">
       <img className="hospital-logo" width="30" height="30" src={hospitalLogo} alt="" />
       <strong>استمارة صرف الالبومين / مستشفى بغداد التعليمي</strong>

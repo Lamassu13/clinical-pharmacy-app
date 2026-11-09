@@ -152,9 +152,8 @@ export const DRUG_REQUESTS = {
       // Years, up to 3 decimals (0.08 for a month): the form refuses anything else.
       { key: 'age', label: 'العمر (بالسنة)', max: 8, decimal: true, placeholder: 'مثال: 45', required: true },
       { key: 'vials', label: 'عدد الفيالات المصروفة', max: 4, digits: true, placeholder: 'مثال: 5' },
-      // Printed above the specialist's signature («الطبيب الاختصاص»); the Google Form asks it too.
+      // The specialist's name, which the Google Form asks (the form is not printed).
       { key: 'doctor', label: 'اسم الطبيب الاختصاص', max: 120, wide: true },
-      { key: 'hideDoctor', label: 'عدم طباعة اسم الطبيب', max: 1, noDialog: true },
     ],
     // The vials given on the chart that day.
     prefill: (lines) => ({ vials: String(lines.reduce((sum, line) => sum + line.quantity, 0) || '') }),
@@ -191,6 +190,10 @@ export const DRUG_REQUESTS = {
       // Both are asked by the ministry's Google Form (shared/albumin-google-form.js); the age is in years, 0.08 for a month.
       { key: 'sex', label: 'الجنس', max: 10, choices: ['ذكر', 'أنثى'], required: true },
       { key: 'age', label: 'العمر (بالسنة)', max: 6, decimal: true, required: true, placeholder: 'مثال: 45' },
+      // Whether the protocol indicates the albumin. «Not indicated» is not sent to the ministry's Google Form and is listed under «Not indicated»
+      // on the albumin follow-up; empty counts as indicated (forms made before this was asked).
+      { key: 'indicated', label: 'الاستطباب', max: 20, choices: ['Indicated', 'Not indicated'] },
+      { key: 'reason', label: 'سبب عدم الاستطباب', max: 200, wide: true, showWhen: { key: 'indicated', value: 'Not indicated' } },
       { key: 'treatmentDay', label: 'Treatment day', max: 4, digits: true },
       { key: 'count', label: 'العدد المطلوب (رقما)', max: 4, digits: true },
       { key: 'serumAlbumin', label: 'Serum albumin', unit: 'g/dl', max: 20, decimal: true },
@@ -203,7 +206,7 @@ export const DRUG_REQUESTS = {
       // Written on the form's screen («تعديل»), not asked in the popup.
       { key: 'diagnosis', label: 'Diagnosis', max: 200, wide: true, auto: true, screenOnly: true },
     ],
-    prefill: (lines) => ({ count: String(lines.reduce((sum, line) => sum + (Number(line.quantity) || 0), 0) || '') }),
+    prefill: (lines) => ({ count: String(lines.reduce((sum, line) => sum + (Number(line.quantity) || 0), 0) || ''), indicated: 'Indicated' }),
     // The protocol's numbered indications. `title` prints bold, `inline` follows it in normal weight,
     // `lines` go underneath; **…** marks a bold word inside them, as on the paper form.
     groups: [
