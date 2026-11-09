@@ -2943,6 +2943,14 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
 .forms-health-head--bad strong { color: var(--danger); }
 .forms-health-issue { margin-top: var(--space-2); }
 .forms-health-issue small { color: var(--text-muted); }
+.forms-pending { margin-bottom: var(--space-4); padding: var(--space-3) var(--space-4); border: 1px solid var(--warning-border); border-radius: var(--radius-md); background: var(--warning-tint); }
+.forms-pending-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-3); margin: 0 0 var(--space-2); color: var(--warning-text); }
+.forms-pending-head small { color: var(--text-muted); }
+.forms-pending-wards { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.forms-pending-ward { display: inline-flex; align-items: center; gap: var(--space-2); min-height: 44px; padding: var(--space-1) var(--space-3); border: 1px solid var(--warning-border); border-radius: 999px; background: var(--surface); color: var(--heading); font: inherit; font-weight: 600; cursor: pointer; }
+.forms-pending-ward b { min-width: 1.6em; padding: 0 6px; border-radius: 999px; background: var(--warning-tint); color: var(--warning-text); text-align: center; }
+.forms-pending-link { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-3); width: 100%; min-height: 48px; margin-bottom: var(--space-4); padding: var(--space-2) var(--space-4); border: 1px solid var(--warning-border); border-radius: var(--radius-md); background: var(--warning-tint); color: var(--warning-text); font: inherit; text-align: start; cursor: pointer; }
+.forms-pending-link small { color: var(--text-muted); }
 .forms-kind { margin: var(--space-3) 0; max-width: 26rem; }
 .forms-detail { display: block; margin-top: 2px; color: var(--text-muted); }
 .forms-detail--error { color: var(--danger); }

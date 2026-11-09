@@ -19,7 +19,7 @@ import chartRoutes, { resolveChartId, readLocation, readWritableLocation, refuse
 import treatmentFormsRoutes from './routes/treatment-forms.js'
 import extraPillsRoutes from './routes/extra-pills.js'
 import drugRequestsRoutes from './routes/drug-requests.js'
-import drugRequestFollowupRoutes from './routes/drug-request-followup.js'
+import drugRequestFollowupRoutes, { pendingFormsFor } from './routes/drug-request-followup.js'
 import albuminFollowupRoutes from './routes/albumin-followup.js'
 import reportsRoutes from './routes/reports.js'
 import wardPositionsRoutes from './routes/ward-positions.js'
@@ -647,8 +647,10 @@ app.get('/api/dashboard', requireAuth, async (request, response) => {
         [date, GOOGLE_KINDS],
       ))
       : Promise.resolve({ rows: [{ count: 0 }] }),
+    // A floor user's own forms still to follow up today (unsent or unfinished), for the banner on the floor and ward pages.
+    isManager ? Promise.resolve(null) : timeQuery('formsPending', pendingFormsFor(user, date)),
   ]
-  const [started, topMedicines, patientsByFloor, totalPatients, dailyPatientsByFloor, patientsByFloorRange, formsToSend] = await Promise.all(pending)
+  const [started, topMedicines, patientsByFloor, totalPatients, dailyPatientsByFloor, patientsByFloorRange, formsToSend, formsPending] = await Promise.all(pending)
   response.json({
     startedWards: started.rows.map((row) => ({
       floor: row.floor_number, ward: row.name, slot: row.slot,
@@ -659,7 +661,7 @@ app.get('/api/dashboard', requireAuth, async (request, response) => {
     medicinesScope: isManager ? 'all' : 'own',
     patientsByFloor: patientsByFloor.rows.map((row) => ({ floor: row.floor, count: row.count })),
     totalPatients: totalPatients.rows[0]?.count ?? 0,
-    ...(isManager ? { formsToSend: formsToSend.rows[0]?.count ?? 0, formsChanged: formsToSend.rows[0]?.changed ?? 0 } : {}),
+    ...(isManager ? { formsToSend: formsToSend.rows[0]?.count ?? 0, formsChanged: formsToSend.rows[0]?.changed ?? 0 } : { formsPending }),
     patientsPeriod: isManager ? (PERIOD_DAYS[request.query.patientsPeriod] ? request.query.patientsPeriod : 'month') : 'today',
     dailyPatientsByFloor: bridgedDailyCounts(dailyPatientsByFloor.rows, addDays(date, -5), date),
     patientsByFloorRange: isManager && isIsoDate(request.query.rangeFrom) && isIsoDate(request.query.rangeTo)

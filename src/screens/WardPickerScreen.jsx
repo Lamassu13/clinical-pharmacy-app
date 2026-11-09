@@ -2,6 +2,7 @@ import { WardGlyph, ChevronStart, CardStatus } from '../components/WardGlyph.jsx
 import DashboardWidgets from '../components/DashboardWidgets.jsx'
 import PatientSearch from '../components/PatientSearch.jsx'
 import LongAntibioticPatients from '../components/LongAntibioticPatients.jsx'
+import FormsPendingNote from '../components/FormsPendingNote.jsx'
 
 // The sub-wards of one floor. Mirrors FloorPickerScreen's header and card shape so moving
 // from the floor grid into a floor doesn't feel like a different screen. The floor number
@@ -17,6 +18,9 @@ export default function WardPickerScreen({
       .map((item) => item.ward),
   )
 
+  // Today's forms still to follow up, per ward of this floor (a floor user's; see FormsPendingNote).
+  const pendingByWard = new Map((dashboard?.formsPending?.wards ?? []).filter((item) => item.floor === floor.number).map((item) => [item.ward, item.n]))
+
   return <section className="dashboard">
     <button className="back-button" onClick={onBack}>→ العودة للطوابق</button>
     <div className="section-heading">
@@ -26,13 +30,16 @@ export default function WardPickerScreen({
       </div>
     </div>
     <button type="button" className="secondary-button albumin-follow-link" onClick={onOpenAlbuminFollowUp}>متابعة الالبومين</button>
+    {!isManager && <FormsPendingNote pending={dashboard?.formsPending} floor={floor.number} onOpenWard={onOpenWard} />}
     <LongAntibioticPatients date={selectedDate} floor={floor.number} isExpired={isExpired} />
     <PatientSearch floor={floor.number} date={selectedDate} onOpen={onOpen} isExpired={isExpired} />
     <div className="location-grid">{floor.wards.map((ward) => {
       const started = startedWards.has(ward)
+      const pending = pendingByWard.get(ward)
       return <button type="button" className="location-card location-card--link" key={ward} onClick={() => onOpenWard({ floor: floor.number, ward })}>
         <span className="floor-number"><WardGlyph /></span>
         <span className="location-card-body"><strong>{ward}</strong></span>
+        {pending > 0 && <span className="card-status card-status--pending">{pending} تحتاج متابعة</span>}
         {dashboard ? <CardStatus started={started} /> : dashboardError && <CardStatus unavailable />}
         <span className="arrow"><ChevronStart /></span>
       </button>

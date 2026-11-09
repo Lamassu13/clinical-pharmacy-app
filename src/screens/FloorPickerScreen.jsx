@@ -3,6 +3,7 @@ import { WardGlyph, ChevronStart, StatusCheck, CardStatus } from '../components/
 import { Glyph } from '../components/ToolbarIcons.jsx'
 import PatientSearch from '../components/PatientSearch.jsx'
 import LongAntibioticPatients from '../components/LongAntibioticPatients.jsx'
+import FormsPendingNote from '../components/FormsPendingNote.jsx'
 import { wardAttention } from '../helpers.js'
 
 // The floor/special-ward grid. `floors` / `specialWards` arrive already narrowed to what this
@@ -50,6 +51,7 @@ export default function FloorPickerScreen({
       </button>
     )}
 
+    {!isManager && <FormsPendingNote pending={dashboard?.formsPending} onOpenWard={onOpenWard} />}
     {isManager && <LongAntibioticPatients date={selectedDate} isExpired={isExpired} />}
     {isManager && <PatientSearch date={selectedDate} onOpen={onOpen} isExpired={isExpired} />}
 

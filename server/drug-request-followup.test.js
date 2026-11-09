@@ -229,3 +229,26 @@ test('google form send: a refusal because the form now asks a new required quest
   const value = await pharmacist.post(`/api/drug-requests/${saved.id}/google-form`, {})
   assert.match(value.body.message, /رفض نموذج Google إحدى القيم/)
 })
+
+test('dashboard: a floor user gets their own wards’ forms still to follow up today (unsent or unfinished), nothing of other wards; a manager does not', async () => {
+  const today = new Date().toISOString().slice(0, 10)
+  const mine = await loginAs({ role: 'user', floor: FLOOR })
+  const other = await loginAs({ role: 'user', floor: OTHER.floor })
+  const manager = await loginAs({ role: 'admin' })
+  // Two unsent on the ward, one sent and complete (not pending), one on another floor's ward, one yesterday (not today's alert).
+  await form(mine, { kind: 'ivig', date: today, name: 'لم تُرسل', patientId: '1', fields: COMPLETE_IVIG })
+  await form(mine, { kind: 'meropenem', date: today, name: 'ناقصة', patientId: '2' })
+  const sent = (await form(mine, { kind: 'ivig', date: today, name: 'مرسلة', patientId: '3', fields: COMPLETE_IVIG })).body.request
+  await mine.patch(`/api/drug-requests/${sent.id}/ticks`, { ticks: ['gbs'] })
+  await mine.post(`/api/drug-requests/${sent.id}/google-form`, { confirmManual: true })
+  await other.post('/api/drug-requests', { kind: 'ivig', floor: OTHER.floor, ward: OTHER.ward, date: today, name: 'أخرى', patientId: '4', fields: {} })
+  await form(mine, { kind: 'ivig', date: '2000-01-01', name: 'قديمة', patientId: '5' })
+
+  const own = (await mine.get(`/api/dashboard?date=${today}`)).body.formsPending
+  assert.deepEqual(own, { total: 2, wards: [{ floor: FLOOR, ward: WARD, n: 2 }] })
+  assert.deepEqual((await other.get(`/api/dashboard?date=${today}`)).body.formsPending, { total: 1, wards: [{ floor: OTHER.floor, ward: OTHER.ward, n: 1 }] })
+  assert.equal((await manager.get(`/api/dashboard?date=${today}`)).body.formsPending, undefined)
+  // A user with no assignment has nothing pending.
+  const nobody = await loginAs({ role: 'user' })
+  assert.deepEqual((await nobody.get(`/api/dashboard?date=${today}`)).body.formsPending, { total: 0, wards: [] })
+})
