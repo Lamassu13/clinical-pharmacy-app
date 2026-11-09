@@ -1,7 +1,7 @@
-// The restricted-medicine request forms: «استمارة الميرونيم», «استمارة التايجيسايكلين», «استمارة الكوليستين» and «استمارة الالبومين». One spec per
+// The restricted-medicine request forms: «استمارة الميرونيم», «استمارة التايجيسايكلين», «استمارة الكوليستين», «استمارة IVIG» and «استمارة الالبومين». One spec per
 // kind, read by the server (which fields and boxes it accepts) and by the app (the popup's fields, the
 // paper form's boxes). The paper layouts themselves live in src/components/*Sheet.jsx.
-import { MEROPENEM_PATTERN, TIGECYCLINE_PATTERN, COLISTIN_PATTERN, doseText, strengthMg, colistinIU, tigecyclineDoseNumber, colistinDoseNumber } from './dose.js'
+import { MEROPENEM_PATTERN, TIGECYCLINE_PATTERN, COLISTIN_PATTERN, IVIG_PATTERN, doseText, strengthMg, colistinIU, tigecyclineDoseNumber, colistinDoseNumber } from './dose.js'
 
 // Tick groups: `multiple` false means one choice at most (ticking another replaces it). Option keys
 // are what is stored, so they must never change meaning; their text is the paper form's own.
@@ -130,6 +130,46 @@ export const DRUG_REQUESTS = {
       { id: 'indication', multiple: false, options: [
         { key: 'serious', text: 'Serious infections due to selected aerobic G-ve bacteria in patients with limited treatment options' },
         { key: 'cf', text: 'Management of chronic pulmonary infections due to Pseudomonas aeruginosa in patients with cystic fibrosis' },
+      ] },
+    ],
+  },
+  ivig: {
+    label: 'استمارة IVIG',
+    popupKicker: 'أول يوم IVIG',
+    offlineNote: 'تعذّر التحقق من يوم الكورس (لا يوجد اتصال) — املأها إن كان هذا اليوم الأول للـIVIG.',
+    pattern: IVIG_PATTERN,
+    sqlPattern: '(ivig|immunoglobulin|immune globulin|gamma ?globulin|octagam|intratect|privigen|gammagard|kiovig|flebogamma|gamunex|sandoglobulin|nanogam|pentaglobin)',
+    // Asked on the first day of the course, like Meropenem.
+    firstDayOnly: true,
+    // The boxes are the ministry's Google Form's own (shared/ivig-google-form.js).
+    fields: [
+      { key: 'sex', label: 'الجنس', max: 10, choices: ['ذكر', 'أنثى'], required: true },
+      // Years, up to 3 decimals (0.08 for a month): the form refuses anything else.
+      { key: 'age', label: 'العمر (بالسنة)', max: 8, decimal: true, placeholder: 'مثال: 45', required: true },
+      { key: 'vials', label: 'عدد الفيالات المصروفة', max: 4, digits: true, placeholder: 'مثال: 5' },
+      // Printed above the specialist's signature («الطبيب الاختصاص»); the Google Form asks it too.
+      { key: 'doctor', label: 'اسم الطبيب الاختصاص', max: 120, wide: true },
+      { key: 'hideDoctor', label: 'عدم طباعة اسم الطبيب', max: 1, noDialog: true },
+    ],
+    // The vials given on the chart that day.
+    prefill: (lines) => ({ vials: String(lines.reduce((sum, line) => sum + line.quantity, 0) || '') }),
+    // The Google Form's diagnoses (its own wording, spelling kept), by part; one is chosen. «Others» opens a box
+    // for what to specify (the request's `note`, English letters only — the form refuses anything else).
+    groups: [
+      { id: 'diagnosis', multiple: false, options: [
+        { key: 'abmr', part: 'Part (nephrology)', text: 'biopsy proven acute antibody mediated rejection' },
+        { key: 'cabmr', part: 'Part (nephrology)', text: 'biopsy proven chronic active antibody mediated rejection' },
+        { key: 'desens', part: 'Part (nephrology)', text: 'pre transplant desensitization protocol for highly sensitized patients' },
+        { key: 'bk', part: 'Part (nephrology)', text: 'transplant BK virus nephropathy / biopsy proven and resistant to standard therapy' },
+        { key: 'lupus', part: 'Part (nephrology)', text: 'severe case of fulminant lupus nephritis not responding to therapy' },
+        { key: 'caps', part: 'Part (nephrology)', text: 'catastrophic antiphospholipid syndrome' },
+        { key: 'cytopenia', part: 'Part (nephrology)', text: 'severe cytopenia and sepsis during treatment of glomerulonephritis or SLE and transplantation receiving aggressive immunosuppression' },
+        { key: 'itp', part: 'Part (hematology)', text: 'life threatening bleeding in immune thrombocytopenia' },
+        { key: 'kawasaki', part: 'Part (hematology)', text: 'kawasaki vasculitis' },
+        { key: 'hypogamma', part: 'Part (hematology)', text: 'replacement therapy in congenital hypogammaglobulinemia' },
+        { key: 'gbs', part: 'Part (neurology)', text: 'guillian barrie syndrome in case plasmapheresis cannot be done or not available' },
+        { key: 'mg', part: 'Part (neurology)', text: 'myasthenia gravis crisis as life saving measures when plasmapheresis cannot be done or not available' },
+        { key: 'others', part: 'Others', text: 'Others (specify)' },
       ] },
     ],
   },

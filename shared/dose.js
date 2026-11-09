@@ -8,6 +8,8 @@ export const MEROPENEM_PATTERN = /(meronem|meropenem)/i
 export const TIGECYCLINE_PATTERN = /(tygacil|tigecycline|tigacyl)/i
 // Colistin: the catalogue writes «Colistin 1000000 IU vial»; colistimethate and the brand Colomycin are the same drug.
 export const COLISTIN_PATTERN = /(colistin|colistimethate|colomycin|coly-?mycin)/i
+// IVIG: intravenous immunoglobulin under whatever name the catalogue gives it (the generic words or a common brand).
+export const IVIG_PATTERN = /(ivig|immunoglobulin|immune globulin|gamma ?globulin|octagam|intratect|privigen|gammagard|kiovig|flebogamma|gamunex|sandoglobulin|nanogam|pentaglobin)/i
 
 // A dose box on the request forms holds one number (what the ministry's Google Form takes): tigecycline in mg a
 // day («100»), colistin in IU a day («1000000»). Rows saved before that hold the old wording, so it is still read:

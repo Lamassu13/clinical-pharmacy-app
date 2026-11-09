@@ -11,7 +11,7 @@ export const liveForm = (html) => {
     const data = JSON.parse(match[1])
     const entries = new Map()
     for (const question of data[1][1]) {
-      if (question[3] === 8) continue // a section break
+      if (question[3] === 8 || !question[4]) continue // a section break, or a text block with no question
       const [entry] = question[4]
       entries.set(String(entry[0]), entry[1] ? new Set(entry[1].map((option) => option[0]).filter(Boolean)) : null)
     }
