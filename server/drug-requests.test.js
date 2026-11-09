@@ -8,6 +8,7 @@ import { FORM_URL, albuminFormAnswers } from '../shared/albumin-google-form.js'
 import { tigecyclineFormAnswers, FORM_URL as TIGECYCLINE_URL } from '../shared/tigecycline-google-form.js'
 import { colistinFormAnswers, FORM_URL as COLISTIN_URL } from '../shared/colistin-google-form.js'
 import { ivigFormAnswers } from '../shared/ivig-google-form.js'
+import { formProblems, needsFollowUp, GOOGLE_KINDS } from '../shared/form-problems.js'
 import { dailyMg, tigecyclineDoseNumber, colistinDoseNumber } from '../shared/dose.js'
 import { liveEntries, mismatches, prefillUrl } from '../shared/google-form-check.js'
 
@@ -34,6 +35,7 @@ const saveChart = (client, date, medicine, rows, floor = FLOOR, ward = WARD) => 
   quantities: rows.flatMap((row, index) => (row.qty ? [{ rowNumber: index + 1, columnNumber: 1, quantity: row.qty }] : [])),
 })
 const check = async (client, kind, date, query) => (await client.get(`/api/drug-requests/check?${where(kind, date)}&${new URLSearchParams(query)}`)).body
+const Z0 = { meropenem: 0, albumin: 0, tigecycline: 0, colistin: 0, ivig: 0 }
 const MERONEM = 'Meronem 1000gm Vial'
 const ALBUMIN = 'Human albumin 20% I.V.'
 
@@ -146,11 +148,11 @@ test('requests: list per kind, resend updates in place and keeps ticks, edit, ti
 test('counts: forms per kind for the ward and day; zeros when none; another floor refused', async () => {
   const pharmacist = await loginAs({ role: 'user', floor: FLOOR })
   const counts = async (date, client = pharmacist, floor = FLOOR, ward = WARD) => client.get(`/api/drug-requests/counts?floor=${floor}&ward=${encodeURIComponent(ward)}&date=${date}`)
-  assert.deepEqual((await counts('2026-09-24')).body, { meropenem: 0, albumin: 0, tigecycline: 0, colistin: 0, ivig: 0 })
+  assert.deepEqual((await counts('2026-09-24')).body, { ...Z0, attention: Z0 })
   const form = { floor: FLOOR, ward: WARD, date: '2026-09-24', fields: {} }
   for (const [kind, name] of [['meropenem', 'علي'], ['albumin', 'علي'], ['albumin', 'حسن']]) assert.equal((await pharmacist.post('/api/drug-requests', { ...form, kind, name })).status, 201)
-  assert.deepEqual((await counts('2026-09-24')).body, { meropenem: 1, albumin: 2, tigecycline: 0, colistin: 0, ivig: 0 })
-  assert.deepEqual((await counts('2026-09-25')).body, { meropenem: 0, albumin: 0, tigecycline: 0, colistin: 0, ivig: 0 })
+  assert.deepEqual((await counts('2026-09-24')).body, { meropenem: 1, albumin: 2, tigecycline: 0, colistin: 0, ivig: 0, attention: { meropenem: 1, albumin: 2, tigecycline: 0, colistin: 0, ivig: 0 } })
+  assert.deepEqual((await counts('2026-09-25')).body, { ...Z0, attention: Z0 })
   assert.equal((await counts('2026-09-24', pharmacist, 8, 'الردهة الخامسة')).status, 403)
   assert.equal((await counts('not-a-date')).status, 400)
 })
@@ -280,15 +282,22 @@ test('google form send: marked sent once, a second send needs resend, a refused 
 
   // Not reached at all: undone. Timed out: the mark stays (Google may have it), with a message not to resend blindly.
   const fourth = await readyAlbumin(pharmacist, '71')
-  google = fakeGoogle(() => { throw Object.assign(new Error('refused'), { name: 'TypeError' }) })
+  google = fakeGoogle(() => { throw Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNREFUSED' } }) })
   assert.equal((await send(fourth.id)).status, 502)
   assert.equal(await sentAt(fourth.id), null)
   google.restore()
-  google = fakeGoogle(() => { throw Object.assign(new Error('timeout'), { name: 'TimeoutError' }) })
-  const timedOut = await send(fourth.id)
-  assert.equal(timedOut.status, 504)
-  assert.ok(await sentAt(fourth.id))
-  google.restore()
+  // A timeout, or a connection dropped after the request left (no code from before it): Google may have it — the mark stays,
+  // and the reply is the form itself, marked sent but unconfirmed (shown as «لم يتأكد الإرسال», counted as needing follow-up).
+  for (const [index, failure] of [Object.assign(new Error('timeout'), { name: 'TimeoutError' }), Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNRESET' } })].entries()) {
+    const unsure = await readyAlbumin(pharmacist, `8${index}`)
+    google = fakeGoogle(() => { throw failure })
+    const timedOut = await send(unsure.id)
+    assert.equal(timedOut.status, 504)
+    assert.ok(await sentAt(unsure.id))
+    assert.ok(timedOut.body.request.googleSentAt)
+    assert.match(timedOut.body.request.googleError, /لم يتأكد/)
+    google.restore()
+  }
 })
 
 test('google form send: the رقم الطبلة the screen shows is the one sent; an old client does not blank a stored age', async () => {
@@ -339,7 +348,7 @@ test('tigecycline: a third kind — asked on the first day only, dose prefilled 
   assert.deepEqual(ticked.body.request.ticks, ['abdominal'])
   assert.deepEqual(await check(pharmacist, 'tigecycline', '2026-09-24', { name: 'سارة', id: '44' }), { day: 1, requested: true })
   const counts = (await pharmacist.get(`/api/drug-requests/counts?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=2026-09-24`)).body
-  assert.deepEqual(counts, { meropenem: 0, albumin: 0, tigecycline: 1, colistin: 0, ivig: 0 })
+  assert.deepEqual(counts, { ...Z0, tigecycline: 1, attention: { ...Z0, tigecycline: 1 } }) // sent by nobody yet, no case chosen
   assert.equal((await pharmacist.get(`/api/drug-requests?${where('tigecycline', '2026-09-24')}`)).body.requests.length, 1)
 })
 
@@ -495,7 +504,7 @@ test('colistin: a fourth kind — asked on the first day only, dose prefilled in
   assert.deepEqual(ticked.body.request.ticks, ['cf'])
   assert.deepEqual(await check(pharmacist, 'colistin', '2026-09-24', { name: 'ليلى', id: '55' }), { day: 1, requested: true })
   const counts = (await pharmacist.get(`/api/drug-requests/counts?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=2026-09-24`)).body
-  assert.deepEqual(counts, { meropenem: 0, albumin: 0, tigecycline: 0, colistin: 1, ivig: 0 })
+  assert.deepEqual(counts, { ...Z0, colistin: 1, attention: { ...Z0, colistin: 1 } })
 })
 
 test('dose boxes hold a number only: letters dropped, the old wording («50mg × 2», «6 MU») read as the number', () => {
@@ -592,4 +601,82 @@ test('ivig google form: the route posts it with no email (the form asks none), t
   assert.equal(posted.length, 1)
   assert.deepEqual([posted[0].get('pageHistory'), posted[0].get('entry.601709297'), posted[0].has('emailAddress')], ['0,1,5', 'guillian barrie syndrome in case plasmapheresis cannot be done or not available', false])
   assert.ok(result.body.request.googleSentAt)
+})
+
+test('needsFollowUp: a Google form until Google has taken it (and while unconfirmed); Meropenem while it lacks what «مواقف القسم» shows', () => {
+  const ivig = { name: 'نور', patientId: '66', date: '2026-11-09', ticks: [], note: '', fields: {}, googleSentAt: null, googleError: '' }
+  assert.equal(needsFollowUp('ivig', ivig), true)
+  assert.equal(needsFollowUp('ivig', { ...ivig, googleSentAt: '2026-11-09T09:00:00Z' }), false) // sent, though it still lacks things
+  assert.equal(needsFollowUp('ivig', { ...ivig, googleSentAt: '2026-11-09T09:00:00Z', googleError: 'لم يتأكد' }), true)
+  assert.equal(needsFollowUp('meropenem', { ...ivig, fields: { sex: 'ذكر', age: '4' }, ticks: ['cap'] }), false)
+  assert.equal(needsFollowUp('meropenem', ivig), true)
+})
+
+test('formProblems: Meropenem lacks what «مواقف القسم» shows; the Google kinds lack what their form would refuse', () => {
+  const meropenem = (fields, ticks = [], note = '') => formProblems('meropenem', { name: 'علي', patientId: '1', date: '2026-11-09', fields, ticks, note })
+  assert.deepEqual(meropenem({}), ['الجنس', 'العمر', 'التشخيص'])
+  assert.deepEqual(meropenem({ sex: 'ذكر', age: '40' }, ['culture-none']), ['التشخيص']) // the culture box is not a diagnosis
+  assert.deepEqual(meropenem({ sex: 'ذكر', age: '40' }, ['cap']), [])
+  assert.deepEqual(meropenem({ sex: 'ذكر', age: '40' }, ['others']), ['تفصيل «Others»'])
+  assert.deepEqual(meropenem({ sex: 'ذكر', age: '40' }, ['others'], 'Sepsis'), [])
+  assert.deepEqual(GOOGLE_KINDS, ['albumin', 'tigecycline', 'colistin', 'ivig'])
+  const ivig = { name: 'نور', patientId: '66', date: '2026-11-09', ticks: [], note: '', fields: { sex: 'أنثى', age: '5', vials: '4', doctor: 'د. سعد' } }
+  assert.deepEqual(formProblems('ivig', ivig), ['التشخيص (علّم مربعًا)'])
+  assert.deepEqual(formProblems('ivig', { ...ivig, ticks: ['gbs'] }), [])
+  assert.deepEqual(formProblems('ivig', { ...ivig, ticks: ['gbs'], fields: { ...ivig.fields, age: '0.0833' } }).length, 1) // the form's own rule on the age
+  assert.deepEqual(formProblems('tigecycline', { name: 'سارة', patientId: '', date: '2026-11-09', ticks: [], note: '', fields: {} }).includes('رقم الطبلة'), true)
+})
+
+test('google send follow-up: who sent it and how, why a try failed (kept, then cleared by a send), counts say what needs following up', async (t) => {
+  process.env.GOOGLE_FORM_SEND = '1'
+  const real = globalThis.fetch
+  t.after(() => { globalThis.fetch = real; delete process.env.GOOGLE_FORM_SEND })
+  const pharmacist = await loginAs({ role: 'user', floor: FLOOR })
+  const saved = (await pharmacist.post('/api/drug-requests', { kind: 'ivig', floor: FLOOR, ward: WARD, date: '2026-11-09', name: 'نور', patientId: '66', fields: { sex: 'أنثى', age: '5', vials: '4', doctor: 'د. سعد' } })).body.request
+  assert.deepEqual([saved.googleSentAt, saved.googleSentHow, saved.googleSentBy, saved.googleError], [null, null, '', ''])
+  await pharmacist.patch(`/api/drug-requests/${saved.id}/ticks`, { ticks: ['gbs'] })
+  const countsOf = async () => (await pharmacist.get(`/api/drug-requests/counts?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=2026-11-09`)).body
+  const stored = async () => (await pharmacist.get(`/api/drug-requests?${where('ivig', '2026-11-09')}`)).body.requests[0]
+  assert.equal((await countsOf()).attention.ivig, 1) // complete, but not sent yet
+
+  const html = `<script>var FB_PUBLIC_LOAD_DATA_ = ${JSON.stringify([null, [null, [[2, 't', null, 0, [[601709297, null, 1]]]], null, null, null, null, null, null, null, null, [null, null, null, 2, null, null, 1]]])};</script>`
+  let answer = { ok: false, status: 400, redirected: false }
+  globalThis.fetch = async (url, options) => {
+    if (!String(url).includes('docs.google.com')) return real(url, options)
+    return String(url).endsWith('formResponse') ? { ...answer, url: String(url) } : { ok: true, text: async () => html }
+  }
+  const refused = await pharmacist.post(`/api/drug-requests/${saved.id}/google-form`, {})
+  assert.equal(refused.status, 502)
+  const after = await stored()
+  assert.equal(after.googleSentAt, null)
+  assert.match(after.googleError, /Google/)
+  assert.ok(after.googleAttemptAt)
+  assert.equal((await countsOf()).attention.ivig, 1)
+
+  answer = { ok: true, status: 200, redirected: false }
+  const sent = await pharmacist.post(`/api/drug-requests/${saved.id}/google-form`, {})
+  assert.equal(sent.status, 200)
+  assert.deepEqual([sent.body.request.googleSentHow, sent.body.request.googleError], ['auto', ''])
+  assert.ok(sent.body.request.googleSentBy)
+  assert.equal((await countsOf()).attention.ivig, 0) // sent and complete: nothing to follow up
+  assert.deepEqual((await countsOf()).ivig, 1)
+
+  // A hand-send, said by the pharmacist, is kept as such.
+  const second = (await pharmacist.post('/api/drug-requests', { kind: 'ivig', floor: FLOOR, ward: WARD, date: '2026-11-09', name: 'علي', patientId: '67', fields: {} })).body.request
+  assert.equal((await countsOf()).attention.ivig, 1) // the new one lacks things and is unsent
+  assert.equal((await pharmacist.post(`/api/drug-requests/${second.id}/google-form`, { confirmManual: true })).status, 200)
+  const manual = (await pharmacist.get(`/api/drug-requests?${where('ivig', '2026-11-09')}`)).body.requests.find((item) => item.id === second.id)
+  assert.equal(manual.googleSentHow, 'manual')
+  assert.ok(manual.googleSentBy)
+  assert.equal((await countsOf()).attention.ivig, 0) // Google has taken it: what the app's own copy lacks no longer matters
+
+  // A refused resend gives back who sent it and how; it never wipes a sent mark.
+  const third = (await pharmacist.post('/api/drug-requests', { kind: 'ivig', floor: FLOOR, ward: WARD, date: '2026-11-09', name: 'هدى', patientId: '68', fields: { sex: 'أنثى', age: '5', vials: '4', doctor: 'د. سعد' } })).body.request
+  await pharmacist.patch(`/api/drug-requests/${third.id}/ticks`, { ticks: ['gbs'] })
+  assert.equal((await pharmacist.post(`/api/drug-requests/${third.id}/google-form`, { confirmManual: true })).status, 200)
+  answer = { ok: false, status: 400, redirected: false }
+  assert.equal((await pharmacist.post(`/api/drug-requests/${third.id}/google-form`, { resend: true })).status, 502)
+  const kept = (await pharmacist.get(`/api/drug-requests?${where('ivig', '2026-11-09')}`)).body.requests.find((item) => item.id === third.id)
+  assert.deepEqual([Boolean(kept.googleSentAt), kept.googleSentHow, kept.googleSentBy === manual.googleSentBy], [true, 'manual', true])
+  assert.equal((await countsOf()).attention.ivig, 1) // sent, but the last try left a reason: follow it up
 })

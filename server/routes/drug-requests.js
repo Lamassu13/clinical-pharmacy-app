@@ -9,6 +9,7 @@ import { numberToArabicWords } from '../arabic-number.js'
 import { DRUG_REQUESTS, MAX_REQUEST_NOTE, cleanFields, cleanTicks } from '../../shared/drug-requests.js'
 import { FORM_URL as ALBUMIN_FORM_URL, albuminFormAnswers } from '../../shared/albumin-google-form.js'
 import { liveForm, mismatches, prefillUrl } from '../../shared/google-form-check.js'
+import { needsFollowUp } from '../../shared/form-problems.js'
 import { FORM_URL as TIGECYCLINE_FORM_URL, tigecyclineFormAnswers } from '../../shared/tigecycline-google-form.js'
 import { FORM_URL as COLISTIN_FORM_URL, colistinFormAnswers } from '../../shared/colistin-google-form.js'
 import { FORM_URL as IVIG_FORM_URL, ivigFormAnswers } from '../../shared/ivig-google-form.js'
@@ -24,7 +25,7 @@ const idOf = (value) => String(value ?? '').replace(/\D/g, '').slice(0, 20)
 const kindOf = (value) => (Object.hasOwn(DRUG_REQUESTS, value) ? value : null)
 const BAD_KIND = { message: 'نوع الاستمارة غير معروف' }
 
-const SELECT = `SELECT r.id, r.kind, r.ward_key, r.request_date::text AS date, r.patient_name, r.patient_id, r.fields, r.ticks, r.note, r.google_sent_at,
+const SELECT = `SELECT r.id, r.kind, r.ward_key, r.request_date::text AS date, r.patient_name, r.patient_id, r.fields, r.ticks, r.note, r.google_sent_at, r.google_sent_by_name, r.google_sent_how, r.google_error, r.google_attempt_at,
     r.created_at, r.updated_at, u.full_name AS created_by_name
   FROM drug_requests r LEFT JOIN users u ON u.id = r.created_by`
 const toRequest = (row) => {
@@ -35,7 +36,8 @@ const toRequest = (row) => {
     fields, ticks: cleanTicks(row.kind, row.ticks), note: row.note,
     // Albumin's «كتابة»: the count spelled out, as the requisition does.
     ...(row.kind === 'albumin' ? { words: Number.isInteger(count) && count > 0 ? numberToArabicWords(count) : '' } : {}),
-    googleSentAt: row.google_sent_at, createdByName: row.created_by_name || '', createdAt: row.created_at, updatedAt: row.updated_at,
+    googleSentAt: row.google_sent_at, googleSentBy: row.google_sent_by_name, googleSentHow: row.google_sent_how, googleError: row.google_error, googleAttemptAt: row.google_attempt_at,
+    createdByName: row.created_by_name || '', createdAt: row.created_at, updatedAt: row.updated_at,
   }
 }
 const loadRequest = async (id) => (await query(`${SELECT} WHERE r.id = $1`, [id])).rows[0]
@@ -81,14 +83,25 @@ router.get('/drug-requests', requireAuth, async (request, response) => {
   response.json({ requests: result.rows.map((row) => toRequest({ ...row, patient_id: row.patient_id || ids.get(row.patient_name) || '' })) })
 })
 
-// How many forms the ward has on `date`, per kind ({ meropenem, albumin }) — two numbers for the ward
-// page's rows, so it never ships the forms themselves.
+// How many forms the ward has on `date`, per kind, for the ward page's rows and the steps bar — so it never ships the
+// forms themselves — and, under `attention`, how many of them need following up: still lacking something the ministry's
+// form (or «مواقف القسم», for Meropenem) wants, or a Google form not sent yet / not confirmed (shared/form-problems.js).
 router.get('/drug-requests/counts', requireAuth, async (request, response) => {
   const location = readLocation(request.query, request.session.user)
   if (location.status) return response.status(location.status).json({ message: location.message })
   const { floor, wardName, chartDate } = location
-  const rows = (await query('SELECT kind, COUNT(*)::int AS n FROM drug_requests WHERE kind = ANY($3) AND ward_key = $1 AND request_date = $2 GROUP BY kind', [wardKeyOf(floor, wardName), chartDate, Object.keys(DRUG_REQUESTS)])).rows
-  response.json(Object.fromEntries(Object.keys(DRUG_REQUESTS).map((kind) => [kind, rows.find((row) => row.kind === kind)?.n ?? 0])))
+  const forms = (await query('SELECT kind, patient_name, patient_id, fields, ticks, note, google_sent_at, google_error FROM drug_requests WHERE kind = ANY($3) AND ward_key = $1 AND request_date = $2', [wardKeyOf(floor, wardName), chartDate, Object.keys(DRUG_REQUESTS)])).rows
+  // A form with no رقم الطبلة of its own takes the chart's, as the form's screen and the send do.
+  const ids = forms.some((row) => !row.patient_id) ? await chartIds(floor, wardName, chartDate) : new Map()
+  const counts = Object.fromEntries(Object.keys(DRUG_REQUESTS).map((kind) => [kind, 0]))
+  const attention = { ...counts }
+  forms.forEach((row) => {
+    counts[row.kind] += 1
+    const patientId = row.patient_id || ids.get(row.patient_name) || ''
+    const form = { name: row.patient_name, patientId, date: chartDate, fields: cleanFields(row.kind, row.fields), ticks: cleanTicks(row.kind, row.ticks), note: row.note, googleSentAt: row.google_sent_at, googleError: row.google_error }
+    if (needsFollowUp(row.kind, form)) attention[row.kind] += 1
+  })
+  response.json({ ...counts, attention })
 })
 
 // The patient's course day for this medicine on `date`, and whether today's form is already filled.
@@ -180,6 +193,12 @@ const GOOGLE_FORMS = {
   // The IVIG form asks for no email: nothing to sign in to, and nothing from the unit's address.
   ivig: { url: IVIG_FORM_URL, answers: (form) => ivigFormAnswers(form) },
 }
+// The reason kept on a form whose post may or may not have reached Google (see the claim below).
+const UNCONFIRMED = 'لم يتأكد الإرسال — راجع ردود النموذج'
+// Errors that prove the request never left: nothing reached Google, so the mark can be undone.
+const NOT_SENT_CODES = new Set(['ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'ENETUNREACH', 'EHOSTUNREACH', 'UND_ERR_CONNECT_TIMEOUT'])
+// Who is sending, as the follow-up shows it.
+const senderName = (request) => request.session.user.fullName || request.session.user.username || ''
 router.post('/drug-requests/:id/google-form', requireAuth, async (request, response) => {
   const own = await ownRequest(request)
   if (own.status) return refuse(response, own)
@@ -187,7 +206,7 @@ router.post('/drug-requests/:id/google-form', requireAuth, async (request, respo
   if (!target) return response.status(400).json({ message: 'هذه الاستمارة لا تُرسل إلى نموذج Google' })
   // Sent by hand from the pre-filled form (the form asks for a sign-in): the pharmacist says so, and the form is marked.
   if (request.body?.confirmManual === true) {
-    await query('UPDATE drug_requests SET google_sent_at = NOW() WHERE id = $1', [own.row.id])
+    await query("UPDATE drug_requests SET google_sent_at = NOW(), google_sent_by_name = $2, google_sent_how = 'manual', google_error = '' WHERE id = $1", [own.row.id, senderName(request)])
     return response.json({ request: toRequest(await loadRequest(own.row.id)) })
   }
   // The رقم الطبلة the screen shows (the stored one, else the day's chart's) is the one sent.
@@ -209,37 +228,48 @@ router.post('/drug-requests/:id/google-form', requireAuth, async (request, respo
   // post it, and an answer Google recorded but we never heard about cannot be posted again by a retry.
   // The mark is undone only when the send definitely did not happen. `resend` allows a form already sent.
   const resend = request.body?.resend === true
-  const claimed = await query('UPDATE drug_requests SET google_sent_at = NOW() WHERE id = $1 AND (google_sent_at IS NULL OR $2::boolean) RETURNING id', [own.row.id, resend])
+  // While the post is out the form reads «لم يتأكد الإرسال»: if the server dies before Google answers, or the answer never
+  // reaches us, that is what the follow-up shows (never «sent» or «refused»); a clear answer replaces it.
+  const claimed = await query("UPDATE drug_requests SET google_sent_at = NOW(), google_sent_by_name = $3, google_sent_how = 'auto', google_error = $4, google_attempt_at = NOW() WHERE id = $1 AND (google_sent_at IS NULL OR $2::boolean) RETURNING google_sent_at::text AS claimed", [own.row.id, resend, senderName(request), UNCONFIRMED])
   if (!claimed.rowCount) return response.status(409).json({ message: 'أُرسلت هذه الاستمارة من قبل', sentAt: form.googleSentAt })
-  const release = () => query('UPDATE drug_requests SET google_sent_at = $2 WHERE id = $1', [own.row.id, own.row.google_sent_at]).catch(() => {})
+  const mine = claimed.rows[0].claimed
+  // The mark is put back as it was, and why this try failed is kept for the follow-up — but only while it is still this
+  // try's own mark (another device may have recorded a hand-send meanwhile: that stays).
+  const release = (why) => query('UPDATE drug_requests SET google_sent_at = $2, google_sent_by_name = $3, google_sent_how = $4, google_error = $5, google_attempt_at = NOW() WHERE id = $1 AND google_sent_at = $6::timestamptz',
+    [own.row.id, own.row.google_sent_at, own.row.google_sent_by_name, own.row.google_sent_how, why, mine]).catch(() => {})
+  const unconfirmed = async () => response.status(504).json({ message: 'لم يتأكد الإرسال — راجع ردود النموذج قبل إعادة الإرسال.', request: toRequest(await loadRequest(own.row.id)) })
   let reply
   try {
     reply = await fetch(target.url, { method: 'POST', body: new URLSearchParams(answers.body), signal: AbortSignal.timeout(15000) })
   } catch (error) {
-    console.error('google form: no answer:', error.name)
-    // A timeout may have come after Google recorded it: keep the mark and say so rather than invite a duplicate.
-    if (error.name === 'TimeoutError') return response.status(504).json({ message: 'لم يتأكد الإرسال — راجع ردود النموذج قبل إعادة الإرسال.' })
-    await release()
+    console.error('google form: no answer:', error.name, error.cause?.code || '')
+    // Only an error from before the request left (no such host, refused, no route) proves nothing was sent. A timeout or
+    // a connection dropped later may have come after Google recorded it: the mark stays, and the form says it is unconfirmed.
+    if (!NOT_SENT_CODES.has(error.cause?.code ?? error.code)) return unconfirmed()
+    await release('تعذّر الوصول إلى Google')
     return response.status(502).json({ message: 'تعذّر الوصول إلى Google — حاول مرة أخرى.' })
   }
   // Checked live on 2026-11-06: an accepted answer comes back 200 from …/formResponse («your response has been
   // recorded»); a refused one (a required question missing, an option text the form no longer has) 400 with the
   // form drawn again. A redirect (the form now asks for a sign-in, or is closed) is a 200 page too, but not from there.
   if (!reply.ok || reply.redirected || !new URL(reply.url).pathname.endsWith('/formResponse')) {
-    await release()
     // Why: read the live form and compare. The form changed (a question or option the app sends is gone), or it is
     // the same and one of the values was refused. Either way a link opens the form with the answers filled in,
     // so the send can be finished by hand there — Google then says itself which box it did not accept.
     let changed = []
-    changed = mismatches(answers.body, live?.entries ?? null)
+    // (A form that could not be read is not a form that changed.)
+    changed = live ? mismatches(answers.body, live.entries) : []
     console.error('google form: refused:', reply.status, reply.redirected, changed)
+    const why = changed.length
+      ? `تغيّر نموذج Google ولم تعد الاستمارة تطابقه (${changed.join('، ')}) — أخبر المسؤول، ويمكنك إكمال الإرسال يدويًا.`
+      : 'رفض نموذج Google إحدى القيم (راجع العمر أرقام صحيحة، والوزن وS.Cr أرقام) — صحّحها أو أكمل الإرسال يدويًا.'
+    await release(why.slice(0, 300))
     return response.status(502).json({
-      message: changed.length
-        ? `تغيّر نموذج Google ولم تعد الاستمارة تطابقه (${changed.join('، ')}) — أخبر المسؤول، ويمكنك إكمال الإرسال يدويًا.`
-        : 'رفض نموذج Google إحدى القيم (راجع العمر أرقام صحيحة، والوزن وS.Cr أرقام) — صحّحها أو أكمل الإرسال يدويًا.',
+      message: why,
       manualUrl: prefillUrl(target.url, answers.prefill || answers.body),
     })
   }
+  await query("UPDATE drug_requests SET google_error = '' WHERE id = $1 AND google_sent_at = $2::timestamptz", [own.row.id, mine])
   response.json({ request: toRequest(await loadRequest(own.row.id)) })
 })
 

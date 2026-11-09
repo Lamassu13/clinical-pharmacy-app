@@ -472,6 +472,12 @@ ALTER TABLE drug_requests DROP CONSTRAINT IF EXISTS drug_requests_kind_check;
 ALTER TABLE drug_requests ADD CONSTRAINT drug_requests_kind_check CHECK (kind IN ('meropenem', 'albumin', 'tigecycline', 'colistin', 'ivig'));
 -- When an albumin form was sent to the ministry's Google Form (routes/drug-requests.js); NULL = not yet.
 ALTER TABLE drug_requests ADD COLUMN IF NOT EXISTS google_sent_at TIMESTAMPTZ;
+-- Who sent it and how (the app posted it: 'auto'; the pharmacist finished the pre-filled form by hand and said so: 'manual'),
+-- and why the last try was refused (cleared on a send). The name is a snapshot, so deleting an account loses nothing.
+ALTER TABLE drug_requests ADD COLUMN IF NOT EXISTS google_sent_by_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE drug_requests ADD COLUMN IF NOT EXISTS google_sent_how TEXT;
+ALTER TABLE drug_requests ADD COLUMN IF NOT EXISTS google_error TEXT NOT NULL DEFAULT '';
+ALTER TABLE drug_requests ADD COLUMN IF NOT EXISTS google_attempt_at TIMESTAMPTZ;
 
 -- «Albumin follow up» (routes/albumin-followup.js): what is typed on the day's sheet beyond the albumin
 -- forms — rows added by hand, the «Not indicated» list, the notes. One document per day and scope:

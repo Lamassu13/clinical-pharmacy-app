@@ -11,6 +11,14 @@ import { DRUG_REQUESTS } from '../../shared/drug-requests.js'
 export const formModeOf = (kind) => `${kind}-forms`
 export const kindOfMode = (mode) => Object.keys(DRUG_REQUESTS).find((kind) => formModeOf(kind) === mode) || null
 const queueKeyOf = (body) => `drug-request:${body.kind}|${body.floor}|${body.ward}|${body.date}|${body.name.trim()}|${body.patientId || ''}`
+// What a reply says about the send (not its other values: they could undo an edit still in the queue).
+const sendMark = (request) => ({ googleSentAt: request.googleSentAt, googleSentBy: request.googleSentBy, googleSentHow: request.googleSentHow, googleError: request.googleError })
+// A send that did not go through: the form the reply carries (an unconfirmed one is marked sent, with its reason), else just
+// the reason — except a 409 / 422, which are about the form as it stands, not about this try.
+const refusedFor = (putLocal, id, response, result) => {
+  if (result.request) putLocal(id, sendMark(result.request))
+  else if (response.status !== 409 && response.status !== 422) putLocal(id, { googleError: result.message || '' })
+}
 const byCreated = (a, b) => String(a.createdAt).localeCompare(String(b.createdAt))
 
 export default function useDrugRequests({ selected, selectedDate, isExpired, userId, askConfirm }) {
@@ -96,6 +104,7 @@ export default function useDrugRequests({ selected, selectedDate, isExpired, use
     })
   }, [])
   const putLocal = (id, change) => setRequests((current) => current && current.map((item) => (item.id === id ? { ...item, ...change } : item)))
+  const refusedMark = (id, response, result) => refusedFor(putLocal, id, response, result)
 
   const setTicks = useCallback((request, ticks, note = request.note) => {
     setActionError('')
@@ -158,14 +167,45 @@ export default function useDrugRequests({ selected, selectedDate, isExpired, use
       if (isExpired(response)) return
       const result = await response.json().catch(() => ({}))
       if (response.status === 409) putLocal(request.id, { googleSentAt: result.sentAt })
-      if (!response.ok) { setActionError(result.message || 'تعذّر الإرسال — حاول مرة أخرى.'); setManualUrl(result.manualUrl || ''); setManualId(request.id); return }
+      if (!response.ok) { setActionError(result.message || 'تعذّر الإرسال — حاول مرة أخرى.'); setManualUrl(result.manualUrl || ''); setManualId(request.id); refusedMark(request.id, response, result); return }
       if (result.dryRun) { setNotice('وضع التجربة: لم يُرسل شيء إلى Google.'); return }
       if (result.signIn) { setNotice(result.message); setManualUrl(result.manualUrl); setManualId(request.id); return }
-      // Only the mark: the reply's other values could undo an edit still in the queue.
-      putLocal(request.id, { googleSentAt: result.request.googleSentAt })
+      putLocal(request.id, sendMark(result.request))
       setNotice(`أُرسلت استمارة «${request.name}» إلى نموذج وزارة الصحة.`)
     } catch {
       setActionError('لا يوجد اتصال — الإرسال يحتاج اتصالًا.')
+    } finally { setBusy(false) }
+  }, [askConfirm, isExpired])
+
+  // «إرسال المتبقي»: every form of the day not sent yet, one after another, in the order they were made. It stops
+  // at the first that cannot be posted — one the Google Form wants a sign-in for (the pre-filled link is shown, to be
+  // finished by hand and marked) or one it refused — and says how far it got. One question for the whole run.
+  const sendAll = useCallback(async (unsent) => {
+    if (!unsent.length) return
+    if (!(await askConfirm(unsent.length === 1 ? `إرسال استمارة «${unsent[0].name}» إلى نموذج وزارة الصحة؟` : `إرسال ${unsent.length} استمارات إلى نموذج وزارة الصحة، واحدة بعد الأخرى؟`, { confirmLabel: 'إرسال' }))) return
+    setBusy(true)
+    setActionError('')
+    setNotice('')
+    setManualUrl('')
+    setManualId(null)
+    let sent = 0
+    try {
+      for (const request of unsent) {
+        try { await chains.current.get(request.id) } catch { setActionError(`${sent ? `أُرسلت ${sent}. ` : ''}لم يُحفظ آخر تعديل على استمارة «${request.name}» — صحّحها ثم أعد المحاولة.`); return }
+        const response = await fetch(`${apiUrl}/drug-requests/${request.id}/google-form`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({}) })
+        if (isExpired(response)) return
+        const result = await response.json().catch(() => ({}))
+        if (result.dryRun) { setNotice('وضع التجربة: لم يُرسل شيء إلى Google.'); return }
+        if (result.signIn) { setNotice(`${sent ? `أُرسلت ${sent}. ` : ''}استمارة «${request.name}» تحتاج إكمالًا يدويًا: ${result.message}`); setManualUrl(result.manualUrl); setManualId(request.id); return }
+        // Already sent meanwhile (another device, or a tap before): take the mark and go on to the next.
+        if (response.status === 409) { putLocal(request.id, { googleSentAt: result.sentAt }); continue }
+        if (!response.ok) { setActionError(`${sent ? `أُرسلت ${sent}. ` : ''}«${request.name}»: ${result.message || 'تعذّر الإرسال — حاول مرة أخرى.'}`); setManualUrl(result.manualUrl || ''); setManualId(request.id); refusedMark(request.id, response, result); return }
+        putLocal(request.id, sendMark(result.request))
+        sent += 1
+      }
+      setNotice(`أُرسلت ${sent} ${sent === 1 ? 'استمارة' : 'استمارات'} إلى نموذج وزارة الصحة.`)
+    } catch {
+      setActionError(`${sent ? `أُرسلت ${sent}. ` : ''}لا يوجد اتصال — الإرسال يحتاج اتصالًا.`)
     } finally { setBusy(false) }
   }, [askConfirm, isExpired])
 
@@ -178,12 +218,12 @@ export default function useDrugRequests({ selected, selectedDate, isExpired, use
       if (isExpired(response)) return
       const result = await response.json().catch(() => ({}))
       if (!response.ok) { setActionError(result.message || 'تعذّر التسجيل — حاول مرة أخرى.'); return }
-      putLocal(request.id, { googleSentAt: result.request.googleSentAt })
+      putLocal(request.id, sendMark(result.request))
       setManualUrl('')
       setManualId(null)
       setNotice(`سُجّلت استمارة «${request.name}» كمُرسلة.`)
     } catch { setActionError('لا يوجد اتصال — التسجيل يحتاج اتصالًا.') } finally { setBusy(false) }
   }, [isExpired])
 
-  return { listKind, requests, loading, loadError, busy, actionError, notice, manualUrl, manualId, confirmManualSent, check, save, setTicks, saveField, remove, sendToGoogle }
+  return { listKind, requests, loading, loadError, busy, actionError, notice, manualUrl, manualId, confirmManualSent, check, save, setTicks, saveField, remove, sendToGoogle, sendAll }
 }

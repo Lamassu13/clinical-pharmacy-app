@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef } from 'react'
-import { formsWord } from '../helpers.js'
+import { formsBadge } from '../helpers.js'
 import { ChevronStart } from './WardGlyph.jsx'
 
 // The step bar and the «الخطوة التالية» button (the steps themselves: ../wardSteps.js).
@@ -36,13 +36,13 @@ export function WardStepBar({ steps, current, isOnline, counts, chartDone, onSte
     <div className="ward-steps-track" ref={trackRef}>
       <ol>
         {steps.map((step, index) => {
-          const count = step.count && counts?.[step.count] > 0 ? counts[step.count] : 0
+          const badge = step.count ? formsBadge(counts, step.count) : null
           return <li key={step.key} ref={(element) => { itemRefs.current[index] = element }}>
             <button type="button" aria-current={index === current ? 'step' : undefined} onClick={() => index !== current && onStep(step, index > current ? 1 : -1)}>
               <span className="ward-steps-num" aria-hidden="true">{index + 1}</span>
               <span className="ward-steps-label">{step.label}</span>
               {step.key === 'chart' && chartDone && <span className="card-status card-status--done">اكتمل</span>}
-              {count > 0 && <span className="card-status card-status--partial">{formsWord(count)}</span>}
+              {badge && <span className={`card-status card-status--${badge.tone}`}>{badge.text}</span>}
               {!isOnline && step.needsConnection && <span className="card-status card-status--muted">يتطلب اتصالاً</span>}
             </button>
             {index === current && <span className="ward-steps-mark" ref={markRef} aria-hidden="true" />}
