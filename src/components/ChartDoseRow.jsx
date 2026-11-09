@@ -9,7 +9,7 @@ import { memo } from 'react'
 // columns re-renders all 41 rows once. Keystrokes don't touch it, so the hot path is
 // unchanged. ponytail: if column nav ever feels heavy, drop the band and keep the header tint.
 // gridInactive flips only when focus enters/leaves the grid, so it costs one re-render pass.
-const ChartDoseRow = memo(function ChartDoseRow({ rowIndex, patientName, quantities, columnMedicines, isActiveRow, activeColumn, gridInactive, labelBelow, droppedCells, onUpdateQuantity, printHidden }) {
+const ChartDoseRow = memo(function ChartDoseRow({ readOnly = false, rowIndex, patientName, quantities, columnMedicines, isActiveRow, activeColumn, gridInactive, labelBelow, droppedCells, onUpdateQuantity, printHidden }) {
   const activeMedicineName = isActiveRow && activeColumn >= 0 ? columnMedicines[activeColumn]?.trim() : ''
   return <tr data-row={rowIndex} role="row" aria-rowindex={rowIndex + 1} className={[isActiveRow && 'active-row', printHidden && 'print-hide-row'].filter(Boolean).join(' ') || undefined}>{quantities.map((quantity, columnIndex) => {
     const isActiveCell = isActiveRow && activeColumn === columnIndex
@@ -28,7 +28,7 @@ const ChartDoseRow = memo(function ChartDoseRow({ rowIndex, patientName, quantit
     // has-was: the cell anchors its «كان» flag (a class, not td:has(), which iOS 14 lacks).
     const cellClass = [isActiveCell ? 'cell-active' : activeColumn === columnIndex && 'col-active', hasWas && 'has-was'].filter(Boolean).join(' ') || undefined
     return <td key={columnIndex} data-col={columnIndex} role="gridcell" aria-colindex={columnIndex + 1} className={cellClass}>
-      <input inputMode="numeric" enterKeyHint="next" pattern="[0-9]*" maxLength={4} tabIndex={roving ? 0 : -1} value={quantity} onChange={(event) => onUpdateQuantity(rowIndex, columnIndex, event.target.value)} aria-label={`الكمية — ${patientName.trim() || `مريض ${rowIndex + 1}`} — ${columnMedicines[columnIndex].trim() || `دواء ${columnIndex + 1}`}${droppedValue ? ` — قيمة جهاز آخر: ${droppedValue}` : ''}`} />
+      <input readOnly={readOnly} inputMode="numeric" enterKeyHint="next" pattern="[0-9]*" maxLength={4} tabIndex={roving ? 0 : -1} value={quantity} onChange={(event) => onUpdateQuantity(rowIndex, columnIndex, event.target.value)} aria-label={`الكمية — ${patientName.trim() || `مريض ${rowIndex + 1}`} — ${columnMedicines[columnIndex].trim() || `دواء ${columnIndex + 1}`}${droppedValue ? ` — قيمة جهاز آخر: ${droppedValue}` : ''}`} />
       {isActiveCell && activeMedicineName && <span className={labelBelow ? 'cell-medicine below' : 'cell-medicine'}>{activeMedicineName}</span>}
       {hasWas && <span className="cell-was" title="قيمة الجهاز الآخر — عدّل الخلية لتثبيت قيمتك">كان: {droppedValue}</span>}
     </td>
