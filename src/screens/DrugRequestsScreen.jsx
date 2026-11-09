@@ -70,7 +70,7 @@ export default function DrugRequestsScreen({ footer, dayLocked = false, kind, he
                     <div className="req-sheet-tools">
                       <p className="req-sheet-meta">{request.createdByName && <span>أدخلها {request.createdByName} · {savedAt(request.createdAt)}</span>}</p>
                       <span className="req-sheet-actions">
-                        {kind === 'albumin' && <button type="button" className="secondary-button compact" disabled={busy || !isOnline} onClick={() => onSendToGoogle(request)}>{request.googleSentAt ? 'أُرسلت ✓ — إعادة الإرسال' : 'إرسال إلى نموذج الوزارة'}</button>}
+                        {(kind === 'albumin' || kind === 'tigecycline') && <button type="button" className="secondary-button compact" disabled={busy || !isOnline} onClick={() => onSendToGoogle(request)}>{request.googleSentAt ? 'أُرسلت ✓ — إعادة الإرسال' : 'إرسال إلى نموذج الوزارة'}</button>}
                         <button type="button" className="secondary-button compact" disabled={pdf.busy} onClick={() => print([request])}>طباعة</button>
                         {!dayLocked && <button type="button" className="danger-button compact" disabled={busy} onClick={() => onDelete(request)}>حذف</button>}
                       </span>

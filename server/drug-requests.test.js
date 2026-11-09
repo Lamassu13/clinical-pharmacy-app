@@ -5,6 +5,7 @@ import { pool } from './db.js'
 import { startServer, resetDatabase, createUser, ApiClient } from './test-helpers.js'
 import { cleanTicks, toggleTick } from '../shared/drug-requests.js'
 import { FORM_URL, albuminFormAnswers } from '../shared/albumin-google-form.js'
+import { tigecyclineFormAnswers, dailyMg } from '../shared/tigecycline-google-form.js'
 
 const FLOOR = 5
 const WARD = 'ردهة رجال'
@@ -325,10 +326,10 @@ test('tigecycline: a third kind — asked on the first day only, dose prefilled 
 
   const sent = await pharmacist.post('/api/drug-requests', {
     kind: 'tigecycline', floor: FLOOR, ward: WARD, date: '2026-09-24', name: 'سارة', patientId: '44',
-    fields: { sex: 'أنثى', age: '40', diagnosis: 'Diabetic foot', weight: '70,5', scr: '1.1', dose: '50mg × 2', duration: '7 أيام', culture: 'MRSA', doctor: 'د. سعد', bogus: 'x' },
+    fields: { sex: 'أنثى', age: '40', diagnosis: 'Diabetic foot', weight: '70,5', scr: '1.1', dose: '50mg × 2', duration: '7 أيام', culture: 'Resistant', committee: 'ص. ليث', doctor: 'د. سعد', bogus: 'x' },
   })
   assert.equal(sent.status, 201)
-  assert.deepEqual(sent.body.request.fields, { sex: 'أنثى', age: '40', diagnosis: 'Diabetic foot', weight: '70.5', scr: '1.1', dose: '50mg × 2', duration: '7 أيام', culture: 'MRSA', doctor: 'د. سعد', hideDoctor: '' })
+  assert.deepEqual(sent.body.request.fields, { sex: 'أنثى', age: '40', diagnosis: 'Diabetic foot', weight: '70.5', scr: '1.1', dose: '50mg × 2', duration: '7 أيام', culture: 'Resistant', committee: 'ص. ليث', doctor: 'د. سعد', hideDoctor: '' })
   // One of the two permitted cases is chosen (a second tick replaces the first); an unknown key is dropped.
   const ticked = await pharmacist.patch(`/api/drug-requests/${sent.body.request.id}/ticks`, { ticks: ['skin', 'abdominal', 'nope'] })
   assert.deepEqual(ticked.body.request.ticks, ['abdominal'])
@@ -336,4 +337,38 @@ test('tigecycline: a third kind — asked on the first day only, dose prefilled 
   const counts = (await pharmacist.get(`/api/drug-requests/counts?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=2026-09-24`)).body
   assert.deepEqual(counts, { meropenem: 0, albumin: 0, tigecycline: 1 })
   assert.equal((await pharmacist.get(`/api/drug-requests?${where('tigecycline', '2026-09-24')}`)).body.requests.length, 1)
+})
+
+test('tigecycline google form: the answers (email, other options, month/day date), the daily mg read from the dose, what is missing', () => {
+  const form = { name: 'رشيدة', patientId: '413495', date: '2026-11-09', ticks: ['abdominal'], fields: { sex: 'أنثى', age: '45', weight: '70', scr: '1.2', dose: '50mg × 2', duration: '7 أيام', culture: 'Sensitive', committee: 'ص. ليث', doctor: 'د. سعد' } }
+  const sent = tigecyclineFormAnswers(form, { ward: 'الطابق 3 — ردهة', email: 'unit@example.org' })
+  const answer = (name) => sent.body.find(([key]) => key === name)?.[1]
+  assert.equal(answer('emailAddress'), 'unit@example.org')
+  assert.equal(answer('entry.610635236'), 'انثى')
+  assert.equal(answer('entry.279852210'), 'complicated intra abdominal infection ( when other antibiotics are not sutible)')
+  assert.deepEqual([answer('entry.1833893625_month'), answer('entry.1833893625_day')], ['11', '9'])
+  assert.deepEqual([answer('entry.1824282702'), answer('entry.966710107'), answer('entry.1572352685'), answer('entry.1218916115')], ['100', '100', '0', 'لا'])
+  assert.deepEqual([answer('entry.1570470798'), answer('entry.1570470798.other_option_response')], ['__other_option__', '7'])
+  assert.equal(answer('entry.1619293670'), 'sensetive')
+  assert.equal(answer('pageHistory'), '0,1')
+  // No number of days: «not set by the doctor», no other-option answer.
+  const open = tigecyclineFormAnswers({ ...form, fields: { ...form.fields, duration: '' } }, { ward: 'x', email: 'a@b.c' }).body
+  assert.equal(open.find(([key]) => key === 'entry.1570470798')[1], 'غير محدد من قبل الطبيب')
+  assert.equal(open.some(([key]) => key.endsWith('other_option_response')), false)
+  assert.deepEqual(tigecyclineFormAnswers({ ...form, fields: { sex: 'ذكر', age: '5' }, ticks: [] }, { ward: 'x', email: '' }).missing,
+    ['بريد النموذج (GOOGLE_FORM_EMAIL على الخادم)', 'اسم عضو لجنة المضادات', 'اسم الطبيب الاختصاص', 'الحالة المصرح بها (علّم مربعًا)', 'الوزن', 'الجرعة المطلوبة يوميًا (مثل 50mg × 2)', 'S.Cr.', 'نتيجة الزرع البكتيري'])
+  assert.deepEqual(['50mg × 2', '50mg × 2 + 50mg × 1', '100', '1g × 3', 'two vials', ''].map(dailyMg), [100, 150, 100, 3000, null, null])
+})
+
+test('tigecycline google form: the route returns the dry-run answers with a placeholder email, and sends nothing', async () => {
+  const pharmacist = await loginAs({ role: 'user', floor: FLOOR })
+  const saved = (await pharmacist.post('/api/drug-requests', { kind: 'tigecycline', floor: FLOOR, ward: WARD, date: '2026-11-09', name: 'سارة', patientId: '44', fields: { sex: 'أنثى', age: '40', weight: '70', scr: '1.1', dose: '50mg × 2', culture: 'Not done', committee: 'ص. ليث', doctor: 'د. سعد' } })).body.request
+  assert.equal((await pharmacist.post(`/api/drug-requests/${saved.id}/google-form`, {})).status, 422) // no case ticked yet
+  await pharmacist.patch(`/api/drug-requests/${saved.id}/ticks`, { ticks: ['skin'] })
+  const dry = await pharmacist.post(`/api/drug-requests/${saved.id}/google-form`, {})
+  assert.equal(dry.status, 200)
+  assert.equal(dry.body.dryRun, true)
+  assert.equal(dry.body.answers.find(([key]) => key === 'entry.1720649116')[1], `الطابق ${FLOOR} — ${WARD}`)
+  assert.equal(dry.body.answers.find(([key]) => key === 'emailAddress')[1], 'dry-run@example.invalid')
+  assert.equal((await pharmacist.get(`/api/drug-requests?${where('tigecycline', '2026-11-09')}`)).body.requests[0].googleSentAt, null)
 })
