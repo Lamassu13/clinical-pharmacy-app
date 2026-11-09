@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { formsWord } from '../helpers.js'
 import { ChevronStart, CardStatus } from '../components/WardGlyph.jsx'
 import { CHART_ITEMS, GROUPS, Icon } from '../components/wardOptions.jsx'
@@ -10,9 +10,19 @@ import { CHART_ITEMS, GROUPS, Icon } from '../components/wardOptions.jsx'
 // an independent ward. Back returns to wherever the ward was picked from (the floor's ward list, or the
 // floors). The two request-form rows show how many forms the ward has for the day (`counts`, from
 // useRequestCounts); offline, or before the count arrives, they show nothing rather than a guess.
+// The two groups are drop-downs (native <details>: the lists were long), closed until opened; which are open is
+// remembered on this device, and a closed group still shows how many forms its rows hold for the day.
+const OPEN_KEY = 'ward-hub-open'
+const readOpen = () => { try { return JSON.parse(localStorage.getItem(OPEN_KEY)) || {} } catch { return {} } }
 export default function WardHubScreen({ floor, ward, selectedDate, weekday, counts, started, isOnline, dashboard, dashboardError, onBack, onOpen }) {
   // A ward card low on the list opens this page at its scroll position; start at the top.
   useEffect(() => { window.scrollTo(0, 0) }, [ward])
+  const [openGroups, setOpenGroups] = useState(readOpen)
+  const toggleGroup = (id, isOpen) => setOpenGroups((current) => {
+    const next = { ...current, [id]: isOpen }
+    try { localStorage.setItem(OPEN_KEY, JSON.stringify(next)) } catch { /* private window: it just starts closed next time */ }
+    return next
+  })
   // One digit system on the page (the floor is Latin): «الخميس 5/11».
   const [, month, day] = selectedDate.split('-')
   const dateText = `${weekday} ${Number(day)}/${Number(month)}`
@@ -48,10 +58,16 @@ export default function WardHubScreen({ floor, ward, selectedDate, weekday, coun
     <div className="ward-hub-groups">
       {GROUPS.map((group) => {
         const items = group.items.filter((item) => !item.show || item.show(floor))
-        return <section key={group.id} className="ward-hub-group" aria-labelledby={`ward-hub-${group.id}`}>
-          <h2 className="ward-hub-label" id={`ward-hub-${group.id}`}>{group.label}</h2>
-          <ul className="ward-hub-list" role="list" aria-labelledby={`ward-hub-${group.id}`}>{items.map(row)}</ul>
-        </section>
+        const forms = items.reduce((sum, item) => sum + (item.count ? counts?.[item.count] || 0 : 0), 0)
+        const isOpen = Boolean(openGroups[group.id])
+        return <details key={group.id} className="ward-hub-group" open={isOpen} onToggle={(event) => { if (event.currentTarget.open !== isOpen) toggleGroup(group.id, event.currentTarget.open) }}>
+          <summary className="ward-hub-label">
+            <span>{group.label}</span>
+            {!isOpen && forms > 0 && <span className="card-status card-status--partial">{formsWord(forms)}</span>}
+            <span className="ward-hub-chevron" aria-hidden="true"><ChevronStart /></span>
+          </summary>
+          <ul className="ward-hub-list" role="list">{items.map(row)}</ul>
+        </details>
       })}
     </div>
   </section>
