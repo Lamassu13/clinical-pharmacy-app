@@ -1,6 +1,7 @@
 import express from 'express'
 import { query } from '../db.js'
-import { requireAuth } from '../auth.js'
+import { requireAuth, requireManager } from '../auth.js'
+import { checkAll, readHealth, refreshIfStale } from '../google-form-health.js'
 import { isIsoDate } from '../validation.js'
 import { readLocation } from './chart.js'
 import { wardKeyOf } from '../meropenem.js'
@@ -72,7 +73,16 @@ router.get('/drug-requests/followup', requireAuth, async (request, response) => 
       ...(problems.length ? { problems } : {}), ...(row.google_sent_by_name && state === 'unconfirmed' ? { by: row.google_sent_by_name } : {}), ...(row.google_error ? { error: row.google_error } : {}),
     })
   }
-  response.json({ from: range.from, to: range.to, rows: rows.slice(0, MAX_ROWS), more: rows.length > MAX_ROWS || result.rows.length >= DB_ROWS })
+  // The Google Forms' health, as kept (a few bytes); an old verdict is refreshed in the background, for the next time.
+  const health = await readHealth()
+  refreshIfStale(health)
+  response.json({ from: range.from, to: range.to, rows: rows.slice(0, MAX_ROWS), more: rows.length > MAX_ROWS || result.rows.length >= DB_ROWS, health })
+})
+
+// «فحص النماذج الآن»: the Google Forms are read now and compared (google-form-health.js); at most once a minute, whoever asks.
+router.post('/drug-requests/health/check', requireManager, async (_request, response) => {
+  await checkAll()
+  response.json({ health: await readHealth() })
 })
 
 // Patients given a first-day medicine (Meropenem, Tigecycline, Colistin, IVIG) in the range with no form of that kind for them:

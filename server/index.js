@@ -636,12 +636,14 @@ app.get('/api/dashboard', requireAuth, async (request, response) => {
         [request.query.rangeFrom, SPECIAL_WARDS, request.query.rangeTo, MAX_BRIDGE_DAYS],
       ))
       : Promise.resolve({ rows: [] }),
-    // The dashboard card of the forms' follow-up: Google forms of the last 7 days not sent yet or not confirmed. One count, a few
+    // The dashboard card of the forms' follow-up: Google forms of the last 7 days not sent yet or not confirmed, and how many Google
+    // Forms the health check found changed (read from what it kept). Two counts, a few
     // bytes in this same answer (the follow-up screen has the detail); managers only.
     isManager
       ? timeQuery('formsToSend', query(
-        `SELECT COUNT(*)::int AS count FROM drug_requests WHERE request_date > $1::date - 7 AND request_date <= $1::date
-           AND kind = ANY($2::text[]) AND (google_sent_at IS NULL OR google_error <> '')`,
+        `SELECT (SELECT COUNT(*)::int FROM drug_requests WHERE request_date > $1::date - 7 AND request_date <= $1::date
+                   AND kind = ANY($2::text[]) AND (google_sent_at IS NULL OR google_error <> '')) AS count,
+                (SELECT COUNT(*)::int FROM google_form_health WHERE status = 'changed') AS changed`,
         [date, GOOGLE_KINDS],
       ))
       : Promise.resolve({ rows: [{ count: 0 }] }),
@@ -657,7 +659,7 @@ app.get('/api/dashboard', requireAuth, async (request, response) => {
     medicinesScope: isManager ? 'all' : 'own',
     patientsByFloor: patientsByFloor.rows.map((row) => ({ floor: row.floor, count: row.count })),
     totalPatients: totalPatients.rows[0]?.count ?? 0,
-    ...(isManager ? { formsToSend: formsToSend.rows[0]?.count ?? 0 } : {}),
+    ...(isManager ? { formsToSend: formsToSend.rows[0]?.count ?? 0, formsChanged: formsToSend.rows[0]?.changed ?? 0 } : {}),
     patientsPeriod: isManager ? (PERIOD_DAYS[request.query.patientsPeriod] ? request.query.patientsPeriod : 'month') : 'today',
     dailyPatientsByFloor: bridgedDailyCounts(dailyPatientsByFloor.rows, addDays(date, -5), date),
     patientsByFloorRange: isManager && isIsoDate(request.query.rangeFrom) && isIsoDate(request.query.rangeTo)

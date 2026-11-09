@@ -472,6 +472,13 @@ ALTER TABLE drug_requests DROP CONSTRAINT IF EXISTS drug_requests_kind_check;
 ALTER TABLE drug_requests ADD CONSTRAINT drug_requests_kind_check CHECK (kind IN ('meropenem', 'albumin', 'tigecycline', 'colistin', 'ivig'));
 -- When an albumin form was sent to the ministry's Google Form (routes/drug-requests.js); NULL = not yet.
 ALTER TABLE drug_requests ADD COLUMN IF NOT EXISTS google_sent_at TIMESTAMPTZ;
+-- Is each ministry Google Form still the one the app was written against (server/google-form-health.js): the last verdict per form.
+CREATE TABLE IF NOT EXISTS google_form_health (
+  kind TEXT PRIMARY KEY,
+  status TEXT NOT NULL CHECK (status IN ('ok', 'changed', 'unreachable')),
+  detail TEXT NOT NULL DEFAULT '',
+  checked_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 -- The follow-up's «no form for this patient» looks a form up by رقم الطبلة within a kind and a window of days.
 CREATE INDEX IF NOT EXISTS drug_requests_kind_patient_idx ON drug_requests (kind, patient_id, request_date) WHERE patient_id <> '';
 -- Who sent it and how (the app posted it: 'auto'; the pharmacist finished the pre-filled form by hand and said so: 'manual'),

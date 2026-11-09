@@ -428,6 +428,7 @@ test('google forms: a refused send is released, says whether the form changed, a
   const pharmacist = await loginAs({ role: 'user', floor: FLOOR })
   const saved = (await pharmacist.post('/api/drug-requests', { kind: 'tigecycline', floor: FLOOR, ward: WARD, date: '2026-11-09', name: 'سارة', patientId: '44', fields: { sex: 'أنثى', age: '40', weight: '70', scr: '1.1', dose: '50mg × 2', culture: 'Not done', committee: 'ص. ليث', doctor: 'د. سعد' } })).body.request
   await pharmacist.patch(`/api/drug-requests/${saved.id}/ticks`, { ticks: ['skin'] })
+  // A page with no sign-in setting: the form has stopped asking fillers to sign in (the app expects it to), so the post is tried.
   const live = (ids) => `<script>var FB_PUBLIC_LOAD_DATA_ = ${JSON.stringify([null, [null, ids.map((id) => [id, 't', null, 0, [[id, null, 1]]])]])};</script>`
   const allIds = [1306251493, 1406660343, 1155462451, 1572102836, 1720649116, 610635236, 813402020, 772043536, 279852210, 1833893625, 1336399327, 1824282702, 966710107, 1572352685, 1218916115, 1570470798, 534253892, 1619293670]
   const fakeGoogle = (ids) => { globalThis.fetch = async (url, options) => String(url).includes('docs.google.com')
@@ -435,9 +436,10 @@ test('google forms: a refused send is released, says whether the form changed, a
     : real(url, options) }
   const sentAt = async () => (await pharmacist.get(`/api/drug-requests?${where('tigecycline', '2026-11-09')}`)).body.requests[0].googleSentAt
 
-  fakeGoogle(allIds) // the same form: a value was refused
+  fakeGoogle(allIds) // the same questions, but the form no longer asks for a sign-in: posted, and refused
   let refused = await pharmacist.post(`/api/drug-requests/${saved.id}/google-form`, {})
   assert.equal(refused.status, 502)
+  // (The form no longer asking for a sign-in is the health check's to report; what refused THIS send is not known to be that.)
   assert.match(refused.body.message, /رفض نموذج Google إحدى القيم/)
   assert.match(refused.body.manualUrl, /viewform\?usp=pp_url.*entry\.813402020=40/)
   assert.equal(await sentAt(), null) // released: it can be sent again

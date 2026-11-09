@@ -13,6 +13,7 @@ const STATES = { unsent: { text: 'لم تُرسل', tone: 'pending' }, unconfirm
 const FILTERS = [{ key: '', label: 'الكل' }, { key: 'unsent', label: 'لم تُرسل' }, { key: 'unconfirmed', label: 'لم يتأكد' }, { key: 'refused', label: 'تعذّر الإرسال' }, { key: 'incomplete', label: 'ناقصة' }]
 const FIRST_DAY_KINDS = Object.entries(DRUG_REQUESTS).filter(([, spec]) => spec.firstDayOnly).map(([kind, spec]) => ({ kind, label: spec.label }))
 const addDays = (iso, days) => isoDate(new Date(`${iso}T12:00:00`).getTime() + days * 86400000)
+const HEALTH = { changed: 'تغيّر', unreachable: 'تعذّر قراءته', unchecked: 'لم يُفحص بعد' }
 const formatDate = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString('ar-IQ', { day: 'numeric', month: 'numeric' })
 const wardText = (key) => { const [floor, ...ward] = String(key).split('|'); return floor ? `الطابق ${floor} — ${ward.join('|')}` : ward.join('|') }
 const wardOf = (key) => { const [floor, ...ward] = String(key).split('|'); return { floor: floor ? Number(floor) : null, ward: ward.join('|') } }
@@ -22,6 +23,10 @@ export default function AdminFormsScreen({ adminHeader, isExpired, onOpenForm })
   const [days, setDays] = useState(7)
   const [rows, setRows] = useState(() => readFollowup(7)?.rows ?? null)
   const [more, setMore] = useState(() => readFollowup(7)?.more ?? false)
+  // The Google Forms' health as the server keeps it ({ checkedAt, issues }), asked of Google again only by «فحص النماذج الآن».
+  const [health, setHealth] = useState(() => readFollowup(7)?.health ?? null)
+  const [checking, setChecking] = useState(false)
+  const [checkError, setCheckError] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(() => !readFollowup(7))
   const [reload, setReload] = useState(0)
@@ -37,7 +42,7 @@ export default function AdminFormsScreen({ adminHeader, isExpired, onOpenForm })
   // period (followupCache.js) is shown as it is, without asking again; «تحديث» asks (`reload`).
   useEffect(() => {
     const kept = reload === 0 ? readFollowup(days) : null
-    if (kept) { setRows(kept.rows); setMore(kept.more); setError(''); setLoading(false); return undefined }
+    if (kept) { setRows(kept.rows); setMore(kept.more); setHealth(kept.health); setError(''); setLoading(false); return undefined }
     let cancelled = false
     setLoading(true); setError('')
     fetch(`${apiUrl}/drug-requests/followup?from=${addDays(today, 1 - days)}&to=${today}`, { credentials: 'include' })
@@ -45,13 +50,24 @@ export default function AdminFormsScreen({ adminHeader, isExpired, onOpenForm })
         if (isExpired(response)) return
         const result = await response.json().catch(() => ({}))
         if (!response.ok) throw new Error(result.message)
-        if (!cancelled) { setRows(result.rows); setMore(result.more); keepFollowup(days, result.rows, result.more) }
+        if (!cancelled) { setRows(result.rows); setMore(result.more); setHealth(result.health); keepFollowup(days, result.rows, result.more, result.health) }
       })
       .catch((caught) => { if (!cancelled) { setRows(null); setError(caught.message || 'تعذّر تحميل المتابعة — تحقّق من الاتصال وحاول مرة أخرى.') } })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [days, reload, today, isExpired])
 
+  const checkForms = async () => {
+    setChecking(true); setCheckError('')
+    try {
+      const response = await fetch(`${apiUrl}/drug-requests/health/check`, { method: 'POST', credentials: 'include' })
+      if (isExpired(response)) return
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(result.message)
+      setHealth(result.health)
+      clearFollowup() // the kept answer carries the old verdicts
+    } catch (caught) { setCheckError(caught.message || 'تعذّر الفحص — تحقّق من الاتصال وحاول مرة أخرى.') } finally { setChecking(false) }
+  }
   const findMissing = async () => {
     setMissingBusy(true); setMissingError('')
     try {
@@ -69,6 +85,15 @@ export default function AdminFormsScreen({ adminHeader, isExpired, onOpenForm })
   return <main className="app-shell">{adminHeader}<section className="dashboard reports-page">
     <div className="section-heading"><div><h1>متابعة الاستمارات</h1></div></div>
     <p className="report-note">الاستمارات التي تحتاج متابعة: استمارة Google لم تُرسل أو لم يتأكد إرسالها، أو استمارة ينقصها ما يطلبه النموذج (أو «مواقف القسم» للميروبينيم). «أُرسلت» تعني أن Google قبلها أو أن الصيدلي أكّد إرسالها يدويًا؛ التطبيق لا يستطيع قراءة ردود Google نفسها.</p>
+    {health && <div className="forms-health" role="status">
+      <p className={health.issues.some((issue) => issue.status === 'changed') ? 'forms-health-head forms-health-head--bad' : 'forms-health-head'}>
+        <strong>نماذج Google: {health.issues.length === 0 ? 'كلها كما يتوقعها التطبيق' : health.issues.some((issue) => issue.status === 'changed') ? 'تغيّر بعضها — أخبر المطوّر قبل الإرسال' : health.issues.every((issue) => issue.status === 'unchecked') ? 'لم تُفحص بعد' : 'تعذّر فحص بعضها'}</strong>
+        <small>{health.checkedAt ? `آخر فحص ${new Date(health.checkedAt).toLocaleString('ar-IQ', { dateStyle: 'short', timeStyle: 'short' })}` : 'لم تُفحص بعد'}</small>
+        <button type="button" className="text-button" disabled={checking} onClick={checkForms}>{checking ? 'جارٍ الفحص…' : 'فحص النماذج الآن'}</button>
+      </p>
+      {health.issues.map((issue) => <p key={issue.kind} className="forms-health-issue"><span className={`card-status card-status--${issue.status === 'changed' ? 'danger' : 'muted'}`}>{HEALTH[issue.status]}</span> <strong>{DRUG_REQUESTS[issue.kind].label}</strong>{issue.detail && <small> — {issue.detail}</small>}</p>)}
+      {checkError && <p className="form-error" role="alert">{checkError}</p>}
+    </div>}
     <div className="top-medicines-periods" role="group" aria-label="المدة">
       {PERIODS.map((period) => <button key={period.days} type="button" className={period.days === days ? 'active' : ''} aria-pressed={period.days === days} onClick={() => { setDays(period.days); setMissing(null); setReload(0) }}>{period.label}</button>)}
       <button type="button" className="text-button" disabled={loading} onClick={() => { clearFollowup(); setReload((n) => n + 1) }}>تحديث</button>
