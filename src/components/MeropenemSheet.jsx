@@ -102,7 +102,7 @@ export default function MeropenemSheet({ request, wardName, paper = false, onTog
     <div className="req-signatures">
       <p><strong>الصيدلي</strong><strong>عضو لجنة المضادات الحياتية</strong></p>
       <p><strong>مسؤول الصيدلة السريرية</strong><strong>(اذا لم يكن صيدلي اختصاص فيجب تخصيص صيدلي اختصاص/ صيدلة سريرية او فارماكوجي)</strong></p>
-      <p className="req-sign-doctor">{value('اسم الطبيب الاختصاص', 'doctor', { bare: true })}<strong>الطبيب الاخصائي</strong></p>
+      <p className="req-sign-doctor">{value('اسم الطبيب الاختصاص', 'doctor', { bare: true, ...(paper && fields.hideDoctor ? { value: '' } : {}) })}{!paper && <label className="req-doctor-toggle"><input type="checkbox" checked={!fields.hideDoctor} onChange={(event) => onField({ fields: { hideDoctor: event.target.checked ? '' : '1' } })} /> طباعة اسم الطبيب</label>}<strong>الطبيب الاخصائي</strong></p>
     </div>
   </div>
 }

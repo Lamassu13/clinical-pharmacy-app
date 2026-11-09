@@ -2870,3 +2870,7 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
   .chart-table tr[data-found] td, .chart-table tr[data-found] input { background: var(--warning-tint); }
   .chart-table tr[data-found] td:first-child { box-shadow: inset 4px 0 0 var(--warning); }
 }
+
+/* The tick that leaves the doctor's name off the printed form (screen only). */
+.req-doctor-toggle { display: flex; align-items: center; gap: var(--space-2); min-height: 44px; color: var(--text-muted); font-size: var(--text-sm); cursor: pointer; }
+.req-doctor-toggle input { width: 20px; height: 20px; }
