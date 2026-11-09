@@ -439,7 +439,8 @@ test('google forms: a refused send is released, says whether the form changed, a
   fakeGoogle(allIds) // the same questions, but the form no longer asks for a sign-in: posted, and refused
   let refused = await pharmacist.post(`/api/drug-requests/${saved.id}/google-form`, {})
   assert.equal(refused.status, 502)
-  assert.match(refused.body.message, /تغيّر نموذج Google \(لم يعد النموذج يشترط تسجيل الدخول\)/) // the health verdict names it, not «a value was refused»
+  // (The form no longer asking for a sign-in is the health check's to report; what refused THIS send is not known to be that.)
+  assert.match(refused.body.message, /رفض نموذج Google إحدى القيم/)
   assert.match(refused.body.manualUrl, /viewform\?usp=pp_url.*entry\.813402020=40/)
   assert.equal(await sentAt(), null) // released: it can be sent again
 

@@ -23,7 +23,9 @@ export const liveForm = (html) => {
       pages.set(String(entry[0]), page)
       if (entry[2] === 1) required.add(String(entry[0]))
     }
-    return { entries, required, titles, pages, signIn: data[1][10]?.[6] === 2 }
+    // `signIn` is null when the page does not carry the setting (Google moved it): unknown, never read as «no sign-in».
+    const email = data[1][10]?.[6]
+    return { entries, required, titles, pages, signIn: email == null ? null : email === 2 }
   } catch { return null }
 }
 export const liveEntries = (html) => liveForm(html)?.entries ?? null

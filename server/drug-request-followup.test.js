@@ -3,8 +3,9 @@ import assert from 'node:assert/strict'
 import app from './index.js'
 import { pool } from './db.js'
 import { startServer, resetDatabase, createUser, ApiClient } from './test-helpers.js'
-import { sampleBodies, compareForm, allowCheckNow } from './google-form-health.js'
+import { sampleBodies, compareForm, allowCheckNow, saveHealth } from './google-form-health.js'
 import { liveForm } from '../shared/google-form-check.js'
+import { ivigFormAnswers } from '../shared/ivig-google-form.js'
 import { GOOGLE_FORMS } from './google-forms.js'
 
 const FLOOR = 5
@@ -137,11 +138,11 @@ test('dashboard: a manager’s answer carries how many Google forms of the week 
 
 // A live form's page as Google draws it, built from the answers the app sends: every question free text unless `choices` says
 // (id → its option texts); `drop` removes questions, `extra` adds required ones (title by id), `signIn` is the email setting.
-const livePage = (kind, { choices = {}, drop = [], extra = {}, extraPage = 0, signIn = GOOGLE_FORMS[kind].signIn } = {}) => {
+const livePage = (kind, { choices = {}, drop = [], extra = {}, extraPage = 0, signIn = GOOGLE_FORMS[kind].signIn, settings = true } = {}) => {
   const ids = [...new Set(sampleBodies(kind).flatMap((body) => body.map(([name]) => /^entry\.(\d+)/.exec(name)?.[1]).filter(Boolean)))].filter((id) => !drop.includes(id))
   const question = (id, title) => [Number(id), title, null, choices[id] ? 2 : 0, [[Number(id), choices[id] ? choices[id].map((text) => [text]) : null, 1]]]
   const questions = [[1, 'title block', '', 11, null], ...ids.map((id) => question(id, `q${id}`)), ...Array.from({ length: extraPage }, (_, index) => [100 + index, 'section', null, 8, null]), ...Object.entries(extra).map(([id, title]) => question(id, title))]
-  return `<script>var FB_PUBLIC_LOAD_DATA_ = ${JSON.stringify([null, [null, questions, null, null, null, null, null, null, null, null, [null, null, null, 2, null, null, signIn ? 2 : 1]]])};</script>`
+  return `<script>var FB_PUBLIC_LOAD_DATA_ = ${JSON.stringify([null, [null, questions, ...(settings ? [null, null, null, null, null, null, null, null, [null, null, null, 2, null, null, signIn ? 2 : 1]] : [])]])};</script>`
 }
 
 test('google form health: a form as the app expects is ok; a question gone, an option reworded, a NEW required question or a changed sign-in is not', () => {
@@ -161,6 +162,12 @@ test('google form health: a form as the app expects is ok; a question gone, an o
   assert.deepEqual(compareForm('ivig', liveForm(livePage('ivig', { extra: { 999: 'other diagnosis' }, extraPage: 8 }))), { status: 'ok', detail: '' })
   assert.match(compareForm('ivig', liveForm(livePage('ivig', { signIn: true }))).detail, /يشترط تسجيل الدخول/)
   assert.match(compareForm('tigecycline', liveForm(livePage('tigecycline', { signIn: false }))).detail, /لم يعد النموذج يشترط/)
+  // A page that does not carry the email setting (Google moved it) is unknown, not «no sign-in»: no alarm.
+  const unknown = liveForm(livePage('tigecycline', { settings: false }))
+  assert.equal(unknown.signIn, null)
+  assert.deepEqual(compareForm('tigecycline', unknown), { status: 'ok', detail: '' })
+  // The samples vary on more than the case: both sexes, every culture result, no days, every month.
+  assert.ok(sampleBodies('albumin').length >= 17 + 16 && sampleBodies('tigecycline').length >= 2 + 16)
 })
 
 test('google form health: kept per form, shown to managers with the follow-up (stale → refreshed in the background), checked on demand, on the dashboard', async () => {
@@ -179,6 +186,11 @@ test('google form health: kept per form, shown to managers with the follow-up (s
   // The follow-up answer carries the kept verdicts.
   assert.equal((await manager.get(`/api/drug-requests/followup?from=${today}&to=${today}`)).body.health.issues.length, 3)
 
+  // A check that could not read the form never erases a «changed» verdict (only the check time moves on).
+  await saveHealth('colistin', { status: 'unreachable', detail: 'تعذّر الوصول إلى Google' })
+  const kept = (await manager.get(`/api/drug-requests/followup?from=${today}&to=${today}`)).body.health.issues.find((issue) => issue.kind === 'colistin')
+  assert.deepEqual([kept.status, /سؤال|لم يعد/.test(kept.detail)], ['changed', true])
+
   // Asked again at once: Google is not asked again (a minute's cooldown) — the kept verdicts come back.
   googleHtml = livePage('ivig', { drop: ['700571695'] })
   assert.equal((await manager.post('/api/drug-requests/health/check', {})).body.health.issues.length, 3)
@@ -194,7 +206,10 @@ test('google form send: a refusal because the form now asks a new required quest
   const manager = await loginAs({ role: 'admin' })
   const saved = (await form(pharmacist, { kind: 'ivig', date: '2026-11-09', name: 'نور', patientId: '66', fields: COMPLETE_IVIG })).body.request
   await pharmacist.patch(`/api/drug-requests/${saved.id}/ticks`, { ticks: ['gbs'] })
-  let page = livePage('ivig', { extra: { 999: 'اسم المسؤول عن الردهة' } })
+  // The live form as far as this send goes: the questions of the other cases (other pages on the real form) left out.
+  const onPath = new Set(ivigFormAnswers({ name: 'x', patientId: '1', date: '2026-11-09', ticks: ['gbs'], note: '', fields: COMPLETE_IVIG }).body.map(([name]) => /^entry\.(\d+)/.exec(name)?.[1]))
+  const otherCases = [...new Set(sampleBodies('ivig').flatMap((body) => body.map(([name]) => /^entry\.(\d+)/.exec(name)?.[1])))].filter((id) => id && !onPath.has(id))
+  let page = livePage('ivig', { drop: otherCases, extra: { 999: 'اسم المسؤول عن الردهة' } })
   const posts = []
   globalThis.fetch = (url, options) => {
     if (!String(url).includes('docs.google.com')) return realFetch(url, options)
@@ -204,14 +219,13 @@ test('google form send: a refusal because the form now asks a new required quest
   t.after(() => { globalThis.fetch = (url, options) => (String(url).includes('docs.google.com') ? Promise.resolve({ ok: true, text: async () => googleHtml }) : realFetch(url, options)) })
   const refused = await pharmacist.post(`/api/drug-requests/${saved.id}/google-form`, {})
   assert.equal(refused.status, 502)
-  assert.match(refused.body.message, /سؤال إلزامي جديد: اسم المسؤول عن الردهة/)
+  assert.match(refused.body.message, /سؤال إلزامي جديد: اسم المسؤول عن الردهة\)/)
   assert.ok(refused.body.manualUrl)
   assert.equal(posts.length, 1)
   const today = new Date().toISOString().slice(0, 10)
   assert.equal((await manager.get(`/api/dashboard?date=${today}`)).body.formsChanged, 1)
   // The form as the app expects it, a refusal all the same: then it is a value that was refused (the old message).
-  page = livePage('ivig')
+  page = livePage('ivig', { drop: otherCases })
   const value = await pharmacist.post(`/api/drug-requests/${saved.id}/google-form`, {})
   assert.match(value.body.message, /رفض نموذج Google إحدى القيم/)
-  assert.equal((await manager.get(`/api/dashboard?date=${today}`)).body.formsChanged, 0) // and its health is ok again
 })

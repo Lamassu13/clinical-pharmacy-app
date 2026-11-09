@@ -87,7 +87,7 @@ export default function AdminFormsScreen({ adminHeader, isExpired, onOpenForm })
     <p className="report-note">الاستمارات التي تحتاج متابعة: استمارة Google لم تُرسل أو لم يتأكد إرسالها، أو استمارة ينقصها ما يطلبه النموذج (أو «مواقف القسم» للميروبينيم). «أُرسلت» تعني أن Google قبلها أو أن الصيدلي أكّد إرسالها يدويًا؛ التطبيق لا يستطيع قراءة ردود Google نفسها.</p>
     {health && <div className="forms-health" role="status">
       <p className={health.issues.some((issue) => issue.status === 'changed') ? 'forms-health-head forms-health-head--bad' : 'forms-health-head'}>
-        <strong>نماذج Google: {health.issues.length === 0 ? 'كلها كما يتوقعها التطبيق' : health.issues.some((issue) => issue.status === 'changed') ? 'تغيّر بعضها — أخبر المطوّر قبل الإرسال' : 'تعذّر فحص بعضها'}</strong>
+        <strong>نماذج Google: {health.issues.length === 0 ? 'كلها كما يتوقعها التطبيق' : health.issues.some((issue) => issue.status === 'changed') ? 'تغيّر بعضها — أخبر المطوّر قبل الإرسال' : health.issues.every((issue) => issue.status === 'unchecked') ? 'لم تُفحص بعد' : 'تعذّر فحص بعضها'}</strong>
         <small>{health.checkedAt ? `آخر فحص ${new Date(health.checkedAt).toLocaleString('ar-IQ', { dateStyle: 'short', timeStyle: 'short' })}` : 'لم تُفحص بعد'}</small>
         <button type="button" className="text-button" disabled={checking} onClick={checkForms}>{checking ? 'جارٍ الفحص…' : 'فحص النماذج الآن'}</button>
       </p>

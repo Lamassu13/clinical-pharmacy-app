@@ -7,7 +7,7 @@ import { DAY_LOCKED, isDayLocked } from '../day-lock.js'
 import { buildMeropenemForm, wardKeyOf } from '../meropenem.js'
 import { numberToArabicWords } from '../arabic-number.js'
 import { DRUG_REQUESTS, MAX_REQUEST_NOTE, cleanFields, cleanTicks } from '../../shared/drug-requests.js'
-import { liveForm, mismatches, prefillUrl } from '../../shared/google-form-check.js'
+import { liveForm, mismatches, newRequired, prefillUrl } from '../../shared/google-form-check.js'
 import { needsFollowUp } from '../../shared/form-problems.js'
 import { GOOGLE_FORMS } from '../google-forms.js'
 import { compareForm, saveHealth } from '../google-form-health.js'
@@ -250,15 +250,21 @@ router.post('/drug-requests/:id/google-form', requireAuth, async (request, respo
     let changed = []
     // (A form that could not be read is not a form that changed.)
     changed = live ? mismatches(answers.body, live.entries) : []
-    // The form is in hand: its health verdict is kept too (the dashboard shows a changed form at once), and a NEW required
-    // question the app does not answer is named — before, it read as «a value was refused».
-    const verdict = live ? compareForm(own.row.kind, live) : null
-    if (verdict) saveHealth(own.row.kind, verdict).catch(() => {})
-    console.error('google form: refused:', reply.status, reply.redirected, changed, verdict?.detail || '')
+    // The form is in hand: its health verdict (against the sample answers of every case) is kept too, so the dashboard shows a changed
+    // form at once. What THIS refusal says rests on the answer that was actually sent: a question or option it uses that is gone, or a
+    // NEW required question on the pages it visits — not on the other cases or on the sign-in setting, which did not refuse it.
+    let added = []
+    try {
+      if (live) {
+        added = newRequired([answers.body], live)
+        await saveHealth(own.row.kind, compareForm(own.row.kind, live)).catch(() => {})
+      }
+    } catch (error) { console.error('google form health: not read:', error.message) }
+    console.error('google form: refused:', reply.status, reply.redirected, changed, added)
     const why = changed.length
       ? `تغيّر نموذج Google ولم تعد الاستمارة تطابقه (${changed.join('، ')}) — أخبر المسؤول، ويمكنك إكمال الإرسال يدويًا.`
-      : verdict?.status === 'changed'
-        ? `تغيّر نموذج Google (${verdict.detail}) — أخبر المسؤول، ويمكنك إكمال الإرسال يدويًا.`
+      : added.length
+        ? `تغيّر نموذج Google (سؤال إلزامي جديد: ${added.join('، ')}) — أخبر المسؤول، ويمكنك إكمال الإرسال يدويًا.`
         : 'رفض نموذج Google إحدى القيم (راجع العمر أرقام صحيحة، والوزن وS.Cr أرقام) — صحّحها أو أكمل الإرسال يدويًا.'
     await release(why.slice(0, 300))
     return response.status(502).json({

@@ -12,11 +12,19 @@ import { liveForm, mismatches, newRequired } from '../shared/google-form-check.j
 const STALE_MS = 6 * 3600_000
 const COOLDOWN_MS = 60_000
 const SAMPLE_FIELDS = { sex: 'ذكر', age: '40', weight: '70', scr: '1.1', dose: '1000000', duration: '7 أيام', culture: 'Sensitive', committee: 'x', doctor: 'x', vials: '4', count: '2' }
+// What else the answers vary on besides the diagnosis/case: the sex, each culture result, no number of days, and every month (the
+// season and month options of albumin and ivig). Tried on the first case only — they are the same questions whichever case is ticked.
+const VARIANTS = [
+  { fields: { sex: 'أنثى' } }, { fields: { culture: 'Resistant' } }, { fields: { culture: 'Not done' } }, { fields: { duration: '' } },
+  ...Array.from({ length: 12 }, (_, index) => ({ date: `2026-${String(index + 1).padStart(2, '0')}-09` })),
+]
 
 // The answers a complete request of this kind would send, once per diagnosis/case it can tick (so every branch of the form is covered).
-export const sampleBodies = (kind) => DRUG_REQUESTS[kind].groups.flatMap((group) => group.options.map((option) => option.key))
-  .map((key) => GOOGLE_FORMS[kind].answers({ name: 'x', patientId: '1', date: '2026-11-09', fields: SAMPLE_FIELDS, ticks: [key], note: 'Test' }, 'x', false))
-  .filter((result) => result.ok).map((result) => result.body)
+export const sampleBodies = (kind) => {
+  const keys = DRUG_REQUESTS[kind].groups.flatMap((group) => group.options.map((option) => option.key))
+  const build = (key, { fields = {}, date = '2026-11-09' } = {}) => GOOGLE_FORMS[kind].answers({ name: 'x', patientId: '1', date, fields: { ...SAMPLE_FIELDS, ...fields }, ticks: [key], note: 'Test' }, 'x', false)
+  return [...keys.map((key) => build(key)), ...VARIANTS.map((variant) => build(keys[0], variant))].filter((result) => result.ok).map((result) => result.body)
+}
 
 // { status: 'ok' | 'changed', detail } for a live form (liveForm's answer) of this kind. Pure.
 export const compareForm = (kind, live) => {
@@ -27,13 +35,19 @@ export const compareForm = (kind, live) => {
   if (gone.length) problems.push(`لم يعد في النموذج: ${gone.slice(0, 3).join('، ')}${gone.length > 3 ? ` (+${gone.length - 3})` : ''}`)
   const added = newRequired(bodies, live)
   if (added.length) problems.push(`سؤال إلزامي جديد: ${added.slice(0, 3).join('، ')}${added.length > 3 ? ` (+${added.length - 3})` : ''}`)
-  if (live.signIn !== GOOGLE_FORMS[kind].signIn) problems.push(live.signIn ? 'صار النموذج يشترط تسجيل الدخول' : 'لم يعد النموذج يشترط تسجيل الدخول')
+  // (An unknown setting — the page does not carry it — is not a change.)
+  if (live.signIn !== null && live.signIn !== GOOGLE_FORMS[kind].signIn) problems.push(live.signIn ? 'صار النموذج يشترط تسجيل الدخول' : 'لم يعد النموذج يشترط تسجيل الدخول')
   return problems.length ? { status: 'changed', detail: problems.join(' · ').slice(0, 300) } : { status: 'ok', detail: '' }
 }
 
+// A check that could not read the form ('unreachable': Google slow, a consent page, a 429) never erases a 'changed' verdict — only a
+// check that read the form can: the kept status and detail stay, the check time moves on (so the form is not asked again at once).
 export const saveHealth = (kind, { status, detail }) => query(
   `INSERT INTO google_form_health (kind, status, detail, checked_at) VALUES ($1, $2, $3, NOW())
-   ON CONFLICT (kind) DO UPDATE SET status = EXCLUDED.status, detail = EXCLUDED.detail, checked_at = NOW()`,
+   ON CONFLICT (kind) DO UPDATE SET
+     status = CASE WHEN EXCLUDED.status = 'unreachable' AND google_form_health.status = 'changed' THEN google_form_health.status ELSE EXCLUDED.status END,
+     detail = CASE WHEN EXCLUDED.status = 'unreachable' AND google_form_health.status = 'changed' THEN google_form_health.detail ELSE EXCLUDED.detail END,
+     checked_at = NOW()`,
   [kind, status, detail],
 )
 
