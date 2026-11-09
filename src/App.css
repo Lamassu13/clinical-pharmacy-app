@@ -2838,6 +2838,11 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
 .tige-patient .tige-cases { width: 33%; vertical-align: top; }
 .tige-patient .req-tick { min-height: 4em; align-items: flex-start; }
 
+/* «IVIG vial prescription» (IvigSheet): the diagnoses by part, one per row. */
+.req-form.ivig-dx { margin-top: var(--space-2); }
+.ivig-dx .ivig-part { background: var(--surface-alt); font-weight: 700; text-align: start; }
+.ivig-dx .req-tick { min-height: 3em; align-items: center; }
+
 /* The forms as paper, drawn off-screen for the PDF (RequestPrintTemplate in .ppt-root): one fixed
    A4 portrait page each, black on white, sized in mm so a form never runs onto a second page. */
 .rpt-sheet { width: 210mm; height: 297mm; box-sizing: border-box; padding: 12mm 12mm 10mm; overflow: hidden; background: #fff; color: #000; font-family: var(--font-sans); }
@@ -2921,3 +2926,6 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
 .req-manual { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
 .rpt-sheet .coli-equations { font-size: 10pt; }
 .rpt-sheet .tige-patient td.req-tick-cell { vertical-align: top; height: 24mm; }
+.rpt-sheet .ivig-dx { font-size: 10pt; }
+.rpt-sheet .ivig-dx .ivig-part { background: #e6e6e6; }
+.rpt-sheet .ivig-dx td.req-tick-cell { padding: 1mm 2mm; }

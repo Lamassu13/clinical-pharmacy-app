@@ -467,9 +467,9 @@ CREATE TABLE IF NOT EXISTS drug_requests (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (kind, ward_key, request_date, patient_name, patient_id)
 );
--- Tigecycline and colistin kinds (shared/drug-requests.js): the kind check names every kind, so it is replaced (and lists them all).
+-- Tigecycline, colistin and ivig kinds (shared/drug-requests.js): the kind check names every kind, so it is replaced (and lists them all).
 ALTER TABLE drug_requests DROP CONSTRAINT IF EXISTS drug_requests_kind_check;
-ALTER TABLE drug_requests ADD CONSTRAINT drug_requests_kind_check CHECK (kind IN ('meropenem', 'albumin', 'tigecycline', 'colistin'));
+ALTER TABLE drug_requests ADD CONSTRAINT drug_requests_kind_check CHECK (kind IN ('meropenem', 'albumin', 'tigecycline', 'colistin', 'ivig'));
 -- When an albumin form was sent to the ministry's Google Form (routes/drug-requests.js); NULL = not yet.
 ALTER TABLE drug_requests ADD COLUMN IF NOT EXISTS google_sent_at TIMESTAMPTZ;
 

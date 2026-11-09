@@ -7,7 +7,7 @@ import { GROUPS } from './components/wardOptions.jsx'
 // ward page lists it (floors 3, 6, 8, 9).
 const CHART_STEP = { label: 'الجارت', icon: 'grid', open: { mode: 'chart', slot: 'main' } }
 // The pill forms come last: the order and the request forms are done first, then the pills.
-const DAILY_MODES = ['chart', 'order', 'meropenem-order', 'meropenem-forms', 'tigecycline-forms', 'colistin-forms', 'albumin-forms', 'pills', 'extra-pills']
+const DAILY_MODES = ['chart', 'order', 'meropenem-order', 'meropenem-forms', 'tigecycline-forms', 'colistin-forms', 'ivig-forms', 'albumin-forms', 'pills', 'extra-pills']
 // The follow-up starts where the doses were handed over: «متابعة الاستلام».
 const CLINICAL_MODES = ['receipts', 'meropenem', 'interactions', 'renal']
 // The steps of the flow that `mode` belongs to (the daily flow for any other mode, e.g. none open yet).
