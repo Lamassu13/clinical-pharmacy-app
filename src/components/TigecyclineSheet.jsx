@@ -26,12 +26,21 @@ export default function TigecyclineSheet({ request, wardName, paper = false, onT
 
   return <div className="req-paper tige-paper">
     {/* The sex is a two-way choice (chips, no typing); the paper form has its box, filled from the choice. */}
-    {!paper && <div className="req-extra-row">
-      <span className="req-label">الجنس</span>
-      <div className="req-chips" role="group" aria-label="الجنس">
-        {sexField.choices.map((choice) => <button key={choice} type="button" className="req-chip" aria-pressed={fields.sex === choice} onClick={() => onField({ fields: { sex: choice } })}>{choice}</button>)}
+    {!paper && <>
+      <div className="req-extra-row">
+        <span className="req-label">الجنس</span>
+        <div className="req-chips" role="group" aria-label="الجنس">
+          {sexField.choices.map((choice) => <button key={choice} type="button" className="req-chip" aria-pressed={fields.sex === choice} onClick={() => onField({ fields: { sex: choice } })}>{choice}</button>)}
+        </div>
       </div>
-    </div>}
+      <div className="req-extra-row">
+        <span className="req-label">نتيجة الزرع البكتيري</span>
+        <div className="req-chips" role="group" aria-label="نتيجة الزرع البكتيري">
+          {fieldOf.culture.choices.map((choice) => <button key={choice} type="button" className="req-chip" aria-pressed={fields.culture === choice} onClick={() => onField({ fields: { culture: fields.culture === choice ? '' : choice } })}>{choice}</button>)}
+        </div>
+      </div>
+      <div className="req-extra-row">{value('اسم عضو لجنة المضادات الحياتية', 'committee')}<small>(للإرسال إلى نموذج الوزارة — لا يُطبع)</small></div>
+    </>}
 
     <table className="req-form tige-head">
       <tbody><tr>
@@ -62,7 +71,7 @@ export default function TigecyclineSheet({ request, wardName, paper = false, onT
         <tr>
           <td>{value('عدد الأيام المطلوب أخذ العلاج فيها:', 'duration')}</td>
           <td>{value('S.Cr.', 'scr', { ltr: true })}</td>
-          <td>{value('نتيجة الزرع البكتيري:', 'culture')}</td>
+          <td><Field paper label="نتيجة الزرع البكتيري:" value={fields.culture} /></td>
         </tr>
       </tbody>
     </table>

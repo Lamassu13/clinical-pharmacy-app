@@ -7,7 +7,8 @@ import { DAY_LOCKED, isDayLocked } from '../day-lock.js'
 import { buildMeropenemForm, wardKeyOf } from '../meropenem.js'
 import { numberToArabicWords } from '../arabic-number.js'
 import { DRUG_REQUESTS, MAX_REQUEST_NOTE, cleanFields, cleanTicks } from '../../shared/drug-requests.js'
-import { FORM_URL, albuminFormAnswers } from '../../shared/albumin-google-form.js'
+import { FORM_URL as ALBUMIN_FORM_URL, albuminFormAnswers } from '../../shared/albumin-google-form.js'
+import { FORM_URL as TIGECYCLINE_FORM_URL, tigecyclineFormAnswers } from '../../shared/tigecycline-google-form.js'
 
 const router = express.Router()
 
@@ -164,21 +165,28 @@ router.patch('/drug-requests/:id/ticks', requireAuth, async (request, response) 
   response.json({ request: toRequest(await loadRequest(own.row.id)) })
 })
 
-// «استمارة الالبومين» sent to the ministry's Google Form from here, so nobody retypes it there
-// (../../shared/albumin-google-form.js builds the answers). Sending is off unless GOOGLE_FORM_SEND=1;
-// otherwise the answers that would go are returned and nothing leaves the server. A form already sent is
-// refused unless `resend` is true, so a double tap cannot file the patient twice with the ministry.
+// «استمارة الالبومين» and «استمارة التايجيسايكلين» sent to their ministry Google Forms from here, so nobody retypes
+// them there (../../shared/*-google-form.js build the answers; the tigecycline form also needs the unit's email,
+// GOOGLE_FORM_EMAIL). Sending is off unless GOOGLE_FORM_SEND=1; otherwise the answers that would go are returned
+// and nothing leaves the server. A form already sent is refused unless `resend` is true, so a double tap cannot
+// file the patient twice with the ministry.
+const GOOGLE_FORMS = {
+  albumin: { url: ALBUMIN_FORM_URL, answers: (form) => albuminFormAnswers(form) },
+  tigecycline: { url: TIGECYCLINE_FORM_URL, answers: (form, ward, sending) => tigecyclineFormAnswers(form, { ward, email: process.env.GOOGLE_FORM_EMAIL || (sending ? '' : 'dry-run@example.invalid') }) },
+}
 router.post('/drug-requests/:id/google-form', requireAuth, async (request, response) => {
   const own = await ownRequest(request)
   if (own.status) return refuse(response, own)
-  if (own.row.kind !== 'albumin') return response.status(400).json({ message: 'هذه الاستمارة لا تُرسل إلى نموذج Google' })
+  const target = GOOGLE_FORMS[own.row.kind]
+  if (!target) return response.status(400).json({ message: 'هذه الاستمارة لا تُرسل إلى نموذج Google' })
   // The رقم الطبلة the screen shows (the stored one, else the day's chart's) is the one sent.
   const [floorText, ...ward] = own.row.ward_key.split('|')
   const patientId = own.row.patient_id || (await chartIds(floorText ? Number(floorText) : null, ward.join('|'), own.row.date)).get(own.row.patient_name) || ''
   const form = toRequest({ ...own.row, patient_id: patientId })
-  const answers = albuminFormAnswers(form)
+  const sending = process.env.GOOGLE_FORM_SEND === '1'
+  const answers = target.answers(form, `${floorText ? `الطابق ${floorText} — ` : ''}${ward.join('|')}`, sending)
   if (!answers.ok) return response.status(422).json({ message: `أكمل أولًا: ${answers.missing.join('، ')}`, missing: answers.missing })
-  if (process.env.GOOGLE_FORM_SEND !== '1') return response.json({ dryRun: true, answers: answers.body })
+  if (!sending) return response.json({ dryRun: true, answers: answers.body })
   // The form is marked sent BEFORE it is posted, in one statement, so two taps (or two devices) cannot both
   // post it, and an answer Google recorded but we never heard about cannot be posted again by a retry.
   // The mark is undone only when the send definitely did not happen. `resend` allows a form already sent.
@@ -188,7 +196,7 @@ router.post('/drug-requests/:id/google-form', requireAuth, async (request, respo
   const release = () => query('UPDATE drug_requests SET google_sent_at = $2 WHERE id = $1', [own.row.id, own.row.google_sent_at]).catch(() => {})
   let reply
   try {
-    reply = await fetch(FORM_URL, { method: 'POST', body: new URLSearchParams(answers.body), signal: AbortSignal.timeout(15000) })
+    reply = await fetch(target.url, { method: 'POST', body: new URLSearchParams(answers.body), signal: AbortSignal.timeout(15000) })
   } catch (error) {
     console.error('google form: no answer:', error.name)
     // A timeout may have come after Google recorded it: keep the mark and say so rather than invite a duplicate.

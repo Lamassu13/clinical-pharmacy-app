@@ -77,7 +77,10 @@ export const DRUG_REQUESTS = {
       { key: 'scr', label: 'S.Cr.', max: 30, ltr: true, placeholder: 'mg/dL' },
       { key: 'dose', label: 'الجرعة المطلوبة يوميًا', max: 120, wide: true, auto: true, placeholder: '50mg × 2' },
       { key: 'duration', label: 'عدد الأيام المطلوب أخذ العلاج فيها', max: 120, wide: true, placeholder: 'مثال: 7 أيام', chips: ['5 أيام', '7 أيام', '10 أيام', '14 يومًا'] },
-      { key: 'culture', label: 'نتيجة الزرع البكتيري', max: 200, wide: true, auto: true },
+      // One of three (chips): the ministry's Google Form takes exactly these.
+      { key: 'culture', label: 'نتيجة الزرع البكتيري', max: 20, choices: ['Resistant', 'Sensitive', 'Not done'] },
+      // The antibiotics committee member the Google Form asks for (not printed on the paper form).
+      { key: 'committee', label: 'اسم عضو لجنة المضادات الحياتية', max: 120, wide: true },
       // Printed above the specialist's signature («الطبيب الاختصاصي»).
       { key: 'doctor', label: 'اسم الطبيب الاختصاص', max: 120, wide: true },
       { key: 'hideDoctor', label: 'عدم طباعة اسم الطبيب', max: 1, noDialog: true },
