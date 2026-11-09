@@ -135,8 +135,9 @@ export default function useDrugRequests({ selected, selectedDate, isExpired, use
       if (isExpired(response)) return
       const result = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(response.status === 409 ? `${result.message} — أُعيدت الاستمارة كما كانت.` : '')
-      // Only what this edit is about: the reply's ticks/note could untick a box tapped while it was out (its own PATCH follows).
-      putLocal(request.id, { name: result.request.name, patientId: result.request.patientId, fields: result.request.fields, words: result.request.words })
+      // Only what the server adds (albumin's «كتابة»): the rest of the reply could roll back an edit — a tick, a field — still on its way
+      // after this one (the values on screen are already cleaned as typed).
+      putLocal(request.id, { words: result.request.words })
     })
   }, [isExpired, enqueue])
 

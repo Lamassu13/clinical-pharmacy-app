@@ -236,7 +236,7 @@ export default function ChartScreen({
           onChange={(event) => { onSetColumnMedicine(index, event.target.value); setSuggestHighlight(0) }}
           // Read-only (a past day, another device editing): a tap neither opens the list nor commits a stale name on the way out.
           onFocus={(event) => { if (readOnly) return; columnFocusValue.current = event.target.value; setActiveColumn(index); setSuggestFor({ column: index, input: event.target }); setSuggestHighlight(0) }}
-          onBlur={(event) => { if (readOnly) return; setSuggestFor(null); onCommitColumnMedicine(index, event.target.value, columnFocusValue.current) }}
+          onBlur={(event) => { setSuggestFor(null); if (!readOnly) onCommitColumnMedicine(index, event.target.value, columnFocusValue.current) }}
           onKeyDown={(event) => {
             if (suggestFor?.column !== index || !suggestOptions.length) return
             if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
