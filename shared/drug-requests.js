@@ -1,7 +1,7 @@
 // The restricted-medicine request forms: «استمارة الميرونيم» and «استمارة الالبومين». One spec per
 // kind, read by the server (which fields and boxes it accepts) and by the app (the popup's fields, the
 // paper form's boxes). The paper layouts themselves live in src/components/*Sheet.jsx.
-import { MEROPENEM_PATTERN, doseText } from './dose.js'
+import { MEROPENEM_PATTERN, TIGECYCLINE_PATTERN, doseText } from './dose.js'
 
 // Tick groups: `multiple` false means one choice at most (ticking another replaces it). Option keys
 // are what is stored, so they must never change meaning; their text is the paper form's own.
@@ -58,6 +58,37 @@ export const DRUG_REQUESTS = {
         { key: 'culture-after', text: 'Sent after antibiotics' },
         { key: 'culture-before', text: 'Sent before Antibiotics' },
         { key: 'culture-none', text: 'Not sent' },
+      ] },
+    ],
+  },
+  tigecycline: {
+    label: 'استمارة التايجيسايكلين',
+    popupKicker: 'أول يوم تايجيسايكلين',
+    offlineNote: 'تعذّر التحقق من يوم الكورس (لا يوجد اتصال) — املأها إن كان هذا اليوم الأول للتايجيسايكلين.',
+    pattern: TIGECYCLINE_PATTERN,
+    sqlPattern: '(tygacil|tigecycline|tigacyl)',
+    // Asked on the first day of the course, like Meropenem.
+    firstDayOnly: true,
+    fields: [
+      { key: 'sex', label: 'الجنس', max: 10, choices: ['ذكر', 'أنثى'], required: true },
+      { key: 'age', label: 'العمر', max: 30, placeholder: 'مثال: 45', required: true },
+      { key: 'diagnosis', label: 'التشخيص', max: 200, wide: true, auto: true },
+      { key: 'weight', label: 'الوزن', unit: 'كغم', max: 20, decimal: true },
+      { key: 'scr', label: 'S.Cr.', max: 30, ltr: true, placeholder: 'mg/dL' },
+      { key: 'dose', label: 'الجرعة المطلوبة يوميًا', max: 120, wide: true, auto: true, placeholder: '50mg × 2' },
+      { key: 'duration', label: 'عدد الأيام المطلوب أخذ العلاج فيها', max: 120, wide: true, placeholder: 'مثال: 7 أيام', chips: ['5 أيام', '7 أيام', '10 أيام', '14 يومًا'] },
+      { key: 'culture', label: 'نتيجة الزرع البكتيري', max: 200, wide: true, auto: true },
+      // Printed above the specialist's signature («الطبيب الاختصاصي»).
+      { key: 'doctor', label: 'اسم الطبيب الاختصاص', max: 120, wide: true },
+      { key: 'hideDoctor', label: 'عدم طباعة اسم الطبيب', max: 1, noDialog: true },
+    ],
+    // Tigecycline is given twice a day: 50mg vial × 2 → «50mg × 2».
+    prefill: (lines) => ({ dose: lines.map((line) => doseText(line.medicine, line.quantity, 2)).join(' + ') }),
+    // The paper form's two permitted cases; one is chosen.
+    groups: [
+      { id: 'indication', multiple: false, options: [
+        { key: 'skin', text: 'Complicated **skin and soft tissue** infections (when other antibiotics are not suitable)' },
+        { key: 'abdominal', text: 'Complicated **intra-abdominal** infections (when other antibiotics are not suitable)' },
       ] },
     ],
   },

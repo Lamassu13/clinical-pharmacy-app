@@ -2,13 +2,14 @@ import { forwardRef } from 'react'
 import { SHEETS_PER_CANVAS } from '../usePdfSheets.js'
 import MeropenemSheet from './MeropenemSheet.jsx'
 import AlbuminSheet from './AlbuminSheet.jsx'
+import TigecyclineSheet from './TigecyclineSheet.jsx'
 
 // The request forms as paper, drawn off-screen for usePdfSheets: one fixed A4 portrait .rpt-sheet per
 // form, the sheet component in its `paper` mode (plain text, ✓ only on ticked boxes). A PDF page is
 // the same on every device, where the browser's print engine was not: Safari on iPad ignores the
 // named portrait page and printed the Meropenem form landscape, over two pages.
 // sheets: [{ key, kind, request, wardName, wardLabel }]
-const SHEETS = { meropenem: MeropenemSheet, albumin: AlbuminSheet }
+const SHEETS = { meropenem: MeropenemSheet, albumin: AlbuminSheet, tigecycline: TigecyclineSheet }
 
 const RequestPrintTemplate = forwardRef(function RequestPrintTemplate({ sheets }, ref) {
   const chunks = Array.from({ length: Math.ceil(sheets.length / SHEETS_PER_CANVAS) }, (_, index) => sheets.slice(index * SHEETS_PER_CANVAS, (index + 1) * SHEETS_PER_CANVAS))

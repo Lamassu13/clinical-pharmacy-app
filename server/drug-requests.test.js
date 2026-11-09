@@ -141,11 +141,11 @@ test('requests: list per kind, resend updates in place and keeps ticks, edit, ti
 test('counts: forms per kind for the ward and day; zeros when none; another floor refused', async () => {
   const pharmacist = await loginAs({ role: 'user', floor: FLOOR })
   const counts = async (date, client = pharmacist, floor = FLOOR, ward = WARD) => client.get(`/api/drug-requests/counts?floor=${floor}&ward=${encodeURIComponent(ward)}&date=${date}`)
-  assert.deepEqual((await counts('2026-09-24')).body, { meropenem: 0, albumin: 0 })
+  assert.deepEqual((await counts('2026-09-24')).body, { meropenem: 0, albumin: 0, tigecycline: 0 })
   const form = { floor: FLOOR, ward: WARD, date: '2026-09-24', fields: {} }
   for (const [kind, name] of [['meropenem', 'علي'], ['albumin', 'علي'], ['albumin', 'حسن']]) assert.equal((await pharmacist.post('/api/drug-requests', { ...form, kind, name })).status, 201)
-  assert.deepEqual((await counts('2026-09-24')).body, { meropenem: 1, albumin: 2 })
-  assert.deepEqual((await counts('2026-09-25')).body, { meropenem: 0, albumin: 0 })
+  assert.deepEqual((await counts('2026-09-24')).body, { meropenem: 1, albumin: 2, tigecycline: 0 })
+  assert.deepEqual((await counts('2026-09-25')).body, { meropenem: 0, albumin: 0, tigecycline: 0 })
   assert.equal((await counts('2026-09-24', pharmacist, 8, 'الردهة الخامسة')).status, 403)
   assert.equal((await counts('not-a-date')).status, 400)
 })
@@ -313,4 +313,27 @@ test('the doctor’s name can be left off the printed form: the setting is kept,
     const resent = (await pharmacist.post('/api/drug-requests', { ...base, kind, fields: { doctor: 'د. سعد' } })).body.request
     assert.equal(resent.fields.hideDoctor, '1')
   }
+})
+
+test('tigecycline: a third kind — asked on the first day only, dose prefilled twice a day, counted, saved and cleaned like the others', async () => {
+  const admin = await loginAs({ role: 'admin' })
+  await admin.post('/api/medicines', { name: 'Tygacil 50mg Vial' })
+  const pharmacist = await loginAs({ role: 'user', floor: FLOOR })
+  assert.deepEqual(await check(pharmacist, 'tigecycline', '2026-09-24', { name: 'سارة', id: '44' }), { day: 1, requested: false })
+  await saveChart(pharmacist, '2026-09-24', 'Tygacil 50mg Vial', [{ name: 'سارة', id: '44', qty: 2 }])
+  assert.deepEqual(await check(pharmacist, 'tigecycline', '2026-09-25', { name: 'سارة', id: '44' }), { day: 2, requested: false })
+
+  const sent = await pharmacist.post('/api/drug-requests', {
+    kind: 'tigecycline', floor: FLOOR, ward: WARD, date: '2026-09-24', name: 'سارة', patientId: '44',
+    fields: { sex: 'أنثى', age: '40', diagnosis: 'Diabetic foot', weight: '70,5', scr: '1.1', dose: '50mg × 2', duration: '7 أيام', culture: 'MRSA', doctor: 'د. سعد', bogus: 'x' },
+  })
+  assert.equal(sent.status, 201)
+  assert.deepEqual(sent.body.request.fields, { sex: 'أنثى', age: '40', diagnosis: 'Diabetic foot', weight: '70.5', scr: '1.1', dose: '50mg × 2', duration: '7 أيام', culture: 'MRSA', doctor: 'د. سعد', hideDoctor: '' })
+  // One of the two permitted cases is chosen (a second tick replaces the first); an unknown key is dropped.
+  const ticked = await pharmacist.patch(`/api/drug-requests/${sent.body.request.id}/ticks`, { ticks: ['skin', 'abdominal', 'nope'] })
+  assert.deepEqual(ticked.body.request.ticks, ['abdominal'])
+  assert.deepEqual(await check(pharmacist, 'tigecycline', '2026-09-24', { name: 'سارة', id: '44' }), { day: 1, requested: true })
+  const counts = (await pharmacist.get(`/api/drug-requests/counts?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=2026-09-24`)).body
+  assert.deepEqual(counts, { meropenem: 0, albumin: 0, tigecycline: 1 })
+  assert.equal((await pharmacist.get(`/api/drug-requests?${where('tigecycline', '2026-09-24')}`)).body.requests.length, 1)
 })
