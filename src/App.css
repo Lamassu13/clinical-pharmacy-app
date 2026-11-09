@@ -2832,6 +2832,12 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
 .tige-committee { margin: 0; }
 .tige-signatures { margin-top: var(--space-6); }
 
+/* «Colistin vial prescription» (ColistinSheet): the Tigecycline layout's classes plus the unit-conversion box. */
+.coli-equations { text-align: start; }
+.coli-equations span { display: block; }
+.tige-patient .tige-cases { width: 33%; vertical-align: top; }
+.tige-patient .req-tick { min-height: 4em; align-items: flex-start; }
+
 /* The forms as paper, drawn off-screen for the PDF (RequestPrintTemplate in .ppt-root): one fixed
    A4 portrait page each, black on white, sized in mm so a form never runs onto a second page. */
 .rpt-sheet { width: 210mm; height: 297mm; box-sizing: border-box; padding: 12mm 12mm 10mm; overflow: hidden; background: #fff; color: #000; font-family: var(--font-sans); }
@@ -2913,3 +2919,5 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
 .rpt-sheet .tige-signatures { margin-top: 10mm; }
 
 .req-manual { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+.rpt-sheet .coli-equations { font-size: 10pt; }
+.rpt-sheet .tige-patient td.req-tick-cell { vertical-align: top; height: 24mm; }

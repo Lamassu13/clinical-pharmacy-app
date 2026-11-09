@@ -5,6 +5,7 @@ import DrugRequestDialog from '../components/DrugRequestDialog.jsx'
 import MeropenemSheet from '../components/MeropenemSheet.jsx'
 import AlbuminSheet from '../components/AlbuminSheet.jsx'
 import TigecyclineSheet from '../components/TigecyclineSheet.jsx'
+import ColistinSheet from '../components/ColistinSheet.jsx'
 import RequestPrintTemplate from '../components/RequestPrintTemplate.jsx'
 import usePdfSheets from '../usePdfSheets.js'
 
@@ -14,7 +15,7 @@ import usePdfSheets from '../usePdfSheets.js'
 // deleted, and printed: «طباعة» makes a PDF with one A4 portrait page per form, the same on every
 // device (the pills form's route, usePdfSheets). Each patient is one row; tapping it drops their form
 // open (and again to close it), so a ward with several patients reads as a list, not a stack of pages.
-const SHEETS = { meropenem: MeropenemSheet, albumin: AlbuminSheet, tigecycline: TigecyclineSheet }
+const SHEETS = { meropenem: MeropenemSheet, albumin: AlbuminSheet, tigecycline: TigecyclineSheet, colistin: ColistinSheet }
 const savedAt = (iso) => new Date(iso).toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' })
 
 export default function DrugRequestsScreen({ footer, dayLocked = false, kind, header, wardLabel, wardName, onBack, selectedDate, onChangeDate, isOnline, loading, loadError, requests, busy, actionError, notice, manualUrl, manualId, onConfirmManual, onSendToGoogle, onSave, onSetTicks, onSaveField, onDelete, confirmModal }) {
@@ -56,7 +57,7 @@ export default function DrugRequestsScreen({ footer, dayLocked = false, kind, he
 
       {loading ? <div className="empty-state"><span className="spinner" /><span>جارٍ تحميل الاستمارات…</span></div>
         : loadError ? <div className="empty-state"><strong>تعذّر تحميل الاستمارات</strong><span>{isOnline ? 'حدّث الصفحة وحاول مجددًا.' : 'لا يوجد اتصال — تُعرض الاستمارات عند عودته.'}</span></div>
-        : !list.length ? <div className="empty-state"><strong>لا توجد {spec.label} لهذا اليوم</strong><span>تُملأ من «إدخال مريض» أو الجارت عند إضافة {kind === 'albumin' ? 'الالبومين لمريض' : `${kind === 'meropenem' ? 'Meronem' : 'Tygacil'} لمريض في أول يوم له`}، أو أضِفها من «+ استمارة جديدة».</span></div>
+        : !list.length ? <div className="empty-state"><strong>لا توجد {spec.label} لهذا اليوم</strong><span>تُملأ من «إدخال مريض» أو الجارت عند إضافة {kind === 'albumin' ? 'الالبومين لمريض' : `${{ meropenem: 'Meronem', tigecycline: 'Tygacil', colistin: 'Colistin' }[kind]} لمريض في أول يوم له`}، أو أضِفها من «+ استمارة جديدة».</span></div>
         : <>
             <p className="req-hint">المس اسم المريض لفتح استمارته، ثم اكتب في أي حقل لتعديله والمس أي مربع لوضع علامة ✓ أو إزالتها — يُحفظ كل ذلك فورًا.</p>
             <div className="req-sheets">
