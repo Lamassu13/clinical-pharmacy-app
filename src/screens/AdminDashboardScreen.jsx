@@ -32,6 +32,13 @@ function MedicineIcon() {
     <line x1="12" y1="8.5" x2="12" y2="15.5" transform="rotate(-45 12 12)" />
   </svg>
 }
+function FormsIcon() {
+  return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M6 3.5h8l4 4V19a1.5 1.5 0 0 1-1.5 1.5h-10A1.5 1.5 0 0 1 5 19V5a1.5 1.5 0 0 1 1-1.5Z" fill="currentColor" fillOpacity="0.14" stroke="none" />
+    <path d="M6 3.5h8l4 4V19a1.5 1.5 0 0 1-1.5 1.5h-10A1.5 1.5 0 0 1 5 19V5a1.5 1.5 0 0 1 1-1.5Z" />
+    <path d="M14 3.5V8h4M8.5 12h7M8.5 15.5h4.5" />
+  </svg>
+}
 function StatCard({ icon, value, label, detail, onClick }) {
   return <button type="button" className="location-card location-card--link stat-card" onClick={onClick}>
     <span className="floor-number">{icon}</span>
@@ -77,6 +84,7 @@ export default function AdminDashboardScreen({
       {isAdmin && (
         <StatCard icon={<RequestsIcon />} value={registrations.length} label="طلبات بانتظار الموافقة" onClick={() => onNavigate('requests')} />
       )}
+      {dashboard && dashboard.formsToSend !== undefined && <StatCard icon={<FormsIcon />} value={dashboard.formsToSend} label="استمارات Google لم تُرسل" detail="آخر ٧ أيام — اضغط للتفاصيل" onClick={() => onNavigate('forms')} />}
       <StatCard icon={<UsersIcon />} value={allUsers.length} label="المستخدمون" detail={roleBreakdown} onClick={() => onNavigate('users')} />
       <StatCard icon={<MedicineIcon />} value={adminMedicines.length} label="الأدوية في القائمة" onClick={() => onNavigate('medicines')} />
     </div>

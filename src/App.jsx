@@ -16,6 +16,7 @@ import ProfileScreen from './screens/ProfileScreen.jsx'
 import ReportsScreen from './screens/ReportsScreen.jsx'
 import WardPositionsScreen from './screens/WardPositionsScreen.jsx'
 import AdminUsageScreen from './screens/AdminUsageScreen.jsx'
+import AdminFormsScreen from './screens/AdminFormsScreen.jsx'
 import AdminAuditScreen from './screens/AdminAuditScreen.jsx'
 import AdminErrorsScreen from './screens/AdminErrorsScreen.jsx'
 import PillsScreen from './screens/PillsScreen.jsx'
@@ -35,7 +36,7 @@ import useAnnouncements from './hooks/useAnnouncements.js'
 import useDashboardData from './hooks/useDashboardData.js'
 import useWardNote from './hooks/useWardNote.js'
 import useExtraPills from './hooks/useExtraPills.js'
-import useDrugRequests, { kindOfMode } from './hooks/useDrugRequests.js'
+import useDrugRequests, { kindOfMode, formModeOf } from './hooks/useDrugRequests.js'
 import useRequestPrompts from './hooks/useRequestPrompts.js'
 import DrugRequestDialog from './components/DrugRequestDialog.jsx'
 import AlbuminFollowUpScreen from './screens/AlbuminFollowUpScreen.jsx'
@@ -1345,6 +1346,7 @@ function App() {
     else if (adminView === 'wardPositions') screen = 'مواقف القسم'
     else if (adminView === 'albuminFollowUp') screen = 'متابعة الالبومين'
     else if (adminView === 'usage') screen = 'استخدام المستخدمين'
+    else if (adminView === 'forms') screen = 'متابعة الاستمارات'
     else if (adminView === 'audit') screen = 'سجل الإدارة'
     else if (adminView === 'errors') screen = 'الأخطاء'
     else if (selected?.mode === 'pills') screen = `الحبوب — ${ward}`
@@ -2221,6 +2223,8 @@ function App() {
   if (adminView === 'reports' && isManager) return <ReportsScreen adminHeader={appHeader} isExpired={isExpired} />
   if (adminView === 'wardPositions' && isManager) return <WardPositionsScreen adminHeader={appHeader} isExpired={isExpired} />
   if (adminView === 'usage' && isManager) return <AdminUsageScreen adminHeader={appHeader} isExpired={isExpired} />
+  // «فتح» on a form: that ward's form screen of that kind, on the form's day.
+  if (adminView === 'forms' && isManager) return <AdminFormsScreen adminHeader={appHeader} isExpired={isExpired} onOpenForm={({ floor, ward, kind, date }) => { setAdminView(null); setSelectedDate(date); openTarget({ floor, ward, mode: formModeOf(kind) }) }} />
   if (adminView === 'audit' && isAdmin) return <AdminAuditScreen adminHeader={appHeader} isExpired={isExpired} />
   if (adminView === 'errors' && isAdmin) return <AdminErrorsScreen adminHeader={appHeader} isExpired={isExpired} askConfirm={askConfirm} />
 
@@ -2241,7 +2245,7 @@ function App() {
   const chartReady = chartReadyKey !== null && loadedChartKey === chartReadyKey
   if (selected && selected.mode === 'renal') return <RenalDoseScreen header={appHeader} footer={stepFooter} wardLabel={wardLabel} onBack={() => setSelected(null)} />
   if (selected && selected.mode === 'meropenem-order') return <MeropenemOrderScreen header={appHeader} footer={stepFooter} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={meroOrderLoading} data={meroOrderData} loadError={meroOrderError} onPrint={() => window.print()} />
-  if (selected && drugRequests.listKind) return <DrugRequestsScreen key={drugRequests.listKind} dayLocked={dayLocked} kind={drugRequests.listKind} header={appHeader} footer={stepFooter} wardLabel={wardLabel} wardName={selected.ward} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} isOnline={isOnline} loading={drugRequests.loading} loadError={drugRequests.loadError} requests={drugRequests.requests} busy={drugRequests.busy} actionError={drugRequests.actionError} notice={drugRequests.notice} manualUrl={drugRequests.manualUrl} manualId={drugRequests.manualId} onConfirmManual={drugRequests.confirmManualSent} onSendToGoogle={drugRequests.sendToGoogle} onSendAll={drugRequests.sendAll} onSave={drugRequests.save} onSetTicks={drugRequests.setTicks} onSaveField={drugRequests.saveField} onDelete={drugRequests.remove} confirmModal={confirmModal} />
+  if (selected && drugRequests.listKind) return <DrugRequestsScreen key={drugRequests.listKind} dayLocked={dayLocked} kind={drugRequests.listKind} header={appHeader} footer={stepFooter} wardLabel={wardLabel} wardName={selected.ward} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} isOnline={isOnline} loading={drugRequests.loading} loadError={drugRequests.loadError} requests={drugRequests.requests} busy={drugRequests.busy} actionError={drugRequests.actionError} notice={drugRequests.notice} manualUrl={drugRequests.manualUrl} manualId={drugRequests.manualId} onConfirmManual={drugRequests.confirmManualSent} onSendToGoogle={drugRequests.sendToGoogle} onSendAll={drugRequests.sendAll} onFindMissing={drugRequests.findMissing} onSave={drugRequests.save} onSetTicks={drugRequests.setTicks} onSaveField={drugRequests.saveField} onDelete={drugRequests.remove} confirmModal={confirmModal} />
   if (selected && selected.mode === 'meropenem') return <MeropenemScreen header={appHeader} footer={stepFooter} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={meropenemLoading} data={meropenemData} loadError={meropenemError} onEditDay={dayLocked ? undefined : saveCourseDay} onPrint={() => window.print()} />
   if (selected && selected.mode === 'interactions') return <InteractionsScreen header={appHeader} footer={stepFooter} wardLabel={wardLabel} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={interactionsLoading} data={interactionsData} loadError={interactionsError} onPrint={() => window.print()} />
   if (selected && selected.mode === 'receipts') return <ReceiptsScreen dayLocked={dayLocked} header={appHeader} footer={stepFooter} wardLabel={wardLabel} roomLabel={/\bccu\b/i.test(selected.ward || '') ? 'رقم السرير' : 'رقم الغرفة'} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={receiptsLoading} patients={receiptsData} loadError={receiptsError} saveError={receiptSaveError} savingRows={savingRows} onSetReceived={setReceived} />

@@ -209,6 +209,18 @@ export default function useDrugRequests({ selected, selectedDate, isExpired, use
     } finally { setBusy(false) }
   }, [askConfirm, isExpired])
 
+  // «مرضى بلا استمارة»: the patients given this kind's medicine today on this ward with no form of the kind for them. Only
+  // when asked (one small request), never on opening the screen. Resolves { ok, patients } or { ok: false, message }.
+  const findMissing = useCallback(async (kind) => {
+    try {
+      const params = new URLSearchParams({ kind, floor: wardFloor, ward: wardName, date: selectedDate })
+      const response = await fetch(`${apiUrl}/drug-requests/missing?${params}`, { credentials: 'include' })
+      if (isExpired(response)) return { ok: false, message: 'انتهت الجلسة — سجّل الدخول ثم أعد المحاولة.' }
+      const result = await response.json().catch(() => ({}))
+      return response.ok ? { ok: true, patients: result.patients } : { ok: false, message: result.message || 'تعذّر البحث — حاول مرة أخرى.' }
+    } catch { return { ok: false, message: 'لا يوجد اتصال — البحث يحتاج اتصالًا.' } }
+  }, [wardFloor, wardName, selectedDate, isExpired])
+
   // «أُرسلت من Google»: the pharmacist submitted the pre-filled form by hand; the form is marked sent here too.
   const confirmManualSent = useCallback(async (request) => {
     setBusy(true)
@@ -225,5 +237,5 @@ export default function useDrugRequests({ selected, selectedDate, isExpired, use
     } catch { setActionError('لا يوجد اتصال — التسجيل يحتاج اتصالًا.') } finally { setBusy(false) }
   }, [isExpired])
 
-  return { listKind, requests, loading, loadError, busy, actionError, notice, manualUrl, manualId, confirmManualSent, check, save, setTicks, saveField, remove, sendToGoogle, sendAll }
+  return { listKind, requests, loading, loadError, busy, actionError, notice, manualUrl, manualId, confirmManualSent, check, save, setTicks, saveField, remove, sendToGoogle, sendAll, findMissing }
 }
