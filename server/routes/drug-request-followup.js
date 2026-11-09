@@ -14,6 +14,8 @@ const router = express.Router()
 // quiet week is a few hundred bytes. Dates are capped; the lists are capped (`more` says so).
 const MAX_DAYS = 31
 const MAX_ROWS = 300
+// What the database is asked for (Meropenem forms are judged here, so complete ones are read too): a ceiling on what leaves Neon.
+const DB_ROWS = 1500
 const DAY_MS = 86400000
 const toDay = (iso) => Math.round(Date.parse(`${iso}T00:00:00Z`) / DAY_MS)
 const isManagerUser = (user) => user.role === 'admin' || user.role === 'supervisor'
@@ -39,7 +41,7 @@ router.get('/drug-requests/followup', requireAuth, async (request, response) => 
      FROM drug_requests r
      WHERE r.request_date BETWEEN $1::date AND $2::date AND ($3::text IS NULL OR r.kind = $3)
        AND (r.kind <> ALL($4::text[]) OR r.google_sent_at IS NULL OR r.google_error <> '')
-     ORDER BY r.request_date DESC, r.id DESC`,
+     ORDER BY r.request_date DESC, r.id DESC LIMIT ${DB_ROWS}`,
     [range.from, range.to, kind, GOOGLE_KINDS],
   )
   // A form with no رقم الطبلة of its own takes the chart's of that day, as its screen and the send do: one small read for all.
@@ -70,14 +72,15 @@ router.get('/drug-requests/followup', requireAuth, async (request, response) => 
       ...(problems.length ? { problems } : {}), ...(row.google_sent_by_name && state === 'unconfirmed' ? { by: row.google_sent_by_name } : {}), ...(row.google_error ? { error: row.google_error } : {}),
     })
   }
-  response.json({ from: range.from, to: range.to, rows: rows.slice(0, MAX_ROWS), more: rows.length > MAX_ROWS })
+  response.json({ from: range.from, to: range.to, rows: rows.slice(0, MAX_ROWS), more: rows.length > MAX_ROWS || result.rows.length >= DB_ROWS })
 })
 
 // Patients given a first-day medicine (Meropenem, Tigecycline, Colistin, IVIG) in the range with no form of that kind for them:
-// none within 30 days before their first charted dose in the range, nor 14 days after it (the popup can be skipped and the form
-// completed later). Read from the charts only — the course engine is not run, so this is a light query; the price is that a
-// course restarting within 30 days of an earlier form is not caught, and a long course is caught after 30 days. A manager asks
-// for any range across all wards; a floor user for one day of their own ward (`floor`, `ward`, `date`).
+// none from 30 days before their first charted dose to 14 days after the first one in the range (the popup can be skipped and the
+// form completed later). A course that began before the form went live (`formsSince`) is not asked for, and one that began up
+// to 30 days before the range is still told from a new one. Read from the charts only — the course engine is not run, so it is
+// a light query; the price is that a course restarting within 30 days of an earlier form is not caught. A manager asks for any
+// range across all wards; a floor user for one day of their own ward (`floor`, `ward`, `date`).
 // { patients: [{ floor, ward, date, name, patientId }], more }.
 router.get('/drug-requests/missing', requireAuth, async (request, response) => {
   const kind = Object.hasOwn(DRUG_REQUESTS, request.query.kind) && DRUG_REQUESTS[request.query.kind].firstDayOnly ? request.query.kind : null
@@ -97,7 +100,8 @@ router.get('/drug-requests/missing', requireAuth, async (request, response) => {
   }
   const result = await query(
     `WITH given AS (
-       SELECT w.floor_number AS floor, w.name AS ward, MIN(dc.chart_date) AS date,
+       SELECT w.floor_number AS floor, w.name AS ward, MIN(dc.chart_date) AS first,
+              MIN(dc.chart_date) FILTER (WHERE dc.chart_date >= $1::date) AS date,
               regexp_replace(btrim(cp.patient_name), '\\s+', ' ', 'g') AS name, cp.patient_id
        FROM daily_charts dc
        JOIN wards w ON w.id = dc.ward_id
@@ -105,17 +109,20 @@ router.get('/drug-requests/missing', requireAuth, async (request, response) => {
        JOIN chart_quantities cq ON cq.chart_id = dc.id AND cq.row_number = cp.row_number
        JOIN chart_columns cc ON cc.chart_id = dc.id AND cc.column_number = cq.column_number
        LEFT JOIN medicines m ON m.id = cc.medicine_id
-       WHERE dc.chart_date BETWEEN $1::date AND $2::date AND cq.quantity > 0 AND COALESCE(m.name, cc.custom_name) ~* $3
+       WHERE dc.chart_date BETWEEN $1::date - 30 AND $2::date AND cq.quantity > 0 AND COALESCE(m.name, cc.custom_name) ~* $3
          AND (btrim(cp.patient_name) <> '' OR cp.patient_id <> '')
          AND ($4::text IS NULL OR (w.floor_number IS NOT DISTINCT FROM $5::int AND w.name = $4))
-       GROUP BY w.floor_number, w.name, regexp_replace(btrim(cp.patient_name), '\\s+', ' ', 'g'), cp.patient_id)
+       GROUP BY w.floor_number, w.name, regexp_replace(btrim(cp.patient_name), '\\s+', ' ', 'g'), cp.patient_id
+       HAVING MAX(dc.chart_date) >= $1::date AND MIN(dc.chart_date) >= $8::date)
      SELECT g.floor, g.ward, g.date::text AS date, g.name, g.patient_id FROM given g
      WHERE NOT EXISTS (
        SELECT 1 FROM drug_requests r
-       WHERE r.kind = $6 AND r.request_date BETWEEN g.date - 30 AND g.date + 14
-         AND ((g.patient_id <> '' AND r.patient_id = g.patient_id) OR (r.ward_key = COALESCE(g.floor::text, '') || '|' || g.ward AND r.patient_name = g.name)))
+       WHERE r.kind = $6 AND r.request_date BETWEEN g.first - 30 AND g.date + 14 AND r.ward_key = COALESCE(g.floor::text, '') || '|' || g.ward AND r.patient_name = g.name)
+       AND NOT EXISTS (
+       SELECT 1 FROM drug_requests r
+       WHERE g.patient_id <> '' AND r.kind = $6 AND r.patient_id = g.patient_id AND r.request_date BETWEEN g.first - 30 AND g.date + 14)
      ORDER BY g.date, g.floor, g.ward, g.name LIMIT $7`,
-    [range.from, range.to, DRUG_REQUESTS[kind].sqlPattern, ward[1], ward[0], kind, MAX_ROWS + 1],
+    [range.from, range.to, DRUG_REQUESTS[kind].sqlPattern, ward[1], ward[0], kind, MAX_ROWS + 1, DRUG_REQUESTS[kind].formsSince],
   )
   response.json({ patients: result.rows.slice(0, MAX_ROWS).map((row) => ({ floor: row.floor, ward: row.ward, date: row.date, name: row.name, patientId: row.patient_id })), more: result.rows.length > MAX_ROWS })
 })

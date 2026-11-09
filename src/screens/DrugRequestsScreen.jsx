@@ -40,7 +40,7 @@ export default function DrugRequestsScreen({ footer, dayLocked = false, kind, he
   const [missingBusy, setMissingBusy] = useState(false)
   const searchMissing = async () => {
     setMissingBusy(true)
-    setMissing(await onFindMissing(kind))
+    setMissing({ ...(await onFindMissing(kind)), date: selectedDate })
     setMissingBusy(false)
   }
   const [openIds, setOpenIds] = useState(() => new Set())
@@ -77,8 +77,8 @@ export default function DrugRequestsScreen({ footer, dayLocked = false, kind, he
 
       {spec.firstDayOnly && !dayLocked && !loading && !loadError && <div className="req-missing">
         <button type="button" className="text-button" disabled={!isOnline || missingBusy} onClick={searchMissing}>{missingBusy ? 'جارٍ البحث…' : 'مرضى بلا استمارة؟'}</button>
-        {missing && !missing.ok && <span className="form-error" role="alert">{missing.message}</span>}
-        {missing?.ok && (missing.patients.length === 0
+        {missing?.date === selectedDate && !missing.ok && <span className="form-error" role="alert">{missing.message}</span>}
+        {missing?.date === selectedDate && missing.ok && (missing.patients.length === 0
           ? <span className="req-hint">كل مريض أُعطي {spec.label.replace('استمارة ', '')} لديه استمارة.</span>
           : <ul className="req-missing-list">{missing.patients.map((patient) => <li key={`${patient.name}|${patient.patientId}`}>
             <span>{patient.name}{patient.patientId && <small> · <bdi>{patient.patientId}</bdi></small>}</span>

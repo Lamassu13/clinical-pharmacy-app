@@ -62,6 +62,20 @@ test('followup: managers only; what needs following up, in short rows — unsent
   assert.deepEqual((await followup(manager, 'from=2026-11-03&to=2026-11-09&kind=meropenem')).body.rows.map((row) => row.name), ['ميروبينيم ناقص'])
 })
 
+test('followup: a form with no رقم الطبلة of its own takes the one on that day’s chart, so it is not reported as lacking it', async () => {
+  const manager = await loginAs({ role: 'admin' })
+  await manager.post('/api/medicines', { name: 'Tygacil 50mg Vial' })
+  const pharmacist = await loginAs({ role: 'user', floor: FLOOR })
+  const fields = { sex: 'أنثى', age: '40', weight: '70', scr: '1.1', dose: '100', duration: '7 أيام', culture: 'Sensitive', committee: 'ص. ليث', doctor: 'د. سعد' }
+  const saved = (await form(pharmacist, { kind: 'tigecycline', date: '2026-11-09', name: 'سارة', patientId: '', fields })).body.request
+  await pharmacist.patch(`/api/drug-requests/${saved.id}/ticks`, { ticks: ['skin'] })
+  const before = (await followup(manager)).body.rows.find((row) => row.name === 'سارة')
+  assert.ok(before.problems.includes('رقم الطبلة')) // no chart carries it yet
+  await saveChart(pharmacist, '2026-11-09', 'Tygacil 50mg Vial', [{ name: 'سارة', id: '44', qty: 2 }])
+  const after = (await followup(manager)).body.rows.find((row) => row.name === 'سارة')
+  assert.deepEqual([after.state, after.patientId, after.problems], ['unsent', '44', undefined])
+})
+
 test('missing: patients given a first-day medicine with no form — none within 30 days before / 14 after; a floor user sees their own ward only', async () => {
   const admin = await loginAs({ role: 'admin' })
   await admin.post('/api/medicines', { name: 'IVIG 5g vial' })
@@ -82,11 +96,24 @@ test('missing: patients given a first-day medicine with no form — none within 
   assert.equal((await pharmacist.get(`/api/drug-requests/missing?kind=nope&floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=2026-11-09`)).status, 400)
 
   // A manager: every ward, a range; the patient is listed once, at the first day in the range.
-  await saveChart(pharmacist, '2026-11-08', 'IVIG 5g vial', [{ name: 'بلا استمارة', id: '11', qty: 2 }])
-  const all = await admin.get('/api/drug-requests/missing?kind=ivig&from=2026-11-03&to=2026-11-09')
+  await saveChart(pharmacist, '2026-11-10', 'IVIG 5g vial', [{ name: 'بلا استمارة', id: '11', qty: 2 }])
+  const all = await admin.get('/api/drug-requests/missing?kind=ivig&from=2026-11-09&to=2026-11-15')
   assert.deepEqual(all.body.patients.map((row) => [row.ward, row.name, row.date]).sort(), [
-    [OTHER.ward, 'ردهة أخرى', '2026-11-09'], [WARD, 'استمارة بعيدة', '2026-11-09'], [WARD, 'بلا استمارة', '2026-11-08'],
+    [OTHER.ward, 'ردهة أخرى', '2026-11-09'], [WARD, 'استمارة بعيدة', '2026-11-09'], [WARD, 'بلا استمارة', '2026-11-09'],
   ].sort())
+
+  // A course already running before the range is told from a new one: its form (made on its first day, before the range) counts,
+  // and a patient who began before the form went live (2026-11-09 for IVIG) is never asked for one.
+  await saveChart(pharmacist, '2026-11-05', 'IVIG 5g vial', [{ name: 'قبل الإطلاق', id: '31', qty: 1 }])
+  await saveChart(pharmacist, '2026-11-12', 'IVIG 5g vial', [{ name: 'قبل الإطلاق', id: '31', qty: 1 }, { name: 'مستمرة', id: '32', qty: 1 }, { name: 'بدأت الآن', id: '33', qty: 1 }])
+  await form(pharmacist, { kind: 'ivig', date: '2026-11-09', name: 'مستمرة', patientId: '32' }) // the course began on 11-09, with a form
+  await saveChart(pharmacist, '2026-11-10', 'IVIG 5g vial', [{ name: 'مستمرة', id: '32', qty: 1 }])
+  const later = await admin.get('/api/drug-requests/missing?kind=ivig&from=2026-11-12&to=2026-11-15')
+  const names = later.body.patients.map((row) => row.name)
+  assert.equal(names.includes('مستمرة'), false) // still on the course whose form exists
+  assert.equal(names.includes('قبل الإطلاق'), false) // began before the forms existed
+  assert.equal(names.includes('بدأت الآن'), true)
+  assert.equal(names.includes('بلا استمارة'), false) // not charted in this range
 })
 
 test('dashboard: a manager’s answer carries how many Google forms of the week are not sent; a pharmacist’s does not', async () => {

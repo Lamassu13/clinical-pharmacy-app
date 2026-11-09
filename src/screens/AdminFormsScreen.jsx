@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { apiUrl } from '../constants.js'
 import { isoDate } from '../helpers.js'
 import { DRUG_REQUESTS } from '../../shared/drug-requests.js'
+import { readFollowup, keepFollowup, clearFollowup } from '../followupCache.js'
 
 // متابعة الاستمارات — the request forms that need following up, hospital-wide: a Google form not sent (or sent but not
 // confirmed), a form still lacking what the ministry's form or «مواقف القسم» needs, and — on a tap — patients given a first-day
@@ -19,10 +20,10 @@ const wardOf = (key) => { const [floor, ...ward] = String(key).split('|'); retur
 export default function AdminFormsScreen({ adminHeader, isExpired, onOpenForm }) {
   const today = isoDate(new Date())
   const [days, setDays] = useState(7)
-  const [rows, setRows] = useState(null)
-  const [more, setMore] = useState(false)
+  const [rows, setRows] = useState(() => readFollowup(7)?.rows ?? null)
+  const [more, setMore] = useState(() => readFollowup(7)?.more ?? false)
   const [error, setError] = useState('')
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(() => !readFollowup(7))
   const [reload, setReload] = useState(0)
   const [state, setState] = useState('')
   const [kind, setKind] = useState('')
@@ -32,18 +33,21 @@ export default function AdminFormsScreen({ adminHeader, isExpired, onOpenForm })
   const [missingBusy, setMissingBusy] = useState(false)
   const [missingError, setMissingError] = useState('')
 
-  // One effect owns the fetch: a slow answer for a period already left cannot land on the one now chosen.
+  // One effect owns the fetch: a slow answer for a period already left cannot land on the one now chosen. A recent answer for the
+  // period (followupCache.js) is shown as it is, without asking again; «تحديث» asks (`reload`).
   useEffect(() => {
+    const kept = reload === 0 ? readFollowup(days) : null
+    if (kept) { setRows(kept.rows); setMore(kept.more); setError(''); setLoading(false); return undefined }
     let cancelled = false
     setLoading(true); setError('')
     fetch(`${apiUrl}/drug-requests/followup?from=${addDays(today, 1 - days)}&to=${today}`, { credentials: 'include' })
       .then(async (response) => {
         if (isExpired(response)) return
-        const result = await response.json()
+        const result = await response.json().catch(() => ({}))
         if (!response.ok) throw new Error(result.message)
-        if (!cancelled) { setRows(result.rows); setMore(result.more) }
+        if (!cancelled) { setRows(result.rows); setMore(result.more); keepFollowup(days, result.rows, result.more) }
       })
-      .catch((caught) => { if (!cancelled) setError(caught.message || 'تعذّر تحميل المتابعة — تحقّق من الاتصال وحاول مرة أخرى.') })
+      .catch((caught) => { if (!cancelled) { setRows(null); setError(caught.message || 'تعذّر تحميل المتابعة — تحقّق من الاتصال وحاول مرة أخرى.') } })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [days, reload, today, isExpired])
@@ -53,9 +57,9 @@ export default function AdminFormsScreen({ adminHeader, isExpired, onOpenForm })
     try {
       const response = await fetch(`${apiUrl}/drug-requests/missing?kind=${missingKind}&from=${addDays(today, 1 - days)}&to=${today}`, { credentials: 'include' })
       if (isExpired(response)) return
-      const result = await response.json()
+      const result = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(result.message)
-      setMissing({ kind: missingKind, patients: result.patients, more: result.more })
+      setMissing({ kind: missingKind, days, patients: result.patients, more: result.more })
     } catch (caught) { setMissingError(caught.message || 'تعذّر البحث — تحقّق من الاتصال وحاول مرة أخرى.') } finally { setMissingBusy(false) }
   }
 
@@ -66,7 +70,8 @@ export default function AdminFormsScreen({ adminHeader, isExpired, onOpenForm })
     <div className="section-heading"><div><h1>متابعة الاستمارات</h1></div></div>
     <p className="report-note">الاستمارات التي تحتاج متابعة: استمارة Google لم تُرسل أو لم يتأكد إرسالها، أو استمارة ينقصها ما يطلبه النموذج (أو «مواقف القسم» للميروبينيم). «أُرسلت» تعني أن Google قبلها أو أن الصيدلي أكّد إرسالها يدويًا؛ التطبيق لا يستطيع قراءة ردود Google نفسها.</p>
     <div className="top-medicines-periods" role="group" aria-label="المدة">
-      {PERIODS.map((period) => <button key={period.days} type="button" className={period.days === days ? 'active' : ''} aria-pressed={period.days === days} onClick={() => setDays(period.days)}>{period.label}</button>)}
+      {PERIODS.map((period) => <button key={period.days} type="button" className={period.days === days ? 'active' : ''} aria-pressed={period.days === days} onClick={() => { setDays(period.days); setMissing(null); setReload(0) }}>{period.label}</button>)}
+      <button type="button" className="text-button" disabled={loading} onClick={() => { clearFollowup(); setReload((n) => n + 1) }}>تحديث</button>
     </div>
     <div className="req-chips" role="group" aria-label="النوع">
       {FILTERS.map((item) => <button key={item.key} type="button" className="req-chip" aria-pressed={state === item.key} onClick={() => setState(item.key)}>{item.label}{item.key && counts[item.key] ? ` (${counts[item.key]})` : ''}</button>)}
@@ -77,7 +82,7 @@ export default function AdminFormsScreen({ adminHeader, isExpired, onOpenForm })
         {Object.entries(DRUG_REQUESTS).map(([key, spec]) => <option key={key} value={key}>{spec.label}</option>)}
       </select>
     </label>
-    {error && <p className="form-error" role="alert">{error} <button type="button" className="text-button" onClick={() => setReload((n) => n + 1)}>إعادة المحاولة</button></p>}
+    {error && <p className="form-error" role="alert">{error} <button type="button" className="text-button" onClick={() => { clearFollowup(); setReload((n) => n + 1) }}>إعادة المحاولة</button></p>}
     {!rows && !error ? <div className="dashboard-skeleton report-skeleton" aria-hidden="true">{Array.from({ length: 5 }, (_, i) => <span key={i} className="skeleton-row" />)}</div> : rows && (shown.length === 0
       ? <div className="empty-state"><strong>لا شيء يحتاج متابعة</strong><span>في آخر {days === 31 ? 'شهر' : `${days} يومًا`}{(state || kind) ? ' بهذه التصفية' : ''}.</span></div>
       : <div className={loading ? 'table-frame is-stale' : 'table-frame'} aria-busy={loading || undefined}><table className="requests-table report-table requests-table--stack">
@@ -105,7 +110,7 @@ export default function AdminFormsScreen({ adminHeader, isExpired, onOpenForm })
       <button type="button" className="secondary-button compact" disabled={missingBusy} onClick={findMissing}>{missingBusy ? 'جارٍ البحث…' : 'بحث'}</button>
     </div>
     {missingError && <p className="form-error" role="alert">{missingError}</p>}
-    {missing && (missing.patients.length === 0
+    {missing && missing.days === days && (missing.patients.length === 0
       ? <div className="empty-state"><strong>لا يوجد مرضى بلا استمارة</strong><span>في هذه المدة.</span></div>
       : <div className="table-frame"><table className="requests-table report-table requests-table--stack">
         <thead><tr><th>المريض</th><th>الردهة</th><th>أول جرعة</th><th /></tr></thead>
@@ -116,6 +121,6 @@ export default function AdminFormsScreen({ adminHeader, isExpired, onOpenForm })
           <td className="requests-actions"><button type="button" className="secondary-button compact" onClick={() => onOpenForm({ floor: row.floor, ward: row.ward, kind: missing.kind, date: row.date })}>فتح الاستمارات</button></td>
         </tr>)}</tbody>
       </table></div>)}
-    {missing?.more && <p className="report-note">عُرض أول ٣٠٠ فقط.</p>}
+    {missing?.days === days && missing.more && <p className="report-note">عُرض أول ٣٠٠ فقط.</p>}
   </section></main>
 }
