@@ -71,10 +71,11 @@ export const DRUG_REQUESTS = {
     firstDayOnly: true,
     fields: [
       { key: 'sex', label: 'الجنس', max: 10, choices: ['ذكر', 'أنثى'], required: true },
-      { key: 'age', label: 'العمر', max: 30, placeholder: 'مثال: 45', required: true },
+      // Whole years, digits only: the ministry's Google Form refuses anything else.
+      { key: 'age', label: 'العمر', max: 3, digits: true, placeholder: 'مثال: 45', required: true },
       { key: 'diagnosis', label: 'التشخيص', max: 200, wide: true, auto: true },
       { key: 'weight', label: 'الوزن', unit: 'كغم', max: 20, decimal: true },
-      { key: 'scr', label: 'S.Cr.', max: 30, ltr: true, placeholder: 'mg/dL' },
+      { key: 'scr', label: 'S.Cr.', unit: 'mg/dL', max: 10, decimal: true },
       { key: 'dose', label: 'الجرعة المطلوبة يوميًا', max: 120, wide: true, auto: true, placeholder: '50mg × 2' },
       { key: 'duration', label: 'عدد الأيام المطلوب أخذ العلاج فيها', max: 120, wide: true, placeholder: 'مثال: 7 أيام', chips: ['5 أيام', '7 أيام', '10 أيام', '14 يومًا'] },
       // One of three (chips): the ministry's Google Form takes exactly these.

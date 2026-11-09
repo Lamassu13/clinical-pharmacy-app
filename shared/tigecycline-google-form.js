@@ -48,6 +48,15 @@ export function tigecyclineFormAnswers(request, { ward, email }) {
     [fields.weight, 'الوزن'], [mg, 'الجرعة المطلوبة يوميًا (مثل 50mg × 2)'], [fields.scr, 'S.Cr.'], [fields.culture && CULTURE[fields.culture], 'نتيجة الزرع البكتيري'],
   ].filter(([value]) => !value).map(([, label]) => label)
   if (missing.length) return { ok: false, missing }
+  // The form's own rules for these boxes (read from it): the age whole digits only, the weight, S.Cr. and
+  // رقم الطبلة a number. A value it would refuse is named here instead of failing after the send.
+  const invalid = [
+    [/^[0-9]+$/.test(fields.age), 'العمر: أرقام صحيحة فقط (النموذج يرفض الكسور والحروف)'],
+    [/^\d+(\.\d+)?$/.test(fields.weight), 'الوزن: رقم فقط'],
+    [/^\d+(\.\d+)?$/.test(fields.scr), 'S.Cr.: رقم فقط (بلا وحدة)'],
+    [/^\d+$/.test(request.patientId), 'رقم الطبلة: أرقام فقط'],
+  ].filter(([good]) => !good).map(([, message]) => message)
+  if (invalid.length) return { ok: false, invalid }
 
   const days = (String(fields.duration || '').match(/\d+/) || [])[0]
   const entry = (key, value) => [`entry.${ENTRY[key]}`, String(value)]

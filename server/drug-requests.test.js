@@ -5,7 +5,8 @@ import { pool } from './db.js'
 import { startServer, resetDatabase, createUser, ApiClient } from './test-helpers.js'
 import { cleanTicks, toggleTick } from '../shared/drug-requests.js'
 import { FORM_URL, albuminFormAnswers } from '../shared/albumin-google-form.js'
-import { tigecyclineFormAnswers, dailyMg } from '../shared/tigecycline-google-form.js'
+import { tigecyclineFormAnswers, dailyMg, FORM_URL as TIGECYCLINE_URL } from '../shared/tigecycline-google-form.js'
+import { liveEntries, mismatches, prefillUrl } from '../shared/google-form-check.js'
 
 const FLOOR = 5
 const WARD = 'ردهة رجال'
@@ -371,4 +372,67 @@ test('tigecycline google form: the route returns the dry-run answers with a plac
   assert.equal(dry.body.answers.find(([key]) => key === 'entry.1720649116')[1], `الطابق ${FLOOR} — ${WARD}`)
   assert.equal(dry.body.answers.find(([key]) => key === 'emailAddress')[1], 'dry-run@example.invalid')
   assert.equal((await pharmacist.get(`/api/drug-requests?${where('tigecycline', '2026-11-09')}`)).body.requests[0].googleSentAt, null)
+})
+
+const goodTigecycline = { name: 'رشيدة', patientId: '413495', date: '2026-11-09', ticks: ['skin'], fields: { sex: 'أنثى', age: '45', weight: '70', scr: '1.2', dose: '50mg × 2', duration: '7 أيام', culture: 'Sensitive', committee: 'ص. ليث', doctor: 'د. سعد' } }
+const unit = { ward: 'x', email: 'unit@example.org' }
+
+test('google forms: a value the form would refuse is named before the send (tigecycline age whole digits, numbers only; albumin age ≤ 3 decimals)', () => {
+  const invalid = (fields, request = goodTigecycline) => tigecyclineFormAnswers({ ...request, fields: { ...request.fields, ...fields } }, unit).invalid
+  assert.equal(tigecyclineFormAnswers(goodTigecycline, unit).ok, true)
+  assert.match(invalid({ age: '0.08' })[0], /^العمر/)
+  assert.match(invalid({ age: '45 سنة' })[0], /^العمر/)
+  assert.match(invalid({ scr: '1.2 mg/dL' })[0], /^S\.Cr\./)
+  assert.match(invalid({ weight: '٧٠ كغم' })[0], /^الوزن/)
+  assert.match(invalid({}, { ...goodTigecycline, patientId: 'A12' })[0], /^رقم الطبلة/)
+  const album = { name: 'سارة', patientId: '44', date: '2026-11-09', ticks: ['i4'], fields: { doctor: 'د. سعد', sex: 'أنثى', age: '30.12345', count: '2' } }
+  assert.match(albuminFormAnswers(album).invalid[0], /^العمر/)
+  assert.equal(albuminFormAnswers({ ...album, fields: { ...album.fields, age: '0.083' } }).ok, true)
+})
+
+test('google forms: the live form is compared with what is sent — a gone question or option is named; the pre-filled link carries the answers', () => {
+  const answers = tigecyclineFormAnswers(goodTigecycline, unit).body
+  const live = (entries) => `<script>var FB_PUBLIC_LOAD_DATA_ = ${JSON.stringify([null, [null, entries.map(([id, options]) => [id, 't', null, options ? 2 : 0, [[id, options ? options.map((text) => [text]) : null, 1]]])]])};</script>`
+  const ids = [...new Set(answers.map(([name]) => /^entry\.(\d+)$/.exec(name)?.[1]).filter(Boolean))]
+  const diagnosis = 'complicated skin and soft tissue infections ( when other antibiotics are not sutible)'
+  const same = ids.map((id) => [Number(id), id === '279852210' ? [diagnosis, 'other'] : null])
+  assert.deepEqual(mismatches(answers, liveEntries(live(same))), [])
+  assert.deepEqual(mismatches(answers, liveEntries(live(same.filter(([id]) => id !== 1572102836)))), ['سؤال غير موجود (1572102836)'])
+  assert.match(mismatches(answers, liveEntries(live(same.map(([id, options]) => [id, options ? ['Complicated skin changed'] : null]))))[0], /^خيار غير موجود/)
+  assert.deepEqual(mismatches(answers, liveEntries('<html>no data</html>')), ['تعذّرت قراءة النموذج'])
+  const link = new URL(prefillUrl(TIGECYCLINE_URL, answers))
+  assert.equal(link.pathname.endsWith('/viewform'), true)
+  assert.equal(link.searchParams.get('usp'), 'pp_url')
+  assert.equal(link.searchParams.get('entry.813402020'), '45')
+  assert.equal(link.searchParams.get('emailAddress'), 'unit@example.org')
+  assert.equal(link.searchParams.has('pageHistory'), false)
+})
+
+test('google forms: a refused send is released, says whether the form changed, and offers the pre-filled form', async (t) => {
+  process.env.GOOGLE_FORM_SEND = '1'
+  process.env.GOOGLE_FORM_EMAIL = 'unit@example.org'
+  const real = globalThis.fetch
+  t.after(() => { globalThis.fetch = real; delete process.env.GOOGLE_FORM_SEND; delete process.env.GOOGLE_FORM_EMAIL })
+  const pharmacist = await loginAs({ role: 'user', floor: FLOOR })
+  const saved = (await pharmacist.post('/api/drug-requests', { kind: 'tigecycline', floor: FLOOR, ward: WARD, date: '2026-11-09', name: 'سارة', patientId: '44', fields: { sex: 'أنثى', age: '40', weight: '70', scr: '1.1', dose: '50mg × 2', culture: 'Not done', committee: 'ص. ليث', doctor: 'د. سعد' } })).body.request
+  await pharmacist.patch(`/api/drug-requests/${saved.id}/ticks`, { ticks: ['skin'] })
+  const live = (ids) => `<script>var FB_PUBLIC_LOAD_DATA_ = ${JSON.stringify([null, [null, ids.map((id) => [id, 't', null, 0, [[id, null, 1]]])]])};</script>`
+  const allIds = [1306251493, 1406660343, 1155462451, 1572102836, 1720649116, 610635236, 813402020, 772043536, 279852210, 1833893625, 1336399327, 1824282702, 966710107, 1572352685, 1218916115, 1570470798, 534253892, 1619293670]
+  const fakeGoogle = (ids) => { globalThis.fetch = async (url, options) => String(url).includes('docs.google.com')
+    ? (String(url).endsWith('formResponse') ? { ok: false, status: 400, redirected: false, url: String(url) } : { ok: true, text: async () => live(ids) })
+    : real(url, options) }
+  const sentAt = async () => (await pharmacist.get(`/api/drug-requests?${where('tigecycline', '2026-11-09')}`)).body.requests[0].googleSentAt
+
+  fakeGoogle(allIds) // the same form: a value was refused
+  let refused = await pharmacist.post(`/api/drug-requests/${saved.id}/google-form`, {})
+  assert.equal(refused.status, 502)
+  assert.match(refused.body.message, /رفض نموذج Google إحدى القيم/)
+  assert.match(refused.body.manualUrl, /viewform\?usp=pp_url.*entry\.813402020=40/)
+  assert.equal(await sentAt(), null) // released: it can be sent again
+
+  fakeGoogle(allIds.filter((id) => id !== 1572102836)) // the form lost a question
+  refused = await pharmacist.post(`/api/drug-requests/${saved.id}/google-form`, {})
+  assert.match(refused.body.message, /تغيّر نموذج Google/)
+  assert.ok(refused.body.manualUrl)
+  assert.equal(await sentAt(), null)
 })

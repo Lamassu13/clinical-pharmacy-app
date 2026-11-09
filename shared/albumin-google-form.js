@@ -110,6 +110,8 @@ export function albuminFormAnswers(request) {
     [fields.sex && SEX[fields.sex], 'الجنس'], [fields.age, 'العمر'], [Number(fields.count) > 0, 'العدد المطلوب'], [tick, 'الاستطباب (علّم مربعًا)'],
   ].filter(([value]) => !value).map(([, label]) => label)
   if (missing.length) return { ok: false, missing }
+  // The form's own rule for the age (years; up to three decimals), checked before the send.
+  if (!/^\d+(\.\d{1,3})?$/.test(fields.age)) return { ok: false, invalid: ['العمر: رقم بالسنة (حتى ثلاث خانات عشرية)'] }
 
   const [part, index] = DIAGNOSIS[tick]
   const month = Number(request.date.slice(5, 7))
