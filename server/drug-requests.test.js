@@ -3,9 +3,11 @@ import assert from 'node:assert/strict'
 import app from './index.js'
 import { pool } from './db.js'
 import { startServer, resetDatabase, createUser, ApiClient } from './test-helpers.js'
-import { cleanTicks, toggleTick, DRUG_REQUESTS } from '../shared/drug-requests.js'
+import { cleanTicks, toggleTick, cleanField, DRUG_REQUESTS } from '../shared/drug-requests.js'
 import { FORM_URL, albuminFormAnswers } from '../shared/albumin-google-form.js'
-import { tigecyclineFormAnswers, dailyMg, FORM_URL as TIGECYCLINE_URL } from '../shared/tigecycline-google-form.js'
+import { tigecyclineFormAnswers, FORM_URL as TIGECYCLINE_URL } from '../shared/tigecycline-google-form.js'
+import { colistinFormAnswers, FORM_URL as COLISTIN_URL } from '../shared/colistin-google-form.js'
+import { dailyMg, tigecyclineDoseNumber, colistinDoseNumber } from '../shared/dose.js'
 import { liveEntries, mismatches, prefillUrl } from '../shared/google-form-check.js'
 
 const FLOOR = 5
@@ -330,7 +332,7 @@ test('tigecycline: a third kind — asked on the first day only, dose prefilled 
     fields: { sex: 'أنثى', age: '40', diagnosis: 'Diabetic foot', weight: '70,5', scr: '1.1', dose: '50mg × 2', duration: '7 أيام', culture: 'Resistant', committee: 'ص. ليث', doctor: 'د. سعد', bogus: 'x' },
   })
   assert.equal(sent.status, 201)
-  assert.deepEqual(sent.body.request.fields, { sex: 'أنثى', age: '40', diagnosis: 'Diabetic foot', weight: '70.5', scr: '1.1', dose: '50mg × 2', duration: '7 أيام', culture: 'Resistant', committee: 'ص. ليث', doctor: 'د. سعد', hideDoctor: '' })
+  assert.deepEqual(sent.body.request.fields, { sex: 'أنثى', age: '40', diagnosis: 'Diabetic foot', weight: '70.5', scr: '1.1', dose: '100', duration: '7 أيام', culture: 'Resistant', committee: 'ص. ليث', doctor: 'د. سعد', hideDoctor: '' })
   // One of the two permitted cases is chosen (a second tick replaces the first); an unknown key is dropped.
   const ticked = await pharmacist.patch(`/api/drug-requests/${sent.body.request.id}/ticks`, { ticks: ['skin', 'abdominal', 'nope'] })
   assert.deepEqual(ticked.body.request.ticks, ['abdominal'])
@@ -357,7 +359,7 @@ test('tigecycline google form: the answers (email, other options, month/day date
   assert.equal(open.find(([key]) => key === 'entry.1570470798')[1], 'غير محدد من قبل الطبيب')
   assert.equal(open.some(([key]) => key.endsWith('other_option_response')), false)
   assert.deepEqual(tigecyclineFormAnswers({ ...form, fields: { sex: 'ذكر', age: '5' }, ticks: [] }, { ward: 'x', email: '' }).missing,
-    ['بريد النموذج (GOOGLE_FORM_EMAIL على الخادم)', 'اسم عضو لجنة المضادات', 'اسم الطبيب الاختصاص', 'الحالة المصرح بها (علّم مربعًا)', 'الوزن', 'الجرعة المطلوبة يوميًا (مثل 50mg × 2)', 'S.Cr.', 'نتيجة الزرع البكتيري'])
+    ['بريد النموذج (GOOGLE_FORM_EMAIL على الخادم)', 'اسم عضو لجنة المضادات', 'اسم الطبيب الاختصاص', 'الحالة المصرح بها (علّم مربعًا)', 'الوزن', 'الجرعة المطلوبة يوميًا (رقم بالمليغرام، مثل 100)', 'S.Cr.', 'نتيجة الزرع البكتيري'])
   assert.deepEqual(['50mg × 2', '50mg × 2 + 50mg × 1', '100', '1g × 3', 'two vials', ''].map(dailyMg), [100, 150, 100, 3000, null, null])
 })
 
@@ -477,19 +479,49 @@ test('colistin: a fourth kind — asked on the first day only, dose prefilled in
   assert.deepEqual(await check(pharmacist, 'colistin', '2026-09-25', { name: 'ليلى', id: '55' }), { day: 2, requested: false })
 
   // The popup's prefill: 6 vials of 1,000,000 IU = 6 MU; the same drug under its other names is matched.
-  assert.deepEqual(DRUG_REQUESTS.colistin.prefill([{ medicine: 'Colistin 1000000 IU vial', quantity: 6 }]), { dose: '6 MU' })
-  assert.deepEqual(DRUG_REQUESTS.colistin.prefill([{ medicine: 'Colistin vial', quantity: 2 }]), { dose: '× 2' })
+  assert.deepEqual(DRUG_REQUESTS.colistin.prefill([{ medicine: 'Colistin 1000000 IU vial', quantity: 6 }]), { dose: '6000000' })
+  assert.deepEqual(DRUG_REQUESTS.colistin.prefill([{ medicine: 'Colistin vial', quantity: 2 }]), { dose: '' })
+  assert.deepEqual(DRUG_REQUESTS.tigecycline.prefill([{ medicine: 'Tygacil 50mg Vial', quantity: 2 }]), { dose: '100' })
   assert.ok(['Colistin 1000000 IU vial', 'Colomycin 2MU', 'colistimethate'].every((name) => DRUG_REQUESTS.colistin.pattern.test(name)))
 
   const sent = await pharmacist.post('/api/drug-requests', {
     kind: 'colistin', floor: FLOOR, ward: WARD, date: '2026-09-24', name: 'ليلى', patientId: '55',
-    fields: { sex: 'أنثى', age: '40', diagnosis: 'VAP', weight: '70,5', scr: '1.1', dose: '6 MU', duration: '7 أيام', culture: 'Acinetobacter — Sensitive', doctor: 'د. سعد', bogus: 'x' },
+    fields: { sex: 'أنثى', age: '40', diagnosis: 'VAP', weight: '70,5', scr: '1.1', dose: '1000000 IU', duration: '7 أيام', culture: 'Sensitive', committee: 'ص. ليث', doctor: 'د. سعد', bogus: 'x' },
   })
   assert.equal(sent.status, 201)
-  assert.deepEqual(sent.body.request.fields, { sex: 'أنثى', age: '40', diagnosis: 'VAP', weight: '70.5', scr: '1.1', dose: '6 MU', duration: '7 أيام', culture: 'Acinetobacter — Sensitive', doctor: 'د. سعد', hideDoctor: '' })
+  assert.deepEqual(sent.body.request.fields, { sex: 'أنثى', age: '40', diagnosis: 'VAP', weight: '70.5', scr: '1.1', dose: '1000000', duration: '7 أيام', culture: 'Sensitive', committee: 'ص. ليث', doctor: 'د. سعد', hideDoctor: '' })
   const ticked = await pharmacist.patch(`/api/drug-requests/${sent.body.request.id}/ticks`, { ticks: ['serious', 'cf', 'nope'] })
   assert.deepEqual(ticked.body.request.ticks, ['cf'])
   assert.deepEqual(await check(pharmacist, 'colistin', '2026-09-24', { name: 'ليلى', id: '55' }), { day: 1, requested: true })
   const counts = (await pharmacist.get(`/api/drug-requests/counts?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=2026-09-24`)).body
   assert.deepEqual(counts, { meropenem: 0, albumin: 0, tigecycline: 0, colistin: 1 })
+})
+
+test('dose boxes hold a number only: letters dropped, the old wording («50mg × 2», «6 MU») read as the number', () => {
+  const tige = DRUG_REQUESTS.tigecycline.fields.find((field) => field.key === 'dose')
+  const coli = DRUG_REQUESTS.colistin.fields.find((field) => field.key === 'dose')
+  assert.deepEqual(['50', '100', '50mg', '50mg × 2', '50mg × 2 + 50mg × 1', 'abc', '1,5'].map((text) => cleanField(tige, text)), ['50', '100', '50', '100', '150', '', '1.5'])
+  assert.deepEqual(['1000000', '1000000 IU', '6 MU', '٣٠٠٠٠٠٠', '× 2'].map((text) => cleanField(coli, text)), ['1000000', '1000000', '6000000', '3000000', '2'])
+  assert.deepEqual([tigecyclineDoseNumber('50mg × 2'), tigecyclineDoseNumber('75'), colistinDoseNumber('4.5 MU'), colistinDoseNumber('9')], ['100', '75', '4500000', '9'])
+})
+
+test('colistin google form: the answers (its own ids and case texts, daily dose as typed), what is missing, the route dry-run', async () => {
+  const form = { name: 'ليلى', patientId: '55', date: '2026-11-09', ticks: ['cf'], fields: { sex: 'أنثى', age: '40', weight: '70', scr: '1.2', dose: '1000000', duration: '7 أيام', culture: 'Not done', committee: 'ص. ليث', doctor: 'د. سعد' } }
+  const sent = colistinFormAnswers(form, { ward: 'الطابق 3 — ردهة', email: 'unit@example.org' })
+  const answer = (name) => sent.body.find(([key]) => key === name)?.[1]
+  assert.equal(sent.ok, true)
+  assert.equal(answer('entry.1668545535'), 'management of chronic pulmonary infection due to pseudomonas aeruginosa in patient with cystic fibrosis')
+  assert.deepEqual([answer('entry.275553482'), answer('entry.703290303'), answer('entry.1765020922'), answer('entry.2011704287')], ['1000000', '1000000', '0', 'لا'])
+  assert.deepEqual([answer('entry.120145077_month'), answer('entry.120145077_day')], ['11', '9'])
+  assert.equal(answer('entry.78709220'), 'not done')
+  assert.equal(answer('entry.2071414154'), 'مستشفى بغداد التعليمي العام')
+  assert.ok(COLISTIN_URL.includes('1FAIpQLScKnP4IrG9HDHYlHnGr7AYPIVwAMRQTWEYRzm8J0P9fd1B20w'))
+  assert.deepEqual(colistinFormAnswers({ ...form, fields: { ...form.fields, dose: '' }, ticks: [] }, unit).missing, ['الحالة المصرح بها (علّم مربعًا)', 'الجرعة المطلوبة يوميًا (رقم، مثل 1000000)'])
+
+  const pharmacist = await loginAs({ role: 'user', floor: FLOOR })
+  const saved = (await pharmacist.post('/api/drug-requests', { kind: 'colistin', floor: FLOOR, ward: WARD, date: '2026-11-09', name: 'ليلى', patientId: '55', fields: form.fields })).body.request
+  await pharmacist.patch(`/api/drug-requests/${saved.id}/ticks`, { ticks: ['serious'] })
+  const dry = await pharmacist.post(`/api/drug-requests/${saved.id}/google-form`, {})
+  assert.equal(dry.body.dryRun, true)
+  assert.equal(dry.body.answers.find(([key]) => key === 'entry.890134783')[1], `الطابق ${FLOOR} — ${WARD}`)
 })

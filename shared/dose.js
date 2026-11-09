@@ -9,14 +9,36 @@ export const TIGECYCLINE_PATTERN = /(tygacil|tigecycline|tigacyl)/i
 // Colistin: the catalogue writes «Colistin 1000000 IU vial»; colistimethate and the brand Colomycin are the same drug.
 export const COLISTIN_PATTERN = /(colistin|colistimethate|colomycin|coly-?mycin)/i
 
-// Colistin's daily dose as the form words it, in million units: 1,000,000 IU vial × 6 → «6 MU». A vial
-// strength the name does not give (no «IU» / «MU») stays as vials × count.
-export const colistinDoseText = (medicine, quantity) => {
+// A dose box on the request forms holds one number (what the ministry's Google Form takes): tigecycline in mg a
+// day («100»), colistin in IU a day («1000000»). Rows saved before that hold the old wording, so it is still read:
+// «50mg × 2» (tigecycline: strength × times, joined with +), «6 MU» (colistin, million units).
+const TIMES = /\d\s*(?:mg|gm|g)?\s*[×xX*]\s*\d/
+export const dailyMg = (text) => {
+  const dose = String(text ?? '').trim()
+  let total = 0
+  let found = false
+  for (const match of dose.matchAll(/(\d+(?:\.\d+)?)\s*(mg|gm|g)?\s*[×xX*]\s*(\d+)/g)) {
+    total += Number(match[1]) * (/^g/i.test(match[2] || '') ? 1000 : 1) * Number(match[3])
+    found = true
+  }
+  if (found) return total
+  return /^\d+(\.\d+)?$/.test(dose) ? Number(dose) : null
+}
+// The old tigecycline wording turned into the number (anything else is left as typed).
+export const tigecyclineDoseNumber = (text) => (TIMES.test(text) ? String(dailyMg(text) ?? '') : text)
+// The old colistin wording («6 MU») turned into IU.
+export const colistinDoseNumber = (text) => {
+  const million = /^\s*(\d+(?:\.\d+)?)\s*(?:MU|MIU)\s*$/i.exec(text)
+  return million ? String(Math.round(Number(million[1]) * 1e6)) : text
+}
+
+// Colistin vial strength in IU: «Colistin 1000000 IU vial» → 1000000, «Colomycin 2MU» → 2000000; 0 when the name gives none.
+export const colistinIU = (medicine) => {
   const name = String(medicine)
   const iu = name.match(/(\d[\d,]*(?:\.\d+)?)\s*(?:IU|units?)\b/i)
+  if (iu) return Number(iu[1].replace(/,/g, ''))
   const mu = name.match(/(\d+(?:\.\d+)?)\s*(?:MU|MIU)\b/i)
-  const perVial = iu ? Number(iu[1].replace(/,/g, '')) / 1e6 : mu ? Number(mu[1]) : 0
-  return perVial ? `${Math.round(perVial * quantity * 100) / 100} MU` : `× ${quantity}`
+  return mu ? Number(mu[1]) * 1e6 : 0
 }
 
 // Vial strength in mg: "Meronem 1000gm Vial" → 1000, "Meronem 500gm Vial" → 500. The catalogue
