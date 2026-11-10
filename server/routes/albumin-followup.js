@@ -1,7 +1,7 @@
 import express from 'express'
 import { query } from '../db.js'
 import { requireAuth } from '../auth.js'
-import { canAccessLocation, cleanText, isIsoDate } from '../validation.js'
+import { canAccessLocation, cleanName, isIsoDate } from '../validation.js'
 import { DAY_LOCKED, isDayLocked } from '../day-lock.js'
 import { cleanFields, cleanTicks } from '../../shared/drug-requests.js'
 import { isNotIndicated } from '../../shared/form-problems.js'
@@ -17,12 +17,12 @@ const MAX_ROWS = 100
 const EXTRA_KEYS = ['day', 'name', 'fileNo', 'ward', 'diagnosis', 'sAlb', 'sCreat', 'vials', 'indication']
 const NOT_INDICATED_KEYS = ['name', 'fileNo', 'ward', 'diagnosis', 'sAlb', 'sCreat', 'reason']
 const rowsOf = (list, keys) => (Array.isArray(list) ? list : []).slice(0, MAX_ROWS)
-  .map((row) => Object.fromEntries(keys.map((key) => [key, cleanText(row?.[key], 200).trim()])))
+  .map((row) => Object.fromEntries(keys.map((key) => [key, cleanName(row?.[key], 200).trim()])))
   .filter((row) => keys.some((key) => row[key]))
 export const cleanDoc = (doc) => ({
   extraRows: rowsOf(doc?.extraRows, EXTRA_KEYS),
   notIndicated: rowsOf(doc?.notIndicated, NOT_INDICATED_KEYS),
-  notes: cleanText(doc?.notes, 4000).trim(),
+  notes: cleanName(doc?.notes, 4000).trim(),
 })
 
 const floorOf = (value) => { const floor = Number(value); return Number.isInteger(floor) && floor > 0 ? floor : null }

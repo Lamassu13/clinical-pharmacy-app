@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { DRUG_REQUESTS, cleanField } from '../../shared/drug-requests.js'
 import { toEnglishDigits } from '../helpers.js'
+import { stripInvisible } from '../../shared/clean-name.js'
 
 // A request form's typed fields in a dialog (shared/drug-requests.js): opened by the patient-entry
 // form when the medicine is added (`screen` false: the fields marked screenOnly stay hidden), and by
@@ -54,7 +55,7 @@ export default function DrugRequestDialog({ kind, initial, screen = false, kicke
 
       <div className="req-dialog-grid">
         <label className="req-dialog-wide"><span>اسم المريض</span>
-          <input value={name} maxLength={200} autoComplete="off" autoFocus={!name} onChange={(event) => { setError(''); setName(event.target.value) }} />
+          <input value={name} maxLength={200} autoComplete="off" autoFocus={!name} onChange={(event) => { setError(''); setName(stripInvisible(event.target.value)) }} />
         </label>
         <label><span>رقم الطبلة</span>
           <input value={patientId} maxLength={20} autoComplete="off" inputMode="numeric" dir="ltr"

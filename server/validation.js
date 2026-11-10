@@ -1,6 +1,7 @@
 // Pure request-validation helpers and the fixed option lists they check against.
 // Kept out of index.js so they can be unit tested without booting the server.
 
+import { stripInvisible } from '../shared/clean-name.js'
 import { FLOORS, SPECIAL_WARDS, EXTRA_PILL_FLOORS, PATIENT_ROWS, MAX_CHART_COLUMNS, MAX_NOTE_LENGTH, DOSE_TIMES, USAGE_METHODS } from '../shared/options.js'
 
 // The lists themselves live in shared/options.js, which the client imports too.
@@ -44,3 +45,5 @@ export const clampInt = (value, min, max) => {
 // then rejects — a 500 instead of a 400.
 export const isIsoDate = (value) => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value
 export const cleanText = (value, maxLength) => String(value ?? '').slice(0, maxLength)
+// A patient's name: cleanText without the invisible characters (shared/clean-name.js), which are not counted in the length.
+export const cleanName = (value, maxLength) => cleanText(stripInvisible(value), maxLength)

@@ -1,7 +1,7 @@
 import express from 'express'
 import { pool, query } from '../db.js'
 import { requireAuth } from '../auth.js'
-import { canAccessLocation, isKnownWard, clampInt, cleanText, DOSE_TIMES, USAGE_METHODS, MAX_NOTE_LENGTH, EXTRA_PILL_FLOORS } from '../validation.js'
+import { canAccessLocation, isKnownWard, clampInt, cleanText, cleanName, DOSE_TIMES, USAGE_METHODS, MAX_NOTE_LENGTH, EXTRA_PILL_FLOORS } from '../validation.js'
 
 const router = express.Router()
 
@@ -79,7 +79,7 @@ router.put('/extra-pills/:id', requireAuth, async (request, response) => {
   if (!floor) return response.status(404).json({ message: 'الاستمارة غير موجودة' })
   if (!canAccessLocation(request.session.user, floor, ward)) return response.status(403).json({ message: 'لا تملك صلاحية لهذه الردهة' })
 
-  const patientName = cleanText(request.body.patientName, 200).trim()
+  const patientName = cleanName(request.body.patientName, 200).trim()
   const roomNumber = cleanText(request.body.roomNumber, 40).trim()
   const bySlot = new Map()
   ;(Array.isArray(request.body.entries) ? request.body.entries : []).forEach((entry) => {

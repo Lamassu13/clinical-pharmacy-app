@@ -1,7 +1,7 @@
 import express from 'express'
 import { query } from '../db.js'
 import { requireAuth } from '../auth.js'
-import { canAccessLocation, cleanText } from '../validation.js'
+import { canAccessLocation, cleanText, cleanName } from '../validation.js'
 import { readLocation, readWritableLocation, refuse, loadCourseRows, loadOverrides } from './chart.js'
 import { DAY_LOCKED, isDayLocked } from '../day-lock.js'
 import { buildMeropenemForm, wardKeyOf } from '../meropenem.js'
@@ -18,7 +18,7 @@ const router = express.Router()
 // fills one when the medicine is added; the form's screen lists a ward's forms of one kind for a day,
 // edits them, ticks their boxes and prints them. Same access as the ward's chart.
 
-const nameKey = (value) => String(value ?? '').trim().replace(/\s+/g, ' ')
+const nameKey = (value) => cleanName(value, 1000).trim().replace(/\s+/g, ' ')
 // (Arabic-Indic digits are digits: «١٢٣» is 123, not nothing.)
 const idOf = (value) => String(value ?? '').replace(/[٠-٩]/g, (digit) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(digit))).replace(/[۰-۹]/g, (digit) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(digit))).replace(/\D/g, '').slice(0, 20)
 // The typed fields a save sends, cleaned — only the keys it actually sends (an older client, or an offline save from before a box

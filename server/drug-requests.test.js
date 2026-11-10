@@ -705,3 +705,12 @@ test('google send follow-up: who sent it and how, why a try failed (kept, then c
   assert.deepEqual([Boolean(kept.googleSentAt), kept.googleSentHow, kept.googleSentBy === manual.googleSentBy], [true, 'manual', true])
   assert.equal((await countsOf()).attention.ivig, 1) // sent, but the last try left a reason: follow it up
 })
+
+test('requests: a name with hidden characters is saved without them, so a form and a check by the plain name meet', async () => {
+  const pharmacist = await loginAs({ role: 'user', floor: FLOOR })
+  const saved = await pharmacist.post('/api/drug-requests', { kind: 'albumin', floor: FLOOR, ward: WARD, date: '2026-09-24', name: ' سعاد\u200f جاس\u200cم ', patientId: '', fields: {} })
+  assert.equal(saved.status, 201)
+  assert.equal(saved.body.request.name, 'سعاد جاسم')
+  assert.equal((await check(pharmacist, 'albumin', '2026-09-24', { name: 'سعاد جاسم' })).requested, true)
+  assert.equal((await check(pharmacist, 'albumin', '2026-09-24', { name: 'سعاد جاس\u200cم' })).requested, true)
+})

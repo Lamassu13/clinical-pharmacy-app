@@ -498,3 +498,16 @@ CREATE TABLE IF NOT EXISTS albumin_followups (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   PRIMARY KEY (day, scope)
 );
+
+-- Names saved with a hidden character in them (a non-joiner, a direction mark, …: shared/clean-name.js) print broken («جاس م») and are another
+-- patient to every comparison by name. Cleaned once they are found, so this does nothing on a database that has none. A form whose cleaned
+-- name would collide with another of the same patient, day and ward is left as it is.
+UPDATE chart_patients SET patient_name = regexp_replace(patient_name, '[\u00ad\u061c\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]', '', 'g')
+  WHERE patient_name ~ '[\u00ad\u061c\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]';
+DO $$ BEGIN
+  UPDATE drug_requests SET patient_name = regexp_replace(patient_name, '[\u00ad\u061c\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]', '', 'g')
+    WHERE patient_name ~ '[\u00ad\u061c\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]';
+EXCEPTION WHEN unique_violation THEN NULL;
+END $$;
+UPDATE extra_pill_forms SET patient_name = regexp_replace(patient_name, '[\u00ad\u061c\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]', '', 'g')
+  WHERE patient_name ~ '[\u00ad\u061c\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]';
