@@ -33,8 +33,9 @@ export default function useRequestPrompts({ check, save, scope }) {
       const result = await check(kind, patient.name, patient.patientId)
       if (scopeRef.current !== askedOn) return
       if (result && (result.requested || (spec.firstDayOnly && result.day !== 1))) continue
-      const fields = { ...spec.prefill(mine), ...(spec.dayField && result ? { [spec.dayField]: String(result.day) } : {}) }
-      asks.push({ id: `${key}|${Date.now()}`, kind, ...patient, fields, note: result ? '' : spec.offlineNote })
+      // The patient's details from their last form come first, so what the chart gives for today (the count, the dose) and the day win.
+      const fields = { ...(result?.carried || {}), ...spec.prefill(mine), ...(spec.dayField && result ? { [spec.dayField]: String(result.day) } : {}) }
+      asks.push({ id: `${key}|${Date.now()}`, kind, ...patient, fields, note: !result ? spec.offlineNote : result.carried ? 'نُقلت بيانات المريض (الجنس، العمر، الوزن، الطبيب) من استمارته السابقة — راجعها.' : '' })
     }
     if (!asks.length || scopeRef.current !== askedOn) return
     setQueue((current) => {

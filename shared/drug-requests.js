@@ -5,6 +5,9 @@ import { MEROPENEM_PATTERN, TIGECYCLINE_PATTERN, COLISTIN_PATTERN, IVIG_PATTERN,
 
 // Tick groups: `multiple` false means one choice at most (ticking another replaces it). Option keys
 // are what is stored, so they must never change meaning; their text is the paper form's own.
+// How far back a patient's earlier form still counts as the same course's, for the fields a form carries over (carryFields): two weeks, as a
+// form saved late is still tied to its course (server/ward-positions.js FORM_GRACE_DAYS).
+export const CARRY_DAYS = 14
 export const DRUG_REQUESTS = {
   meropenem: {
     label: 'استمارة الميرونيم',
@@ -186,6 +189,9 @@ export const DRUG_REQUESTS = {
     firstDayOnly: false,
     // The popup's «Treatment day» starts from the course day the follow-up rules give.
     dayField: 'treatmentDay',
+    // What describes the patient rather than the day, taken from the patient's last form (up to CARRY_DAYS earlier) into the next day's
+    // popup: the sex, the age, the weight and the doctor. The albumin level, creatinine, indication, count and day change every day.
+    carryFields: ['sex', 'age', 'weight', 'doctor'],
     fields: [
       // Both are asked by the ministry's Google Form (shared/albumin-google-form.js); the age is in years, 0.08 for a month.
       { key: 'sex', label: 'الجنس', max: 10, choices: ['ذكر', 'أنثى'], required: true },

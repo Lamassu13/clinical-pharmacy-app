@@ -51,7 +51,7 @@ export default function FloorPickerScreen({
       </button>
     )}
 
-    {!isManager && <FormsPendingNote pending={dashboard?.formsPending} onOpenWard={onOpenWard} />}
+    <FormsPendingNote pending={dashboard?.formsPending} onOpenWard={onOpenWard} />
     {isManager && <LongAntibioticPatients date={selectedDate} isExpired={isExpired} />}
     {isManager && <PatientSearch date={selectedDate} onOpen={onOpen} isExpired={isExpired} />}
 

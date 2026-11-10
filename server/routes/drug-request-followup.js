@@ -4,7 +4,6 @@ import { requireAuth, requireManager } from '../auth.js'
 import { checkAll, readHealth, refreshIfStale } from '../google-form-health.js'
 import { isIsoDate, clampInt, canAccessLocation, ALLOWED_FLOORS } from '../validation.js'
 import { readLocation } from './chart.js'
-import { chartIds } from './drug-requests.js'
 import { wardKeyOf } from '../meropenem.js'
 import { DRUG_REQUESTS, cleanFields, cleanTicks } from '../../shared/drug-requests.js'
 import { formProblems, needsFollowUp, GOOGLE_KINDS } from '../../shared/form-problems.js'
@@ -138,23 +137,35 @@ router.get('/drug-requests/missing', requireAuth, async (request, response) => {
   response.json({ patients: result.rows.slice(0, MAX_ROWS).map((row) => ({ floor: row.floor, ward: row.ward, date: row.date, name: row.name, patientId: row.patient_id })), more: result.rows.length > MAX_ROWS })
 })
 
-// A floor user's own pending forms for `date` (today, in practice): how many need following up on each ward they can open — a Google form not
+// A user's pending forms for `date` (today, in practice): how many need following up on each ward they can open — a Google form not
 // sent / not confirmed, or any form still lacking what it needs (the same rule as the ward page's counts, shared/form-problems.js).
-// Read from the one small set of today's forms; added to the dashboard answer the floor page already loads, so it costs no request.
+// A floor user's are their own floor's or wards'; a manager's are every ward's (the alert on the floors screen). Read from the one
+// small set of today's forms; added to the dashboard answer the floors / floor page already loads, so it costs no request.
 // { total, wards: [{ floor, ward, n }] } — wards with nothing pending are left out.
 export const pendingFormsFor = async (user, date) => {
-  const floor = Number.isInteger(user.assignedFloor) ? user.assignedFloor : null
-  const wards = floor === null && Array.isArray(user.assignedWards) ? user.assignedWards : []
-  if (floor === null && !wards.length) return { total: 0, wards: [] }
+  const manager = isManagerUser(user)
+  const floor = !manager && Number.isInteger(user.assignedFloor) ? user.assignedFloor : null
+  const wards = !manager && floor === null && Array.isArray(user.assignedWards) ? user.assignedWards : []
+  if (!manager && floor === null && !wards.length) return { total: 0, wards: [] }
   const rows = (await query(
     `SELECT kind, ward_key, patient_name, patient_id, fields, ticks, note, google_sent_at, google_error FROM drug_requests
-     WHERE request_date = $1::date AND ${floor !== null ? 'ward_key LIKE $2' : 'ward_key = ANY($2::text[])'}`,
-    [date, floor !== null ? `${floor}|%` : wards.map((ward) => `|${ward}`)],
+     WHERE request_date = $1::date ${manager ? '' : `AND ${floor !== null ? 'ward_key LIKE $2' : 'ward_key = ANY($2::text[])'}`}`,
+    manager ? [date] : [date, floor !== null ? `${floor}|%` : wards.map((ward) => `|${ward}`)],
   )).rows
-  const ids = new Map() // a form with no رقم الطبلة of its own takes the chart's, ward by ward
-  for (const key of new Set(rows.filter((row) => !row.patient_id).map((row) => row.ward_key))) {
-    const [floorText, ...ward] = key.split('|')
-    ids.set(key, await chartIds(floorText ? Number(floorText) : null, ward.join('|'), date))
+  // A form with no رقم الطبلة of its own takes the chart's, ward by ward: one read for all the wards that need it.
+  const ids = new Map()
+  const lacking = rows.filter((row) => !row.patient_id)
+  if (lacking.length) {
+    const wardKeys = [...new Set(lacking.map((row) => row.ward_key))]
+    ;(await query(
+      `SELECT DISTINCT ON (w.floor_number, w.name, nm) COALESCE(w.floor_number::text, '') || '|' || w.name AS ward_key,
+              regexp_replace(btrim(cp.patient_name), '\\s+', ' ', 'g') AS nm, cp.patient_id
+       FROM daily_charts dc JOIN wards w ON w.id = dc.ward_id JOIN chart_patients cp ON cp.chart_id = dc.id
+       WHERE dc.chart_date = $1::date AND cp.patient_id <> '' AND btrim(cp.patient_name) <> ''
+         AND COALESCE(w.floor_number::text, '') || '|' || w.name = ANY($2::text[])
+       ORDER BY w.floor_number, w.name, nm, (dc.slot = 'main') DESC, cp.row_number`,
+      [date, wardKeys],
+    )).rows.forEach((row) => { if (!ids.has(row.ward_key)) ids.set(row.ward_key, new Map()); ids.get(row.ward_key).set(row.nm, row.patient_id) })
   }
   const counts = new Map()
   for (const row of rows) {

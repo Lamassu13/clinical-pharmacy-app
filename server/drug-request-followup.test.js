@@ -257,7 +257,8 @@ test('dashboard: a floor user gets their own wards’ forms still to follow up t
   const own = (await mine.get(`/api/dashboard?date=${today}`)).body.formsPending
   assert.deepEqual(own, { total: 2, wards: [{ floor: FLOOR, ward: WARD, n: 2 }] })
   assert.deepEqual((await other.get(`/api/dashboard?date=${today}`)).body.formsPending, { total: 1, wards: [{ floor: OTHER.floor, ward: OTHER.ward, n: 1 }] })
-  assert.equal((await manager.get(`/api/dashboard?date=${today}`)).body.formsPending, undefined)
+  // A manager's answer lists every ward's.
+  assert.deepEqual((await manager.get(`/api/dashboard?date=${today}`)).body.formsPending, { total: 3, wards: [{ floor: FLOOR, ward: WARD, n: 2 }, { floor: OTHER.floor, ward: OTHER.ward, n: 1 }] })
   // A user with no assignment has nothing pending.
   const nobody = await loginAs({ role: 'user' })
   assert.deepEqual((await nobody.get(`/api/dashboard?date=${today}`)).body.formsPending, { total: 0, wards: [] })
