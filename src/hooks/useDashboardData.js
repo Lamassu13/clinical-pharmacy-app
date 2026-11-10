@@ -20,7 +20,11 @@ export default function useDashboardData({ isLoggedIn, sessionExpired, floor, se
   useEffect(() => {
     // Also re-runs when adminView clears, so returning from a screen that changed things
     // (a chart purge, an announcement) lands on fresh numbers rather than the stale set.
-    if (!isLoggedIn || sessionExpired || floor || selected || (adminView && adminView !== 'dashboard')) return undefined
+    // A manager reaches a floor's ward list through the floors screen, which has just loaded this, and
+    // their answer is the heavy one: not asked again inside a floor. A floor user is put straight on
+    // their floor at sign-in (and on a reload), past the floors screen: its request was dropped unread,
+    // so their floor page showed no forms alert and no started marks. Theirs is a few rows: ask there too.
+    if (!isLoggedIn || sessionExpired || (floor && isManager) || selected || (adminView && adminView !== 'dashboard')) return undefined
     let cancelled = false
     const date = isoDate(new Date())
     const rangeQuery = isManager && rangeFrom && rangeTo ? `&rangeFrom=${rangeFrom}&rangeTo=${rangeTo}` : ''
