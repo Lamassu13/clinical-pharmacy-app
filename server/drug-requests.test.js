@@ -102,6 +102,15 @@ test('albumin: the treatment day counts up day by day; fields cleaned per kind; 
   assert.equal(sent.body.request.words, 'أربعة')
   assert.deepEqual(sent.body.request.ticks, [])
   assert.deepEqual(await check(pharmacist, 'albumin', '2026-09-26', { name: 'سارة', id: '44' }), { day: 3, requested: true })
+
+  // The next day's popup starts from the patient's details of their last form — the sex, age, weight and doctor, not the day's own values.
+  const next = { carried: { sex: 'ذكر', age: '54.5', weight: '70.5', doctor: 'د. سعد كاظم' } }
+  assert.deepEqual(await check(pharmacist, 'albumin', '2026-09-27', { name: 'سارة', id: '44' }), { day: 4, requested: false, ...next }) // (the day's form is still to be made: day 4 of the course)
+  assert.deepEqual(await check(pharmacist, 'albumin', '2026-09-27', { name: 'سارة' }), { day: 4, requested: false, ...next }) // by name on the same ward
+  assert.equal((await check(pharmacist, 'albumin', '2026-09-27', { name: 'سارة', id: '99' })).carried, undefined) // two different IDs are two patients, even under one name
+  assert.equal((await check(pharmacist, 'albumin', '2026-10-11', { name: 'سارة', id: '44' })).carried, undefined) // 15 days later: a new course
+  assert.equal((await check(pharmacist, 'albumin', '2026-09-26', { name: 'سارة', id: '44' })).carried, undefined) // not once today's form exists
+  assert.equal((await check(pharmacist, 'meropenem', '2026-09-27', { name: 'سارة', id: '44' })).carried, undefined) // a first-day kind carries nothing
 })
 
 test('requests: list per kind, resend updates in place and keeps ticks, edit, tick, delete; other floors refused', async () => {

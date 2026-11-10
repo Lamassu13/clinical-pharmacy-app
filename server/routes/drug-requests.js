@@ -6,7 +6,7 @@ import { readLocation, readWritableLocation, refuse, loadCourseRows, loadOverrid
 import { DAY_LOCKED, isDayLocked } from '../day-lock.js'
 import { buildMeropenemForm, wardKeyOf } from '../meropenem.js'
 import { numberToArabicWords } from '../arabic-number.js'
-import { DRUG_REQUESTS, MAX_REQUEST_NOTE, cleanFields, cleanTicks } from '../../shared/drug-requests.js'
+import { DRUG_REQUESTS, MAX_REQUEST_NOTE, CARRY_DAYS, cleanFields, cleanTicks } from '../../shared/drug-requests.js'
 import { liveForm, mismatches, newRequired, prefillUrl } from '../../shared/google-form-check.js'
 import { needsFollowUp, isNotIndicated } from '../../shared/form-problems.js'
 import { GOOGLE_FORMS } from '../google-forms.js'
@@ -134,7 +134,21 @@ router.get('/drug-requests/check', requireAuth, async (request, response) => {
        AND (($4 <> '' AND patient_id = $4) OR patient_name = $5) LIMIT 1`,
     [kind, wardKeyOf(floor, wardName), chartDate, patientId, name],
   )
-  response.json({ day: patient?.days[chartDate] ?? 1, requested: requested.rowCount > 0 })
+  // The patient's details from their last form (this kind, up to CARRY_DAYS before this day, by ID or by name on this ward), for the popup to
+  // start from: a patient continued on the next days is not asked their sex and age again. Only the fields the kind names, only when filled.
+  const carry = DRUG_REQUESTS[kind].carryFields
+  let carried = {}
+  if (carry && requested.rowCount === 0) {
+    const earlier = await query(
+      `SELECT fields FROM drug_requests WHERE kind = $1 AND request_date < $3::date AND request_date >= $3::date - $6::int
+         AND (($4 <> '' AND patient_id = $4) OR (ward_key = $2 AND patient_name = $5 AND ($4 = '' OR patient_id = '')))
+       ORDER BY request_date DESC, id DESC LIMIT 1`,
+      [kind, wardKeyOf(floor, wardName), chartDate, patientId, name, CARRY_DAYS],
+    )
+    const last = cleanFields(kind, earlier.rows[0]?.fields)
+    carried = Object.fromEntries(carry.filter((key) => last[key]).map((key) => [key, last[key]]))
+  }
+  response.json({ day: patient?.days[chartDate] ?? 1, requested: requested.rowCount > 0, ...(Object.keys(carried).length ? { carried } : {}) })
 })
 
 // Create — or, for the same patient, kind, ward and day, update the typed fields (the ticks stay):

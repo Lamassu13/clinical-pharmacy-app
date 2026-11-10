@@ -656,8 +656,9 @@ app.get('/api/dashboard', requireAuth, async (request, response) => {
         [date, GOOGLE_KINDS],
       ))
       : Promise.resolve({ rows: [{ count: 0 }] }),
-    // A floor user's own forms still to follow up today (unsent or unfinished), for the banner on the floor and ward pages.
-    isManager ? Promise.resolve(null) : timeQuery('formsPending', pendingFormsFor(user, date)),
+    // The forms still to follow up today (unsent or unfinished), for the banner on the floors screen and the floor and ward pages: a
+    // floor user's own wards', a manager's every ward's (a floor's own page asks GET /drug-requests/pending).
+    timeQuery('formsPending', pendingFormsFor(user, date)),
   ]
   const [started, topMedicines, patientsByFloor, totalPatients, dailyPatientsByFloor, patientsByFloorRange, formsToSend, formsPending] = await Promise.all(pending)
   response.json({
@@ -670,7 +671,8 @@ app.get('/api/dashboard', requireAuth, async (request, response) => {
     medicinesScope: isManager ? 'all' : 'own',
     patientsByFloor: patientsByFloor.rows.map((row) => ({ floor: row.floor, count: row.count })),
     totalPatients: totalPatients.rows[0]?.count ?? 0,
-    ...(isManager ? { formsToSend: formsToSend.rows[0]?.count ?? 0, formsChanged: formsToSend.rows[0]?.changed ?? 0 } : { formsPending }),
+    formsPending,
+    ...(isManager ? { formsToSend: formsToSend.rows[0]?.count ?? 0, formsChanged: formsToSend.rows[0]?.changed ?? 0 } : {}),
     patientsPeriod: isManager ? (PERIOD_DAYS[request.query.patientsPeriod] ? request.query.patientsPeriod : 'month') : 'today',
     dailyPatientsByFloor: bridgedDailyCounts(dailyPatientsByFloor.rows, addDays(date, -5), date),
     patientsByFloorRange: isManager && isIsoDate(request.query.rangeFrom) && isIsoDate(request.query.rangeTo)
