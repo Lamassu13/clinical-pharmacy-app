@@ -176,8 +176,8 @@ export default function useExtraPills({ selected, isOnline, isExpired, userId, a
     flushExtraPillsQueue(selected.floor, selected.ward)
   }, [selected, isOnline, flushExtraPillsQueue])
 
-  // استمارة الحبوب الإضافي: one standing list per ward — no date scoping, since these aren't a
-  // daily/reset artifact like the chart or the real pills form. `applyExtraPillsQueue` layers
+  // استمارة الحبوب الإضافي: one list per ward, of the forms made today — the server leaves yesterday's off, so each
+  // day starts empty. `applyExtraPillsQueue` layers
   // in whatever create/edit/delete didn't reach the server yet (see the callbacks above), so a
   // pending offline change still shows right after this GET — including one served from the
   // service worker's cache while genuinely offline.

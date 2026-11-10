@@ -1,6 +1,7 @@
 import express from 'express'
 import { pool, query } from '../db.js'
 import { requireAuth } from '../auth.js'
+import { todayInBaghdad } from '../push.js'
 import { canAccessLocation, isKnownWard, clampInt, cleanText, cleanName, DOSE_TIMES, USAGE_METHODS, MAX_NOTE_LENGTH, EXTRA_PILL_FLOORS } from '../validation.js'
 
 const router = express.Router()
@@ -38,7 +39,12 @@ router.get('/extra-pills', requireAuth, async (request, response) => {
   if (floor === null || !EXTRA_PILL_FLOORS.includes(floor)) return response.status(400).json({ message: 'الطابق غير مسموح' })
   if (!isKnownWard(floor, ward)) return response.status(400).json({ message: 'الردهة غير معروفة' })
   if (!canAccessLocation(request.session.user, floor, ward)) return response.status(403).json({ message: 'لا تملك صلاحية لهذه الردهة' })
-  const ids = (await query('SELECT id FROM extra_pill_forms WHERE floor_number = $1 AND ward = $2 ORDER BY created_at', [floor, ward])).rows.map((row) => row.id)
+  // Today's forms only (the hospital's day, Baghdad): a form made yesterday does not stay on the list for the next day. It is kept
+  // in the database (the reports count them by the day they were made), only not shown; a new day starts with an empty list.
+  const ids = (await query(
+    "SELECT id FROM extra_pill_forms WHERE floor_number = $1 AND ward = $2 AND (created_at AT TIME ZONE 'Asia/Baghdad')::date = $3::date ORDER BY created_at",
+    [floor, ward, todayInBaghdad()],
+  )).rows.map((row) => row.id)
   const forms = await Promise.all(ids.map(loadForm))
   response.json({ forms })
 })
