@@ -3,10 +3,11 @@ import { flushSync } from 'react-dom'
 import hospitalLogo from '../assets/hospital-logo.png'
 import ChartDoseRow from '../components/ChartDoseRow.jsx'
 import ToolbarButton, { Glyph } from '../components/ToolbarIcons.jsx'
+import { PATIENT_ROWS, MAX_PATIENT_ROWS } from '../constants.js'
 import MedicineSuggest from '../components/MedicineSuggest.jsx'
 import ChartHistoryDialog from '../components/ChartHistoryDialog.jsx'
 import IdClashNote, { useIdClashes } from '../components/IdClashNote.jsx'
-import { medicineMatches } from '../helpers.js'
+import { medicineMatches, printPageCount } from '../helpers.js'
 import { storage } from '../storage.js'
 
 // Presentational only: every piece of chart state, and the autosave/lock/draft logic that
@@ -22,7 +23,7 @@ export default function ChartScreen({
   medicines, patientNames, patientIds, columnMedicines, quantities, totals, doubledTotals, isThursday,
   activeRow, activeColumn, labelBelow, setActiveRow, setActiveColumn, setLabelBelow,
   onSetColumnMedicine, onCommitColumnMedicine, columnMedicineNotice, onDismissNotice, onApplySuggestion,
-  onSetPatientName, onSetPatientId, onCheckPreviousDay, onUpdateQuantity, onCollapseRow, onAddColumn, canAddColumn, chartAlerts = {}, onShowAlerts, wardNote, onChangeWardNote, onSaveWardNote,
+  onSetPatientName, onSetPatientId, onCheckPreviousDay, onUpdateQuantity, onCollapseRow, onAddColumn, canAddColumn, onAddRow, canAddRow, chartAlerts = {}, onShowAlerts, wardNote, onChangeWardNote, onSaveWardNote,
   onDoseCommitted,
   chartFrameRef, chartHeadRef, chartGridRef, chartDosesRef, chartFootRef,
 }) {
@@ -142,6 +143,7 @@ export default function ChartScreen({
       <div className="toolbar-actions">
         {!readOnly && <ToolbarButton icon="patient" primary label="إدخال مريض" onClick={onOpenForm} />}
         {!readOnly && <ToolbarButton icon="column" label={canAddColumn ? 'إضافة عمود' : 'الحد الأقصى لعدد الأعمدة'} onClick={onAddColumn} disabled={!canAddColumn} />}
+        {!readOnly && <ToolbarButton icon="row" label={patientNames.length >= MAX_PATIENT_ROWS ? 'الحد الأقصى لعدد الصفوف' : !canAddRow ? 'الصف الأخير فارغ — اكتب فيه أولًا' : printPageCount(patientNames, quantities) === 2 ? `إضافة صف (${patientNames.length} صفًّا — الطباعة صفحتان)` : 'إضافة صف'} onClick={onAddRow} disabled={!canAddRow} />}
         {!readOnly && <ToolbarButton icon="complete" primary={chartCompleted} label={chartCompleted ? 'إلغاء الاكتمال' : 'اكتمل الجارت'} aria-pressed={chartCompleted} onClick={onToggleComplete} />}
         <span className="tb-sep" aria-hidden="true" />
         <ToolbarButton icon="print" primary label={pdfBusy ? 'جارٍ التحضير…' : 'طباعة A4 / PDF'} busy={pdfBusy} onClick={onExportPdf} disabled={pdfBusy} />
@@ -312,7 +314,7 @@ export default function ChartScreen({
                 onBlur={(event) => { if (!readOnly && patientFocusEmpty.current && event.target.value.trim()) onCheckPreviousDay(rowIndex, event.target.value, 'id') }}
                 placeholder="رقم المريض" aria-label={`رقم المريض، صف ${rowIndex + 1}`} />
             </div>
-            {!readOnly && activeRow === rowIndex && name.trim() && <button type="button" className="row-delete" aria-label={`حذف صف ${rowIndex + 1}`} title="حذف الصف" onPointerDown={(event) => event.preventDefault()} onMouseDown={(event) => event.preventDefault()} onClick={() => onCollapseRow(rowIndex)}>✕</button>}
+            {!readOnly && activeRow === rowIndex && (name.trim() || rowIndex >= PATIENT_ROWS) && <button type="button" className="row-delete" aria-label={`حذف صف ${rowIndex + 1}`} title="حذف الصف" onPointerDown={(event) => event.preventDefault()} onMouseDown={(event) => event.preventDefault()} onClick={() => onCollapseRow(rowIndex)}>✕</button>}
           </th>
         </tr>)}</tbody></table></div>
         <div className="chart-doses" ref={chartDosesRef}><table className="chart-table" role="grid" aria-label="جدول الجرعات — الأسهم للتنقّل بين الخلايا" aria-rowcount={patientNames.length} aria-colcount={columnMedicines.length}>{/* one grid; each cell's aria-label already carries its patient + medicine */}<tbody>{patientNames.map((name, rowIndex) => <ChartDoseRow key={rowIndex} rowIndex={rowIndex} patientName={name} quantities={quantities[rowIndex]} columnMedicines={columnMedicines} isActiveRow={activeRow === rowIndex} activeColumn={activeColumn} gridInactive={activeRow < 0} labelBelow={labelBelow} droppedCells={droppedCells} onUpdateQuantity={onUpdateQuantity} printHidden={rowIndex >= printRowCount} readOnly={readOnly} />)}</tbody></table></div>

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { failureText, rememberIdentity, recallIdentity, IDENTITY_KEEP_HOURS, averagePatients, pillChanges, interactionsForChart, mergeKeyedSnapshots, looksWiped, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, settleExtraPillsOp, EXTRA_PILL_SLOTS, isDraftStale, rememberChart, recallChart, forgetChartCopies, mergePreviousDayDoses, addPatientToChart, medicineMatches, pillSheetPlan, yesterdaySchedules, scheduleFor, applyTemplateColumns, catalogueMatches, RENAL_EQUATIONS, renalGuidance, SCR_UMOL_PER_MGDL } from './helpers.js'
+import { withBlankRow, parseChartRows, mergeChartSnapshots as mergeRows, printPageCount, failureText, rememberIdentity, recallIdentity, IDENTITY_KEEP_HOURS, averagePatients, pillChanges, interactionsForChart, mergeKeyedSnapshots, looksWiped, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, settleExtraPillsOp, EXTRA_PILL_SLOTS, isDraftStale, rememberChart, recallChart, forgetChartCopies, mergePreviousDayDoses, addPatientToChart, medicineMatches, pillSheetPlan, yesterdaySchedules, scheduleFor, applyTemplateColumns, catalogueMatches, RENAL_EQUATIONS, renalGuidance, SCR_UMOL_PER_MGDL } from './helpers.js'
 
 test('mergeKeyedSnapshots keeps a local edit and adopts an unrelated server change', () => {
   const base = { a: '1', b: '2' }
@@ -116,13 +116,21 @@ test('addOfflineRows: a patient typed offline in row 1 is added beside the serve
   assert.deepEqual(merged.quantities, [['2', ''], ['4', '1'], ['', '']])
 })
 
-test('addOfflineRows: the same patient (by ID) typed offline lands on their existing row; a full grid reports what did not fit', async () => {
+test('addOfflineRows: the same patient (by ID) typed offline lands on their existing row; a full grid grows by a row, and at the ceiling reports what did not fit', async () => {
   const { addOfflineRows } = await import('./helpers.js')
   const grid = (names, ids, meds, qty) => ({ patientNames: names, patientIds: ids, columnMedicines: meds, quantities: qty })
   const fresh = grid(['A', 'B'], ['1', '2'], ['X'], [['1'], ['1']])
   const { merged, unplaced } = addOfflineRows(fresh, grid(['B', 'C'], ['2', '3'], ['X'], [['5'], ['1']]))
-  assert.deepEqual(merged.quantities, [['1'], ['5']])
-  assert.equal(unplaced, 1)
+  // The grid had no empty row: «C» gets a new one («+ صف») instead of being refused.
+  assert.deepEqual(merged.quantities, [['1'], ['5'], ['1']])
+  assert.deepEqual(merged.patientNames, ['A', 'B', 'C'])
+  assert.equal(unplaced, 0)
+  // At the ceiling (MAX_PATIENT_ROWS) it cannot grow: the patient is reported as not placed.
+  const { MAX_PATIENT_ROWS } = await import('./constants.js')
+  const tall = grid(Array.from({ length: MAX_PATIENT_ROWS }, (_, i) => `P${i}`), Array.from({ length: MAX_PATIENT_ROWS }, (_, i) => String(i + 1)), ['X'], Array.from({ length: MAX_PATIENT_ROWS }, () => ['1']))
+  const result = addOfflineRows(tall, grid(['Z'], ['9999'], ['X'], [['1']]))
+  assert.equal(result.unplaced, 1)
+  assert.equal(result.merged.patientNames.length, MAX_PATIENT_ROWS)
 })
 
 test('mergePreviousDayDoses keeps headers typed meanwhile and fills blanks with yesterday\'s medicines', () => {
@@ -225,9 +233,21 @@ test('addPatientToChart: same ID reuses its row; full grid and unknown medicine'
   const r = addPatientToChart(chart, { name: 'New', id: '9', doses: [{ med: 'Lasix amp', qty: '2' }, { med: 'Nope', qty: '5' }] }, cat)
   assert.equal(r.row, 4); assert.equal(r.chart.patientNames[4], 'New')
   assert.equal(r.chart.columnMedicines.includes('Nope'), false)
+  // A full chart grows by one row for the new patient; only at MAX_PATIENT_ROWS is it refused.
   const full = blankChart()
   full.patientNames.fill('x')
-  assert.deepEqual(addPatientToChart(full, { name: 'y', id: '', doses: [] }, cat), { ok: false, reason: 'full' })
+  const grown = addPatientToChart(full, { name: 'y', id: '', doses: [] }, cat)
+  assert.equal(grown.ok, true)
+  assert.equal(grown.row, full.patientNames.length)
+  assert.equal(grown.chart.patientNames.length, full.patientNames.length + 1)
+  assert.equal(grown.chart.quantities.length, full.patientNames.length + 1)
+  assert.equal(grown.chart.quantities[grown.row].length, full.columnMedicines.length)
+  assert.equal(grown.chart.patientNames[grown.row], 'y')
+  assert.equal(full.patientNames.length, 41) // the chart passed in is not changed
+  let tall = full
+  while (tall.patientNames.length < 80) tall = withBlankRow(tall)
+  tall.patientNames.fill('x')
+  assert.deepEqual(addPatientToChart(tall, { name: 'y', id: '', doses: [] }, cat), { ok: false, reason: 'full' })
 })
 
 test('interactionsForChart flags a named patient holding two interacting medicines', () => {
@@ -553,4 +573,46 @@ test('stripInvisible drops the characters that print nothing but split a name, a
   assert.equal(stripInvisible('محمد  علي'), 'محمد  علي') // spaces, harakat and tatweel are the person's own
   assert.equal(stripInvisible('خَيْرِيَّة'), 'خَيْرِيَّة')
   assert.equal(stripInvisible(undefined), '')
+})
+
+
+test('«+ صف»: a saved chart opens as tall as its last row, a blank one as one page, and the grid grows only to the ceiling', () => {
+  assert.equal(parseChartRows(null).patientNames.length, 41)
+  const chart = { patients: [{ row_number: 3, patient_name: 'A', patient_id: '1' }, { row_number: 57, patient_name: 'B', patient_id: '' }], columns: [{ column_number: 1, medicine_name: 'X' }], quantities: [{ row_number: 60, column_number: 2, quantity: 4 }] }
+  const parsed = parseChartRows(chart)
+  assert.equal(parsed.patientNames.length, 60)
+  assert.equal(parsed.patientNames[56], 'B'); assert.equal(parsed.quantities[59][1], '4')
+  assert.ok(parsed.quantities.every((row) => row.length === parsed.columnMedicines.length))
+  let grid = parseChartRows({ patients: [], columns: [], quantities: [] })
+  grid = withBlankRow(grid)
+  assert.deepEqual([grid.patientNames.length, grid.patientIds.length, grid.quantities.length], [42, 42, 42])
+  assert.equal(grid.quantities[41].length, grid.columnMedicines.length)
+  while (grid.patientNames.length < 80) grid = withBlankRow(grid)
+  assert.equal(withBlankRow(grid), grid, 'no row past the ceiling')
+})
+
+test('«+ صف»: the conflict merge keeps a row added here (or on the other device) instead of cutting it off at the other copy\'s height', () => {
+  const make = (rows, edit = {}) => ({ patientNames: Array.from({ length: rows }, (_, i) => edit.names?.[i] ?? ''), patientIds: Array.from({ length: rows }, (_, i) => edit.ids?.[i] ?? ''), columnMedicines: ['X'], quantities: Array.from({ length: rows }, (_, i) => [edit.qty?.[i] ?? '']) })
+  const base = make(41)
+  // This device added rows 42-44 and typed in row 43; the server (another device) has 41 rows and changed row 1.
+  const mine = make(44, { names: { 42: 'هنا' }, qty: { 42: '3' } })
+  const theirs = make(41, { names: { 0: 'هناك' } })
+  const merged = mergeRows(base, mine, theirs)
+  assert.equal(merged.patientNames.length, 44)
+  assert.equal(merged.patientNames[0], 'هناك'); assert.equal(merged.patientNames[42], 'هنا'); assert.equal(merged.quantities[42][0], '3')
+  assert.equal(merged.quantities.length, 44)
+  // The other way round: the server has 44 rows (another device added them), this device still 41 — nothing of theirs is cut off.
+  const merged2 = mergeRows(base, make(41, { names: { 0: 'أنا' } }), make(44, { names: { 43: 'غيري' }, qty: { 43: '9' } }))
+  assert.equal(merged2.patientNames.length, 44)
+  assert.equal(merged2.patientNames[0], 'أنا'); assert.equal(merged2.patientNames[43], 'غيري'); assert.equal(merged2.quantities[43][0], '9')
+})
+
+test('printPageCount: one page up to row 41, two once something sits past it — blank rows alone do not make a page', () => {
+  const rows = (n, filled = {}) => ({ names: Array.from({ length: n }, (_, i) => filled[i] ?? ''), qty: Array.from({ length: n }, (_, i) => [i in filled ? '' : '']) })
+  const at = (n, index, kind = 'name') => { const r = rows(n); const names = [...r.names]; const qty = r.qty.map((row) => [...row]); if (kind === 'name') names[index] = 'x'; else qty[index] = ['2']; return printPageCount(names, qty) }
+  assert.equal(at(41, 40), 1)            // the 41st patient: still one page
+  assert.equal(at(60, 40), 1)            // 60 rows in the grid, nothing past 41: one page
+  assert.equal(at(60, 41), 2)            // the 42nd row has a name
+  assert.equal(at(60, 59, 'qty'), 2)     // a dose alone on row 60
+  assert.equal(at(41, 0), 1)
 })

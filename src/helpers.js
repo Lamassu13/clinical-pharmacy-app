@@ -1,6 +1,6 @@
 // Pure helpers with no React and no I/O, so they can be read — and reasoned about — without
 // the component around them.
-import { floors, specialWards, PATIENT_ROWS, CHART_COLUMNS, MAX_CHART_COLUMNS } from './constants.js'
+import { floors, specialWards, PATIENT_ROWS, MAX_PATIENT_ROWS, CHART_COLUMNS, MAX_CHART_COLUMNS } from './constants.js'
 import { storage } from './storage.js'
 
 // Shared by the two places a chart snapshot from elsewhere (the server, after a save
@@ -10,19 +10,37 @@ import { storage } from './storage.js'
 // Columns run over the widest of the three copies: a column added on one side ("+ عمود") that
 // the other has not seen yet is a blank there, not a column to drop. Mapping over `fresh` alone
 // cut this device's added column — and its doses — off at the server's width, unreported.
+// Rows run over the longest of the three the same way («+ صف»): a row added here that the server has not
+// seen yet, or added on the other device, is a blank on the side without it, never a row to cut off.
 const cellOf = (list, index) => list?.[index] ?? ''
 export const mergeChartSnapshots = (base, current, fresh) => {
   const width = Math.max(base.columnMedicines.length, current.columnMedicines.length, fresh.columnMedicines.length)
   const columns = Array.from({ length: width }, (_, index) => index)
+  const height = Math.max(base.patientNames.length, current.patientNames.length, fresh.patientNames.length)
+  const rows = Array.from({ length: height }, (_, index) => index)
   const pick = (mine, was, theirs) => (mine !== was ? mine : theirs)
   return {
-    patientNames: fresh.patientNames.map((value, index) => (current.patientNames[index] !== base.patientNames[index] ? current.patientNames[index] : value)),
-    // `?? ''`: a draft saved before patient IDs existed carries no patientIds at all.
-    patientIds: fresh.patientIds.map((value, index) => ((current.patientIds?.[index] ?? '') !== (base.patientIds?.[index] ?? '') ? (current.patientIds?.[index] ?? '') : value)),
+    patientNames: rows.map((index) => pick(cellOf(current.patientNames, index), cellOf(base.patientNames, index), cellOf(fresh.patientNames, index))),
+    // (`cellOf`: a draft saved before patient IDs existed carries no patientIds at all.)
+    patientIds: rows.map((index) => pick(cellOf(current.patientIds, index), cellOf(base.patientIds, index), cellOf(fresh.patientIds, index))),
     columnMedicines: columns.map((index) => pick(cellOf(current.columnMedicines, index), cellOf(base.columnMedicines, index), cellOf(fresh.columnMedicines, index))),
-    quantities: fresh.quantities.map((row, rowIndex) => columns.map((index) => pick(cellOf(current.quantities[rowIndex], index), cellOf(base.quantities[rowIndex], index), cellOf(row, index)))),
+    quantities: rows.map((rowIndex) => columns.map((index) => pick(cellOf(current.quantities[rowIndex], index), cellOf(base.quantities[rowIndex], index), cellOf(fresh.quantities[rowIndex], index)))),
   }
 }
+
+// How many printed pages a chart takes: one, or two once a patient (or a dose) sits past row PATIENT_ROWS («+ صف»). The last filled
+// row decides, not the grid's height: blank rows added and left empty do not make a second page.
+export const lastFilledRowOf = (patientNames, quantities) => patientNames.reduce((last, name, index) => (name.trim() || quantities[index]?.some(Boolean) ? index : last), -1)
+export const printPageCount = (patientNames, quantities) => (lastFilledRowOf(patientNames, quantities) + 1 > PATIENT_ROWS ? 2 : 1)
+
+// One blank patient row at the end of a grid ({ patientNames, patientIds, columnMedicines, quantities }), as a new grid; the grid
+// itself when it is already at MAX_PATIENT_ROWS. «+ صف», and a patient added to a full chart, both grow it this way.
+export const withBlankRow = (chart) => (chart.patientNames.length >= MAX_PATIENT_ROWS ? chart : {
+  ...chart,
+  patientNames: [...chart.patientNames, ''],
+  patientIds: [...chart.patientIds, ''],
+  quantities: [...chart.quantities, Array(chart.columnMedicines.length).fill('')],
+})
 
 // A chart opened blank offline (App.jsx load effect) knew nothing about the server's rows, so its
 // row 1 is not the server's row 1 — a cell-by-cell merge would pin the offline patient's name on
@@ -39,6 +57,12 @@ export const addOfflineRows = (fresh, offline) => {
     quantities: fresh.quantities.map((row) => [...row]),
   }
   const rowEmpty = (index) => !merged.patientNames[index]?.trim() && !merged.patientIds[index] && !merged.quantities[index].some(Boolean)
+  // A grid with no empty row left takes one more, up to MAX_PATIENT_ROWS («+ صف»), before a patient is called unplaced.
+  const growRow = () => {
+    if (merged.patientNames.length >= MAX_PATIENT_ROWS) return -1
+    merged.patientNames.push(''); merged.patientIds.push(''); merged.quantities.push(Array(merged.columnMedicines.length).fill(''))
+    return merged.patientNames.length - 1
+  }
   const columnFor = (medicine) => {
     const key = medicineKey(medicine)
     let index = merged.columnMedicines.findIndex((name) => medicineKey(name) === key)
@@ -63,6 +87,7 @@ export const addOfflineRows = (fresh, offline) => {
     let target = id ? merged.patientIds.findIndex((value) => value === id) : -1
     if (target === -1 && name.trim()) target = merged.patientNames.findIndex((value) => patientNameKey(value) === patientNameKey(name))
     if (target === -1) target = merged.patientNames.findIndex((_, index) => rowEmpty(index))
+    if (target === -1) target = growRow()
     if (target === -1) { unplaced += 1; return }
     if (name.trim()) merged.patientNames[target] = name
     if (id) merged.patientIds[target] = id
@@ -233,9 +258,11 @@ export const settleExtraPillsOp = (latest, entry, created, patchSent = true) => 
 // has rather than truncating back to the default width.
 export const parseChartRows = (chart) => {
   const columnCount = chart ? Math.max(CHART_COLUMNS, ...chart.columns.map((c) => c.column_number), ...chart.quantities.map((q) => q.column_number)) : CHART_COLUMNS
-  const patientNames = Array(PATIENT_ROWS).fill('')
-  const patientIds = Array(PATIENT_ROWS).fill('')
-  const quantities = Array.from({ length: PATIENT_ROWS }, () => Array(columnCount).fill(''))
+  // At least PATIENT_ROWS tall (one printed page), taller when «+ صف» grew this chart and it was saved.
+  const rowCount = chart ? Math.max(PATIENT_ROWS, ...chart.patients.map((p) => p.row_number), ...chart.quantities.map((q) => q.row_number)) : PATIENT_ROWS
+  const patientNames = Array(rowCount).fill('')
+  const patientIds = Array(rowCount).fill('')
+  const quantities = Array.from({ length: rowCount }, () => Array(columnCount).fill(''))
   const columnMedicines = Array(columnCount).fill('')
   if (chart) {
     chart.patients.forEach((patient) => { patientNames[patient.row_number - 1] = patient.patient_name; patientIds[patient.row_number - 1] = patient.patient_id ?? '' })
@@ -313,7 +340,8 @@ export const mergePreviousDayDoses = (columns, quantities, rowIndex, prevDoses, 
 // the first blank one). Then the seeding the grid does by hand: a giving set / cannula the form
 // did not mention gets «1», and a syringe column the form did not mention gets that row's
 // vial/amp total (setColumnMedicine / applySyringeTotal in App). Inputs are not touched.
-export const addPatientToChart = (chart, patient, catalogue) => {
+export const addPatientToChart = (chartIn, patient, catalogue) => {
+  let chart = chartIn
   const name = String(patient.name ?? '').trim()
   const id = toEnglishDigits(String(patient.id ?? '')).replace(/\D/g, '').slice(0, 20)
   const doses = (patient.doses || [])
@@ -323,6 +351,8 @@ export const addPatientToChart = (chart, patient, catalogue) => {
   let row = id ? chart.patientIds.findIndex((value) => value === id) : -1
   if (row === -1 && name) row = chart.patientNames.findIndex((value) => patientNameKey(value) === patientNameKey(name))
   if (row === -1) row = chart.patientNames.findIndex((_, index) => rowEmpty(index))
+  // A full chart gets one more row, up to MAX_PATIENT_ROWS (the second printed page), instead of refusing the patient.
+  if (row === -1 && chart.patientNames.length < MAX_PATIENT_ROWS) { chart = withBlankRow(chart); row = chart.patientNames.length - 1 }
   if (row === -1) return { ok: false, reason: 'full' }
   const placed = mergePreviousDayDoses(chart.columnMedicines, chart.quantities, row, doses, catalogue)
   const columns = placed.columns
