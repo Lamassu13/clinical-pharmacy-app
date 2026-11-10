@@ -125,6 +125,15 @@ test('missing: patients given a first-day medicine with no form — none within 
   assert.equal(names.includes('قبل الإطلاق'), false) // began before the forms existed
   assert.equal(names.includes('بدأت الآن'), true)
   assert.equal(names.includes('بلا استمارة'), false) // not charted in this range
+
+  // The form belongs to the first day: on a later day of the course the patient is not listed, although no form was ever made —
+  // for a manager's range that begins after the first day, and for the ward's own check of that later day.
+  const missing = async (client, query) => (await client.get(`/api/drug-requests/missing?kind=ivig&${query}`)).body.patients.map((row) => [row.name, row.date])
+  assert.deepEqual((await missing(admin, 'from=2026-11-10&to=2026-11-11')), []) // «بلا استمارة» is on day 2 on 11-10
+  assert.deepEqual((await missing(admin, `floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=2026-11-10`)), [])
+  assert.deepEqual((await missing(admin, `floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=2026-11-12`)), [['بدأت الآن', '2026-11-12']])
+  // A range that holds the first day still lists them, once, at that day.
+  assert.equal((await missing(admin, 'from=2026-11-09&to=2026-11-12')).filter(([name]) => name === 'بلا استمارة').join(), 'بلا استمارة,2026-11-09')
 })
 
 test('dashboard: a manager’s answer carries how many Google forms of the week are not sent; a pharmacist’s does not', async () => {

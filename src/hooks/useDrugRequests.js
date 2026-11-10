@@ -221,7 +221,7 @@ export default function useDrugRequests({ selected, selectedDate, isExpired, use
     } finally { setBusy(false) }
   }, [askConfirm, isExpired])
 
-  // «مرضى بلا استمارة»: the patients given this kind's medicine today on this ward with no form of the kind for them. Only
+  // «مرضى بلا استمارة»: the patients who began this kind's medicine on this day on this ward with no form of the kind for them. Only
   // when asked (one small request), never on opening the screen. Resolves { ok, patients } or { ok: false, message }.
   const findMissing = useCallback(async (kind) => {
     try {

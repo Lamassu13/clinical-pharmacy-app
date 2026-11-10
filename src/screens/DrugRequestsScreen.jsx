@@ -83,7 +83,7 @@ export default function DrugRequestsScreen({ footer, dayLocked = false, kind, he
         <button type="button" className="text-button" disabled={!isOnline || missingBusy} onClick={searchMissing}>{missingBusy ? 'جارٍ البحث…' : 'مرضى بلا استمارة؟'}</button>
         {missing?.date === selectedDate && !missing.ok && <span className="form-error" role="alert">{missing.message}</span>}
         {missing?.date === selectedDate && missing.ok && (missing.patients.length === 0
-          ? <span className="req-hint">كل مريض أُعطي {spec.label.replace('استمارة ', '')} لديه استمارة.</span>
+          ? <span className="req-hint">لا يوجد مريض بدأ {spec.label.replace('استمارة ', '')} في هذا اليوم بلا استمارة.</span>
           : <ul className="req-missing-list">{missing.patients.map((patient) => <li key={`${patient.name}|${patient.patientId}`}>
             <span>{patient.name}{patient.patientId && <small> · <bdi>{patient.patientId}</bdi></small>}</span>
             <button type="button" className="secondary-button compact" disabled={busy} onClick={() => { setAddFor(patient); setAdding(true) }}>+ استمارة</button>

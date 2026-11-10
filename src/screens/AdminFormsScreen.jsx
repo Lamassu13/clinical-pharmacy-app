@@ -127,7 +127,7 @@ export default function AdminFormsScreen({ adminHeader, isExpired, onOpenForm })
     {more && <p className="report-note">عُرض أول ٣٠٠ فقط — قصِّر المدة لرؤية الباقي.</p>}
 
     <h2 className="usage-subhead">مرضى بلا استمارة</h2>
-    <p className="report-note">مرضى أُعطوا دواءً يُطلب له استمارة في أول يوم، ولا توجد لهم استمارة من نوعه قبل أول جرعة بـ٣٠ يومًا أو بعدها بـ١٤ يومًا. يُقرأ من الجارتات فقط، ولا يعمل إلا عند الضغط على «بحث».</p>
+    <p className="report-note">مرضى بدأوا في هذه المدة دواءً يُطلب له استمارة في أول يوم، ولا توجد لهم استمارة من نوعه قبل أول جرعة بـ٣٠ يومًا أو بعدها بـ١٤ يومًا. يُذكر المريض في يومه الأول فقط: من بدأ قبل المدة لا يُذكر. يُقرأ من الجارتات فقط، ولا يعمل إلا عند الضغط على «بحث».</p>
     <div className="forms-missing-controls">
       <select aria-label="نوع الاستمارة" value={missingKind} onChange={(event) => { setMissingKind(event.target.value); setMissing(null) }}>
         {FIRST_DAY_KINDS.map((item) => <option key={item.kind} value={item.kind}>{item.label}</option>)}
