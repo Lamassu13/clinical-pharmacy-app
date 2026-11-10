@@ -308,7 +308,7 @@ export function AveragePatientsWidget({ patientsByFloorRange, rangeFrom, setRang
 export default function DashboardWidgets({
   loading, error, onRetry,
   announcements, isManager, announcementDraft, setAnnouncementDraft, announcementError, announcementBusy,
-  onPostAnnouncement, onEditAnnouncement, onDeleteAnnouncement,
+  onPostAnnouncement, onEditAnnouncement, onDeleteAnnouncement, onDeleteAllAnnouncements,
 }) {
   // Which announcement is open for inline editing, plus its working text, in-flight flag, and error.
   const [editing, setEditing] = useState(null)
@@ -369,6 +369,7 @@ export default function DashboardWidgets({
             ))}
           </ul>
         )}
+        {isManager && !loading && !error && announcements.length > 1 && <button type="button" className="announcement-del announcement-del-all" onClick={onDeleteAllAnnouncements}>حذف كل الإعلانات</button>}
         {isManager && (
           <details className="announcement-disclosure">
             <summary>إعلان جديد</summary>

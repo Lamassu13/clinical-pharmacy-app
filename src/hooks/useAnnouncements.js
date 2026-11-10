@@ -54,5 +54,16 @@ export default function useAnnouncements({ isLoggedIn, sessionExpired, floor, se
       setAnnouncements((current) => (current ?? []).filter((item) => item.id !== id))
     } catch { /* the next dashboard visit will show the current list */ }
   }, [askConfirm, isExpired])
-  return { announcements, announcementDraft, setAnnouncementDraft, announcementError, announcementBusy, postAnnouncement, editAnnouncement, deleteAnnouncement }
+  // «حذف الكل»: one confirmation, then every announcement goes.
+  const deleteAllAnnouncements = useCallback(async () => {
+    if (!(await askConfirm('حذف كل الإعلانات؟', { danger: true, detail: 'لا يمكن التراجع عن الحذف.', confirmLabel: 'حذف الكل' }))) return
+    setAnnouncementError('')
+    try {
+      const response = await fetch(`${apiUrl}/announcements`, { method: 'DELETE', credentials: 'include' })
+      if (isExpired(response)) return
+      if (!response.ok) throw new Error()
+      setAnnouncements([])
+    } catch { setAnnouncementError('تعذّر حذف الإعلانات — تحقّق من الاتصال وحاول مرة أخرى.') }
+  }, [askConfirm, isExpired])
+  return { announcements, announcementDraft, setAnnouncementDraft, announcementError, announcementBusy, postAnnouncement, editAnnouncement, deleteAnnouncement, deleteAllAnnouncements }
 }

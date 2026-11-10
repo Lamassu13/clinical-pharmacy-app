@@ -710,6 +710,12 @@ app.patch('/api/announcements/:id', requireManager, async (request, response) =>
   if (!result.rows[0]) return response.status(404).json({ message: 'الإعلان غير موجود' })
   response.json({ announcement: result.rows[0] })
 })
+// Every notice at once («حذف الكل»): the list shows the latest five, and this clears the table, not just those.
+app.delete('/api/announcements', requireManager, async (request, response) => {
+  const result = await query('DELETE FROM announcements')
+  if (result.rowCount) await recordAudit(request, 'announcement.deleted_all', '', `${result.rowCount} إعلان`)
+  response.json({ ok: true, deleted: result.rowCount })
+})
 app.delete('/api/announcements/:id', requireManager, async (request, response) => {
   const id = Number(request.params.id)
   if (!Number.isInteger(id) || id < 1) return response.status(400).json({ message: 'معرّف غير صحيح' })

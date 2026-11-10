@@ -14,6 +14,7 @@ const ACTIONS = {
   'medicine.created': 'إضافة دواء',
   'medicine.updated': 'تعديل دواء',
   'medicine.deleted': 'حذف دواء',
+  'announcement.deleted_all': 'حذف كل الإعلانات',
   'charts.purged': 'حذف جارتات',
   'pills.purged': 'حذف استمارات حبوب',
 }

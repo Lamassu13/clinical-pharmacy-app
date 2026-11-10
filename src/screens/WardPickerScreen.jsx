@@ -13,7 +13,7 @@ import FormsPendingNote from '../components/FormsPendingNote.jsx'
 export default function WardPickerScreen({
   onOpenAlbuminFollowUp, floor, today, selectedDate, isExpired, dashboard, dashboardError, onBack, onOpen, onOpenWard,
   announcements, isManager, announcementDraft, setAnnouncementDraft, announcementError, announcementBusy,
-  onPostAnnouncement, onEditAnnouncement, onDeleteAnnouncement,
+  onPostAnnouncement, onEditAnnouncement, onDeleteAnnouncement, onDeleteAllAnnouncements,
 }) {
   const startedWards = new Set(
     (dashboard?.startedWards ?? [])
@@ -66,7 +66,7 @@ export default function WardPickerScreen({
         announcements={announcements ?? []} isManager={isManager}
         announcementDraft={announcementDraft} setAnnouncementDraft={setAnnouncementDraft}
         announcementError={announcementError} announcementBusy={announcementBusy}
-        onPostAnnouncement={onPostAnnouncement} onEditAnnouncement={onEditAnnouncement} onDeleteAnnouncement={onDeleteAnnouncement}
+        onPostAnnouncement={onPostAnnouncement} onEditAnnouncement={onEditAnnouncement} onDeleteAnnouncement={onDeleteAnnouncement} onDeleteAllAnnouncements={onDeleteAllAnnouncements}
       />
     </div>}
   </section>

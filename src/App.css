@@ -796,6 +796,7 @@ button.topbar-user:hover { color: var(--primary); }
 .announcement-del { color: var(--danger); }
 .announcement-edit { color: var(--text); }
 .announcement-del:hover { background: var(--danger-tint); }
+.announcement-del-all { margin-block: var(--space-3); }
 .announcement-edit:hover { background: var(--surface-alt); }
 .announcement-disclosure { margin-top: var(--space-2); }
 .announcement-disclosure > summary {
