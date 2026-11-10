@@ -108,3 +108,22 @@ test('patient search: a name is found whichever way it was spelled, an ID by its
     assert.deepEqual(patient.stays.flatMap((stay) => stay.medicines.map((medicine) => [medicine.name, medicine.quantity])), [['Amoxicillin Cap', 3]], q)
   }
 })
+
+test('hidden characters in a name: dropped when it is saved, and a name already saved with one is still found and cleaned by the migration', async () => {
+  const pharmacist = await loginAs({ role: 'user', floor: A.floor })
+  // «سعاد جاس‌م» — a zero-width non-joiner before the م, a right-to-left mark after the first word, a soft hyphen.
+  const dirty = 'سعاد\u200f جاس\u200cم\u00ad'
+  assert.equal((await saveChart(pharmacist, A, 'main', [{ name: dirty, patientId: '417583' }])).status, 200)
+  const rows = (await pool.query('SELECT patient_name FROM chart_patients')).rows.map((row) => row.patient_name)
+  assert.deepEqual(rows.filter(Boolean), ['سعاد جاسم'])
+  assert.equal((await pharmacist.get(`/api/patients/search?floor=${A.floor}&date=${DATE}&q=${encodeURIComponent(dirty)}`)).body.patients[0].name, 'سعاد جاسم')
+
+  // A row from before the fix, written straight to the table: found by the plain name, and listed once with the other spelling.
+  await pool.query("UPDATE chart_patients SET patient_name = $1", [dirty])
+  assert.equal((await pharmacist.get(`/api/patients/search?floor=${A.floor}&date=${DATE}&q=${encodeURIComponent('جاسم')}`)).body.patients.length, 1)
+  // The migration (run on every deploy) puts it right; run twice, it changes nothing the second time.
+  const { default: fs } = await import('node:fs/promises')
+  const schema = await fs.readFile(new URL('./schema.sql', import.meta.url), 'utf8')
+  await pool.query(schema); await pool.query(schema)
+  assert.deepEqual((await pool.query('SELECT patient_name FROM chart_patients')).rows.map((row) => row.patient_name).filter(Boolean), ['سعاد جاسم'])
+})

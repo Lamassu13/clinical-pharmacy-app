@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { PATIENT_ROWS } from '../constants.js'
+import { stripInvisible } from '../../shared/clean-name.js'
 import { medicineKey, medicineMatches, toEnglishDigits } from '../helpers.js'
 
 // Phone-first entry form for ONE patient. It has no state of the chart's own: «إضافة إلى الجارت»
@@ -117,7 +118,7 @@ export default function ChartFormScreen({ dayLocked = false,
     <form className="entry-form" onSubmit={submit} noValidate>
       <div className="entry-form-card">
         <label>اسم المريض
-          <input ref={nameRef} value={name} autoComplete="off" disabled={!canEdit} onChange={(e) => { setError(''); setName(e.target.value) }} onBlur={() => offerPrevious('name')} />
+          <input ref={nameRef} value={name} autoComplete="off" disabled={!canEdit} onChange={(e) => { setError(''); setName(stripInvisible(e.target.value)) }} onBlur={() => offerPrevious('name')} />
         </label>
         <label>{roomLabel}
           <input value={room} autoComplete="off" disabled={!canEdit} onChange={(e) => { setError(''); setRoom(e.target.value.slice(0, 40)) }} />

@@ -4,7 +4,7 @@ import { requireAuth, requireManager } from '../auth.js'
 import {
   ALLOWED_FLOORS, MAX_PATIENT_ROWS, MAX_CHART_COLUMNS, SPECIAL_WARDS, isKnownWard,
   canAccessLocation, clampInt, isIsoDate, cleanText,
-  normalizeMedicineKey, medicineKeySql, DOSE_TIMES, USAGE_METHODS, MAX_NOTE_LENGTH,
+  normalizeMedicineKey, medicineKeySql, DOSE_TIMES, USAGE_METHODS, MAX_NOTE_LENGTH, cleanName,
 } from '../validation.js'
 import { numberToArabicWords } from '../arabic-number.js'
 import { memoizeByKey } from '../cache.js'
@@ -524,7 +524,7 @@ router.put('/chart', requireAuth, async (request, response) => {
   const patients = (Array.isArray(request.body.patients) ? request.body.patients : [])
     .map((patient) => ({
       rowNumber: clampInt(patient?.rowNumber, 1, MAX_PATIENT_ROWS),
-      name: cleanText(patient?.name, 200),
+      name: cleanName(patient?.name, 200),
       // An integer ID, kept as its digits (a leading zero is part of a hospital number).
       patientId: String(patient?.patientId ?? '').replace(/\D/g, '').slice(0, 20),
     }))

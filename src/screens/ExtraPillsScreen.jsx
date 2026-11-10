@@ -7,6 +7,7 @@ import useCatalogueSuggest from '../components/useCatalogueSuggest.js'
 import { usageMethods, noteOptions, MAX_NOTE_LENGTH, doseTimeGroups } from '../constants.js'
 import PillsPrintTemplate from '../components/PillsPrintTemplate.jsx'
 import usePdfSheets from '../usePdfSheets.js'
+import { stripInvisible } from '../../shared/clean-name.js'
 
 // استمارة الحبوب الإضافي — the same .pill-form/.pill-table markup and print CSS as the real
 // pills form (PillsScreen.jsx), but with no chart behind it at all: the patient name and
@@ -48,7 +49,7 @@ function ExtraPillFormCard({ form, catalogue, floorLabel, today, editTime, selec
             hospital brand out of the real form's position in the header's flex row. Printing
             a plain <strong> instead (screen keeps the input) makes the printed header
             structurally identical to the real form's, so it lays out identically too. */}
-        <input className="pill-form-patient-input" aria-label="اسم المريض" placeholder="اسم المريض" value={patientName} onChange={(event) => setPatientName(event.target.value)} />
+        <input className="pill-form-patient-input" aria-label="اسم المريض" placeholder="اسم المريض" value={patientName} onChange={(event) => setPatientName(stripInvisible(event.target.value))} />
         <strong className="pill-form-patient-print">{patientName}</strong>
         <span>{today}</span>
       </div>

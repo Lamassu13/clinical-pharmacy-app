@@ -545,3 +545,12 @@ test('the identity kept for an offline reopen is used only while the server\'s l
   assert.equal(recallIdentity(2000), null)
   delete globalThis.localStorage
 })
+
+test('stripInvisible drops the characters that print nothing but split a name, and nothing else', async () => {
+  const { stripInvisible } = await import('../shared/clean-name.js')
+  assert.equal(stripInvisible('سعاد‏ جاس‌م­'), 'سعاد جاسم')
+  assert.equal(stripInvisible('﻿علي​ حسن؜'), 'علي حسن')
+  assert.equal(stripInvisible('محمد  علي'), 'محمد  علي') // spaces, harakat and tatweel are the person's own
+  assert.equal(stripInvisible('خَيْرِيَّة'), 'خَيْرِيَّة')
+  assert.equal(stripInvisible(undefined), '')
+})

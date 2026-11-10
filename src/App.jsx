@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { roleLabels, PATIENT_ROWS, CHART_COLUMNS, MAX_CHART_COLUMNS, apiUrl, floors, specialWards } from './constants.js'
+import { stripInvisible } from '../shared/clean-name.js'
 import { failureText, rememberIdentity, recallIdentity, interactionsForChart, applyTemplateColumns,yesterdaySchedules, mergePreviousDayDoses, addPatientToChart, mergeChartSnapshots, diffMergeOutcome, addOfflineRows, looksWiped, chartDiffers, mergeKeyedSnapshots, diffKeyedMergeOutcome, parseChartRows, toEnglishDigits, medicineKey, patientNameKey, nearestMedicine, UNIT_ONE, isSyringe, VIAL_AMP, SYRINGE_EXCLUDE, isoDate, isDraftStale, rememberChart, recallChart, rememberPills, recallPills, forgetChartCopies, locationBody, pillChanges } from './helpers.js'
 import ConfirmDialog from './components/ConfirmDialog.jsx'
 import TemplatesDialog from './components/TemplatesDialog.jsx'
@@ -884,7 +885,8 @@ function App() {
   // Naming a patient seeds the per-patient supplies for that row. Only on the empty -> named
   // transition, so clearing a seeded cell by hand and then correcting the spelling of the
   // name does not silently put the 1 back.
-  const setPatientName = useCallback((rowIndex, value) => {
+  const setPatientName = useCallback((rowIndex, rawValue) => {
+    const value = stripInvisible(rawValue) // a name with a hidden character in it prints broken and matches no other spelling
     if (patientNames[rowIndex] !== value) noteChartEdit()
     const wasEmpty = !patientNames[rowIndex]?.trim()
     setPatientNames((current) => current.map((patient, index) => index === rowIndex ? value : patient))
