@@ -589,6 +589,11 @@ export const RENAL_EQUATIONS = {
 // meets, or the HD line.
 export const renalGuidance = (rule, crcl, onHd) => (onHd ? rule.hd : (rule.steps.find(([min]) => crcl >= min) || rule.steps[rule.steps.length - 1])[1])
 
+// What to show for a caught failure: the message of an error the app threw itself (the server's
+// own Arabic text), never the browser's — a dropped connection is a TypeError («Load failed»,
+// «Failed to fetch»), an HTML error page from the host a SyntaxError, a timeout an AbortError.
+export const failureText = (error, fallback) => (error?.name === 'Error' && error.message ? error.message : fallback)
+
 export const isoDate = (value) => {
   const date = new Date(value)
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`

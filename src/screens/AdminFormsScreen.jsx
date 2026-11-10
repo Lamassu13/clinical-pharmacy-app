@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { apiUrl } from '../constants.js'
-import { isoDate } from '../helpers.js'
+import { isoDate, failureText } from '../helpers.js'
 import { DRUG_REQUESTS } from '../../shared/drug-requests.js'
 import { readFollowup, keepFollowup, clearFollowup } from '../followupCache.js'
 
@@ -52,7 +52,7 @@ export default function AdminFormsScreen({ adminHeader, isExpired, onOpenForm })
         if (!response.ok) throw new Error(result.message)
         if (!cancelled) { setRows(result.rows); setMore(result.more); setHealth(result.health); keepFollowup(days, result.rows, result.more, result.health) }
       })
-      .catch((caught) => { if (!cancelled) { setRows(null); setError(caught.message || 'تعذّر تحميل المتابعة — تحقّق من الاتصال وحاول مرة أخرى.') } })
+      .catch((caught) => { if (!cancelled) { setRows(null); setError(failureText(caught, 'تعذّر تحميل المتابعة — تحقّق من الاتصال وحاول مرة أخرى.')) } })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [days, reload, today, isExpired])
@@ -66,7 +66,7 @@ export default function AdminFormsScreen({ adminHeader, isExpired, onOpenForm })
       if (!response.ok) throw new Error(result.message)
       setHealth(result.health)
       clearFollowup() // the kept answer carries the old verdicts
-    } catch (caught) { setCheckError(caught.message || 'تعذّر الفحص — تحقّق من الاتصال وحاول مرة أخرى.') } finally { setChecking(false) }
+    } catch (caught) { setCheckError(failureText(caught, 'تعذّر الفحص — تحقّق من الاتصال وحاول مرة أخرى.')) } finally { setChecking(false) }
   }
   const findMissing = async () => {
     setMissingBusy(true); setMissingError('')
@@ -76,7 +76,7 @@ export default function AdminFormsScreen({ adminHeader, isExpired, onOpenForm })
       const result = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(result.message)
       setMissing({ kind: missingKind, days, patients: result.patients, more: result.more })
-    } catch (caught) { setMissingError(caught.message || 'تعذّر البحث — تحقّق من الاتصال وحاول مرة أخرى.') } finally { setMissingBusy(false) }
+    } catch (caught) { setMissingError(failureText(caught, 'تعذّر البحث — تحقّق من الاتصال وحاول مرة أخرى.')) } finally { setMissingBusy(false) }
   }
 
   const shown = (rows || []).filter((row) => (!state || row.state === state) && (!kind || row.kind === kind))

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { roleLabels, PATIENT_ROWS, CHART_COLUMNS, MAX_CHART_COLUMNS, apiUrl, floors, specialWards } from './constants.js'
-import { interactionsForChart, applyTemplateColumns,yesterdaySchedules, mergePreviousDayDoses, addPatientToChart, mergeChartSnapshots, diffMergeOutcome, addOfflineRows, looksWiped, chartDiffers, mergeKeyedSnapshots, diffKeyedMergeOutcome, parseChartRows, toEnglishDigits, medicineKey, patientNameKey, nearestMedicine, UNIT_ONE, isSyringe, VIAL_AMP, SYRINGE_EXCLUDE, isoDate, isDraftStale, rememberChart, recallChart, rememberPills, recallPills, forgetChartCopies, locationBody, pillChanges } from './helpers.js'
+import { failureText, interactionsForChart, applyTemplateColumns,yesterdaySchedules, mergePreviousDayDoses, addPatientToChart, mergeChartSnapshots, diffMergeOutcome, addOfflineRows, looksWiped, chartDiffers, mergeKeyedSnapshots, diffKeyedMergeOutcome, parseChartRows, toEnglishDigits, medicineKey, patientNameKey, nearestMedicine, UNIT_ONE, isSyringe, VIAL_AMP, SYRINGE_EXCLUDE, isoDate, isDraftStale, rememberChart, recallChart, rememberPills, recallPills, forgetChartCopies, locationBody, pillChanges } from './helpers.js'
 import ConfirmDialog from './components/ConfirmDialog.jsx'
 import TemplatesDialog from './components/TemplatesDialog.jsx'
 import AppHeader from './components/AppHeader.jsx'
@@ -282,6 +282,25 @@ function App() {
     forgetChartCopies()
     try { await caches.delete('cpa-api-v1') } catch { /* Cache API unavailable — nothing cached */ }
   }, [])
+  // Sign-out on the server. A sign-out it never heard (no signal, a failed request) leaves the
+  // session cookie valid: the next online load of this shared iPad would sign the same person
+  // back in. So an unconfirmed one is remembered on the device and finished before anything else
+  // on the next load (the boot effect); a new sign-in replaces the session and clears it.
+  // Remembered BEFORE the request, so an app closed while it hangs on a weak link is covered too,
+  // and lifted only by the server's own answer. The request is given 8 s, not the browser's minute.
+  const signedInSinceBootRef = useRef(false)
+  const endServerSession = useCallback(async () => {
+    try { storage.setItem('cpa-logout-pending', '1') } catch { /* storage unavailable */ }
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 8000)
+    try {
+      const response = await fetch(`${apiUrl}/auth/logout`, { method: 'POST', credentials: 'include', signal: controller.signal })
+      if (!response.ok) return false
+      // (A sign-in made while this was out has its own session: its cleared flag stays cleared either way.)
+      try { storage.removeItem('cpa-logout-pending') } catch { /* storage unavailable */ }
+      return true
+    } catch { return false } finally { clearTimeout(timer) }
+  }, [])
   const today = new Date(`${selectedDate}T12:00:00`).toLocaleDateString('ar-IQ')
   // The weekday the chart is for. Noon-anchored like `today` so it cannot slip a day.
   const todayWeekday = new Date(`${selectedDate}T12:00:00`).toLocaleDateString('ar-IQ', { weekday: 'long' })
@@ -409,12 +428,15 @@ function App() {
         if (nav?.selected) { didAutoLandRef.current = true; const { form, ...target } = nav.selected; setChartFormOpen(Boolean(form)); setWardHub(null); setSelected(target) }
       } catch { /* storage unavailable or corrupt — start on the picker */ }
     }
-    fetch(`${apiUrl}/auth/me`, { credentials: 'include' })
-      .then((response) => response.json())
+    let logoutPending = false
+    try { logoutPending = Boolean(storage.getItem('cpa-logout-pending')) } catch { /* storage unavailable */ }
+    // (Still unreachable: the sign-in card stays, and the identity kept for offline use was already dropped at sign-out.)
+    ;(logoutPending ? endServerSession() : Promise.resolve(true))
+      .then((signedOut) => (signedOut ? fetch(`${apiUrl}/auth/me`, { credentials: 'include' }).then((response) => response.json()) : { user: null }))
       .then((result) => {
         // The server is reachable and this session is gone (lapsed overnight, not logged out):
         // don't let a later offline cold start bring the old identity or its data back.
-        if (!result.user) { forgetSessionData(); return }
+        if (!result.user) { if (!signedInSinceBootRef.current) forgetSessionData(); return }
         setCurrentUser(result.user)
         setIsLoggedIn(true)
         try { storage.setItem('cpa-session-cache', JSON.stringify(result.user)) } catch { /* best effort */ }
@@ -437,7 +459,7 @@ function App() {
         } catch { /* storage unavailable or corrupt — start on the picker */ }
       })
       .finally(() => { navRestoreAttemptedRef.current = true })
-  }, [forgetSessionData])
+  }, [endServerSession, forgetSessionData])
 
   const submitLogin = async (event) => {
     event.preventDefault()
@@ -454,6 +476,9 @@ function App() {
       setCurrentUser(result.user)
       setIsLoggedIn(true)
       // Without this a fresh sign-in could not reopen offline until an online reload had run /auth/me.
+      signedInSinceBootRef.current = true
+      // First and on its own: a full device (the next line throwing) must not leave a sign-out pending against this new session.
+      try { storage.removeItem('cpa-logout-pending') } catch { /* storage unavailable */ }
       try { storage.setItem('cpa-session-cache', JSON.stringify(result.user)) } catch { /* best effort */ }
       // A manual login doesn't go through the /auth/me effect above, so if that background
       // check is still in flight (or never settles), its ref would otherwise keep gating the
@@ -462,7 +487,7 @@ function App() {
       navRestoreAttemptedRef.current = true
       // Back on the same screen with the same unsaved chart; the autosave effect resumes.
       setSessionExpired(false)
-    } catch (error) { setLoginError(error.message || 'تعذر الاتصال بالخادم') } finally { setBusy(false) }
+    } catch (error) { setLoginError(failureText(error, 'تعذر الاتصال بالخادم')) } finally { setBusy(false) }
   }
   const submitRegister = async (event) => {
     event.preventDefault()
@@ -476,7 +501,7 @@ function App() {
       if (!response.ok) throw new Error(result.message || 'تعذر إنشاء الحساب')
       setRegisterSuccess(result.message || 'تم إنشاء الحساب، بانتظار موافقة المدير')
       setRegisterForm({ fullName: '', username: '', phone: '', email: '', fingerprintNumber: '', password: '' })
-    } catch (error) { setRegisterError(error.message || 'تعذر الاتصال بالخادم') } finally { setBusy(false) }
+    } catch (error) { setRegisterError(failureText(error, 'تعذر الاتصال بالخادم')) } finally { setBusy(false) }
   }
   const openProfile = useCallback(() => {
     setProfileForm({ fullName: currentUser?.fullName || '', email: currentUser?.email || '', phone: currentUser?.phone || '' })
@@ -496,7 +521,7 @@ function App() {
       setCurrentUser(result.user)
       try { storage.setItem('cpa-session-cache', JSON.stringify(result.user)) } catch { /* best effort */ }
       setProfileSuccess('تم حفظ التغييرات')
-    } catch (error) { setProfileError(error.message || 'تعذر الاتصال بالخادم') } finally { setBusy(false) }
+    } catch (error) { setProfileError(failureText(error, 'تعذر الاتصال بالخادم')) } finally { setBusy(false) }
   }
   const loadRegistrations = useCallback(async () => {
     setRegistrationsError('')
@@ -507,7 +532,7 @@ function App() {
       if (!response.ok) throw new Error(result.message || 'تعذر جلب الطلبات')
       setRegistrations(result.registrations)
       setPendingRequests(result.registrations.length)
-    } catch (error) { setRegistrationsError(error.message || 'تعذر الاتصال بالخادم') }
+    } catch (error) { setRegistrationsError(failureText(error, 'تعذر الاتصال بالخادم')) }
   }, [isExpired])
   // Just the number, for the badge in the admin menu — asked at sign-in and each time the menu opens.
   const refreshPendingRequests = useCallback(async () => {
@@ -524,7 +549,7 @@ function App() {
       const result = await response.json()
       if (!response.ok) throw new Error(result.message || 'تعذر جلب المستخدمين')
       setAllUsers(result.users)
-    } catch (error) { setRegistrationsError(error.message || 'تعذر الاتصال بالخادم') }
+    } catch (error) { setRegistrationsError(failureText(error, 'تعذر الاتصال بالخادم')) }
   }, [isExpired])
   const approveRegistration = useCallback(async (id) => {
     const location = locationBody(pendingFloor[id])
@@ -539,7 +564,7 @@ function App() {
       setPendingRequests((count) => Math.max(0, count - 1))
       setAdminSuccess('تم قبول الطلب وتفعيل الحساب')
       loadUsers()
-    } catch (error) { setRegistrationsError(error.message || 'تعذر الاتصال بالخادم') } finally { setBusy(false) }
+    } catch (error) { setRegistrationsError(failureText(error, 'تعذر الاتصال بالخادم')) } finally { setBusy(false) }
   }, [pendingFloor, loadUsers, isExpired])
   const rejectRegistration = useCallback(async (id) => {
     setRegistrationsError(''); setAdminSuccess(''); setBusy(true)
@@ -551,7 +576,7 @@ function App() {
       setRegistrations((current) => (current ?? []).filter((item) => item.id !== id))
       setPendingRequests((count) => Math.max(0, count - 1))
       setAdminSuccess('تم رفض الطلب')
-    } catch (error) { setRegistrationsError(error.message || 'تعذر الاتصال بالخادم') } finally { setBusy(false) }
+    } catch (error) { setRegistrationsError(failureText(error, 'تعذر الاتصال بالخادم')) } finally { setBusy(false) }
   }, [isExpired])
   const assignLocationToUser = useCallback(async (id, value, name) => {
     const location = locationBody(value)
@@ -567,7 +592,7 @@ function App() {
       if (!response.ok) throw new Error(result.message || 'تعذر تعيين الموقع')
       setAllUsers((current) => current.map((user) => user.id === id ? { ...user, floors: location.floor ? [location.floor] : [], wards: location.ward ? [location.ward] : [] } : user))
       setAdminSuccess('تم تحديث الموقع — سيسجّل المستخدم الدخول من جديد')
-    } catch (error) { setRegistrationsError(error.message || 'تعذر الاتصال بالخادم') } finally { setBusy(false) }
+    } catch (error) { setRegistrationsError(failureText(error, 'تعذر الاتصال بالخادم')) } finally { setBusy(false) }
   }, [askConfirm, isExpired])
   const changeUserRole = useCallback(async (id, role, name) => {
     if (!(await askConfirm(`تغيير دور "${name}" إلى "${roleLabels[role]}"؟ سيُطلب منه تسجيل الدخول من جديد.`))) return
@@ -579,7 +604,7 @@ function App() {
       if (!response.ok) throw new Error(result.message || 'تعذر تغيير الدور')
       setAllUsers((current) => current.map((user) => user.id === id ? { ...user, role } : user))
       setAdminSuccess(`أصبح "${name}" ${roleLabels[role]}`)
-    } catch (error) { setRegistrationsError(error.message || 'تعذر الاتصال بالخادم') } finally { setBusy(false) }
+    } catch (error) { setRegistrationsError(failureText(error, 'تعذر الاتصال بالخادم')) } finally { setBusy(false) }
   }, [askConfirm, isExpired])
   const deleteUser = useCallback(async (id, name) => {
     if (!(await askConfirm(`حذف المستخدم "${name}" نهائيًا؟`, { danger: true }))) return
@@ -591,7 +616,7 @@ function App() {
       if (!response.ok) throw new Error(result.message || 'تعذر حذف المستخدم')
       setAllUsers((current) => current.filter((user) => user.id !== id))
       setAdminSuccess(`تم حذف المستخدم "${name}"`)
-    } catch (error) { setRegistrationsError(error.message || 'تعذر الاتصال بالخادم') } finally { setBusy(false) }
+    } catch (error) { setRegistrationsError(failureText(error, 'تعذر الاتصال بالخادم')) } finally { setBusy(false) }
   }, [askConfirm, isExpired])
   const loadMedicines = useCallback(async () => {
     try {
@@ -622,7 +647,7 @@ function App() {
       if (!response.ok) throw new Error(result.message || 'تعذر تحديث الدواء')
       setAdminMedicines((current) => current.map((entry) => entry.id === item.id ? result.medicine : entry))
       return true
-    } catch (error) { setRegistrationsError(error.message || 'تعذر الاتصال بالخادم'); return false } finally { setBusy(false) }
+    } catch (error) { setRegistrationsError(failureText(error, 'تعذر الاتصال بالخادم')); return false } finally { setBusy(false) }
   }, [askConfirm, isExpired])
   const removeMedicine = useCallback(async (id, name) => {
     if (!(await askConfirm(`حذف «${name}» من قائمة الأدوية؟`, { danger: true, confirmLabel: 'حذف', detail: 'يبقى الاسم على الجارتات السابقة، ويختفي من قائمة الاختيار للجارتات الجديدة.' }))) return false
@@ -635,7 +660,7 @@ function App() {
       setAdminMedicines((current) => (current ?? []).filter((item) => item.id !== id))
       setAdminSuccess(`تم حذف «${name}»`)
       return true
-    } catch (error) { setRegistrationsError(error.message || 'تعذر الاتصال بالخادم'); return false } finally { setBusy(false) }
+    } catch (error) { setRegistrationsError(failureText(error, 'تعذر الاتصال بالخادم')); return false } finally { setBusy(false) }
   }, [askConfirm, isExpired])
   const togglePurgeTarget = useCallback((key) => setPurgeTargets((current) => {
     const next = new Set(current)
@@ -673,7 +698,7 @@ function App() {
       setAdminSuccess(`تم مسح ${done.join(' و')}`)
       setPurgeTargets(new Set())
       setPurgeAll(false)
-    } catch (error) { if (!expired) setRegistrationsError(error.message || 'تعذر الاتصال بالخادم') } finally { setBusy(false) }
+    } catch (error) { if (!expired) setRegistrationsError(failureText(error, 'تعذر الاتصال بالخادم')) } finally { setBusy(false) }
   }, [askConfirm, isExpired, purgeAll, purgeFrom, purgeKinds, purgeTo, purgeTargets])
   useEffect(() => {
     // Not while the sign-in card is up. Signing back in re-runs this, so a list whose load the
@@ -727,7 +752,7 @@ function App() {
       }
       if (adminView === 'medicines') loadMedicines()
     } catch (error) {
-      setRegistrationsError(error.message || 'تعذر الاتصال بالخادم')
+      setRegistrationsError(failureText(error, 'تعذر الاتصال بالخادم'))
     } finally { setBusy(false) }
   }
   // Rewrite one row's syringe cells to the vial/amp total that row now carries. Called only
@@ -1372,7 +1397,7 @@ function App() {
     if (selected?.mode === 'pills') flushPills(); else flushChart()
     const unsaved = Boolean(selected) && (selected.mode === 'pills' ? pillsSaveStatus : chartSaveStatus) !== 'saved'
     if (unsaved && !(await askConfirm('لا يزال هناك ما لم يُحفَظ على الخادم. إن سجّلت الخروج الآن يبقى على هذا الجهاز ويُعاد حفظه فور دخولك من جديد. متابعة تسجيل الخروج؟'))) return
-    try { await fetch(`${apiUrl}/auth/logout`, { method: 'POST', credentials: 'include' }) } catch { /* ignore network errors on logout */ }
+    await endServerSession()
     didAutoLandRef.current = false
     try { sessionStorage.removeItem('cpa-nav') } catch { /* storage unavailable */ }
     // Ward iPads are shared between pharmacists — the next person to sign in on this device
@@ -1394,7 +1419,7 @@ function App() {
     setRegisterForm({ fullName: '', username: '', phone: '', email: '', fingerprintNumber: '', password: '' })
     setAdminSuccess('')
     setRegistrationsError('')
-  }, [selected, flushChart, flushPills, chartSaveStatus, pillsSaveStatus, askConfirm, forgetSessionData])
+  }, [selected, flushChart, flushPills, chartSaveStatus, pillsSaveStatus, askConfirm, endServerSession, forgetSessionData])
   // There is no router, so the tab title is the only cue for which screen is open.
   useEffect(() => {
     const base = 'وحدة الصيدلة السريرية'

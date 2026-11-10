@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { apiUrl } from '../constants.js'
+import { failureText } from '../helpers.js'
 
 export default function useAnnouncements({ isLoggedIn, sessionExpired, floor, selected, adminView, isExpired, askConfirm }) {
   // null until the first load finishes, so the widget shows a skeleton rather than "no announcements".
@@ -32,7 +33,7 @@ export default function useAnnouncements({ isLoggedIn, sessionExpired, floor, se
       if (!response.ok) throw new Error(result.message || 'تعذر نشر الإعلان')
       setAnnouncements((current) => [result.announcement, ...(current ?? [])].slice(0, 5))
       setAnnouncementDraft('')
-    } catch (error) { setAnnouncementError(error.message || 'تعذر الاتصال بالخادم') } finally { setAnnouncementBusy(false) }
+    } catch (error) { setAnnouncementError(failureText(error, 'تعذر الاتصال بالخادم')) } finally { setAnnouncementBusy(false) }
   }, [announcementDraft, isExpired])
   const editAnnouncement = useCallback(async (id, message) => {
     const text = message.trim()
