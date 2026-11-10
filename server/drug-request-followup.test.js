@@ -252,6 +252,16 @@ test('dashboard: a floor user gets their own wards’ forms still to follow up t
   // A user with no assignment has nothing pending.
   const nobody = await loginAs({ role: 'user' })
   assert.deepEqual((await nobody.get(`/api/dashboard?date=${today}`)).body.formsPending, { total: 0, wards: [] })
+  // One floor's own count, for whoever may open that floor: a manager any floor, a floor user theirs only.
+  const pending = (client, floor, date = today) => client.get(`/api/drug-requests/pending?floor=${floor}&date=${date}`)
+  assert.deepEqual((await pending(manager, FLOOR)).body, own)
+  assert.deepEqual((await pending(manager, OTHER.floor)).body, { total: 1, wards: [{ floor: OTHER.floor, ward: OTHER.ward, n: 1 }] })
+  assert.deepEqual((await pending(manager, 3)).body, { total: 0, wards: [] })
+  assert.deepEqual((await pending(mine, FLOOR)).body, own)
+  assert.equal((await pending(mine, OTHER.floor)).status, 403)
+  assert.equal((await pending(manager, 99)).status, 400)
+  assert.equal((await pending(manager, FLOOR, 'nope')).status, 400)
+  assert.equal((await pending(new ApiClient(baseUrl), FLOOR)).status, 401)
 })
 
 test('albumin «Not indicated»: not sent to Google, not an alert, not a follow-up item — and listed under «Not indicated» on the albumin follow-up', async () => {

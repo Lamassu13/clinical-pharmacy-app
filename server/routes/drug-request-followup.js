@@ -2,7 +2,7 @@ import express from 'express'
 import { query } from '../db.js'
 import { requireAuth, requireManager } from '../auth.js'
 import { checkAll, readHealth, refreshIfStale } from '../google-form-health.js'
-import { isIsoDate } from '../validation.js'
+import { isIsoDate, clampInt, canAccessLocation, ALLOWED_FLOORS } from '../validation.js'
 import { readLocation } from './chart.js'
 import { chartIds } from './drug-requests.js'
 import { wardKeyOf } from '../meropenem.js'
@@ -165,5 +165,15 @@ export const pendingFormsFor = async (user, date) => {
     .sort((a, b) => (a.floor ?? 99) - (b.floor ?? 99) || a.ward.localeCompare(b.ward, 'ar'))
   return { total: list.reduce((sum, item) => sum + item.n, 0), wards: list }
 }
+
+// The same count for one floor, for anyone who may open it: { total, wards }. A manager's floor page asks this — their dashboard
+// answer carries no `formsPending` (it would be every ward of the hospital) and is not asked again inside a floor.
+router.get('/drug-requests/pending', requireAuth, async (request, response) => {
+  const floor = clampInt(request.query.floor, 2, 10)
+  if (!isIsoDate(request.query.date)) return response.status(400).json({ message: 'التاريخ مطلوب' })
+  if (floor === null || !ALLOWED_FLOORS.includes(floor)) return response.status(400).json({ message: 'الطابق غير مسموح' })
+  if (!canAccessLocation(request.session.user, floor, null)) return response.status(403).json({ message: 'لا تملك صلاحية لهذا الطابق' })
+  response.json(await pendingFormsFor({ assignedFloor: floor }, request.query.date))
+})
 
 export default router

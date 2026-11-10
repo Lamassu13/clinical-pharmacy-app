@@ -1,7 +1,7 @@
 import { Glyph } from './ToolbarIcons.jsx'
 import { formsWord } from '../helpers.js'
 
-// The alert for a floor user: today's request forms still to follow up (not sent to the ministry's Google Form, or lacking what they
+// The alert on the floor pages (a floor user's own wards; for a manager, the floor that is open): today's request forms still to follow up (not sent to the ministry's Google Form, or lacking what they
 // need), per ward they can open — a tap opens that ward's page, where the forms are. It reads what the dashboard answer already carries
 // (`formsPending`, server/routes/drug-request-followup.js), so it costs no request. `floor`: show only that floor's wards (the ward list of
 // a floor); without it, every ward (the floor/ward grid, where the app lands). Nothing is shown when nothing is pending.
