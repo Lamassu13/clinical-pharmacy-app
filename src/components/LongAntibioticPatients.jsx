@@ -38,7 +38,7 @@ export default function LongAntibioticPatients({ date, floor = null, isExpired }
       : <span>جارٍ التحميل…</span>}
   </div>
   if (!list.patients.length) return <div className="long-abx long-abx--note"><strong>{title}</strong><span>لا يوجد مرضى</span></div>
-  return <details className="long-abx" open={list.patients.length <= 5}>
+  return <details className="long-abx">
     <summary>
       <span className="long-abx-count">{list.patients.length}</span>
       <strong>{title}</strong>

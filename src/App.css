@@ -434,6 +434,24 @@ button.topbar-user:hover { color: var(--primary); }
 .date-chip span { display: block; color: var(--text-muted); font-size: var(--text-xs); }
 .date-chip strong { display: block; color: var(--heading); font-size: var(--text-lg); }
 
+/* A floor's page (WardPickerScreen): its wards first — the job of the page — and the tools a step aside, below them. */
+.ward-picker-sub { margin: var(--space-1) 0 0; color: var(--text-muted); font-size: var(--text-sm); font-weight: 700; }
+.ward-picker .section-heading { margin-bottom: var(--space-5); }
+.ward-picker .location-grid { margin-bottom: var(--space-6); }
+.ward-picker .location-card { min-height: 76px; }
+.ward-picker .location-card strong { font-size: var(--text-lg); }
+.ward-tools { display: grid; gap: var(--space-3); margin-bottom: var(--space-6); max-width: 760px; }
+.ward-tools > *, .ward-tools .patient-search { margin: 0; }
+.tool-link {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); width: 100%; min-height: 52px;
+  padding: var(--space-3) var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-md);
+  background: var(--surface); box-shadow: var(--shadow-xs); color: var(--heading);
+  font: inherit; font-size: var(--text-base); font-weight: 700; text-align: start; cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+}
+.tool-link:hover, .tool-link:focus-visible { border-color: var(--green-300); background: var(--green-50); }
+.tool-link:active { transform: translateY(1px); }
+.tool-link .arrow { display: inline-flex; color: var(--primary); }
 .location-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr)); gap: var(--space-3); }
 /* Manager view: finished floors are folded out of the way so the grid leads with what still
    needs pushing. Spans the whole grid; expands to the same card grid inside. */
