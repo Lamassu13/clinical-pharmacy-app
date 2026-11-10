@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { apiUrl } from '../constants.js'
 import { isoDate } from '../helpers.js'
 import { WardGlyph, ChevronStart, CardStatus } from '../components/WardGlyph.jsx'
+import { Glyph } from '../components/ToolbarIcons.jsx'
 import DashboardWidgets from '../components/DashboardWidgets.jsx'
 import PatientSearch from '../components/PatientSearch.jsx'
 import LongAntibioticPatients from '../components/LongAntibioticPatients.jsx'
@@ -11,7 +12,7 @@ import FormsPendingNote from '../components/FormsPendingNote.jsx'
 // from the floor grid into a floor doesn't feel like a different screen. The floor number
 // is in the heading, so the cards don't repeat it — each carries the ward glyph instead.
 export default function WardPickerScreen({
-  onOpenAlbuminFollowUp, floor, today, selectedDate, isExpired, dashboard, dashboardError, onBack, onOpen, onOpenWard,
+  onOpenAlbuminFollowUp, floor, today, selectedDate, isExpired, dashboard, dashboardError, onOpen, onOpenWard,
   announcements, isManager, announcementDraft, setAnnouncementDraft, announcementError, announcementBusy,
   onPostAnnouncement, onEditAnnouncement, onDeleteAnnouncement, onDeleteAllAnnouncements,
 }) {
@@ -37,18 +38,17 @@ export default function WardPickerScreen({
   const formsPending = isManager ? (floorPending?.floor === floor.number ? floorPending : null) : dashboard?.formsPending
   const pendingByWard = new Map((formsPending?.wards ?? []).filter((item) => item.floor === floor.number).map((item) => [item.ward, item.n]))
 
-  return <section className="dashboard">
-    <button className="back-button" onClick={onBack}>→ العودة للطوابق</button>
-    <div className="section-heading">
-      <div><h1>الطابق {floor.number}</h1></div>
-      <div className="section-heading-actions">
-        {today && <div className="date-chip"><span>اليوم</span><strong>{today}</strong></div>}
+  // The ward cards come first: they are what this page is for, and every tool below is a step aside from them. How many have
+  // begun is said in words under the heading (shown once the dashboard answer is in).
+  return <section className="dashboard ward-picker">
+    <div className="section-heading section-heading--date">
+      <div>
+        <h1>الطابق {floor.number}</h1>
+        {dashboard && <p className="ward-picker-sub">{startedWards.size === 0 ? 'لم تبدأ أي ردهة اليوم' : `بدأت ${startedWards.size} من ${floor.wards.length} ردهات اليوم`}</p>}
       </div>
+      {today && <div className="date-chip"><Glyph icon="today" /><span>اليوم</span><strong>{today}</strong></div>}
     </div>
-    <button type="button" className="secondary-button albumin-follow-link" onClick={onOpenAlbuminFollowUp}>متابعة الالبومين</button>
     <FormsPendingNote pending={formsPending} floor={floor.number} onOpenWard={onOpenWard} />
-    <LongAntibioticPatients date={selectedDate} floor={floor.number} isExpired={isExpired} />
-    <PatientSearch floor={floor.number} date={selectedDate} onOpen={onOpen} isExpired={isExpired} />
     <div className="location-grid">{floor.wards.map((ward) => {
       const started = startedWards.has(ward)
       const pending = pendingByWard.get(ward)
@@ -60,6 +60,13 @@ export default function WardPickerScreen({
         <span className="arrow"><ChevronStart /></span>
       </button>
     })}</div>
+    <div className="ward-tools">
+      <button type="button" className="tool-link" onClick={onOpenAlbuminFollowUp}>
+        <span className="tool-link-text">متابعة الالبومين</span><span className="arrow"><ChevronStart /></span>
+      </button>
+      <LongAntibioticPatients date={selectedDate} floor={floor.number} isExpired={isExpired} />
+      <PatientSearch floor={floor.number} date={selectedDate} onOpen={onOpen} isExpired={isExpired} />
+    </div>
     {!isManager && <div className="dashboard-announcements">
       <DashboardWidgets
         loading={announcements === null} error={false}
