@@ -1,3 +1,6 @@
+import { useEffect, useState } from 'react'
+import { apiUrl } from '../constants.js'
+import { isoDate } from '../helpers.js'
 import { WardGlyph, ChevronStart, CardStatus } from '../components/WardGlyph.jsx'
 import DashboardWidgets from '../components/DashboardWidgets.jsx'
 import PatientSearch from '../components/PatientSearch.jsx'
@@ -18,8 +21,21 @@ export default function WardPickerScreen({
       .map((item) => item.ward),
   )
 
-  // Today's forms still to follow up, per ward of this floor (a floor user's; see FormsPendingNote).
-  const pendingByWard = new Map((dashboard?.formsPending?.wards ?? []).filter((item) => item.floor === floor.number).map((item) => [item.ward, item.n]))
+  // Today's forms still to follow up, per ward of this floor (see FormsPendingNote). A floor user's come with the dashboard answer.
+  // A manager's answer has none (and is not asked again inside a floor), so this page asks for the floor's own, each time it is
+  // opened: coming back from a ward where a form was just sent shows it gone.
+  const [floorPending, setFloorPending] = useState(null)
+  useEffect(() => {
+    if (!isManager) return undefined
+    let cancelled = false
+    fetch(`${apiUrl}/drug-requests/pending?${new URLSearchParams({ floor: floor.number, date: isoDate(new Date()) })}`, { credentials: 'include' })
+      .then((response) => { isExpired?.(response); return response.ok ? response.json() : null })
+      .then((result) => { if (!cancelled && result) setFloorPending({ floor: floor.number, ...result }) })
+      .catch(() => { /* no alert rather than a wrong one */ })
+    return () => { cancelled = true }
+  }, [isManager, floor.number, isExpired])
+  const formsPending = isManager ? (floorPending?.floor === floor.number ? floorPending : null) : dashboard?.formsPending
+  const pendingByWard = new Map((formsPending?.wards ?? []).filter((item) => item.floor === floor.number).map((item) => [item.ward, item.n]))
 
   return <section className="dashboard">
     <button className="back-button" onClick={onBack}>→ العودة للطوابق</button>
@@ -30,7 +46,7 @@ export default function WardPickerScreen({
       </div>
     </div>
     <button type="button" className="secondary-button albumin-follow-link" onClick={onOpenAlbuminFollowUp}>متابعة الالبومين</button>
-    {!isManager && <FormsPendingNote pending={dashboard?.formsPending} floor={floor.number} onOpenWard={onOpenWard} />}
+    <FormsPendingNote pending={formsPending} floor={floor.number} onOpenWard={onOpenWard} />
     <LongAntibioticPatients date={selectedDate} floor={floor.number} isExpired={isExpired} />
     <PatientSearch floor={floor.number} date={selectedDate} onOpen={onOpen} isExpired={isExpired} />
     <div className="location-grid">{floor.wards.map((ward) => {
