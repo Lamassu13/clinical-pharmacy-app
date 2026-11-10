@@ -2717,6 +2717,12 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
   .bottom-nav .tb-glyph { width: 26px; height: 26px; opacity: 1; }
   .bottom-nav span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .bottom-nav button { position: relative; z-index: 1; }
+  /* While a field is focused the bar slides off the bottom (AppHeader.jsx): it is neither in the way of what is typed nor drawn over the keyboard. */
+  .bottom-nav { transition: transform .24s var(--ease), opacity .2s var(--ease); }
+  .bottom-nav[data-typing] { transform: translateY(calc(100% + 28px)); opacity: 0; pointer-events: none; }
+  /* The chart's grid and the tall tables scroll inside a box sized from the screen; with the bar over the bottom of the screen their box
+     ends above it, so no row is ever left under the bar. */
+  body.has-bottom-nav .chart-grid, body.has-bottom-nav .table-frame { max-height: calc(100vh - 240px - 96px); max-height: calc(100svh - 240px - 96px); }
   .bottom-nav button[aria-current="page"] { color: var(--heading); }
   /* The raised capsule: one element under the tabs that glides to the open one — a springy overshoot on the way, and it stretches
      while it travels (the inner shape remounts on each change and plays the squish), like the reference. The first place is taken
