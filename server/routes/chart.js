@@ -15,7 +15,7 @@ import { recordChartChanges } from '../chart-history.js'
 import { recordAudit } from '../audit.js'
 import { medicineCatalogue } from '../medicine-catalogue.js'
 import { foldName, foldedSql } from '../name-fold.js'
-import { DAY_LOCKED, isDayLocked, tomorrowInBaghdad } from '../day-lock.js'
+import { DAY_LOCKED, isDayLocked, tomorrowInBaghdad, isOutsideRecentDays, RECENT_DAYS } from '../day-lock.js'
 
 const router = express.Router()
 
@@ -127,32 +127,44 @@ router.post('/charts/purge', requireManager, async (request, response) => {
   const wards = Array.isArray(request.body.wards) ? [...new Set(request.body.wards.filter((w) => SPECIAL_WARDS.includes(w)))] : []
   if (!all && floors.length === 0 && wards.length === 0) return response.status(400).json({ message: 'اختر طابقًا واحدًا على الأقل أو كل الطوابق' })
 
-  const result = all
-    ? await query('DELETE FROM daily_charts WHERE chart_date >= $1 AND chart_date <= $2', [from, to])
-    : await query(
-      `DELETE FROM daily_charts
-       WHERE chart_date >= $1 AND chart_date <= $2
-         AND ward_id IN (SELECT id FROM wards WHERE floor_number = ANY($3::int[]) OR (floor_number IS NULL AND name = ANY($4::text[])))`,
-      [from, to, floors, wards],
+  // All four deletes or none: a failure half-way used to leave the charts gone, their notes and
+  // forms (which name the same patients) kept, and no line in the audit log.
+  const client = await pool.connect()
+  let result
+  try {
+    await client.query('BEGIN')
+    result = all
+      ? await client.query('DELETE FROM daily_charts WHERE chart_date >= $1 AND chart_date <= $2', [from, to])
+      : await client.query(
+        `DELETE FROM daily_charts
+         WHERE chart_date >= $1 AND chart_date <= $2
+           AND ward_id IN (SELECT id FROM wards WHERE floor_number = ANY($3::int[]) OR (floor_number IS NULL AND name = ANY($4::text[])))`,
+        [from, to, floors, wards],
+      )
+    // Handover notes are per ward/day like the charts, and may name patients, so they go too.
+    await client.query(
+      `DELETE FROM ward_notes WHERE note_date BETWEEN $1 AND $2
+         AND ($3::boolean OR split_part(ward_key, '|', 1) = ANY($4::text[]) OR (split_part(ward_key, '|', 1) = '' AND split_part(ward_key, '|', 2) = ANY($5::text[])))`,
+      [from, to, all, floors.map(String), wards],
     )
+    // «استمارة الميرونيم» / «استمارة الالبومين» name the patient too, and belong to their ward/day the same way.
+    await client.query(
+      `DELETE FROM drug_requests WHERE request_date BETWEEN $1 AND $2
+         AND ($3::boolean OR split_part(ward_key, '|', 1) = ANY($4::text[]) OR (split_part(ward_key, '|', 1) = '' AND split_part(ward_key, '|', 2) = ANY($5::text[])))`,
+      [from, to, all, floors.map(String), wards],
+    )
+    // «Albumin follow up» sheets (one per day and floor) hold names and file numbers typed on them: they go with the floor's charts.
+    await client.query(
+      `DELETE FROM albumin_followups WHERE day BETWEEN $1 AND $2 AND ($3::boolean OR split_part(scope, ':', 2) = ANY($4::text[]))`,
+      [from, to, all, floors.map(String)],
+    )
+    await client.query('COMMIT')
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {})
+    console.error('charts purge failed, nothing was deleted:', error)
+    return response.status(500).json({ message: 'تعذر الحذف — لم يُحذف شيء، حاول مرة أخرى.' })
+  } finally { client.release() }
   clearCourseRows('purge')
-  // Handover notes are per ward/day like the charts, and may name patients, so they go too.
-  await query(
-    `DELETE FROM ward_notes WHERE note_date BETWEEN $1 AND $2
-       AND ($3::boolean OR split_part(ward_key, '|', 1) = ANY($4::text[]) OR (split_part(ward_key, '|', 1) = '' AND split_part(ward_key, '|', 2) = ANY($5::text[])))`,
-    [from, to, all, floors.map(String), wards],
-  )
-  // «استمارة الميرونيم» / «استمارة الالبومين» name the patient too, and belong to their ward/day the same way.
-  await query(
-    `DELETE FROM drug_requests WHERE request_date BETWEEN $1 AND $2
-       AND ($3::boolean OR split_part(ward_key, '|', 1) = ANY($4::text[]) OR (split_part(ward_key, '|', 1) = '' AND split_part(ward_key, '|', 2) = ANY($5::text[])))`,
-    [from, to, all, floors.map(String), wards],
-  )
-  // «Albumin follow up» sheets (one per day and floor) hold names and file numbers typed on them: they go with the floor's charts.
-  await query(
-    `DELETE FROM albumin_followups WHERE day BETWEEN $1 AND $2 AND ($3::boolean OR split_part(scope, ':', 2) = ANY($4::text[]))`,
-    [from, to, all, floors.map(String)],
-  )
   await recordAudit(request, 'charts.purged', purgeScope(all, floors, wards), `${from} ← ${to} · حُذف ${result.rowCount} جارت`)
   response.json({ deleted: result.rowCount })
 })
@@ -673,14 +685,20 @@ router.put('/chart', requireAuth, async (request, response) => {
       notifyLater({ roles: MANAGER_ROLES, body: `بدأ الجارت: ${where}${slot === 'extra' ? ' (الجارت الإضافي)' : ''}`, tag: `chart-${chartId}`, ttl: 3600 })
     }
   } catch (error) {
-    await client.query('ROLLBACK')
+    // (A lost connection fails the ROLLBACK too: the answer below must still go out.)
+    await client.query('ROLLBACK').catch(() => {})
     console.error('chart save failed:', error)
     // A foreign-key failure on a column's medicine means the cached catalogue named a medicine
     // deleted behind the app's back; drop it so the client's retry resolves against the table.
     if (error.code === '23503') medicineCatalogue.invalidate()
-    response.status(400).json({ message: 'تعذر حفظ الجارت' })
+    response.status(saveFailureStatus(error)).json({ message: 'تعذر حفظ الجارت' })
   } finally { client.release() }
 })
+
+// What a failed save answers: 400 when Postgres refused the data itself (class 22 bad value, class 23
+// broken constraint), 500 for everything else — a dropped connection, a timeout, a bug. Both are
+// retried by the app; a 400 is reported to the admin at once as a refusal, a 500 only if it lasts.
+export const saveFailureStatus = (error) => (/^2[23]/.test(error?.code || '') ? 400 : 500)
 
 // Deleting a patient's name in the chart pulls every row below it up one. The pill form's
 // dose times and room numbers are keyed by that row number and live only in the database, so
@@ -1069,7 +1087,7 @@ const LONG_COURSE_DAYS = 14
 // edit, so a new name on the card can lag by up to 15 minutes.
 // ponytail: per-process memory, so a restart empties it.
 const LONG_COURSE_TTL_MS = 15 * 60_000
-const longCourseCache = memoizeByKey((date) => computeLongCourses(date), { ttlMs: LONG_COURSE_TTL_MS, max: 3 })
+const longCourseCache = memoizeByKey((date) => computeLongCourses(date), { ttlMs: LONG_COURSE_TTL_MS, max: RECENT_DAYS + 3 })
 export const clearLongCourses = () => longCourseCache.clear()
 // Hospital-wide, computed once per date; a floor request is filtered from the same result.
 export const longCourses = (date) => longCourseCache.get(date, date)
@@ -1114,6 +1132,7 @@ router.get('/antibiotics/long', requireAuth, async (request, response) => {
   if (!isIsoDate(date)) return response.status(400).json({ message: 'التاريخ مطلوب' })
   if (request.query.floor && (floor === null || !ALLOWED_FLOORS.includes(floor))) return response.status(400).json({ message: 'الطابق غير مسموح' })
   if (floor === null ? user.role !== 'admin' && user.role !== 'supervisor' : !canAccessLocation(user, floor, null)) return response.status(403).json({ message: 'لا تملك صلاحية لهذا الطابق' })
+  if (isOutsideRecentDays(user, date)) return response.status(403).json({ message: `تُعرض هذه القائمة لآخر ${RECENT_DAYS} أيام فقط`, outOfRange: true })
   const body = await longCourses(date)
   response.json(floor === null ? body : { ...body, patients: body.patients.filter((patient) => patient.floor === floor) })
 })

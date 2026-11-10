@@ -15,7 +15,7 @@ import {
   DOSE_TIMES, USAGE_METHODS, MAX_NOTE_LENGTH, clampInt, isIsoDate, cleanText,
   normalizeMedicineKey, medicineKeySql, SUPPLY_MATCH, SUPPLY_EXCEPT,
 } from './validation.js'
-import chartRoutes, { resolveChartId, readLocation, readWritableLocation, refuse, clearCourseRows, warmCourseRows } from './routes/chart.js'
+import chartRoutes, { resolveChartId, readLocation, readWritableLocation, refuse, clearCourseRows, warmCourseRows, saveFailureStatus } from './routes/chart.js'
 import treatmentFormsRoutes from './routes/treatment-forms.js'
 import extraPillsRoutes from './routes/extra-pills.js'
 import drugRequestsRoutes from './routes/drug-requests.js'
@@ -871,9 +871,9 @@ app.put('/api/pills', requireAuth, async (request, response) => {
     await client.query('COMMIT')
     response.json({ ok: true })
   } catch (error) {
-    await client.query('ROLLBACK')
+    await client.query('ROLLBACK').catch(() => {})
     console.error('pill save failed:', error)
-    response.status(400).json({ message: 'تعذر حفظ الاستمارة' })
+    response.status(saveFailureStatus(error)).json({ message: 'تعذر حفظ الاستمارة' })
   } finally { client.release() }
 })
 
@@ -883,8 +883,8 @@ app.get('/api/health', (_request, response) => {
   response.json({ ok: true, serverTime: new Date().toISOString() })
 })
 // Readiness — checks the database. Deliberately NOT render.yaml's healthCheckPath; for
-// manual/ops diagnostics only.
-app.get('/api/health/db', async (_request, response) => {
+// manual/ops diagnostics only, so managers only: open to anyone, every call woke the Neon compute.
+app.get('/api/health/db', requireManager, async (_request, response) => {
   try {
     const database = await checkDatabase()
     response.json({ ok: true, database: 'connected', serverTime: database.server_time })

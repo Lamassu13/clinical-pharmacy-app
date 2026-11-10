@@ -101,3 +101,18 @@ test('everything else written per day: refused on another day for a pharmacist, 
   assert.equal((await pharmacist.patch('/api/chart/complete', place(TODAY, { completed: true }))).status, 200)
   assert.equal((await pharmacist.post('/api/drug-requests', place(TODAY, { kind: 'meropenem', name: 'علي حسن', patientId: '501', fields: {} }))).status, 201)
 })
+
+test('the long antibiotic courses: a pharmacist reads the last week up to today; a manager any date', async () => {
+  const pharmacist = await loginAs({ role: 'user', floor: FLOOR })
+  const admin = await loginAs({ role: 'admin' })
+  const daysAgo = (n) => new Date(Date.parse(`${TODAY}T00:00:00Z`) - n * 86400000).toISOString().slice(0, 10)
+  const ask = (client, date, floor = `&floor=${FLOOR}`) => client.get(`/api/antibiotics/long?date=${date}${floor}`)
+  assert.equal((await ask(pharmacist, TODAY)).status, 200)
+  assert.equal((await ask(pharmacist, daysAgo(7))).status, 200)
+  const old = await ask(pharmacist, daysAgo(8))
+  assert.equal(old.status, 403)
+  assert.equal(old.body.outOfRange, true)
+  assert.equal((await ask(pharmacist, TOMORROW)).status, 403)
+  assert.equal((await ask(admin, daysAgo(60), '')).status, 200)
+  assert.equal((await ask(admin, daysAgo(60))).status, 200)
+})
