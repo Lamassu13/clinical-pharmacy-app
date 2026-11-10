@@ -125,3 +125,18 @@ test('extra-pills: DELETE removes the form and its entries; a second delete is 4
   assert.equal((await client.delete(`/api/extra-pills/${id}`)).status, 404)
   assert.equal((await client.put(`/api/extra-pills/${id}`, { patientName: 'x', ...blankEntries })).status, 404)
 })
+
+test('extra-pills: the list is today\'s forms only — a form made on an earlier day does not stay on it, and is kept in the database', async () => {
+  const member = await loginAs({ role: 'user', floor: 9 })
+  const mine = await member.post('/api/extra-pills', { floor: 9, ward: WARD })
+  const today = mine.body.form.id
+  // Two forms of the same ward from earlier days (the hospital's day is Baghdad's: a form made late the evening before still counts as yesterday).
+  const older = async (interval) => (await pool.query(`INSERT INTO extra_pill_forms (floor_number, ward, patient_name, created_at) VALUES (9, $1, 'قديم', NOW() - INTERVAL '${interval}') RETURNING id`, [WARD])).rows[0].id
+  const yesterday = await older('1 day 6 hours')
+  await older('9 days')
+  const listed = (await member.get(`/api/extra-pills?floor=9&ward=${encodeURIComponent(WARD)}`)).body.forms
+  assert.deepEqual(listed.map((form) => form.id), [today])
+  assert.equal((await pool.query('SELECT COUNT(*)::int AS n FROM extra_pill_forms')).rows[0].n, 3) // nothing was deleted
+  // The old one is still reachable by id (an offline edit queued before midnight still lands).
+  assert.equal((await member.put(`/api/extra-pills/${yesterday}`, { patientName: 'ما زال', ...blankEntries })).status, 200)
+})
