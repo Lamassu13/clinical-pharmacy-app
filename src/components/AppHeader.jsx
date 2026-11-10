@@ -147,6 +147,18 @@ function BottomNav({ adminView, isManager, onHome, onMyWard, onNavigate, onOpenP
   // The glass capsule is one element that glides to the open tab (and stretches on the way, like the reference), instead of
   // each tab painting its own: its place is measured from the open tab's button, and moved by CSS.
   const navRef = useRef(null)
+  // The bar steps out of the way while a field is being typed in: on a phone the keyboard and the bar together took the screen the
+  // chart's cell was on. It slides back when the field loses focus (a short wait, so tapping from one field to the next does not flicker).
+  const [typing, setTyping] = useState(false)
+  useEffect(() => {
+    let timer
+    const isField = (element) => Boolean(element) && (/^(INPUT|TEXTAREA|SELECT)$/.test(element.tagName) || element.isContentEditable)
+    const onFocusIn = (event) => { if (isField(event.target)) { clearTimeout(timer); setTyping(true) } }
+    const onFocusOut = () => { clearTimeout(timer); timer = setTimeout(() => setTyping(isField(document.activeElement)), 200) }
+    document.addEventListener('focusin', onFocusIn)
+    document.addEventListener('focusout', onFocusOut)
+    return () => { clearTimeout(timer); document.removeEventListener('focusin', onFocusIn); document.removeEventListener('focusout', onFocusOut) }
+  }, [])
   const activeKey = tabs.find((tab) => tab.active)?.key || ''
   // Each screen draws its own bar, so a tap that opens another screen builds a new one: it starts where the last one's capsule was
   // (`lastGlide`, kept outside React) and glides from there, so the travel is seen across screens too.
@@ -171,7 +183,7 @@ function BottomNav({ adminView, isManager, onHome, onMyWard, onNavigate, onOpenP
     if (document.fonts?.status === 'loading') document.fonts.ready.then(place)
     return () => { cancelAnimationFrame(first); cancelAnimationFrame(second); window.removeEventListener('resize', place) }
   }, [activeKey, tabKeys])
-  return <nav className="bottom-nav" aria-label="التنقل الرئيسي" ref={navRef} data-glide={glide && glideReady ? 'on' : glide ? 'set' : 'off'}>
+  return <nav className="bottom-nav" aria-label="التنقل الرئيسي" ref={navRef} data-typing={typing || undefined} data-glide={glide && glideReady ? 'on' : glide ? 'set' : 'off'}>
     {/* (physical `left`: the place comes from offsetLeft, which counts from the left in either direction) */}
     <span className="bottom-nav-glide" aria-hidden="true" style={glide ? { transform: `translateX(${glide.x}px)`, width: glide.width } : undefined}>
       <i key={activeKey} />
