@@ -1,6 +1,7 @@
 import { Fragment, forwardRef } from 'react'
 import hospitalLogo from '../assets/hospital-logo.png'
 import { PATIENT_ROWS } from '../constants.js'
+import { lastFilledRowOf } from '../helpers.js'
 
 // A dedicated, static render of the chart for export — plain text, no inputs, no scrolling.
 // Captured with html2canvas and dropped into a fixed-size PDF (see exportChartPdf in App.jsx)
@@ -28,15 +29,22 @@ const MARGIN_MM = 10
 // all 41 rows exactly as before.
 const COMPACT_ROWS = 35
 
-const ChartPrintTemplate = forwardRef(function ChartPrintTemplate({ selected, today, todayWeekday, isThursday, patientNames, patientIds = [], columnMedicines, quantities, totals, doubledTotals }, ref) {
+// A chart with a patient past row 41 («+ صف», up to MAX_PATIENT_ROWS) prints on TWO pages — `page` 1 or 2. Page 1 is rows 1–41 with no totals;
+// page 2 repeats the head and carries the rows after the 41st and then the totals (and the Thursday doubled row), which are of all the rows.
+// Both pages use the one row height of a full single page (41 rows), so a second page can never overflow: its rows plus the totals are at most
+// 39 + 2 = 41. A chart that fits 41 rows is one page and unchanged.
+const ChartPrintTemplate = forwardRef(function ChartPrintTemplate({ selected, today, todayWeekday, isThursday, patientNames, patientIds = [], columnMedicines, quantities, totals, doubledTotals, page = 1 }, ref) {
   const footRows = isThursday ? 2 : 1
   const innerHeight = PAGE_HEIGHT_MM - MARGIN_MM * 2
   // A row counts as filled if it has a patient name or any quantity — same rule the live
   // chart grid uses to decide how far a ward's data actually reaches.
-  const lastFilledRow = patientNames.reduce((last, name, index) => (name.trim() || quantities[index]?.some(Boolean) ? index : last), -1)
-  const visibleRows = lastFilledRow + 1 <= COMPACT_ROWS ? COMPACT_ROWS : PATIENT_ROWS
-  const rowMM = (innerHeight - HEAD_MM) / (visibleRows + footRows)
-  const gridTemplateRows = `${HEAD_MM}mm repeat(${visibleRows}, ${rowMM}mm) repeat(${footRows}, ${rowMM}mm)`
+  const lastFilledRow = lastFilledRowOf(patientNames, quantities)
+  const twoPages = lastFilledRow + 1 > PATIENT_ROWS
+  const firstRow = page === 2 ? PATIENT_ROWS : 0
+  const rowCount = twoPages ? (page === 2 ? lastFilledRow + 1 - PATIENT_ROWS : PATIENT_ROWS) : (lastFilledRow + 1 <= COMPACT_ROWS ? COMPACT_ROWS : PATIENT_ROWS)
+  const showFoot = !twoPages || page === 2
+  const rowMM = twoPages ? (innerHeight - HEAD_MM) / PATIENT_ROWS : (innerHeight - HEAD_MM) / (rowCount + footRows)
+  const gridTemplateRows = `${HEAD_MM}mm repeat(${rowCount}, ${rowMM}mm)${showFoot ? ` repeat(${footRows}, ${rowMM}mm)` : ''}`
 
   return <div ref={ref} className="chart-print-template" style={{ gridTemplateRows, gridTemplateColumns: `${NAME_COL_MM}mm repeat(${columnMedicines.length}, 1fr)` }}>
     <div className="cpt-cell cpt-corner">
@@ -47,23 +55,26 @@ const ChartPrintTemplate = forwardRef(function ChartPrintTemplate({ selected, to
       <span>{selected.ward}</span>
       <span>{today}</span>
       <span>{todayWeekday}</span>
+      {twoPages && <span>صفحة {page} من 2</span>}
     </div>
     {columnMedicines.map((name, columnIndex) => <div key={columnIndex} className="cpt-cell cpt-col-head"><span className="cpt-col-head-text">{name}</span></div>)}
 
-    {patientNames.slice(0, visibleRows).map((name, rowIndex) => <Fragment key={rowIndex}>
+    {patientNames.slice(firstRow, firstRow + rowCount).map((name, offset) => { const rowIndex = firstRow + offset; return <Fragment key={rowIndex}>
       {/* One plain text node, as the name alone always was: html2canvas draws a word letter by
           letter (breaking Arabic joining) whenever its measured box splits, which nested spans
           and a mixed Arabic+digits "word" both provoke. The zero-width space keeps the name and
           the ID separate words with no visible gap between them. */}
       <div className="cpt-cell cpt-name">{patientIds[rowIndex] ? `${name}\u200B${patientIds[rowIndex]}` : name}</div>
       {quantities[rowIndex].map((quantity, columnIndex) => <div key={columnIndex} className="cpt-cell cpt-qty">{quantity || ''}</div>)}
-    </Fragment>)}
+    </Fragment> })}
 
-    <div className="cpt-cell cpt-corner cpt-foot-corner">المجموع</div>
-    {totals.map((total, columnIndex) => <div key={`t-${columnIndex}`} className="cpt-cell cpt-qty cpt-total">{total || ''}</div>)}
-    {isThursday && <>
-      <div className="cpt-cell cpt-corner cpt-foot-corner">المجموع المضاعف</div>
-      {doubledTotals.map((total, columnIndex) => <div key={`t2-${columnIndex}`} className="cpt-cell cpt-qty cpt-total">{total || ''}</div>)}
+    {showFoot && <>
+      <div className="cpt-cell cpt-corner cpt-foot-corner">المجموع</div>
+      {totals.map((total, columnIndex) => <div key={`t-${columnIndex}`} className="cpt-cell cpt-qty cpt-total">{total || ''}</div>)}
+      {isThursday && <>
+        <div className="cpt-cell cpt-corner cpt-foot-corner">المجموع المضاعف</div>
+        {doubledTotals.map((total, columnIndex) => <div key={`t2-${columnIndex}`} className="cpt-cell cpt-qty cpt-total">{total || ''}</div>)}
+      </>}
     </>}
   </div>
 })

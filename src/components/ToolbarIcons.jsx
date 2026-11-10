@@ -9,6 +9,12 @@ const ICONS = {
     <path d="M2.8 20.4c0-3.9 3-6.6 6.7-6.6 1.2 0 2.3.3 3.3.8" />
     <circle className="tb-bd" cx="18" cy="16.8" r="4.2" /><path className="tb-bp" d="M18 14.6v4.4M15.8 16.8h4.4" />
   </>,
+  row: <>
+    <rect className="tb-t" x="3.5" y="2.8" width="17" height="14.4" rx="2.2" />
+    <rect x="3.5" y="2.8" width="17" height="14.4" rx="2.2" />
+    <path d="M3.5 8h17M3.5 12.6h17M9.5 2.8v14.4" />
+    <circle className="tb-bd" cx="17.4" cy="18.2" r="4" /><path className="tb-bp" d="M17.4 16.1v4.2M15.3 18.2h4.2" />
+  </>,
   column: <>
     <rect className="tb-t" x="2.8" y="4" width="14.4" height="16" rx="2.2" />
     <path className="tb-t2" d="M2.8 6.2A2.2 2.2 0 0 1 5 4h10a2.2 2.2 0 0 1 2.2 2.2V9H2.8z" />

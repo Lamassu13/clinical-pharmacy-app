@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { PATIENT_ROWS } from '../constants.js'
+import { MAX_PATIENT_ROWS } from '../constants.js'
 import { stripInvisible } from '../../shared/clean-name.js'
 import { medicineKey, medicineMatches, toEnglishDigits } from '../helpers.js'
 
@@ -12,7 +12,7 @@ import { medicineKey, medicineMatches, toEnglishDigits } from '../helpers.js'
 const blankLine = () => ({ id: Math.random().toString(36).slice(2), med: '', qty: '1' })
 
 export default function ChartFormScreen({ dayLocked = false,
-  usedRows, wardLabel, roomLabel, slot, onSlotChange, onClose, medicines, columnMedicines = [], chartReady, lockState, lockHolder, chartSaveStatus, isOnline, loadError,
+  usedRows, totalRows = 0, wardLabel, roomLabel, slot, onSlotChange, onClose, medicines, columnMedicines = [], chartReady, lockState, lockHolder, chartSaveStatus, isOnline, loadError,
   onSubmit, onFindPrevious, askConfirm, onPromptRequests,
 }) {
   const [name, setName] = useState('')
@@ -105,9 +105,10 @@ export default function ChartFormScreen({ dayLocked = false,
       <button type="button" aria-pressed={slot === 'extra'} onClick={() => slot !== 'extra' && onSlotChange('extra')}>الجارت الإضافي</button>
     </div>
 
-    {chartReady && <p className={`entry-form-count${usedRows >= PATIENT_ROWS - 3 ? ' entry-form-count--near' : ''}`} role="status">
-      المرضى في الجارت: <b>{usedRows}</b> من {PATIENT_ROWS}
-      {usedRows >= PATIENT_ROWS ? ' — الجارت ممتلئ، لا يمكن إضافة مريض جديد' : usedRows >= PATIENT_ROWS - 3 ? ` — بقي ${PATIENT_ROWS - usedRows} فقط` : ''}
+    {/* A full chart takes one more row by itself (up to MAX_PATIENT_ROWS), so «full» is that ceiling, not the first page's 41. */}
+    {chartReady && <p className={`entry-form-count${usedRows >= MAX_PATIENT_ROWS - 3 ? ' entry-form-count--near' : ''}`} role="status">
+      المرضى في الجارت: <b>{usedRows}</b> من {Math.max(totalRows, usedRows)}
+      {usedRows >= MAX_PATIENT_ROWS ? ' — الجارت ممتلئ، لا يمكن إضافة مريض جديد' : usedRows >= MAX_PATIENT_ROWS - 3 ? ` — بقي ${MAX_PATIENT_ROWS - usedRows} فقط` : ''}
     </p>}
     {loadError && <p className="form-error" role="alert">تعذر تحميل الجارت — لا يمكن الإضافة الآن.</p>}
     {!loadError && !chartReady && <p className="entry-form-note" role="status">جارٍ تحميل الجارت…</p>}

@@ -19,7 +19,12 @@ export const EXTRA_PILL_FLOORS = [3, 6, 8, 9]
 
 export const ROLE_LABELS = { admin: 'مدير', supervisor: 'مسؤول', user: 'مستخدم' }
 
+// A chart starts with PATIENT_ROWS patient rows — what one printed A4 page holds — and «+ صف» adds blank rows up to
+// MAX_PATIENT_ROWS. Past 41 the printed chart takes a second page, which carries the rows after the 41st and the totals
+// (and the Thursday doubled row): at the first page's row height it holds up to 41 rows, so 80 is 41 + 39 data rows
+// + the two totals rows. server/schema.sql spells the same cap out in its CHECKs.
 export const PATIENT_ROWS = 41
+export const MAX_PATIENT_ROWS = 80
 // Safety ceiling for the chart's manual "+ عمود" (add column).
 export const MAX_CHART_COLUMNS = 80
 // What one note cell of the printed pills sheet holds (26 mm row): ~110 chars at 12px, 150 at

@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS medicines (
 CREATE TABLE IF NOT EXISTS chart_patients (
   id BIGSERIAL PRIMARY KEY,
   chart_id BIGINT NOT NULL REFERENCES daily_charts(id) ON DELETE CASCADE,
-  row_number INTEGER NOT NULL CHECK (row_number BETWEEN 1 AND 41),
+  row_number INTEGER NOT NULL CHECK (row_number BETWEEN 1 AND 80),
   patient_name TEXT NOT NULL DEFAULT '',
   UNIQUE (chart_id, row_number)
 );
@@ -75,7 +75,7 @@ CREATE TABLE IF NOT EXISTS chart_columns (
 
 CREATE TABLE IF NOT EXISTS chart_quantities (
   chart_id BIGINT NOT NULL REFERENCES daily_charts(id) ON DELETE CASCADE,
-  row_number INTEGER NOT NULL CHECK (row_number BETWEEN 1 AND 41),
+  row_number INTEGER NOT NULL CHECK (row_number BETWEEN 1 AND 80),
   column_number INTEGER NOT NULL CHECK (column_number BETWEEN 1 AND 80),
   quantity INTEGER NOT NULL DEFAULT 0 CHECK (quantity >= 0),
   PRIMARY KEY (chart_id, row_number, column_number)
@@ -125,7 +125,7 @@ ALTER TABLE daily_charts ADD COLUMN IF NOT EXISTS completed_by BIGINT REFERENCES
 -- a medicine from the catalogue cascaded away the dose times on every past printed form.
 CREATE TABLE IF NOT EXISTS pill_entries (
   chart_id BIGINT NOT NULL REFERENCES daily_charts(id) ON DELETE CASCADE,
-  patient_row_number INTEGER NOT NULL CHECK (patient_row_number BETWEEN 1 AND 41),
+  patient_row_number INTEGER NOT NULL CHECK (patient_row_number BETWEEN 1 AND 80),
   medicine_key TEXT NOT NULL,
   dose_time TEXT NOT NULL DEFAULT '',
   usage_method TEXT NOT NULL DEFAULT '',
@@ -168,7 +168,7 @@ END $$;
 
 CREATE TABLE IF NOT EXISTS pill_patient_meta (
   chart_id BIGINT NOT NULL REFERENCES daily_charts(id) ON DELETE CASCADE,
-  patient_row_number INTEGER NOT NULL CHECK (patient_row_number BETWEEN 1 AND 41),
+  patient_row_number INTEGER NOT NULL CHECK (patient_row_number BETWEEN 1 AND 80),
   room_number TEXT NOT NULL DEFAULT '',
   PRIMARY KEY (chart_id, patient_row_number)
 );
@@ -178,15 +178,16 @@ CREATE TABLE IF NOT EXISTS pill_patient_meta (
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
 ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin', 'supervisor', 'user'));
 
--- Widen the patient-row cap from 36 to 41 on databases created before this change.
+-- Widen the patient-row cap from 36 to 41, then to 80 («+ صف»: the chart grows past one printed page — shared/options.js MAX_PATIENT_ROWS),
+-- on databases created before this change.
 ALTER TABLE chart_patients DROP CONSTRAINT IF EXISTS chart_patients_row_number_check;
-ALTER TABLE chart_patients ADD CONSTRAINT chart_patients_row_number_check CHECK (row_number BETWEEN 1 AND 41);
+ALTER TABLE chart_patients ADD CONSTRAINT chart_patients_row_number_check CHECK (row_number BETWEEN 1 AND 80);
 ALTER TABLE chart_quantities DROP CONSTRAINT IF EXISTS chart_quantities_row_number_check;
-ALTER TABLE chart_quantities ADD CONSTRAINT chart_quantities_row_number_check CHECK (row_number BETWEEN 1 AND 41);
+ALTER TABLE chart_quantities ADD CONSTRAINT chart_quantities_row_number_check CHECK (row_number BETWEEN 1 AND 80);
 ALTER TABLE pill_entries DROP CONSTRAINT IF EXISTS pill_entries_patient_row_number_check;
-ALTER TABLE pill_entries ADD CONSTRAINT pill_entries_patient_row_number_check CHECK (patient_row_number BETWEEN 1 AND 41);
+ALTER TABLE pill_entries ADD CONSTRAINT pill_entries_patient_row_number_check CHECK (patient_row_number BETWEEN 1 AND 80);
 ALTER TABLE pill_patient_meta DROP CONSTRAINT IF EXISTS pill_patient_meta_patient_row_number_check;
-ALTER TABLE pill_patient_meta ADD CONSTRAINT pill_patient_meta_patient_row_number_check CHECK (patient_row_number BETWEEN 1 AND 41);
+ALTER TABLE pill_patient_meta ADD CONSTRAINT pill_patient_meta_patient_row_number_check CHECK (patient_row_number BETWEEN 1 AND 80);
 
 -- Widen the chart column cap from 51 to 80 on databases created before this change — the
 -- manual "+ عمود" action (src/App.jsx addColumn) grows a chart past its original 51.

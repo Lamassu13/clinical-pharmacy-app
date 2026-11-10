@@ -2,12 +2,12 @@
 // Kept out of index.js so they can be unit tested without booting the server.
 
 import { stripInvisible } from '../shared/clean-name.js'
-import { FLOORS, SPECIAL_WARDS, EXTRA_PILL_FLOORS, PATIENT_ROWS, MAX_CHART_COLUMNS, MAX_NOTE_LENGTH, DOSE_TIMES, USAGE_METHODS } from '../shared/options.js'
+import { FLOORS, SPECIAL_WARDS, EXTRA_PILL_FLOORS, MAX_PATIENT_ROWS, MAX_CHART_COLUMNS, MAX_NOTE_LENGTH, DOSE_TIMES, USAGE_METHODS } from '../shared/options.js'
 
 // The lists themselves live in shared/options.js, which the client imports too.
 export { SPECIAL_WARDS, EXTRA_PILL_FLOORS, MAX_CHART_COLUMNS, MAX_NOTE_LENGTH, DOSE_TIMES, USAGE_METHODS }
 export const ALLOWED_FLOORS = FLOORS.map((floor) => floor.number)
-export const MAX_PATIENT_ROWS = PATIENT_ROWS
+export { MAX_PATIENT_ROWS }
 // Ward names per floor. Charts may only reference a ward on this list, otherwise any string
 // would mint a new wards row.
 export const FLOOR_WARDS = Object.fromEntries(FLOORS.map((floor) => [floor.number, floor.wards]))

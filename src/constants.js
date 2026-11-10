@@ -1,9 +1,9 @@
 // Fixed option lists and layout limits used across the app. The ones the server validates too —
 // floors and wards, roles, the pill-form options, the row/column/note caps — come from
 // shared/options.js, the one copy both sides import.
-import { FLOORS, SPECIAL_WARDS, EXTRA_PILL_FLOORS, ROLE_LABELS, PATIENT_ROWS, MAX_CHART_COLUMNS, MAX_NOTE_LENGTH, DOSE_TIMES, USAGE_METHODS } from '../shared/options.js'
+import { FLOORS, SPECIAL_WARDS, EXTRA_PILL_FLOORS, ROLE_LABELS, PATIENT_ROWS, MAX_PATIENT_ROWS, MAX_CHART_COLUMNS, MAX_NOTE_LENGTH, DOSE_TIMES, USAGE_METHODS } from '../shared/options.js'
 
-export { EXTRA_PILL_FLOORS, PATIENT_ROWS, MAX_CHART_COLUMNS, MAX_NOTE_LENGTH }
+export { EXTRA_PILL_FLOORS, PATIENT_ROWS, MAX_PATIENT_ROWS, MAX_CHART_COLUMNS, MAX_NOTE_LENGTH }
 export const floors = FLOORS
 export const specialWards = SPECIAL_WARDS
 export const roleLabels = ROLE_LABELS
