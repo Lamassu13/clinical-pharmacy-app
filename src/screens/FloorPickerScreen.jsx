@@ -12,7 +12,7 @@ export default function FloorPickerScreen({
   today, selectedDate, isExpired, floors = [], specialWards = [], resumeDraft, onResume,
   onPickFloor, onOpen, onOpenWard, dashboard, dashboardError,
   announcements, isManager, announcementDraft, setAnnouncementDraft, announcementError, announcementBusy,
-  onPostAnnouncement, onEditAnnouncement, onDeleteAnnouncement,
+  onPostAnnouncement, onEditAnnouncement, onDeleteAnnouncement, onDeleteAllAnnouncements,
 }) {
   // Count at ward granularity, not floor: a floor with one of three wards started is one
   // third done, and the two that haven't are exactly what the morning round is there to
@@ -87,7 +87,7 @@ export default function FloorPickerScreen({
           announcements={announcements ?? []} isManager={isManager}
           announcementDraft={announcementDraft} setAnnouncementDraft={setAnnouncementDraft}
           announcementError={announcementError} announcementBusy={announcementBusy}
-          onPostAnnouncement={onPostAnnouncement} onEditAnnouncement={onEditAnnouncement} onDeleteAnnouncement={onDeleteAnnouncement}
+          onPostAnnouncement={onPostAnnouncement} onEditAnnouncement={onEditAnnouncement} onDeleteAnnouncement={onDeleteAnnouncement} onDeleteAllAnnouncements={onDeleteAllAnnouncements}
         />
       </div>
     )}

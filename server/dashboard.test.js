@@ -198,6 +198,23 @@ test('GET/POST/DELETE /api/announcements: a plain user can only read; a manager 
   assert.equal((await manager.delete('/api/announcements/999999')).status, 404)
 })
 
+test('DELETE /api/announcements: a manager clears every announcement (not just the five listed) in one call; others are refused', async () => {
+  const plainUser = await loginAs({ role: 'user', floor: 5 })
+  const manager = await loginAs({ role: 'supervisor' })
+  for (let n = 1; n <= 7; n += 1) await manager.post('/api/announcements', { message: `إعلان ${n}` })
+  assert.equal((await plainUser.get('/api/announcements')).body.announcements.length, 5) // the list shows the latest five
+  assert.equal((await plainUser.delete('/api/announcements')).status, 403)
+  assert.equal((await new ApiClient(baseUrl).delete('/api/announcements')).status, 401)
+  assert.equal((await manager.get('/api/announcements')).body.announcements.length, 5)
+  const cleared = await manager.delete('/api/announcements')
+  assert.deepEqual([cleared.status, cleared.body.deleted], [200, 7])
+  assert.deepEqual((await plainUser.get('/api/announcements')).body.announcements, [])
+  assert.equal((await pool.query('SELECT COUNT(*)::int AS n FROM announcements')).rows[0].n, 0)
+  assert.equal((await pool.query("SELECT COUNT(*)::int AS n FROM audit_log WHERE action = 'announcement.deleted_all'")).rows[0].n, 1)
+  assert.equal((await manager.delete('/api/announcements')).body.deleted, 0) // nothing left: nothing audited again
+  assert.equal((await pool.query("SELECT COUNT(*)::int AS n FROM audit_log WHERE action = 'announcement.deleted_all'")).rows[0].n, 1)
+})
+
 test('GET /api/dashboard patientsByFloor (manager): cumulative patient-days per numbered floor, own window, independent of the medicines period', async () => {
   const user = await createUser({ role: 'user', floor: 5 })
   const two = [{ rowNumber: 1, name: 'أ' }, { rowNumber: 2, name: 'ب' }]
