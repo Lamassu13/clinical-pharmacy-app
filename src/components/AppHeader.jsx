@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import ThemeToggle from './ThemeToggle.jsx'
 import TopBarBrand from './TopBarBrand.jsx'
 import { Glyph } from './ToolbarIcons.jsx'
@@ -107,7 +107,10 @@ function AccountMenu({ theme, onToggleTheme, currentUser, onLogout, onMyWard, on
 
 // Phone / iPad only (CSS shows it ≤1024px): the places a pharmacist moves between, in the
 // thumb zone instead of the top corner. The top bar keeps brand, status and the admin sections.
-function BottomNav({ adminView, isManager, onHome, onMyWard, onNavigate, onOpenProfile }) {
+let lastGlide = null // where the glass capsule was on the last bar drawn: { x, width }
+// A floor pharmacist's bar (`wardTabs`, set by App.jsx): their floor (the ward list) and each of its wards, no account tab —
+// the account is in the top bar. A manager's: home, reports, admin and the account.
+function BottomNav({ adminView, isManager, onHome, onMyWard, onNavigate, onOpenProfile, wardTabs, homeActive }) {
   useEffect(() => {
     document.body.classList.add('has-bottom-nav')
     // iOS can leave a fixed bar floating mid-screen after the keyboard closes (the layout viewport keeps
@@ -131,14 +134,48 @@ function BottomNav({ adminView, isManager, onHome, onMyWard, onNavigate, onOpenP
     return () => { clearTimeout(timer); document.removeEventListener('focusout', nudge); viewport?.removeEventListener('resize', nudge); document.body.classList.remove('has-bottom-nav') }
   }, [])
   const adminActive = isManager && adminView && adminView !== 'profile' && adminView !== 'reports'
-  const tabs = [
+  const tabs = wardTabs ? [
+    { key: 'home', icon: 'home', label: 'الرئيسية', active: homeActive, onClick: onMyWard || onHome },
+    ...wardTabs.map((tab) => ({ key: `ward:${tab.ward}`, icon: 'ward', label: tab.ward, active: tab.active, onClick: tab.onClick })),
+  ] : [
     { key: 'home', icon: 'home', label: 'الرئيسية', active: !adminView, onClick: onHome },
     onMyWard && { key: 'ward', icon: 'ward', label: 'ردهتي', onClick: onMyWard },
     isManager && { key: 'reports', icon: 'reports', label: 'التقارير', active: adminView === 'reports', onClick: () => onNavigate('reports') },
     isManager && { key: 'admin', icon: 'admin', label: 'الإدارة', active: adminActive, onClick: () => onNavigate(adminActive ? adminView : 'dashboard') },
     { key: 'profile', icon: 'account', label: 'حسابي', active: adminView === 'profile', onClick: onOpenProfile },
   ].filter(Boolean)
-  return <nav className="bottom-nav" aria-label="التنقل الرئيسي">
+  // The glass capsule is one element that glides to the open tab (and stretches on the way, like the reference), instead of
+  // each tab painting its own: its place is measured from the open tab's button, and moved by CSS.
+  const navRef = useRef(null)
+  const activeKey = tabs.find((tab) => tab.active)?.key || ''
+  // Each screen draws its own bar, so a tap that opens another screen builds a new one: it starts where the last one's capsule was
+  // (`lastGlide`, kept outside React) and glides from there, so the travel is seen across screens too.
+  const [glide, setGlide] = useState(() => lastGlide) // { x, width } of the open tab; null when none is open
+  const [glideReady, setGlideReady] = useState(false) // travel is switched on a frame after the first place is set
+  const tabKeys = tabs.map((tab) => tab.key).join('|')
+  useLayoutEffect(() => {
+    const target = () => {
+      const button = navRef.current?.querySelector('button[aria-current="page"]')
+      return button ? { x: button.offsetLeft, width: button.offsetWidth } : null
+    }
+    let second
+    const first = requestAnimationFrame(() => {
+      setGlideReady(true)
+      second = requestAnimationFrame(() => { lastGlide = target(); setGlide(lastGlide) })
+    })
+    // Before the first frame: the place it starts from (the last bar's), or the open tab's own when there was none.
+    if (!lastGlide) { lastGlide = target(); setGlide(lastGlide) }
+    const place = () => { lastGlide = target(); setGlide(lastGlide) }
+    window.addEventListener('resize', place)
+    // (Only while a font is still loading, when the tabs' widths can still change: an already-loaded one resolves at once, and that would jump the capsule before it travels.)
+    if (document.fonts?.status === 'loading') document.fonts.ready.then(place)
+    return () => { cancelAnimationFrame(first); cancelAnimationFrame(second); window.removeEventListener('resize', place) }
+  }, [activeKey, tabKeys])
+  return <nav className="bottom-nav" aria-label="التنقل الرئيسي" ref={navRef} data-glide={glide && glideReady ? 'on' : glide ? 'set' : 'off'}>
+    {/* (physical `left`: the place comes from offsetLeft, which counts from the left in either direction) */}
+    <span className="bottom-nav-glide" aria-hidden="true" style={glide ? { transform: `translateX(${glide.x}px)`, width: glide.width } : undefined}>
+      <i key={activeKey} />
+    </span>
     {tabs.map((tab) => (
       <button key={tab.key} type="button" aria-current={tab.active ? 'page' : undefined} onClick={tab.onClick}>
         <Glyph icon={tab.icon} /><span>{tab.label}</span>
@@ -147,7 +184,7 @@ function BottomNav({ adminView, isManager, onHome, onMyWard, onNavigate, onOpenP
   </nav>
 }
 
-export default function AppHeader({ theme, onToggleTheme, currentUser, onLogout, onHome, onMyWard, onOpenProfile, isAdmin, isManager, adminView, onNavigate, isOnline, pendingWrites = 0, pendingRequests = 0, onAdminMenuOpen }) {
+export default function AppHeader({ theme, onToggleTheme, currentUser, onLogout, onHome, onMyWard, onOpenProfile, wardTabs, homeActive, isAdmin, isManager, adminView, onNavigate, isOnline, pendingWrites = 0, pendingRequests = 0, onAdminMenuOpen }) {
   return <><header className="topbar">
     <TopBarBrand onClick={onHome} />
     <nav className="user-menu" aria-label="أدوات الحساب">
@@ -165,6 +202,6 @@ export default function AppHeader({ theme, onToggleTheme, currentUser, onLogout,
       <AccountMenu theme={theme} onToggleTheme={onToggleTheme} currentUser={currentUser} onLogout={onLogout} onMyWard={onMyWard} onOpenProfile={onOpenProfile} adminView={adminView} />
     </nav>
   </header>
-  <BottomNav adminView={adminView} isManager={isManager} onHome={onHome} onMyWard={onMyWard} onNavigate={onNavigate} onOpenProfile={onOpenProfile} />
+  <BottomNav adminView={adminView} isManager={isManager} onHome={onHome} onMyWard={onMyWard} onNavigate={onNavigate} onOpenProfile={onOpenProfile} wardTabs={wardTabs} homeActive={homeActive} />
   </>
 }

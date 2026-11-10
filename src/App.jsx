@@ -1389,6 +1389,15 @@ function App() {
     setAdminView(null)
     setFloor(assignedFloorObj)
   }, [assignedFloorObj, selected, settleChart, flushPills])
+  // A floor pharmacist's bottom bar lists their wards: a tap goes to that ward's page the way leaving a chart does (the unsaved edits are
+  // settled first), with the floor's ward list behind it as the way back. A special-ward pharmacist's are their own wards.
+  const goToWard = useCallback(async (target) => {
+    if (selected?.mode === 'pills') flushPills(); else if (!(await settleChart())) return
+    setSelected(null)
+    setAdminView(null)
+    setFloor(assignedFloorObj)
+    setWardHub(target)
+  }, [assignedFloorObj, selected, settleChart, flushPills])
   // Ending the session is the likeliest accidental tap on a shared iPad, so it keeps the
   // session-expired screen's promise: flush any debounced edits first, and if something still
   // is not confirmed saved, say so before tearing down — the work stays mirrored on this
@@ -2271,7 +2280,10 @@ function App() {
 
   if (sessionExpired) return <SessionExpiredScreen reassure={!adminView && ['chart', 'pills'].includes(selected?.mode)} credentials={credentials} setCredentials={setCredentials} loginError={loginError} busy={busy} onSubmit={submitLogin} onLogout={logout} confirmModal={confirmModal} />
 
-  const appTopBar = <AppHeader theme={theme} onToggleTheme={toggleTheme} currentUser={currentUser} onLogout={logout} onHome={goHome} onMyWard={!isManager && assignedFloorObj ? goToMyWard : undefined} onOpenProfile={openProfile} isAdmin={isAdmin} isManager={isManager} adminView={adminView} onNavigate={setAdminView} isOnline={isOnline} pendingWrites={userId == null ? 0 : pendingWrites(userId).length} pendingRequests={isAdmin ? pendingRequests : 0} onAdminMenuOpen={isAdmin ? refreshPendingRequests : undefined} />
+  const openWardName = selected ? selected.ward : wardHub?.ward
+  const wardTabs = isManager ? undefined : (assignedFloorObj ? assignedFloorObj.wards.map((ward) => ({ floor: assignedFloorObj.number, ward })) : (currentUser?.assignedWards || []).map((ward) => ({ floor: null, ward })))
+    .map((target) => ({ ward: target.ward, active: !adminView && openWardName === target.ward && (selected ? selected.floor ?? null : wardHub?.floor ?? null) === target.floor, onClick: () => goToWard({ floor: target.floor, ward: target.ward }) }))
+  const appTopBar = <AppHeader theme={theme} onToggleTheme={toggleTheme} currentUser={currentUser} onLogout={logout} onHome={goHome} onMyWard={!isManager && assignedFloorObj ? goToMyWard : undefined} wardTabs={wardTabs} homeActive={!adminView && !selected && !wardHub} onOpenProfile={openProfile} isAdmin={isAdmin} isManager={isManager} adminView={adminView} onNavigate={setAdminView} isOnline={isOnline} pendingWrites={userId == null ? 0 : pendingWrites(userId).length} pendingRequests={isAdmin ? pendingRequests : 0} onAdminMenuOpen={isAdmin ? refreshPendingRequests : undefined} />
   // A ward's daily work as steps (WardSteps.jsx): a bar under the top bar on each step's screen, a
   // «الخطوة التالية» button at the foot of its page, and a short slide when moving between steps. Moving
   // saves the screen being left the way its own Back does, and keeps the ward page as the way back.
