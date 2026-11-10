@@ -589,6 +589,22 @@ export const RENAL_EQUATIONS = {
 // meets, or the HD line.
 export const renalGuidance = (rule, crcl, onHd) => (onHd ? rule.hd : (rule.steps.find(([min]) => crcl >= min) || rule.steps[rule.steps.length - 1])[1])
 
+// Who was signed in, kept on the device so the app can reopen with no connection. It is only as
+// good as the server's last word on it: after IDENTITY_KEEP_HOURS without one (the server's own
+// session lasts 8 h) it is not used, so a shared iPad opened offline days later does not show the
+// last person and their charts. A copy from before this carried a time counts as too old.
+// ponytail: the device's own clock; one set back keeps an old identity alive.
+export const IDENTITY_KEEP_HOURS = 12
+export const rememberIdentity = (user, now = Date.now()) => {
+  try { storage.setItem('cpa-session-cache', JSON.stringify({ user, at: now })) } catch { /* best effort */ }
+}
+export const recallIdentity = (now = Date.now()) => {
+  try {
+    const kept = JSON.parse(storage.getItem('cpa-session-cache') || 'null')
+    return kept?.user && Number.isFinite(kept.at) && now - kept.at < IDENTITY_KEEP_HOURS * 3600 * 1000 ? kept.user : null
+  } catch { return null }
+}
+
 // What to show for a caught failure: the message of an error the app threw itself (the server's
 // own Arabic text), never the browser's — a dropped connection is a TypeError («Load failed»,
 // «Failed to fetch»), an HTML error page from the host a SyntaxError, a timeout an AbortError.

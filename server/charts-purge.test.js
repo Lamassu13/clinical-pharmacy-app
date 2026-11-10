@@ -117,3 +117,17 @@ test('POST /api/pills/purge: clears pill forms only, in range and scope, and kee
   assert.deepEqual(second.body.deleted, { regular: 0, extra: 1 })
   assert.equal(await extraCount(), 2)
 })
+
+test('POST /api/charts/purge: a failure half-way deletes nothing', async () => {
+  const manager = await loginAs({ role: 'admin' })
+  const user = await createUser({ role: 'user', floor: 5 })
+  await seedChart({ floor: 5, ward: 'ردهة رجال', date: '2026-05-10', createdBy: user.id })
+  // The last of the four deletes fails: the table it reads is not there.
+  await pool.query('ALTER TABLE albumin_followups RENAME TO albumin_followups_away')
+  try {
+    const response = await manager.post('/api/charts/purge', { from: '2026-05-01', to: '2026-05-31', all: true })
+    assert.equal(response.status, 500)
+    assert.equal(await chartCount(), 1, 'the charts are still there')
+  } finally { await pool.query('ALTER TABLE albumin_followups_away RENAME TO albumin_followups') }
+  assert.equal((await manager.post('/api/charts/purge', { from: '2026-05-01', to: '2026-05-31', all: true })).body.deleted, 1)
+})

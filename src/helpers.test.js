@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { failureText, averagePatients, pillChanges, interactionsForChart, mergeKeyedSnapshots, looksWiped, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, settleExtraPillsOp, EXTRA_PILL_SLOTS, isDraftStale, rememberChart, recallChart, forgetChartCopies, mergePreviousDayDoses, addPatientToChart, medicineMatches, pillSheetPlan, yesterdaySchedules, scheduleFor, applyTemplateColumns, catalogueMatches, RENAL_EQUATIONS, renalGuidance, SCR_UMOL_PER_MGDL } from './helpers.js'
+import { failureText, rememberIdentity, recallIdentity, IDENTITY_KEEP_HOURS, averagePatients, pillChanges, interactionsForChart, mergeKeyedSnapshots, looksWiped, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, settleExtraPillsOp, EXTRA_PILL_SLOTS, isDraftStale, rememberChart, recallChart, forgetChartCopies, mergePreviousDayDoses, addPatientToChart, medicineMatches, pillSheetPlan, yesterdaySchedules, scheduleFor, applyTemplateColumns, catalogueMatches, RENAL_EQUATIONS, renalGuidance, SCR_UMOL_PER_MGDL } from './helpers.js'
 
 test('mergeKeyedSnapshots keeps a local edit and adopts an unrelated server change', () => {
   const base = { a: '1', b: '2' }
@@ -528,4 +528,20 @@ test('failureText shows the server\'s message, and the fallback for a browser er
   assert.equal(failureText(new SyntaxError('Unexpected token <'), 'تعذر الاتصال بالخادم'), 'تعذر الاتصال بالخادم')
   assert.equal(failureText(new Error(), 'تعذر الاتصال بالخادم'), 'تعذر الاتصال بالخادم')
   assert.equal(failureText(undefined, 'تعذر الاتصال بالخادم'), 'تعذر الاتصال بالخادم')
+})
+
+test('the identity kept for an offline reopen is used only while the server\'s last word on it is recent', () => {
+  const store = new Map()
+  globalThis.localStorage = { get length() { return store.size }, key: (i) => [...store.keys()][i] ?? null, getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, String(v)), removeItem: (k) => store.delete(k) }
+  const hour = 3600 * 1000
+  const user = { id: '7', username: 'floor9-user', role: 'user' }
+  assert.equal(recallIdentity(0), null, 'nothing kept')
+  rememberIdentity(user, 1000)
+  assert.deepEqual(recallIdentity(1000 + (IDENTITY_KEEP_HOURS - 1) * hour), user)
+  assert.equal(recallIdentity(1000 + IDENTITY_KEEP_HOURS * hour), null, 'too old')
+  storage.setItem('cpa-session-cache', JSON.stringify(user)) // the copy an earlier build kept: no time on it
+  assert.equal(recallIdentity(2000), null)
+  storage.setItem('cpa-session-cache', '{broken')
+  assert.equal(recallIdentity(2000), null)
+  delete globalThis.localStorage
 })

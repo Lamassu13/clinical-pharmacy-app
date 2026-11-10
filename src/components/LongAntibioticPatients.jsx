@@ -9,6 +9,7 @@ import { apiUrl } from '../constants.js'
 export default function LongAntibioticPatients({ date, floor = null, isExpired }) {
   const [list, setList] = useState(null)
   const [failed, setFailed] = useState(false)
+  const [refusal, setRefusal] = useState('') // the server's own words when this date is not shown to a floor user
   const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
@@ -16,11 +17,12 @@ export default function LongAntibioticPatients({ date, floor = null, isExpired }
     let cancelled = false
     ;(async () => {
       try {
-        setFailed(false)
+        setFailed(false); setRefusal('')
         const response = await fetch(`${apiUrl}/antibiotics/long?${new URLSearchParams({ date, ...(floor ? { floor } : {}) })}`, { credentials: 'include' })
         if (isExpired?.(response)) return
-        if (!response.ok) throw new Error('failed')
         const result = await response.json()
+        if (response.status === 403 && result.outOfRange) { if (!cancelled) setRefusal(result.message); return }
+        if (!response.ok) throw new Error('failed')
         if (!cancelled) setList({ date, threshold: result.threshold, patients: result.patients })
       } catch { if (!cancelled) setFailed(true) }
     })()
@@ -31,7 +33,7 @@ export default function LongAntibioticPatients({ date, floor = null, isExpired }
   const title = `مضادات حيوية لأكثر من ${ready ? list.threshold : 14} يومًا`
   if (!ready) return <div className="long-abx long-abx--note" role="status">
     <strong>{title}</strong>
-    {failed
+    {refusal ? <span>{refusal}</span> : failed
       ? <span>تعذّر التحميل <button type="button" className="text-button" onClick={() => setAttempt((n) => n + 1)}>إعادة المحاولة</button></span>
       : <span>جارٍ التحميل…</span>}
   </div>

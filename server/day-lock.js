@@ -13,6 +13,17 @@ export const dayLockSettings = { enabled: true }
 
 export const isDayLocked = (user, date) => dayLockSettings.enabled && !MANAGER_ROLES.includes(user?.role) && date !== todayInBaghdad()
 
+// How far back a floor user may ask for a list that is worked out from the whole hospital's charts
+// (the long antibiotic courses): the last week up to today. Each date is its own heavy read, so
+// "any date" was a way to make the database work for nothing. A manager reads any date. Off with
+// the lock in the test suite, for the same reason: it reads fixed past dates as pharmacists.
+export const RECENT_DAYS = 7
+export const isOutsideRecentDays = (user, date) => {
+  if (!dayLockSettings.enabled || MANAGER_ROLES.includes(user?.role)) return false
+  const today = todayInBaghdad()
+  return date > today || date < new Date(Date.parse(`${today}T00:00:00Z`) - RECENT_DAYS * 86400000).toISOString().slice(0, 10)
+}
+
 export const tomorrowInBaghdad = () => {
   const [year, month, day] = todayInBaghdad().split('-').map(Number)
   return new Date(Date.UTC(year, month - 1, day + 1)).toISOString().slice(0, 10)

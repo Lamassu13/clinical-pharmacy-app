@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import app from './index.js'
 import { pool, dbTraffic } from './db.js'
-import { forgetSavedCharts } from './routes/chart.js'
+import { forgetSavedCharts, saveFailureStatus } from './routes/chart.js'
 import { startServer, resetDatabase, createUser, ApiClient } from './test-helpers.js'
 
 // The save keeps what it last wrote in memory so it need not read the old rows back (see
@@ -115,4 +115,12 @@ test('the older of two medicines sharing a name is the one a column links to (id
   await client.put('/api/chart', body('2026-02-06', { columns: [{ columnNumber: 1, medicineName: 'Twin Drug' }] }))
   const linked = (await pool.query("SELECT medicine_id FROM chart_columns cc JOIN daily_charts d ON d.id = cc.chart_id WHERE d.chart_date = '2026-02-06'")).rows[0].medicine_id
   assert.equal(String(linked), String(older))
+})
+
+test('a failed save answers 400 only when the database refused the data, 500 for its own failures', () => {
+  assert.equal(saveFailureStatus({ code: '23503' }), 400) // a broken constraint
+  assert.equal(saveFailureStatus({ code: '22001' }), 400) // a value that does not fit
+  assert.equal(saveFailureStatus({ code: '57014' }), 500) // a statement timeout
+  assert.equal(saveFailureStatus({ code: '08006' }), 500) // the connection failed
+  assert.equal(saveFailureStatus(new Error('Connection terminated unexpectedly')), 500)
 })

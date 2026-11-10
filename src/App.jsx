@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { roleLabels, PATIENT_ROWS, CHART_COLUMNS, MAX_CHART_COLUMNS, apiUrl, floors, specialWards } from './constants.js'
-import { failureText, interactionsForChart, applyTemplateColumns,yesterdaySchedules, mergePreviousDayDoses, addPatientToChart, mergeChartSnapshots, diffMergeOutcome, addOfflineRows, looksWiped, chartDiffers, mergeKeyedSnapshots, diffKeyedMergeOutcome, parseChartRows, toEnglishDigits, medicineKey, patientNameKey, nearestMedicine, UNIT_ONE, isSyringe, VIAL_AMP, SYRINGE_EXCLUDE, isoDate, isDraftStale, rememberChart, recallChart, rememberPills, recallPills, forgetChartCopies, locationBody, pillChanges } from './helpers.js'
+import { failureText, rememberIdentity, recallIdentity, interactionsForChart, applyTemplateColumns,yesterdaySchedules, mergePreviousDayDoses, addPatientToChart, mergeChartSnapshots, diffMergeOutcome, addOfflineRows, looksWiped, chartDiffers, mergeKeyedSnapshots, diffKeyedMergeOutcome, parseChartRows, toEnglishDigits, medicineKey, patientNameKey, nearestMedicine, UNIT_ONE, isSyringe, VIAL_AMP, SYRINGE_EXCLUDE, isoDate, isDraftStale, rememberChart, recallChart, rememberPills, recallPills, forgetChartCopies, locationBody, pillChanges } from './helpers.js'
 import ConfirmDialog from './components/ConfirmDialog.jsx'
 import TemplatesDialog from './components/TemplatesDialog.jsx'
 import AppHeader from './components/AppHeader.jsx'
@@ -439,7 +439,7 @@ function App() {
         if (!result.user) { if (!signedInSinceBootRef.current) forgetSessionData(); return }
         setCurrentUser(result.user)
         setIsLoggedIn(true)
-        try { storage.setItem('cpa-session-cache', JSON.stringify(result.user)) } catch { /* best effort */ }
+        rememberIdentity(result.user)
         // Restore the ward/date open before a refresh or iOS tab-kill (only once we know the
         // session is still good — otherwise a 401 chart-load would flash the expiry screen).
         landFromNav()
@@ -450,13 +450,13 @@ function App() {
         // shell and cached ward data instead of forcing a login screen the pharmacist can't get
         // past without a connection. A real 401 (session actually gone) still logs out — that
         // response reaches the .then() branch above, not here.
-        try {
-          const cached = JSON.parse(storage.getItem('cpa-session-cache') || 'null')
-          if (!cached) return
-          setCurrentUser(cached)
-          setIsLoggedIn(true)
-          landFromNav()
-        } catch { /* storage unavailable or corrupt — start on the picker */ }
+        // Not one the server confirmed too long ago (helpers.js recallIdentity): then the sign-in card
+        // stays, and what that session left on the device goes, as on any ended session.
+        const cached = recallIdentity()
+        if (!cached) { if (!signedInSinceBootRef.current) forgetSessionData(); return }
+        setCurrentUser(cached)
+        setIsLoggedIn(true)
+        landFromNav()
       })
       .finally(() => { navRestoreAttemptedRef.current = true })
   }, [endServerSession, forgetSessionData])
@@ -479,7 +479,7 @@ function App() {
       signedInSinceBootRef.current = true
       // First and on its own: a full device (the next line throwing) must not leave a sign-out pending against this new session.
       try { storage.removeItem('cpa-logout-pending') } catch { /* storage unavailable */ }
-      try { storage.setItem('cpa-session-cache', JSON.stringify(result.user)) } catch { /* best effort */ }
+      rememberIdentity(result.user)
       // A manual login doesn't go through the /auth/me effect above, so if that background
       // check is still in flight (or never settles), its ref would otherwise keep gating the
       // nav-persist effect forever, silently breaking "resume after a refresh" for this whole
@@ -519,7 +519,7 @@ function App() {
       const result = await response.json()
       if (!response.ok) throw new Error(result.message || 'تعذر حفظ التغييرات')
       setCurrentUser(result.user)
-      try { storage.setItem('cpa-session-cache', JSON.stringify(result.user)) } catch { /* best effort */ }
+      rememberIdentity(result.user)
       setProfileSuccess('تم حفظ التغييرات')
     } catch (error) { setProfileError(failureText(error, 'تعذر الاتصال بالخادم')) } finally { setBusy(false) }
   }
