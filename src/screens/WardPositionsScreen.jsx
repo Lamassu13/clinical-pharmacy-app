@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import hospitalLogo from '../assets/hospital-logo.png'
 import { Glyph } from '../components/ToolbarIcons.jsx'
 import { apiUrl } from '../constants.js'
-import { isoDate } from '../helpers.js'
+import { isoDate, failureText } from '../helpers.js'
 import { exportReportPdf } from '../reportPdf.js'
 import { buildXlsx, downloadXlsx } from '../xlsx.js'
 
@@ -68,7 +68,7 @@ export default function WardPositionsScreen({ adminHeader, isExpired }) {
       if (!response.ok) throw new Error(result.message)
       setReport(result)
     } catch (caught) {
-      setError(caught.message || 'تعذّر إنشاء التقرير — تحقّق من الاتصال وحاول مرة أخرى.')
+      setError(failureText(caught, 'تعذّر إنشاء التقرير — تحقّق من الاتصال وحاول مرة أخرى.'))
     } finally { setLoading(false) }
   }
 

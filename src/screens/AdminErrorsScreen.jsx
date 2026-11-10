@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { apiUrl } from '../constants.js'
+import { failureText } from '../helpers.js'
 
 // الأخطاء — crashes and failed saves reported by users' devices (src/error-reporter.js), newest
 // first, the last 100. Admin-only. Loaded when opened and on «تحديث» (no polling: the Neon/Render
@@ -22,7 +23,7 @@ export default function AdminErrorsScreen({ adminHeader, isExpired, askConfirm }
         if (!response.ok) throw new Error(result.message)
         if (!cancelled) setErrors(result.errors)
       })
-      .catch((caught) => { if (!cancelled) setError(caught.message || 'تعذّر تحميل الأخطاء — تحقّق من الاتصال وحاول مرة أخرى.') })
+      .catch((caught) => { if (!cancelled) setError(failureText(caught, 'تعذّر تحميل الأخطاء — تحقّق من الاتصال وحاول مرة أخرى.')) })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [reload, isExpired])

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { apiUrl } from '../constants.js'
-import { toEnglishDigits } from '../helpers.js'
+import { toEnglishDigits, failureText } from '../helpers.js'
 import PatientTimelineDialog from './PatientTimelineDialog.jsx'
 
 // Find a patient by name or «رقم الطبلة» across one day's main and extra charts — the
@@ -35,7 +35,7 @@ export default function PatientSearch({ floor = null, date, onOpen, isExpired })
         if (!response.ok) throw new Error(result.message)
         if (!cancelled) { setResults({ history, patients: result.patients }); setError('') }
       } catch (caught) {
-        if (!cancelled) { setResults(null); setError(navigator.onLine ? (caught.message || 'تعذّر البحث') : 'البحث يحتاج اتصالاً') }
+        if (!cancelled) { setResults(null); setError(navigator.onLine ? (failureText(caught, 'تعذّر البحث')) : 'البحث يحتاج اتصالاً') }
       }
     }, history ? 600 : 300)
     return () => { cancelled = true; clearTimeout(timer) }

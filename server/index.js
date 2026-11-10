@@ -65,6 +65,9 @@ app.use((request, response, next) => {
 })
 app.use(cors({ origin: clientOrigin, credentials: true }))
 app.use(express.json({ limit: '512kb' }))
+// Express 5 leaves `body` undefined when a request carries no JSON: every route reads it, and a
+// body-less POST was a 500 with a stack in the log instead of that route's own 400.
+app.use((request, _response, next) => { request.body ??= {}; next() })
 const PgSession = connectPgSimple(session)
 // pruneSessionInterval defaults to 900s — a DELETE every 15 min, day and night, which alone
 // keeps the Neon compute endpoint from ever autosuspending. Expired rows are ignored on read
@@ -107,7 +110,7 @@ app.use((request, response, next) => {
 // per-IP ceiling against spraying many accounts); signed-in API traffic counts per user.
 const loginMessage = { message: 'محاولات كثيرة، حاول لاحقًا بعد ١٥ دقيقة' }
 const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: 'draft-7', legacyHeaders: false, skipSuccessfulRequests: true, message: loginMessage,
-  keyGenerator: (request) => `${request.ip}|${String(request.body?.username || '').trim().toLowerCase().slice(0, 80)}` })
+  keyGenerator: (request) => `${request.ip}|${String(request.body?.username || '').trim().toLowerCase().slice(0, 160)}` })
 const loginIpLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 100, standardHeaders: false, legacyHeaders: false, skipSuccessfulRequests: true, message: loginMessage })
 const registerLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 30, standardHeaders: 'draft-7', legacyHeaders: false, message: { message: 'محاولات كثيرة لإنشاء حساب، حاول لاحقًا' } })
 const apiLimiter = rateLimit({ windowMs: 60 * 1000, limit: 300, standardHeaders: 'draft-7', legacyHeaders: false,
@@ -127,7 +130,7 @@ const revokeUserSessions = async (executor, userId) => {
 app.post('/api/auth/login', loginIpLimiter, loginLimiter, async (request, response) => {
   // Cap the inputs before bcrypt sees them: bcryptjs is pure JS and runs on the
   // event loop, so an oversized password would be a cheap CPU-exhaustion vector.
-  const username = cleanText(request.body.username, 80).trim()
+  const username = cleanText(request.body.username, 160).trim()
   const password = cleanText(request.body.password, 200)
   if (!username || !password) return response.status(400).json({ message: 'اسم المستخدم وكلمة المرور مطلوبان' })
   try {
@@ -173,7 +176,12 @@ app.post('/api/auth/register', registerLimiter, async (request, response) => {
 app.post('/api/auth/logout', async (request, response) => {
   // This device's push subscription ends with the login that made it (shared ward iPads).
   try { await query('DELETE FROM push_subscriptions WHERE sid = $1', [request.sessionID]) } catch (error) { console.error('push cleanup on logout failed:', error) }
-  request.session.destroy(() => response.status(204).end())
+  // A session the store could not delete is still signed in: say so, and the device tries again (App.jsx endServerSession).
+  request.session.destroy((error) => {
+    if (!error) return response.status(204).end()
+    console.error('logout failed:', error)
+    response.status(500).json({ message: 'تعذر تسجيل الخروج' })
+  })
 })
 app.get('/api/auth/me', (request, response) => response.json({ user: request.session.user || null }))
 app.put('/api/auth/me', requireAuth, async (request, response) => {

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { averagePatients, pillChanges, interactionsForChart, mergeKeyedSnapshots, looksWiped, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, settleExtraPillsOp, EXTRA_PILL_SLOTS, isDraftStale, rememberChart, recallChart, forgetChartCopies, mergePreviousDayDoses, addPatientToChart, medicineMatches, pillSheetPlan, yesterdaySchedules, scheduleFor, applyTemplateColumns, catalogueMatches, RENAL_EQUATIONS, renalGuidance, SCR_UMOL_PER_MGDL } from './helpers.js'
+import { failureText, averagePatients, pillChanges, interactionsForChart, mergeKeyedSnapshots, looksWiped, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, settleExtraPillsOp, EXTRA_PILL_SLOTS, isDraftStale, rememberChart, recallChart, forgetChartCopies, mergePreviousDayDoses, addPatientToChart, medicineMatches, pillSheetPlan, yesterdaySchedules, scheduleFor, applyTemplateColumns, catalogueMatches, RENAL_EQUATIONS, renalGuidance, SCR_UMOL_PER_MGDL } from './helpers.js'
 
 test('mergeKeyedSnapshots keeps a local edit and adopts an unrelated server change', () => {
   const base = { a: '1', b: '2' }
@@ -520,4 +520,12 @@ test('looksWiped: a whole grid blanking at once is flagged, a normal row-by-row 
   assert.equal(looksWiped(chart(['a', 'b', 'c', '']), { ...chart(['', '', '', '']), quantities: [['2'], [''], [''], ['']] }), false)
   assert.equal(looksWiped(chart(['a', 'b', '', '']), chart(['', '', '', ''])), false)
   assert.equal(looksWiped(chart(['a', 'b', 'c', '']), chart(['a', 'b', '', ''])), false)
+})
+
+test('failureText shows the server\'s message, and the fallback for a browser error', () => {
+  assert.equal(failureText(new Error('اسم المستخدم مستخدم بالفعل'), 'تعذر الاتصال بالخادم'), 'اسم المستخدم مستخدم بالفعل')
+  assert.equal(failureText(new TypeError('Load failed'), 'تعذر الاتصال بالخادم'), 'تعذر الاتصال بالخادم')
+  assert.equal(failureText(new SyntaxError('Unexpected token <'), 'تعذر الاتصال بالخادم'), 'تعذر الاتصال بالخادم')
+  assert.equal(failureText(new Error(), 'تعذر الاتصال بالخادم'), 'تعذر الاتصال بالخادم')
+  assert.equal(failureText(undefined, 'تعذر الاتصال بالخادم'), 'تعذر الاتصال بالخادم')
 })

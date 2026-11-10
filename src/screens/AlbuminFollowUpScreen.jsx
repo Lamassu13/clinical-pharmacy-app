@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import hospitalLogo from '../assets/hospital-logo.png'
 import { Glyph } from '../components/ToolbarIcons.jsx'
 import { apiUrl } from '../constants.js'
-import { isoDate, toEnglishDigits } from '../helpers.js'
+import { isoDate, toEnglishDigits, failureText } from '../helpers.js'
 import { exportReportPdf } from '../reportPdf.js'
 
 // «Albumin follow up»: one floor's albumin sheet for the day, as the unit keeps it on paper. The main rows
@@ -172,7 +172,7 @@ export default function AlbuminFollowUpScreen({ adminHeader, isExpired, floor, o
     rowChains.current.set(id, chained)
     chained.catch((caught) => {
       if (rowChains.current.get(id) === chained) rowChains.current.delete(id)
-      setError(caught.message === 'Failed to fetch' ? 'لا يوجد اتصال — التعديل يحتاج اتصالًا.' : caught.message)
+      setError(failureText(caught, 'لا يوجد اتصال — التعديل يحتاج اتصالًا.'))
       setNonce((value) => value + 1) // back to what is saved
     })
   }, [isExpired])
@@ -199,13 +199,13 @@ export default function AlbuminFollowUpScreen({ adminHeader, isExpired, floor, o
           setError(result.message)
           return
         }
-        if (!response.ok) throw new Error(result.message || 'save')
+        if (!response.ok) throw new Error(result.message)
         if (result.version) {
           versions.current.set(sheetKey(save.date, save.floor), result.version)
           // (kept on the sheet's data too: the next edit re-reads it from there)
           setData((current) => current && current.date === save.date && current.floor === save.floor ? { ...current, version: result.version } : current)
         }
-      } catch (caught) { setError(caught.message && caught.message !== 'save' && caught.message !== 'Failed to fetch' ? caught.message : 'لم يُحفظ آخر تعديل — تحقّق من الاتصال وحاول مرة أخرى.') }
+      } catch (caught) { setError(failureText(caught, 'لم يُحفظ آخر تعديل — تحقّق من الاتصال وحاول مرة أخرى.')) }
     })
   }, [isExpired])
   const saveDoc = useCallback((doc) => {

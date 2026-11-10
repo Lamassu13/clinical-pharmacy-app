@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { apiUrl } from '../constants.js'
+import { failureText } from '../helpers.js'
 
 // استخدام المستخدمين — who uses the app and how much data they move, per period. Read-only; one
 // request per period button press (no polling: the Neon/Render free plans bill wake time).
@@ -27,7 +28,7 @@ export default function AdminUsageScreen({ adminHeader, isExpired }) {
         if (!response.ok) throw new Error(result.message)
         if (!cancelled) { setUsers(result.users); setTraffic({ queries: result.queries || [], since: result.queriesSince }) }
       })
-      .catch((caught) => { if (!cancelled) setError(caught.message || 'تعذّر تحميل الاستخدام — تحقّق من الاتصال وحاول مرة أخرى.') })
+      .catch((caught) => { if (!cancelled) setError(failureText(caught, 'تعذّر تحميل الاستخدام — تحقّق من الاتصال وحاول مرة أخرى.')) })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [days, reload, isExpired])

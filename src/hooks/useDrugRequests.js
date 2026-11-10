@@ -3,6 +3,7 @@ import { apiUrl } from '../constants.js'
 import { forgetWrite, queueWrite } from '../storage.js'
 import { DRUG_REQUESTS } from '../../shared/drug-requests.js'
 import { clearFollowup } from '../followupCache.js'
+import { failureText } from '../helpers.js'
 
 // «استمارة الميرونيم» / «استمارة الالبومين» (shared/drug-requests.js): the ward's forms of one kind
 // for a day (modes 'meropenem-forms' / 'albumin-forms'), plus the calls the patient-entry form makes
@@ -106,7 +107,7 @@ export default function useDrugRequests({ selected, selectedDate, isExpired, use
     next.catch((error) => {
       // The list reloads (the form back to what is saved): the failed edit is over, so it must not block this form's next send.
       if (chains.current.get(id) === next) chains.current.delete(id)
-      setActionError(error.message || 'لم يُحفظ آخر تعديل — تحقّق من الاتصال وحاول مرة أخرى.')
+      setActionError(failureText(error, 'لم يُحفظ آخر تعديل — تحقّق من الاتصال وحاول مرة أخرى.'))
       setNonce((value) => value + 1)
     })
   }, [])

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { apiUrl } from '../constants.js'
+import { failureText } from '../helpers.js'
 
 // سجل الإدارة — who did what among the consequential admin actions (accounts, roles, access,
 // medicines, data purges), newest first. Admin-only and read-only; loaded when opened, older
@@ -34,7 +35,7 @@ export default function AdminAuditScreen({ adminHeader, isExpired }) {
         if (!response.ok) throw new Error(result.message)
         if (!cancelled) { setEntries((current) => (request.before && current ? [...current, ...result.entries] : result.entries)); setMore(result.more) }
       })
-      .catch((caught) => { if (!cancelled) setError(caught.message || 'تعذّر تحميل السجل — تحقّق من الاتصال وحاول مرة أخرى.') })
+      .catch((caught) => { if (!cancelled) setError(failureText(caught, 'تعذّر تحميل السجل — تحقّق من الاتصال وحاول مرة أخرى.')) })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [request, isExpired])
