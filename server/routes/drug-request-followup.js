@@ -86,13 +86,14 @@ router.post('/drug-requests/health/check', requireManager, async (_request, resp
   response.json({ health: await readHealth() })
 })
 
-// Patients given a first-day medicine (Meropenem, Tigecycline, Colistin, IVIG) in the range with no form of that kind for them:
-// none from 30 days before their first charted dose to 14 days after the first one in the range (the popup can be skipped and the
-// form completed later). A course that began before the form went live (`formsSince`) is not asked for, and one that began up
-// to 30 days before the range is still told from a new one. Read from the charts only — the course engine is not run, so it is
-// a light query; the price is that a course restarting within 30 days of an earlier form is not caught. A manager asks for any
-// range across all wards; a floor user for one day of their own ward (`floor`, `ward`, `date`).
-// { patients: [{ floor, ward, date, name, patientId }], more }.
+// Patients who BEGAN a first-day medicine (Meropenem, Tigecycline, Colistin, IVIG) in the range with no form of that kind for them:
+// none from 30 days before that first charted dose to 14 days after it (the popup can be skipped and the form completed later).
+// The form belongs to the first day only: a patient on a later day of a course that began before the range is not listed, form or
+// no form — a day 2 with no form is as it should be. A course that began before the form went live (`formsSince`) is not asked
+// for either. Read from the charts only — the course engine is not run, so it is a light query; the price is that "began" is the
+// first dose charted in the 30 days before the range's end, so a course restarting within 30 days of an earlier one is not caught.
+// A manager asks for any range across all wards; a floor user for one day of their own ward (`floor`, `ward`, `date`).
+// { patients: [{ floor, ward, date (the first day), name, patientId }], more }.
 router.get('/drug-requests/missing', requireAuth, async (request, response) => {
   const kind = Object.hasOwn(DRUG_REQUESTS, request.query.kind) && DRUG_REQUESTS[request.query.kind].firstDayOnly ? request.query.kind : null
   if (!kind) return response.status(400).json({ message: 'نوع الاستمارة غير معروف' })
@@ -112,7 +113,6 @@ router.get('/drug-requests/missing', requireAuth, async (request, response) => {
   const result = await query(
     `WITH given AS (
        SELECT w.floor_number AS floor, w.name AS ward, MIN(dc.chart_date) AS first,
-              MIN(dc.chart_date) FILTER (WHERE dc.chart_date >= $1::date) AS date,
               regexp_replace(btrim(cp.patient_name), '\\s+', ' ', 'g') AS name, cp.patient_id
        FROM daily_charts dc
        JOIN wards w ON w.id = dc.ward_id
@@ -124,15 +124,15 @@ router.get('/drug-requests/missing', requireAuth, async (request, response) => {
          AND (btrim(cp.patient_name) <> '' OR cp.patient_id <> '')
          AND ($4::text IS NULL OR (w.floor_number IS NOT DISTINCT FROM $5::int AND w.name = $4))
        GROUP BY w.floor_number, w.name, regexp_replace(btrim(cp.patient_name), '\\s+', ' ', 'g'), cp.patient_id
-       HAVING MAX(dc.chart_date) >= $1::date AND MIN(dc.chart_date) >= $8::date)
-     SELECT g.floor, g.ward, g.date::text AS date, g.name, g.patient_id FROM given g
+       HAVING MIN(dc.chart_date) >= GREATEST($1::date, $8::date))
+     SELECT g.floor, g.ward, g.first::text AS date, g.name, g.patient_id FROM given g
      WHERE NOT EXISTS (
        SELECT 1 FROM drug_requests r
-       WHERE r.kind = $6 AND r.request_date BETWEEN g.first - 30 AND g.date + 14 AND r.ward_key = COALESCE(g.floor::text, '') || '|' || g.ward AND r.patient_name = g.name)
+       WHERE r.kind = $6 AND r.request_date BETWEEN g.first - 30 AND g.first + 14 AND r.ward_key = COALESCE(g.floor::text, '') || '|' || g.ward AND r.patient_name = g.name)
        AND NOT EXISTS (
        SELECT 1 FROM drug_requests r
-       WHERE g.patient_id <> '' AND r.kind = $6 AND r.patient_id = g.patient_id AND r.request_date BETWEEN g.first - 30 AND g.date + 14)
-     ORDER BY g.date, g.floor, g.ward, g.name LIMIT $7`,
+       WHERE g.patient_id <> '' AND r.kind = $6 AND r.patient_id = g.patient_id AND r.request_date BETWEEN g.first - 30 AND g.first + 14)
+     ORDER BY g.first, g.floor, g.ward, g.name LIMIT $7`,
     [range.from, range.to, DRUG_REQUESTS[kind].sqlPattern, ward[1], ward[0], kind, MAX_ROWS + 1, DRUG_REQUESTS[kind].formsSince],
   )
   response.json({ patients: result.rows.slice(0, MAX_ROWS).map((row) => ({ floor: row.floor, ward: row.ward, date: row.date, name: row.name, patientId: row.patient_id })), more: result.rows.length > MAX_ROWS })
