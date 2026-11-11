@@ -3084,3 +3084,35 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
 /* Request dialog: save and cancel stay reachable however far the form is scrolled. */
 .req-dialog .modal-actions { position: sticky; bottom: calc(-1 * var(--space-6)); margin: 0 calc(-1 * var(--space-6)) calc(-1 * var(--space-6)); padding: var(--space-3) var(--space-6); background: var(--surface); border-top: 1px solid var(--border); }
 @media (max-width: 480px) { .req-dialog .modal-actions { bottom: calc(-1 * var(--space-5)); margin-inline: calc(-1 * var(--space-5)); margin-bottom: calc(-1 * var(--space-5)); padding-inline: var(--space-5); } }
+
+/* ============================================================
+   Chart on a phone (the grid itself: narrower names, labelled toolbar, a Next key). Screen only.
+   ============================================================ */
+/* The name column gave away two thirds of a 390px screen; this trims the fields inside it, not the layout. */
+@media screen and (max-width: 700px) {
+  .chart-head-corner, .chart-foot-corner, .chart-names { flex-basis: 232px; }
+  .chart-names .chart-table, .chart-table .patient-cell { width: 232px; min-width: 232px; max-width: 232px; }
+  .patient-cell input.patient-room { flex-basis: 44px; width: 44px; }
+  .patient-cell input.patient-id { flex-basis: 68px; width: 68px; }
+  .patient-cell .row-delete { inset-inline-end: 72px; }
+  .patient-cell.has-alert .row-delete { inset-inline-end: 102px; }
+  .chart-page--roomy .patient-cell.has-alert .row-delete { inset-inline-end: 116px; }
+}
+/* iOS zooms into any field under 16px, an iPad as much as a phone, and roomy mode was the only way out. Dose, name, room and ID
+   fields are 16px on every touch device now (row height is unchanged). The 11px medicine header stays: a long name would clip in
+   its 126px vertical box, so that field still zooms on focus until it has a picker of its own. */
+@media screen and (pointer: coarse) {
+  .chart-table td input, .chart-table .patient-cell input,
+  .chart-page--roomy .patient-cell input.patient-room, .chart-page--roomy .patient-cell input.patient-id { font-size: 16px; }
+}
+/* A press-and-hold tooltip is no name on a phone: the toolbar shows a short caption under each icon there. */
+.tb-caption { display: none; }
+@media screen and (max-width: 700px) {
+  .tb-button.tb-captioned { width: auto; min-width: 72px; height: auto; min-height: 60px; padding: 6px 8px 5px; display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
+  .tb-captioned svg { width: 26px; height: 26px; }
+  .tb-captioned .tb-caption { display: block; font-size: 11px; line-height: 1.25; font-weight: 700; text-align: center; }
+  .tb-captioned::after { display: none !important; }
+}
+/* «التالي»: only where there may be no Enter key. */
+.bar-next { display: none; flex: 0 0 auto; }
+@media screen and (pointer: coarse) { .bar-next { display: inline-flex; align-items: center; min-height: 44px; } }

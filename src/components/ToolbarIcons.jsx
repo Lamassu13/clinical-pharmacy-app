@@ -65,10 +65,12 @@ export const Glyph = ({ icon }) => <svg className="tb-glyph" viewBox="0 0 24 24"
 
 // An icon-only button: the name is the accessible label and the tooltip (data-tip shows at once
 // on hover, keyboard focus and press-and-hold). `busy` swaps the drawing for the app spinner.
-export default function ToolbarButton({ icon, label, primary, busy, ...props }) {
+// `caption`: a short visible name under the icon on phones only (CSS), where a press-and-hold tooltip is no name at all.
+export default function ToolbarButton({ icon, label, caption, primary, busy, ...props }) {
   return (
-    <button type="button" className={`${primary ? 'primary-button' : 'secondary-button'} tb-button`} aria-label={label} data-tip={label} {...props}>
+    <button type="button" className={`${primary ? 'primary-button' : 'secondary-button'} tb-button${caption ? ' tb-captioned' : ''}`} aria-label={label} data-tip={label} {...props}>
       {busy ? <span className="spinner" aria-hidden="true" /> : <svg viewBox="0 0 24 24" aria-hidden="true">{ICONS[icon]}</svg>}
+      {caption && <span className="tb-caption" aria-hidden="true">{caption}</span>}
     </button>
   )
 }
