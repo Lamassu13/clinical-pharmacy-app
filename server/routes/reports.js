@@ -475,6 +475,8 @@ const buildReport = async (from, to, scope) => {
   const restarts = []
   const longRuns = [] // every antibacterial course longer than the threshold, ended or not
   const lastKnownOf = new Map() // wardKey -> the ward's latest charted day up to `to`
+  const dotByWard = new Map() // wardKey -> days of therapy in the range
+  const dotByDrug = new Map() // drug label -> { days, previous }
   courseDays.forEach((patients, drug) => {
     const lengths = []
     patients.forEach((dayList, key) => {
@@ -487,6 +489,17 @@ const buildReport = async (from, to, scope) => {
       const runs = []
       dayList.forEach((day, i) => { if (i && bridged(dayList[i - 1], day)) runs[runs.length - 1][1] = day; else runs.push([day, day]) })
       runs.forEach(([start, end]) => {
+        // Days of therapy: every day of the run inside the range (and the previous period, for ↑/↓), Friday gaps
+        // included, a patient on two drugs counting twice. Antibacterials only, like the long courses.
+        if (antibacterial.get(drug)) {
+          const inside = (a, b) => Math.max(0, Math.min(end, b) - Math.max(start, a) + 1)
+          const now = inside(toDay(from), toDay(to))
+          const before = inside(toDay(previousFrom), toDay(previousTo))
+          const wardDot = dotByWard.get(wardKey(floor, ward)) || 0
+          dotByWard.set(wardKey(floor, ward), wardDot + now)
+          const drugDot = dotByDrug.get(drug) || { days: 0, previous: 0 }
+          dotByDrug.set(drug, { days: drugDot.days + now, previous: drugDot.previous + before })
+        }
         if (end < toDay(from)) return
         const length = end - start + 1
         lengths.push(length)
@@ -506,6 +519,7 @@ const buildReport = async (from, to, scope) => {
   restarts.sort((a, b) => a.gap - b.gap || a.patient.localeCompare(b.patient, 'ar'))
   longRuns.sort((a, b) => b.days - a.days || a.patient.localeCompare(b.patient, 'ar') || a.drug.localeCompare(b.drug))
 
+  const per1000 = (days, patientDaysIn) => (patientDaysIn ? Math.round((days / patientDaysIn) * 10000) / 10 : null)
   // DDD per 100 patient-days, and each AWaRe group's share of the DDDs, over a set of wards.
   const antibioticSummary = (group) => {
     const inGroup = (row) => group.some((ward) => row.floor === ward.floor && row.ward === ward.ward)
@@ -514,7 +528,8 @@ const buildReport = async (from, to, scope) => {
     const ddds = lines.reduce((total, line) => total + line.ddds, 0)
     const patientDaysIn = group.reduce((total, ward) => total + ward.patientDays, 0)
     const share = (aware) => (ddds ? Math.round((lines.filter((line) => line.aware === aware).reduce((total, line) => total + line.ddds, 0) / ddds) * 100) : null)
-    return { patientDays: patientDaysIn, ddds: round1(ddds), dddPer100: patientDaysIn ? Math.round((ddds / patientDaysIn) * 1000) / 10 : null, aware: { Access: share('Access'), Watch: share('Watch'), Reserve: share('Reserve') } }
+    const dot = group.reduce((total, ward) => total + (dotByWard.get(wardKey(ward.floor, ward.ward)) || 0), 0)
+    return { patientDays: patientDaysIn, ddds: round1(ddds), dddPer100: patientDaysIn ? Math.round((ddds / patientDaysIn) * 1000) / 10 : null, dot, dotPer1000: per1000(dot, patientDaysIn), aware: { Access: share('Access'), Watch: share('Watch'), Reserve: share('Reserve') } }
   }
   const byDddPer100 = (a, b) => (b.dddPer100 ?? -1) - (a.dddPer100 ?? -1)
   const antibioticByWard = wards.map((ward) => ({ floor: ward.floor, ward: ward.ward, ...antibioticSummary([ward]) }))
@@ -539,12 +554,19 @@ const buildReport = async (from, to, scope) => {
   const per100 = (ddds) => (patientDays ? Math.round((ddds / patientDays) * 1000) / 10 : null)
   const counted = antibioticLines.filter((line) => line.ddds !== undefined)
   const totalDdds = counted.reduce((total, line) => total + line.ddds, 0)
+  const dotDays = [...dotByDrug.values()].reduce((total, row) => total + row.days, 0)
+  const dotPrevious = [...dotByDrug.values()].reduce((total, row) => total + row.previous, 0)
   const antibiotics = {
     lines: counted.map((line) => ({ ...line, amount: Math.round(line.amount * 100) / 100, ddds: Math.round(line.ddds * 10) / 10, dddPer100: per100(line.ddds) }))
       .sort((a, b) => b.ddds - a.ddds || a.name.localeCompare(b.name)),
     notCounted: antibioticLines.filter((line) => line.ddds === undefined).map(({ name, quantity, reason }) => ({ name, quantity, reason })),
     totalDdds: Math.round(totalDdds * 10) / 10,
     dddPer100: per100(totalDdds),
+    dot: {
+      days: dotDays, per1000: per1000(dotDays, patientDays), previousPer1000: per1000(dotPrevious, sum('previousPatientDays')),
+      byDrug: [...dotByDrug].filter(([, row]) => row.days > 0).map(([drug, row]) => ({ drug, days: row.days, per1000: per1000(row.days, patientDays) }))
+        .sort((a, b) => b.days - a.days || a.drug.localeCompare(b.drug)).slice(0, 15),
+    },
     longCourseDays: longCourseBody.threshold, longCourses: longCoursePatients, longRuns, multiple, reserve, courseStats, restarts, restartDays: RESTART_DAYS,
     byWard: antibioticByWard, byFloor: antibioticByFloor,
     aware: Object.fromEntries(['Access', 'Watch', 'Reserve'].map((group) => [group,
