@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { DRUG_REQUESTS, cleanField } from '../../shared/drug-requests.js'
 import { toEnglishDigits } from '../helpers.js'
 import { stripInvisible } from '../../shared/clean-name.js'
@@ -18,6 +18,9 @@ export default function DrugRequestDialog({ kind, initial, screen = false, kicke
   const [patientId, setPatientId] = useState(initial.patientId || '')
   const [values, setValues] = useState(() => Object.fromEntries(spec.fields.map((field) => [field.key, initial.fields?.[field.key] || ''])))
   const [error, setError] = useState('')
+  const formRef = useRef(null)
+  // The message sits under the title, so a dialog scrolled down (or a keyboard over its foot) must come back to it.
+  useEffect(() => { if (error) formRef.current?.scrollTo?.(0, 0) }, [error])
   const [busy, setBusy] = useState(false)
   const set = (field, value) => {
     setError('')
@@ -35,7 +38,7 @@ export default function DrugRequestDialog({ kind, initial, screen = false, kicke
     const missing = fields.find((field) => field.required && !values[field.key].trim())
     if (missing) {
       setError(`${missing.label} مطلوب — ${missing.choices ? 'اختره' : 'اكتبه'} ثم احفظ.`)
-      event.currentTarget.querySelector(`[data-field="${missing.key}"]`)?.focus()
+      event.currentTarget.querySelector(`[data-field="${missing.key}"]`)?.focus({ preventScroll: true }) // the view stays on the message
       return
     }
     setBusy(true)
@@ -47,10 +50,11 @@ export default function DrugRequestDialog({ kind, initial, screen = false, kicke
   }
 
   return <div className="modal-backdrop">
-    <form className="medicine-modal req-dialog" role="dialog" aria-modal="true" aria-labelledby="req-dialog-title" onSubmit={submit} noValidate
+    <form ref={formRef} className="medicine-modal req-dialog" role="dialog" aria-modal="true" aria-labelledby="req-dialog-title" onSubmit={submit} noValidate
       onKeyDown={(event) => { if (event.key === 'Escape') { event.preventDefault(); onClose() } }}>
       {kicker && <p className="modal-kicker">{kicker}</p>}
       <h2 id="req-dialog-title">{title || spec.label}</h2>
+      {error && <p className="form-error" role="alert">{error}</p>}
       {note && <p className="req-dialog-note" role="status">{note}</p>}
 
       <div className="req-dialog-grid">
@@ -83,7 +87,6 @@ export default function DrugRequestDialog({ kind, initial, screen = false, kicke
         })}
       </div>
 
-      {error && <p className="form-error" role="alert">{error}</p>}
       <div className="modal-actions">
         <button type="button" className="secondary-button" onClick={onClose}>{cancelLabel}</button>
         <button type="submit" className="primary-button" disabled={busy}>{busy ? 'جارٍ الحفظ…' : saveLabel}</button>

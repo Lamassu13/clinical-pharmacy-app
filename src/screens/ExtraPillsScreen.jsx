@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import hospitalLogo from '../assets/hospital-logo.png'
 import PillSelect from '../components/PillSelect.jsx'
+import { Glyph } from '../components/ToolbarIcons.jsx'
 import PillNote from '../components/PillNote.jsx'
 import MedicineSuggest from '../components/MedicineSuggest.jsx'
 import useCatalogueSuggest from '../components/useCatalogueSuggest.js'
@@ -59,7 +60,7 @@ function ExtraPillFormCard({ form, catalogue, floorLabel, today, editTime, selec
         <img className="hospital-logo header-logo" width="42" height="42" src={hospitalLogo} alt="" />
       </div>
       <span className="extra-pill-form-actions">
-        {pendingSync && <span className="save-state save-state-pending" role="status">○ معلّق للمزامنة</span>}
+        {pendingSync && <span className="save-state save-state-pending" role="status"><Glyph icon="history" />معلّق للمزامنة</span>}
         <button type="button" className="primary-button compact" disabled={!dirty || busy} onClick={save}>حفظ</button>
         <button type="button" className="danger-button compact" disabled={busy} onClick={() => onRemove(form.id)}>حذف الاستمارة</button>
       </span>

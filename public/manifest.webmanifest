@@ -4,6 +4,7 @@
   "description": "تسجيل جداول الجارت اليومية واستمارات إعطاء الحبوب.",
   "lang": "ar",
   "dir": "rtl",
+  "id": "/",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

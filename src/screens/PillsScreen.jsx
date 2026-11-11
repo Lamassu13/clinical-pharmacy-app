@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import hospitalLogo from '../assets/hospital-logo.png'
 import PillSelect from '../components/PillSelect.jsx'
+import { Glyph } from '../components/ToolbarIcons.jsx'
+import LoadingRows from '../components/LoadingRows.jsx'
 import PillNote from '../components/PillNote.jsx'
 import MedicineSuggest from '../components/MedicineSuggest.jsx'
 import useCatalogueSuggest from '../components/useCatalogueSuggest.js'
@@ -48,16 +50,22 @@ export default function PillsScreen({ footer,
   // goes up by itself when the signal returns — so say that, in amber, not a red «لم يُحفظ».
   const offlineHeld = !isOnline && !pillsLoadError && pillsSaveStatus !== 'saved'
   const saveErrored = pillsLoadError || (pillsSaveStatus === 'error' && !offlineHeld)
-  const saveText = pillsLoadError ? '⚠ تعذّر تحميل الاستمارة — إعادة المحاولة…'
-    : offlineHeld ? '○ محفوظ على الجهاز — سيُرسل عند عودة الاتصال'
-    : pillsSaveStatus === 'error' ? '⚠ لم يُحفظ — تُعاد المحاولة…'
-    : pillsSaveStatus === 'saving' ? '⟳ جارٍ الحفظ…'
-    : pillsSaveStatus === 'pending' ? '○ لم يُحفظ بعد…'
-    : '● محفوظ تلقائيًا'
+  const saveText = pillsLoadError ? 'تعذّر تحميل الاستمارة — إعادة المحاولة…'
+    : offlineHeld ? 'محفوظ على الجهاز — سيُرسل عند عودة الاتصال'
+    : pillsSaveStatus === 'error' ? 'لم يُحفظ — تُعاد المحاولة…'
+    : pillsSaveStatus === 'saving' ? 'جارٍ الحفظ…'
+    : pillsSaveStatus === 'pending' ? 'لم يُحفظ بعد…'
+    : 'محفوظ تلقائيًا'
   const saveClass = saveErrored ? 'save-state save-state-error'
     : pillsSaveStatus === 'saving' ? 'save-state save-state-saving'
     : pillsSaveStatus === 'pending' || offlineHeld ? 'save-state save-state-pending'
-    : 'save-state'
+    : 'save-state save-state-saved'
+  const saveIcon = saveErrored ? <Glyph icon="warn" />
+    : pillsSaveStatus === 'saving' ? <span className="spinner" aria-hidden="true" />
+    : pillsSaveStatus === 'pending' || offlineHeld ? <Glyph icon="history" />
+    : <Glyph icon="done" />
+  // One status line, built once, shown in the toolbar on wide screens and as a pinned strip on phones (CSS picks).
+  const saveLine = <span className={saveClass} role={saveErrored ? 'alert' : undefined} aria-live={saveErrored ? undefined : 'polite'}>{saveIcon}{saveText}</span>
 
   const patientsOnForm = pillsData?.patients ?? []
   // One patient's medicine rows, as {key, entry}, for the two bulk fills below.
@@ -105,11 +113,12 @@ export default function PillsScreen({ footer,
         <div><p className="modal-kicker">استمارة إعطاء الحبوب</p><h1>{wardLabel}</h1></div>
         <div className="toolbar-actions">
           <label className="pills-date">التاريخ <input type="date" value={selectedDate} onChange={(event) => onChangeDate(event.target.value)} /></label>
-          <span className={saveClass} role={saveErrored ? 'alert' : undefined} aria-live={saveErrored ? undefined : 'polite'}>{saveText}</span>
+          <span className="pills-save-inline">{saveLine}</span>
           <button className="primary-button compact" disabled={!patientsOnForm.length || pdf.busy} onClick={() => printForms(patientsOnForm)}>{pdf.busy ? 'جارٍ إنشاء PDF…' : 'طباعة الكل'}</button>
           <button className="secondary-button compact" disabled={pillSelection.size === 0 || pdf.busy} onClick={() => printForms(patientsOnForm.filter((patient) => pillSelection.has(patient.rowNumber)))}>طباعة المحدّدين ({pillSelection.size})</button>
         </div>
       </div>
+      <div className="pills-save-chip">{saveLine}</div>
 
       {pdf.error && <p className="form-error" role="alert">{pdf.error}</p>}
 
@@ -132,7 +141,7 @@ export default function PillsScreen({ footer,
         </span>
       </div>}
 
-      {pillsLoading ? <div className="empty-state"><span className="spinner" /><span>جارٍ تحميل الاستمارة…</span></div>
+      {pillsLoading ? <div className="empty-state" role="status"><LoadingRows rows={6} /><span>جارٍ تحميل الاستمارة…</span></div>
         : !pillsData ? <div className="empty-state"><strong>لا يوجد جارت لهذا اليوم</strong><span>سجّل جارت هذه الردهة أولًا، ثم ستُبنى استمارة الحبوب تلقائيًا.</span></div>
         : pillsData.patients.length === 0 ? <div className="empty-state"><strong>لا حبوب لعرضها</strong><span>لا يوجد مريض لديه علاج أقراص أو كبسولات (Tab / Cap) في جارت هذا اليوم.</span></div>
         : pillsData.patients.flatMap((patient) => {

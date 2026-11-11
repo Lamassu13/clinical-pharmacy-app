@@ -10,6 +10,7 @@ export default function useTheme() {
       try { localStorage.setItem('cpa-theme', next) } catch { /* storage unavailable */ }
       if (next === 'dark') document.documentElement.setAttribute('data-theme', 'dark')
       else document.documentElement.removeAttribute('data-theme')
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', next === 'dark' ? '#161f1b' : '#087c54')
       return next
     })
   }, [])
