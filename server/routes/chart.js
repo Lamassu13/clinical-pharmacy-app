@@ -1,6 +1,6 @@
 import express from 'express'
 import { pool, query } from '../db.js'
-import { requireAuth, requireManager } from '../auth.js'
+import { requireAdmin, requireAuth, requireManager } from '../auth.js'
 import {
   ALLOWED_FLOORS, MAX_PATIENT_ROWS, MAX_CHART_COLUMNS, SPECIAL_WARDS, isKnownWard,
   canAccessLocation, clampInt, isIsoDate, cleanText,
@@ -114,11 +114,12 @@ const resolveChartId = async (floor, wardName, chartDate, slot = 'main') => {
 }
 
 // Bulk-delete charts (floor-management screen). Irreversible: dropping a daily_charts row
-// cascades to its patients, columns, quantities and both pill tables. Manager-gated, and it
+// cascades to its patients, columns, quantities and both pill tables. Admin-only (a supervisor
+// must not be able to erase charts), and it
 // only ever touches whole (ward, date) charts inside the given inclusive date range — either
 // every ward (`all`) or a chosen set of numbered floors and/or special wards.
 const purgeScope = (all, floors, wards) => (all ? 'كل الطوابق والردهات' : [...floors.map((floor) => `الطابق ${floor}`), ...wards].join('، '))
-router.post('/charts/purge', requireManager, async (request, response) => {
+router.post('/charts/purge', requireAdmin, async (request, response) => {
   const { from, to } = request.body
   if (!isIsoDate(from) || !isIsoDate(to)) return response.status(400).json({ message: 'التاريخ مطلوب' })
   if (from > to) return response.status(400).json({ message: 'تاريخ البداية بعد تاريخ النهاية' })

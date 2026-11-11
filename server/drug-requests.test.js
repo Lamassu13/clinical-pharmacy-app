@@ -186,7 +186,7 @@ test('requests: purging the ward’s charts for the dates removes its forms too'
   await pharmacist.post('/api/drug-requests', { ...place, kind: 'meropenem', date: '2026-09-24', name: 'علي' })
   await pharmacist.post('/api/drug-requests', { ...place, kind: 'albumin', date: '2026-09-24', name: 'سارة' })
   await pharmacist.post('/api/drug-requests', { ...place, kind: 'meropenem', date: '2026-09-28', name: 'حسن' })
-  const manager = await loginAs({ role: 'supervisor' })
+  const manager = await loginAs({ role: 'admin' })
   assert.equal((await manager.post('/api/charts/purge', { from: '2026-09-20', to: '2026-09-25', floors: [FLOOR] })).status, 200)
   assert.deepEqual((await pharmacist.get(`/api/drug-requests?${where('meropenem', '2026-09-24')}`)).body.requests, [])
   assert.deepEqual((await pharmacist.get(`/api/drug-requests?${where('albumin', '2026-09-24')}`)).body.requests, [])
