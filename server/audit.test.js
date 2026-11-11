@@ -43,7 +43,7 @@ test('audit log: medicine edits and chart purges are recorded; admins only can r
   const id = created.body.medicine.id
   assert.equal((await supervisor.put(`/api/medicines/${id}`, { name: 'Test Drug 10mg', isSupply: true })).status, 200)
   assert.equal((await supervisor.delete(`/api/medicines/${id}`)).status, 200)
-  assert.equal((await supervisor.post('/api/charts/purge', { from: '2026-01-01', to: '2026-01-31', all: true })).status, 200)
+  assert.equal((await admin.post('/api/charts/purge', { from: '2026-01-01', to: '2026-01-31', all: true })).status, 200)
   const entries = await trail(admin)
   assert.deepEqual(brief(entries), [['charts.purged', 'كل الطوابق والردهات'], ['medicine.deleted', 'Test Drug 10mg'], ['medicine.updated', 'Test Drug 10mg'], ['medicine.created', 'Test Drug 5mg']])
   assert.equal(entries[2].detail, 'الاسم: Test Drug 5mg ← Test Drug 10mg · مستلزم: نعم') // only what changed

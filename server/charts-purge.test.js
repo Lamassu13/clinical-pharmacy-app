@@ -28,7 +28,7 @@ const seedChart = async ({ floor, ward, date, createdBy }) => {
 }
 const chartCount = async () => (await pool.query('SELECT COUNT(*)::int AS c FROM daily_charts')).rows[0].c
 
-test('POST /api/charts/purge: only a manager may call it', async () => {
+test('POST /api/charts/purge: only the admin may call it', async () => {
   const anon = new ApiClient(baseUrl)
   assert.equal((await anon.post('/api/charts/purge', { from: '2026-01-01', to: '2026-01-31', all: true })).status, 401)
 
@@ -36,7 +36,8 @@ test('POST /api/charts/purge: only a manager may call it', async () => {
   assert.equal((await plainUser.post('/api/charts/purge', { from: '2026-01-01', to: '2026-01-31', all: true })).status, 403)
 
   const supervisor = await loginAs({ role: 'supervisor' })
-  assert.equal((await supervisor.post('/api/charts/purge', { from: '2026-01-01', to: '2026-01-31', all: true })).status, 200)
+  assert.equal((await supervisor.post('/api/charts/purge', { from: '2026-01-01', to: '2026-01-31', all: true })).status, 403)
+  assert.equal((await (await loginAs({ role: 'admin' })).post('/api/charts/purge', { from: '2026-01-01', to: '2026-01-31', all: true })).status, 200)
 })
 
 test('POST /api/charts/purge: rejects a bad range or an empty target', async () => {

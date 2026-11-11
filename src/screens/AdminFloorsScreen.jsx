@@ -5,7 +5,7 @@ import { floors, specialWards } from '../constants.js'
 // manager's landing page inside «الإدارة» — so this one stays focused on its own destructive
 // action. Manager-gated; the actual delete is confirmed through the shared dialog in App.
 export default function AdminFloorsScreen({
-  adminHeader, purgeFrom, setPurgeFrom, purgeTo, setPurgeTo, purgeAll, setPurgeAll, purgeKinds, setPurgeKinds,
+  adminHeader, purgeFrom, setPurgeFrom, purgeTo, setPurgeTo, purgeAll, setPurgeAll, purgeKinds, canPurgeCharts, setPurgeKinds,
   purgeTargets, onToggleTarget, busy, registrationsError, adminSuccess, onPurge, confirmModal,
 }) {
   return <main className="app-shell">{adminHeader}<section className="dashboard floor-admin-page">
@@ -25,7 +25,7 @@ export default function AdminFloorsScreen({
       <fieldset className="purge-targets">
         <legend>ما الذي يُمسح</legend>
         <div className="purge-targets-grid">
-          {[['charts', 'الجارتات (تشمل استمارات الحبوب والميرونيم)'], ['pills', 'استمارات الحبوب فقط'], ['extra', 'استمارات الحبوب الإضافية']].map(([key, label]) => (
+          {[['charts', 'الجارتات (تشمل استمارات الحبوب والميرونيم)'], ['pills', 'استمارات الحبوب فقط'], ['extra', 'استمارات الحبوب الإضافية']].filter(([key]) => canPurgeCharts || key !== 'charts').map(([key, label]) => (
             <label key={key}>
               <input type="checkbox" checked={purgeKinds[key]} disabled={key === 'pills' && purgeKinds.charts} onChange={() => setPurgeKinds((current) => ({ ...current, [key]: !current[key] }))} />
               <span>{label}</span>

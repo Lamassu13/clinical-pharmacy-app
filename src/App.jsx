@@ -674,7 +674,8 @@ function App() {
     const floorNumbers = [...purgeTargets].filter((key) => typeof key === 'number')
     const wardNames = [...purgeTargets].filter((key) => typeof key === 'string')
     if (!purgeAll && floorNumbers.length === 0 && wardNames.length === 0) { setRegistrationsError('اختر طابقًا واحدًا على الأقل أو فعّل "كل الطوابق والردهات"'); return }
-    const { charts, pills, extra } = purgeKinds
+    const { pills, extra } = purgeKinds
+    const charts = isAdmin && purgeKinds.charts // a supervisor never deletes charts (the server refuses too)
     if (!charts && !pills && !extra) { setRegistrationsError('اختر ما تريد مسحه'); return }
     const scopeText = purgeAll ? 'كل الطوابق والردهات' : `${floorNumbers.length + wardNames.length} موقعًا مختارًا`
     const whatText = [charts && 'الجارتات (مع استمارات الحبوب والميرونيم)', !charts && pills && 'استمارات الحبوب', extra && 'استمارات الحبوب الإضافية'].filter(Boolean).join(' و')
@@ -701,7 +702,7 @@ function App() {
       setPurgeTargets(new Set())
       setPurgeAll(false)
     } catch (error) { if (!expired) setRegistrationsError(failureText(error, 'تعذر الاتصال بالخادم')) } finally { setBusy(false) }
-  }, [askConfirm, isExpired, purgeAll, purgeFrom, purgeKinds, purgeTo, purgeTargets])
+  }, [askConfirm, isAdmin, isExpired, purgeAll, purgeFrom, purgeKinds, purgeTo, purgeTargets])
   useEffect(() => {
     // Not while the sign-in card is up. Signing back in re-runs this, so a list whose load the
     // lapsed session refused is fetched again instead of showing a false «nothing here».
@@ -2350,7 +2351,7 @@ function App() {
   if (adminView === 'audit' && isAdmin) return <AdminAuditScreen adminHeader={appHeader} isExpired={isExpired} />
   if (adminView === 'errors' && isAdmin) return <AdminErrorsScreen adminHeader={appHeader} isExpired={isExpired} askConfirm={askConfirm} />
 
-  if (adminView === 'floors' && isManager) return <AdminFloorsScreen adminHeader={appHeader} purgeFrom={purgeFrom} setPurgeFrom={setPurgeFrom} purgeTo={purgeTo} setPurgeTo={setPurgeTo} purgeAll={purgeAll} setPurgeAll={setPurgeAll} purgeKinds={purgeKinds} setPurgeKinds={setPurgeKinds} purgeTargets={purgeTargets} onToggleTarget={togglePurgeTarget} busy={busy} registrationsError={registrationsError} adminSuccess={adminSuccess} onPurge={purgeCharts} confirmModal={confirmModal} />
+  if (adminView === 'floors' && isManager) return <AdminFloorsScreen adminHeader={appHeader} purgeFrom={purgeFrom} setPurgeFrom={setPurgeFrom} purgeTo={purgeTo} setPurgeTo={setPurgeTo} purgeAll={purgeAll} setPurgeAll={setPurgeAll} purgeKinds={isAdmin ? purgeKinds : { ...purgeKinds, charts: false }} canPurgeCharts={isAdmin} setPurgeKinds={setPurgeKinds} purgeTargets={purgeTargets} onToggleTarget={togglePurgeTarget} busy={busy} registrationsError={registrationsError} adminSuccess={adminSuccess} onPurge={purgeCharts} confirmModal={confirmModal} />
 
   // adminMedicines holds the catalogue exactly as the server returned it, so its length is
   // the number of rows in the database; the filter only narrows what the table draws.
