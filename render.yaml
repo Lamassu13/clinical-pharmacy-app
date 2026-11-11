@@ -21,6 +21,11 @@ services:
         value: "true"
       - key: DATABASE_POOL_SIZE
         value: "15"
+      # The free plan has 512 MB. Without a cap Node lets the heap grow into it and the instance is
+      # killed (measured: one reports call grew RSS to ~680 MB locally; capped at 160 MB the same
+      # run peaked at ~365 MB). 300 leaves room for buffers and the runtime itself.
+      - key: NODE_OPTIONS
+        value: "--max-old-space-size=300"
       - key: SESSION_SECRET
         generateValue: true
       - key: CLIENT_ORIGIN

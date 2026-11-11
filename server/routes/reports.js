@@ -3,6 +3,7 @@ import { query } from '../db.js'
 import { dddLine, antibioticOf } from '../ddd.js'
 import { antibioticNames, longCourses } from './chart.js'
 import { requireManager } from '../auth.js'
+import { memoizeByKey } from '../cache.js'
 import { foldName } from '../name-fold.js'
 import { MAX_BRIDGE_DAYS } from '../dashboard-bridge.js'
 import { LOOKBACK_DAYS } from '../meropenem.js'
@@ -69,15 +70,11 @@ export const sameIdGroups = (rows, from) => {
     .sort((a, b) => a.patientId.localeCompare(b.patientId, undefined, { numeric: true }))
 }
 
-router.get('/reports', requireManager, async (request, response) => {
-  const { from, to } = request.query
-  if (!isIsoDate(from) || !isIsoDate(to)) return response.status(400).json({ message: 'التاريخ مطلوب' })
-  if (from > to) return response.status(400).json({ message: 'تاريخ البداية بعد تاريخ النهاية' })
+// The whole report for one range and scope. Reading and folding every chart row of the range is the
+// app's heaviest request (~1.5 s and a few hundred MB of garbage at hospital scale), so it is built
+// through reportCache below.
+const buildReport = async (from, to, scope) => {
   const days = toDay(to) - toDay(from) + 1
-  if (days > MAX_REPORT_DAYS) return response.status(400).json({ message: `المدة القصوى ${MAX_REPORT_DAYS} يومًا` })
-  const scope = resolveScope(String(request.query.scope || 'all'))
-  if (!scope) return response.status(400).json({ message: 'الطابق أو الردهة غير معروفة' })
-
   // The previous period of the same length, for ↑/↓ — and it also supplies "yesterday" for
   // day one's admissions and the start of any stay already running when the range begins.
   const previousFrom = toIso(toDay(from) - days)
@@ -541,7 +538,7 @@ router.get('/reports', requireManager, async (request, response) => {
 
   const polypharmacyPatients = [...polypharmacy.values()].sort((a, b) => b.maxMedicines - a.maxMedicines || a.patient.localeCompare(b.patient, 'ar'))
 
-  response.json({
+  return {
     range: { from, to, days, previousFrom, previousTo },
     thresholds: { polypharmacy: POLYPHARMACY_MIN, longStay: LONG_STAY_DAYS, readmit: READMIT_DAYS },
     summary: {
@@ -571,7 +568,24 @@ router.get('/reports', requireManager, async (request, response) => {
     sameIds: sameIdGroups(patientRows.rows, from),
     readmissions: readmissions.sort((a, b) => b.count - a.count || a.patient.localeCompare(b.patient, 'ar')),
     antibiotics,
-  })
+  }
+}
+
+// 60 s, per (range, scope), shared by every manager: a second tap, a second device or the same range
+// reopened costs nothing, and simultaneous requests share one build. The report is a look back, so
+// a minute of staleness is harmless; a restore or manual SQL edit shows within the minute too.
+// ponytail: no invalidation on chart writes — add reportCache.clear() there if live numbers matter.
+const reportCache = memoizeByKey(buildReport, { ttlMs: 60_000, max: 8 })
+export const clearReports = reportCache.clear // tests reset the database under it
+
+router.get('/reports', requireManager, async (request, response) => {
+  const { from, to } = request.query
+  if (!isIsoDate(from) || !isIsoDate(to)) return response.status(400).json({ message: 'التاريخ مطلوب' })
+  if (from > to) return response.status(400).json({ message: 'تاريخ البداية بعد تاريخ النهاية' })
+  if (toDay(to) - toDay(from) + 1 > MAX_REPORT_DAYS) return response.status(400).json({ message: `المدة القصوى ${MAX_REPORT_DAYS} يومًا` })
+  const scope = resolveScope(String(request.query.scope || 'all'))
+  if (!scope) return response.status(400).json({ message: 'الطابق أو الردهة غير معروفة' })
+  response.json(await reportCache.get(`${from}|${to}|${[...scope.value].sort().join(',')}`, from, to, scope))
 })
 
 export default router
