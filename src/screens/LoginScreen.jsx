@@ -28,6 +28,7 @@ export default function LoginScreen({
           <label>
             اسم المستخدم
             <input
+              autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false}
               value={credentials.username}
               onChange={(event) => setCredentials({ ...credentials, username: event.target.value })}
               required
@@ -37,6 +38,7 @@ export default function LoginScreen({
             كلمة المرور
             <input
               type="password"
+              autoComplete="current-password"
               value={credentials.password}
               onChange={(event) => setCredentials({ ...credentials, password: event.target.value })}
               required

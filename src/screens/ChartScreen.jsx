@@ -17,7 +17,7 @@ const formatNoteDate = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString('
 
 export default function ChartScreen({
   dayLocked = false, selected, wardLabel, today, todayWeekday, isManager, dateIsToday, selectedDate, onChangeDate, onCopyToNextDay, onOpenTemplates, isOnline, onBack, onGoToPills, onGoToOrder, onOpenForm, onExportPdf, pdfBusy, pdfExportError,
-  chartSaveStatus, loadError, copyError, chartReady, lastChartSaveAt, onRetryLoad, onRetrySave, lockState, lockHolder,
+  chartSaveStatus, loadError, copyError, completeError, chartReady, lastChartSaveAt, onRetryLoad, onRetrySave, lockState, lockHolder,
   chartCompleted, completedByName, onToggleComplete, chartRooms, roomLabel, onSetRoom, onSaveRooms,
   chartClashNote, onDismissClashNote, droppedCells, undo, onUndo,
   medicines, patientNames, patientIds, columnMedicines, quantities, totals, doubledTotals, isThursday,
@@ -299,9 +299,9 @@ export default function ChartScreen({
             {/* Name and ID side by side, as on the printed sheet. The ID is screen-only here:
                 .patient-id is in the print block's display: none list. */}
             <div className="patient-fields">
-              <input className="patient-room" readOnly={readOnly} enterKeyHint="next" value={chartRooms[rowIndex + 1] || ''} onChange={(event) => onSetRoom(rowIndex, event.target.value)} onBlur={onSaveRooms}
+              <input className="patient-room" autoComplete="off" autoCorrect="off" spellCheck={false} readOnly={readOnly} enterKeyHint="next" value={chartRooms[rowIndex + 1] || ''} onChange={(event) => onSetRoom(rowIndex, event.target.value)} onBlur={onSaveRooms}
                 placeholder={roomLabel} title={roomLabel} aria-label={`${roomLabel}، صف ${rowIndex + 1}`} />
-              <input className="patient-name" readOnly={readOnly} enterKeyHint="next" value={name} onChange={(event) => onSetPatientName(rowIndex, event.target.value)}
+              <input className="patient-name" autoComplete="off" autoCorrect="off" spellCheck={false} readOnly={readOnly} enterKeyHint="next" value={name} onChange={(event) => onSetPatientName(rowIndex, event.target.value)}
                 onFocus={(event) => { patientFocusEmpty.current = !event.target.value.trim() }}
                 onBlur={(event) => { if (!readOnly && patientFocusEmpty.current && event.target.value.trim()) onCheckPreviousDay(rowIndex, event.target.value) }}
                 placeholder={`مريض ${rowIndex + 1}`} aria-label={`اسم المريض، صف ${rowIndex + 1}`} />
@@ -327,12 +327,13 @@ export default function ChartScreen({
 
     {/* Below the grid, so a save failure or a merge outcome never pushes the cells the
         pharmacist is typing into. */}
-    {chartReady && (chartSaveStatus === 'error' || copyError || pdfExportError) && <div className="chart-recover-line" role="alert">
+    {chartReady && (chartSaveStatus === 'error' || copyError || completeError || pdfExportError) && <div className="chart-recover-line" role="alert">
       {chartSaveStatus === 'error' && <>
         <span>لم يُحفظ — تُعاد المحاولة تلقائيًا. تعديلاتك محفوظة على هذا الجهاز.</span>
         <button type="button" className="secondary-button compact" onClick={onRetrySave}>إعادة المحاولة الآن</button>
       </>}
       {copyError && <span>تعذّر نسخ الجارت — أعِد الضغط على «نسخ الأدوية إلى اليوم التالي».</span>}
+      {completeError && <span>تعذّر تحديث حالة «اكتمل الجارت» — أعِد الضغط عليه.</span>}
       {pdfExportError && <span>{pdfExportError}</span>}
     </div>}
 
