@@ -12,6 +12,8 @@
 body { margin: 0; min-width: 320px; }
 button, input, select { font: inherit; }
 button { cursor: pointer; }
+/* No 300 ms double-tap-zoom wait on taps (pinch-zoom still works). */
+button, a, input, select, textarea, label, summary { touch-action: manipulation; }
 
 :focus-visible { outline: 2px solid var(--primary, #087c54); outline-offset: 2px; }
 /* Text/select fields get a ring via box-shadow instead (App.css). Checkboxes and radios keep

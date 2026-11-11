@@ -189,9 +189,9 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 .primary-button span, .secondary-button span { margin: 0; }
 
 .primary-button { background: var(--primary); color: var(--on-primary); box-shadow: var(--shadow-xs); }
-.primary-button:hover:not(:disabled) { background: var(--primary-hover); }
+@media (hover: hover) { .primary-button:hover:not(:disabled) { background: var(--primary-hover); } }
 .secondary-button { background: var(--green-50); color: var(--primary-hover); border-color: var(--green-200); }
-.secondary-button:hover:not(:disabled) { background: var(--green-100); }
+@media (hover: hover) { .secondary-button:hover:not(:disabled) { background: var(--green-100); } }
 .danger-button { background: var(--danger-tint); color: var(--danger); border-color: var(--danger-border); }
 .danger-button:hover:not(:disabled) { background: var(--danger-tint); border-color: var(--danger); }
 .back-button, .text-button { background: transparent; color: var(--primary); padding-inline: 6px; }
@@ -351,7 +351,8 @@ label { display: grid; gap: var(--space-2); color: var(--heading); font-size: va
 .user-menu, .toolbar-actions { flex-wrap: wrap; }
 .user-menu { color: var(--text-muted); font-size: var(--text-sm); justify-content: flex-end; gap: var(--space-2); }
 .topbar-brand { min-height: 44px; border: 0; background: transparent; padding: 0; font: inherit; color: inherit; cursor: pointer; text-align: start; border-radius: var(--radius-md); transition: background var(--dur-fast) var(--ease); }
-.topbar-brand:hover { background: var(--green-50); }
+@media (hover: hover) { .topbar-brand:hover { background: var(--green-50); } }
+.topbar-brand:active { background: var(--green-50); }
 .topbar-brand strong { display: block; color: var(--heading); font-size: var(--text-base); }
 .topbar-brand small { display: block; color: var(--text-muted); font-size: var(--text-xs); }
 
@@ -397,7 +398,8 @@ button.topbar-user:hover { color: var(--primary); }
   text-align: start; white-space: nowrap; cursor: pointer;
   transition: background var(--dur-fast) var(--ease);
 }
-.admin-menu-list button:hover { background: var(--green-50); }
+@media (hover: hover) { .admin-menu-list button:hover { background: var(--green-50); } }
+.admin-menu-list button:active { background: var(--green-50); }
 .admin-menu-list button:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
 .admin-menu-list button[aria-current="true"] { background: var(--green-50); color: var(--primary-hover); font-weight: 700; }
 .admin-menu-exit { margin-top: var(--space-1); padding-top: 11px; border-top: 1px solid var(--border); color: var(--text-muted); }
@@ -1918,6 +1920,8 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
 .medicine-modal {
   position: relative;
   width: min(100%, 420px);
+  /* A tall dialog (or an open keyboard) scrolls inside itself instead of pushing its buttons off-screen. */
+  max-height: calc(100vh - 2 * var(--space-5)); max-height: calc(100svh - 2 * var(--space-5)); overflow-y: auto;
   padding: var(--space-7);
   background: var(--surface);
   border-radius: var(--radius-lg);
@@ -2771,7 +2775,8 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
   flex: none; min-height: 44px; padding: 0 var(--space-4); border: 1px solid var(--border-strong); border-radius: 999px;
   background: var(--surface); color: var(--text); font-size: var(--text-sm); font-weight: 700; white-space: nowrap;
 }
-.req-chip:hover { border-color: var(--green-300); background: var(--green-50); }
+@media (hover: hover) { .req-chip:hover { border-color: var(--green-300); background: var(--green-50); } }
+.req-chip:active { border-color: var(--green-300); background: var(--green-50); }
 .req-chip[aria-pressed="true"] { border-color: var(--primary); background: var(--green-50); color: var(--primary-hover); box-shadow: inset 0 0 0 1px var(--primary); }
 /* The chosen one also carries a drawn tick, so it never rests on colour alone. */
 .req-chip[aria-pressed="true"]::before { content: ''; display: inline-block; width: 5px; height: 10px; margin-inline-end: var(--space-2); border: solid currentColor; border-width: 0 2px 2px 0; transform: translateY(-2px) rotate(45deg); }
@@ -3029,3 +3034,25 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
 .req-manual { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
 .rpt-sheet .coli-equations { font-size: 10pt; }
 .rpt-sheet .tige-patient td.req-tick-cell { vertical-align: top; height: 24mm; }
+
+/* ============================================================
+   Touch pass (phones and tablets). Screen only; the print block above is untouched.
+   ============================================================ */
+/* Scrolling inside these never chains to the page (Android pull-to-refresh would reload the app
+   mid-entry; iOS edge-swipe from a wide table would go back). Older browsers ignore it. */
+.chart-grid, .chart-doses, .pill-table-scroll, .order-table-scroll, .fu-frame, .medicine-modal { overscroll-behavior: contain; }
+@media screen and (max-width: 480px) { .medicine-modal { padding: var(--space-5); } }
+@media screen and (pointer: coarse) {
+  /* iOS zooms the page on focus into any field under 16px — iPads and big phones included, not only
+     the ≤700px phones the earlier rule covers. The chart's dose cells stay as they are (51px columns). */
+  .requests-table input, .requests-table select,
+  .pill-room input, .pills-date input, .pill-name-cell input, .pill-qty-cell input, .pill-table select, .pill-note textarea,
+  .medicine-add-row input, .medicine-filter, .medicine-editor input, .templates-save-row input,
+  .login-form input, .medicine-modal input, .medicine-modal select, .medicine-modal textarea,
+  .announcement-compose textarea, .ward-note-today textarea,
+  .reports-controls input, .reports-controls select, .purge-dates input, .date-controls input { font-size: 16px; }
+  /* Finger-sized, as WCAG and the 44px floor elsewhere in the app. */
+  .close-button { min-width: 44px; min-height: 44px; }
+  .chart-medicine-notice .notice-dismiss { width: 44px; height: 44px; }
+  .date-controls button { min-height: 44px; }
+}

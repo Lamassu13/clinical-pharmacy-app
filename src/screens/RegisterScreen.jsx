@@ -29,6 +29,7 @@ export default function RegisterScreen({
           <label>
             الاسم الكامل
             <input
+              autoComplete="name"
               value={registerForm.fullName}
               onChange={(event) => setRegisterForm({ ...registerForm, fullName: event.target.value })}
               required
@@ -37,6 +38,7 @@ export default function RegisterScreen({
           <label>
             اسم المستخدم
             <input
+              autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false}
               value={registerForm.username}
               onChange={(event) => setRegisterForm({ ...registerForm, username: event.target.value })}
               required
@@ -46,6 +48,7 @@ export default function RegisterScreen({
             رقم الهاتف
             <input
               type="tel"
+              autoComplete="tel"
               value={registerForm.phone}
               onChange={(event) => setRegisterForm({ ...registerForm, phone: event.target.value })}
               required
@@ -55,6 +58,8 @@ export default function RegisterScreen({
             البريد الإلكتروني
             <input
               type="email"
+              autoComplete="email"
+              autoCapitalize="none"
               value={registerForm.email}
               onChange={(event) => setRegisterForm({ ...registerForm, email: event.target.value })}
               required
@@ -73,6 +78,7 @@ export default function RegisterScreen({
             <input
               type="password"
               minLength={6}
+              autoComplete="new-password"
               value={registerForm.password}
               onChange={(event) => setRegisterForm({ ...registerForm, password: event.target.value })}
               required

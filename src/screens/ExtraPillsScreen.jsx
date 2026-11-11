@@ -49,7 +49,7 @@ function ExtraPillFormCard({ form, catalogue, floorLabel, today, editTime, selec
             hospital brand out of the real form's position in the header's flex row. Printing
             a plain <strong> instead (screen keeps the input) makes the printed header
             structurally identical to the real form's, so it lays out identically too. */}
-        <input className="pill-form-patient-input" aria-label="اسم المريض" placeholder="اسم المريض" value={patientName} onChange={(event) => setPatientName(stripInvisible(event.target.value))} />
+        <input className="pill-form-patient-input" autoComplete="off" autoCorrect="off" spellCheck={false} aria-label="اسم المريض" placeholder="اسم المريض" value={patientName} onChange={(event) => setPatientName(stripInvisible(event.target.value))} />
         <strong className="pill-form-patient-print">{patientName}</strong>
         <span>{today}</span>
       </div>
@@ -72,7 +72,7 @@ function ExtraPillFormCard({ form, catalogue, floorLabel, today, editTime, selec
           return <tr key={entry.slot}>
             <td className="pill-lead-cell"></td>
             <td className="pill-name-cell">
-              <input dir="auto" aria-label={`العلاج — سطر ${entry.slot}`} placeholder="اسم العلاج" value={entry.medicineName} {...suggest.bind(entry.slot, form.id)} onChange={(event) => setEntry(entry.slot, { medicineName: event.target.value })} />
+              <input dir="auto" autoComplete="off" autoCorrect="off" spellCheck={false} aria-label={`العلاج — سطر ${entry.slot}`} placeholder="اسم العلاج" value={entry.medicineName} {...suggest.bind(entry.slot, form.id)} onChange={(event) => setEntry(entry.slot, { medicineName: event.target.value })} />
               {/* Printed via this span, not the input itself: Safari drops an <input>'s
                   placeholder when printing, but a real typed value prints fine either way — an
                   empty field should print truly blank (no hint text), which an empty span

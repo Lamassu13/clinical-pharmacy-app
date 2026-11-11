@@ -24,6 +24,7 @@ export default function ProfileScreen({
             <label>
               الاسم الكامل
               <input
+                autoComplete="name"
                 value={profileForm.fullName}
                 onChange={(event) => setProfileForm({ ...profileForm, fullName: event.target.value })}
                 required
@@ -33,6 +34,8 @@ export default function ProfileScreen({
               البريد الإلكتروني
               <input
                 type="email"
+                autoComplete="email"
+                autoCapitalize="none"
                 value={profileForm.email}
                 onChange={(event) => setProfileForm({ ...profileForm, email: event.target.value })}
                 required
@@ -42,6 +45,7 @@ export default function ProfileScreen({
               رقم الهاتف
               <input
                 type="tel"
+                autoComplete="tel"
                 value={profileForm.phone}
                 onChange={(event) => setProfileForm({ ...profileForm, phone: event.target.value })}
                 required

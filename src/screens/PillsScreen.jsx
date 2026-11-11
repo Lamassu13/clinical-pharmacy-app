@@ -185,7 +185,7 @@ export default function PillsScreen({ footer,
                   return <tr key={med.key}>
                     <td className="pill-lead-cell">{canRepeat && <button type="button" className="pill-repeat" title="نسخ وقت الجرعة والطريقة والملاحظة من السطر السابق" onClick={() => setPillEntries((current) => ({ ...current, [key]: { ...entry, doseTime: prevEntry.doseTime, usageMethod: prevEntry.usageMethod, note: prevEntry.note } }))}>↑ مثل السابق</button>}</td>
                     <td className="pill-name-cell">
-                      <input dir="auto" aria-label={`العلاج — ${chartName}`} value={medName} onChange={(event) => setPillEntries((current) => ({ ...current, [key]: { ...entry, pillName: event.target.value } }))} />
+                      <input dir="auto" autoComplete="off" autoCorrect="off" spellCheck={false} aria-label={`العلاج — ${chartName}`} value={medName} onChange={(event) => setPillEntries((current) => ({ ...current, [key]: { ...entry, pillName: event.target.value } }))} />
                       {/* Prints via this span, not the input — see the extra rows below for why
                           the print CSS hides .pill-name-cell input outright. This row always has
                           a real name (chart-derived), so there's no blank case to worry about. */}
@@ -202,7 +202,7 @@ export default function PillsScreen({ footer,
                   return <tr className="pill-extra-row" key={extra.key}>
                     <td className="pill-lead-cell"></td>
                     <td className="pill-name-cell">
-                      <input dir="auto" aria-label={`${extra.label} — العلاج`} placeholder="علاج إضافي" value={entry.pillName}
+                      <input dir="auto" autoComplete="off" autoCorrect="off" spellCheck={false} aria-label={`${extra.label} — العلاج`} placeholder="علاج إضافي" value={entry.pillName}
                         {...suggest.bind(key, `${patient.rowNumber}-${pageIndex}`)}
                         onChange={(event) => setPillEntries((current) => ({ ...current, [key]: { ...entry, pillName: event.target.value } }))} />
                       {/* Printed via this span (see ExtraPillsScreen's medicine field for why):
