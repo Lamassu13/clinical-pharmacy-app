@@ -98,6 +98,8 @@ test('GET /api/reports: antibiotic stewardship — long courses, concurrent anti
   assert.deepEqual(body.antibiotics.longCourses.map((row) => [row.name, row.floor, row.drugKey, row.day]), [['هادي', 2, 'meropenem', 16]])
   assert.deepEqual(body.antibiotics.multiple.map((row) => [row.patient, row.maxConcurrent, row.days, row.drugs]), [['هادي', 3, 1, ['Meropenem', 'Piperacillin/tazobactam', 'Tigecycline']]])
   assert.deepEqual(body.antibiotics.reserve.map((row) => [row.patient, row.drug, row.days]), [['سعد', 'Tigecycline', 1], ['هادي', 'Tigecycline', 1]])
+  // Days of therapy: Meropenem 16 + Tazocin 1 + Tigecycline 1 (هادي) + Tigecycline 1 (سعد), over 17 patient-days.
+  assert.deepEqual([body.antibiotics.dot.days, ...body.antibiotics.dot.byDrug.slice(0, 2).map((row) => [row.drug, row.days])], [19, ['Meropenem', 16], ['Tigecycline', 2]])
 
   const floor5 = (await admin.get('/api/reports?scope=5&from=2026-05-01&to=2026-05-16')).body.antibiotics
   assert.deepEqual([floor5.longCourses.length, floor5.multiple.length, floor5.reserve.map((row) => row.patient)], [0, 0, ['سعد']])
@@ -113,6 +115,7 @@ test('GET /api/reports: DDD counts Thursday twice (Friday has no chart), except 
 
   let { totalDdds, dddPer100 } = await over('2026-05-09')
   assert.deepEqual([totalDdds, dddPer100], [3, 100], 'Thu 3 vials x2 + Sat 3 = 9 g = 3 DDD over 3 patient-days')
+  assert.deepEqual([(await over('2026-05-09')).dot.days, (await over('2026-05-09')).dot.per1000], [3, 1000], 'days of therapy: Thu, the bridged Fri and Sat, whatever the vials')
   ;({ totalDdds } = await over('2026-05-07'))
   assert.equal(totalDdds, 1, 'the range ends on the Thursday: Friday is not in the range')
 

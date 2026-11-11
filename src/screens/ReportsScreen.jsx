@@ -29,6 +29,7 @@ const SECTIONS = [
   { key: 'trend', label: 'اتجاه استهلاك دواء' },
   { key: 'consumption', label: 'استهلاك الأدوية' },
   { key: 'ddd', label: 'استهلاك المضادات (DDD)' },
+  { key: 'dot', label: 'أيام العلاج بالمضادات (DOT)' },
   { key: 'longCourses', label: 'كورسات المضادات الطويلة' },
   { key: 'longRuns', label: 'مضاد بكتيري أكثر من 14 يومًا' },
   { key: 'multiple', label: 'أكثر من مضاد في اليوم' },
@@ -342,6 +343,21 @@ function ReportDocument({ ref, report, stale, sections, printing, onPrint }) {
         </>}
       </Section>}
 
+      {shows('dot') && report.antibiotics && <Section {...part('dot')} title="أيام العلاج بالمضادات الحيوية — DOT لكل 1000 يوم مريض" note="كل يوم يأخذ فيه المريض مضادًا بكتيريًا يُحسب يوم علاج واحد، مهما كان عدد الحبوب أو الفيالات؛ ومن أخذ مضادين في اليوم يُحسب يومين. الجمعة داخل الكورس تُحسب. مضادات الفطريات غير محسوبة.">
+        {!report.antibiotics.dot.days ? <Empty>لا توجد أيام علاج بالمضادات البكتيرية في هذه المدة.</Empty> : <>
+          <dl className="report-figures">
+            <div><dt>DOT لكل 1000 يوم مريض</dt><dd>{orDash(report.antibiotics.dot.per1000)}</dd><Delta now={report.antibiotics.dot.per1000} before={report.antibiotics.dot.previousPer1000} /></div>
+            <div><dt>أيام العلاج</dt><dd>{report.antibiotics.dot.days}</dd></div>
+          </dl>
+          <div className="table-frame"><table className="requests-table report-table">
+            <thead><tr><th>المضاد</th><th>أيام العلاج</th><th>DOT/1000</th></tr></thead>
+            <tbody>{report.antibiotics.dot.byDrug.map((row) => <tr key={row.drug}>
+              <td lang="en" dir="ltr">{row.drug}</td><td className="num">{row.days}</td><td className="num">{orDash(row.per1000)}</td>
+            </tr>)}</tbody>
+          </table></div>
+        </>}
+      </Section>}
+
       {shows('longCourses') && <Section {...part('longCourses')} title={`مضادات حيوية لأكثر من ${report.antibiotics.longCourseDays} يومًا`} note="مرضى ما زالوا على المضاد في آخر يوم من المدة؛ رقم اليوم محسوب بنفس قواعد «متابعة المضادات الحيوية».">
         {report.antibiotics.longCourses.length === 0 ? <Empty>لا توجد كورسات أطول من {report.antibiotics.longCourseDays} يومًا.</Empty> : (
           <div className="table-frame"><table className="requests-table report-table">
@@ -400,9 +416,9 @@ function ReportDocument({ ref, report, stale, sections, printing, onPrint }) {
       {shows('antibioticFloors') && <Section {...part('antibioticFloors')} title="استهلاك المضادات الحيوية حسب الطابق" note="DDD لكل 100 يوم مريض في كل طابق (ردهاته مجتمعة)، ونسبة كل فئة AWaRe من DDD الطابق. الردهة التي لا تتبع طابقًا تظهر وحدها.">
         {report.antibiotics.byFloor.length === 0 ? <Empty>لا توجد مضادات حيوية محسوبة في هذه المدة.</Empty> : (
           <div className="table-frame"><table className="requests-table report-table">
-            <thead><tr><th>الطابق</th><th>أيام المرضى</th><th>DDD</th><th>DDD/100</th><th lang="en" dir="ltr">AWaRe</th></tr></thead>
+            <thead><tr><th>الطابق</th><th>أيام المرضى</th><th>DDD</th><th>DDD/100</th><th>DOT/1000</th><th lang="en" dir="ltr">AWaRe</th></tr></thead>
             <tbody>{report.antibiotics.byFloor.map((row) => <tr key={`${row.floor}|${row.ward}`}>
-              <td>{row.floor === null ? row.ward : `الطابق ${row.floor}`}</td><td className="num">{row.patientDays}</td><td className="num">{row.ddds}</td><td className="num">{orDash(row.dddPer100)}</td>
+              <td>{row.floor === null ? row.ward : `الطابق ${row.floor}`}</td><td className="num">{row.patientDays}</td><td className="num">{row.ddds}</td><td className="num">{orDash(row.dddPer100)}</td><td className="num">{orDash(row.dotPer1000)}</td>
               <td className="report-aware-cell"><AwareBar aware={row.aware} compact /></td>
             </tr>)}</tbody>
           </table></div>
@@ -412,9 +428,9 @@ function ReportDocument({ ref, report, stale, sections, printing, onPrint }) {
       {shows('antibioticWards') && <Section {...part('antibioticWards')} title="استهلاك المضادات الحيوية حسب الردهة" note="DDD لكل 100 يوم مريض في كل ردهة، ونسبة كل فئة AWaRe من DDD الردهة.">
         {report.antibiotics.byWard.length === 0 ? <Empty>لا توجد مضادات حيوية محسوبة في هذه المدة.</Empty> : (
           <div className="table-frame"><table className="requests-table report-table">
-            <thead><tr><th>الردهة</th><th>أيام المرضى</th><th>DDD</th><th>DDD/100</th><th lang="en" dir="ltr">AWaRe</th></tr></thead>
+            <thead><tr><th>الردهة</th><th>أيام المرضى</th><th>DDD</th><th>DDD/100</th><th>DOT/1000</th><th lang="en" dir="ltr">AWaRe</th></tr></thead>
             <tbody>{report.antibiotics.byWard.map((row) => <tr key={`${row.floor}|${row.ward}`}>
-              <td>{wardName(row, scopedToFloor)}</td><td className="num">{row.patientDays}</td><td className="num">{row.ddds}</td><td className="num">{orDash(row.dddPer100)}</td>
+              <td>{wardName(row, scopedToFloor)}</td><td className="num">{row.patientDays}</td><td className="num">{row.ddds}</td><td className="num">{orDash(row.dddPer100)}</td><td className="num">{orDash(row.dotPer1000)}</td>
               <td className="report-aware-cell"><AwareBar aware={row.aware} compact /></td>
             </tr>)}</tbody>
           </table></div>
