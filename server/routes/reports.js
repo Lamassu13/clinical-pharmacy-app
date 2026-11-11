@@ -106,15 +106,30 @@ const buildReport = async (from, to, scope) => {
       `SELECT w.floor_number AS floor, w.name AS ward, COALESCE(m.name, cc.custom_name) AS name,
               bool_or(${SUPPLY_SQL}) AS is_supply,
               COALESCE(SUM(cq.quantity) FILTER (WHERE dc.chart_date > $6::date), 0)::int AS quantity,
-              COALESCE(SUM(cq.quantity) FILTER (WHERE dc.chart_date <= $6::date), 0)::int AS previous
+              COALESCE(SUM(cq.quantity) FILTER (WHERE dc.chart_date <= $6::date), 0)::int AS previous,
+              -- What the ward actually gave: the range's own doses plus Friday's. Friday has no chart, its
+              -- doses ride on Thursday's (the same rule as the requisition: a medicine ticked «لا يُضاعف» repeats
+              -- its normal quantity). Only a Friday that the patient-days bridge counts: the ward's next charted
+              -- day is 2..1+MAX_BRIDGE_DAYS away, so a Thursday ending the range, or still waiting for its Saturday
+              -- chart, adds nothing. A Thursday on the day before the range still owes its Friday, inside it.
+              -- ponytail: every Thursday patient doubles, also one discharged that day; per-patient only if that skews DDD.
+              (COALESCE(SUM(cq.quantity) FILTER (WHERE dc.chart_date > $6::date), 0)
+               + COALESCE(SUM(cq.quantity) FILTER (WHERE EXTRACT(DOW FROM dc.chart_date) = 4 AND dc.chart_date >= $6::date
+                            AND nx.next_date - dc.chart_date BETWEEN 2 AND 1 + $7::int
+                            AND NOT COALESCE(m.no_thursday_double, FALSE)), 0))::int AS given
        FROM chart_quantities cq
        JOIN chart_columns cc ON cc.chart_id = cq.chart_id AND cc.column_number = cq.column_number
        JOIN daily_charts dc ON dc.id = cq.chart_id
        JOIN wards w ON w.id = dc.ward_id
        LEFT JOIN medicines m ON m.id = cc.medicine_id
+       LEFT JOIN (SELECT ward_id, chart_date, LEAD(chart_date) OVER (PARTITION BY ward_id ORDER BY chart_date) AS next_date
+                  FROM (SELECT DISTINCT f.ward_id, f.chart_date FROM daily_charts f
+                        WHERE f.chart_date BETWEEN $1::date AND $2::date
+                          AND EXISTS (SELECT 1 FROM chart_quantities fq WHERE fq.chart_id = f.id AND fq.quantity > 0)) known) nx
+              ON nx.ward_id = dc.ward_id AND nx.chart_date = dc.chart_date
        WHERE cq.quantity > 0 AND dc.chart_date BETWEEN $1::date AND $2::date AND ${scope.sql}
        GROUP BY 1, 2, 3`,
-      [...params, previousTo],
+      [...params, previousTo, MAX_BRIDGE_DAYS],
     ),
     // "Charted": a patient (by name or by ID alone) and a quantity. From the start of the course
     // window, so a return whose absence began before the range — or a course — can be checked.
@@ -377,8 +392,8 @@ const buildReport = async (from, to, scope) => {
   consumptionRows.rows.forEach((row) => {
     if (!row.name) return
     const key = row.name.trim().replace(/\s+/g, ' ').toLowerCase()
-    const line = medicines.get(key) || { name: row.name, isSupply: row.is_supply, quantity: 0, previous: 0 }
-    line.quantity += row.quantity; line.previous += row.previous
+    const line = medicines.get(key) || { name: row.name, isSupply: row.is_supply, quantity: 0, previous: 0, given: 0 }
+    line.quantity += row.quantity; line.previous += row.previous; line.given += row.given
     medicines.set(key, line)
     if (!row.is_supply) dosesByWard.set(wardKey(row.floor, row.ward), (dosesByWard.get(wardKey(row.floor, row.ward)) || 0) + row.quantity)
   })
@@ -495,7 +510,7 @@ const buildReport = async (from, to, scope) => {
   const antibioticSummary = (group) => {
     const inGroup = (row) => group.some((ward) => row.floor === ward.floor && row.ward === ward.ward)
     const lines = consumptionRows.rows.filter((row) => row.name && !row.is_supply && inGroup(row))
-      .map((row) => dddLine(row.name, row.quantity)).filter((line) => line?.ddds !== undefined)
+      .map((row) => dddLine(row.name, row.given)).filter((line) => line?.ddds !== undefined)
     const ddds = lines.reduce((total, line) => total + line.ddds, 0)
     const patientDaysIn = group.reduce((total, ward) => total + ward.patientDays, 0)
     const share = (aware) => (ddds ? Math.round((lines.filter((line) => line.aware === aware).reduce((total, line) => total + line.ddds, 0) / ddds) * 100) : null)
@@ -519,7 +534,7 @@ const buildReport = async (from, to, scope) => {
   // Antibiotic consumption in WHO DDDs per 100 patient-days (../ddd.js), with the AWaRe split.
   // Lines whose DDDs can't be worked out from the name are listed, not guessed.
   const antibioticLines = consumption.filter((line) => line.quantity > 0 && !line.isSupply)
-    .map((line) => ({ name: line.name, quantity: line.quantity, ...dddLine(line.name, line.quantity) }))
+    .map((line) => ({ name: line.name, quantity: line.given, ...dddLine(line.name, line.given) }))
     .filter((line) => line.atc)
   const per100 = (ddds) => (patientDays ? Math.round((ddds / patientDays) * 1000) / 10 : null)
   const counted = antibioticLines.filter((line) => line.ddds !== undefined)

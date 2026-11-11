@@ -103,6 +103,37 @@ test('GET /api/reports: antibiotic stewardship — long courses, concurrent anti
   assert.deepEqual([floor5.longCourses.length, floor5.multiple.length, floor5.reserve.map((row) => row.patient)], [0, 0, ['سعد']])
 })
 
+test('GET /api/reports: DDD counts Thursday twice (Friday has no chart), except a range ending that Thursday or a no-double medicine', async () => {
+  const admin = await loginAs({ role: 'admin' })
+  await pool.query('INSERT INTO medicines (name) VALUES ($1)', ['Meronem 1000gm Vial'])
+  // 2026-05-07 is a Thursday; 05-08 (Friday) has no chart; 05-09 is the Saturday.
+  await saveChart(admin, 2, '2026-05-07', [{ name: 'هادي', meds: { 'Meronem 1000gm Vial': 3 } }])
+  await saveChart(admin, 2, '2026-05-09', [{ name: 'هادي', meds: { 'Meronem 1000gm Vial': 3 } }])
+  const over = (to) => admin.get(`/api/reports?scope=2&from=2026-05-07&to=${to}`).then((response) => response.body.antibiotics)
+
+  let { totalDdds, dddPer100 } = await over('2026-05-09')
+  assert.deepEqual([totalDdds, dddPer100], [3, 100], 'Thu 3 vials x2 + Sat 3 = 9 g = 3 DDD over 3 patient-days')
+  ;({ totalDdds } = await over('2026-05-07'))
+  assert.equal(totalDdds, 1, 'the range ends on the Thursday: Friday is not in the range')
+
+  // One patient, 3 vials = 1 DDD a day: Friday is only owed when the patient-days count it.
+  const dose = { 'Meronem 1000gm Vial': 3 }
+  const ddd = (from, to) => admin.get(`/api/reports?scope=2&from=${from}&to=${to}`).then((response) => [response.body.antibiotics.totalDdds, response.body.antibiotics.dddPer100])
+  await saveChart(admin, 2, '2026-05-13', [{ name: 'عمر', meds: dose }]) // Wed
+  await saveChart(admin, 2, '2026-05-14', [{ name: 'عمر', meds: dose }]) // Thu
+  assert.deepEqual(await ddd('2026-05-13', '2026-05-15'), [2, 100], 'range ends on the Friday: no later chart, so no Friday patient-day and no Friday doses')
+  await saveChart(admin, 2, '2026-05-21', [{ name: 'عمر', meds: dose }]) // Thu, the day before the range
+  await saveChart(admin, 2, '2026-05-23', [{ name: 'عمر', meds: dose }]) // Sat
+  assert.deepEqual(await ddd('2026-05-22', '2026-05-24'), [2, 100], 'the range starts on the Friday: Thursday\'s extra day is inside it')
+  for (const day of [28, 29, 30]) await saveChart(admin, 2, `2026-05-${day}`, [{ name: 'عمر', meds: dose }])
+  assert.deepEqual(await ddd('2026-05-28', '2026-05-30'), [3, 100], 'Friday was charted: nothing is doubled')
+
+  await pool.query('UPDATE medicines SET no_thursday_double = TRUE WHERE name = $1', ['Meronem 1000gm Vial'])
+  clearReports()
+  ;({ totalDdds } = await over('2026-05-09'))
+  assert.equal(totalDdds, 2, 'a medicine that repeats its normal quantity is not doubled')
+})
+
 test('GET /api/reports: staff activity per user, scoped to the floor', async () => {
   const admin = await loginAs({ role: 'admin' })
   const pharmacist = await loginAs({ role: 'user', floor: 5 })
@@ -226,8 +257,9 @@ test('GET /api/reports: no chart on Friday — stays, courses, admissions and re
   assert.deepEqual(body.readmissions.map((row) => [row.patient, row.returns]), [['جمال', [{ date: '2026-09-24', gap: 6 }]]], 'absence began before the range')
   assert.deepEqual(body.antibiotics.courseStats.map((row) => [row.drug, row.courses, row.max]), [['Piperacillin/tazobactam', 1, 9]])
   assert.deepEqual(body.antibiotics.restarts, [])
-  // 4.5gm is grams: 8 days × 3 vials × 4 g piperacillin = 96 g = 6.9 DDD.
-  assert.equal(body.antibiotics.lines[0].ddds, 6.9)
+  // 4.5gm is grams: 8 charted days + Thursday the 24th counted twice for the uncharted Friday = 9 days
+  // × 3 vials × 4 g piperacillin = 108 g = 7.7 DDD.
+  assert.equal(body.antibiotics.lines[0].ddds, 7.7)
 
   // A ward that types only the patient number is charted, not "missed".
   for (const day of [22, 23, 24]) await saveChart(admin, 5, `2026-09-${day}`, [{ name: '', id: '901', meds: aspirin }], 'ردهة النساء')

@@ -319,7 +319,7 @@ function ReportDocument({ ref, report, stale, sections, printing, onPrint }) {
         )}
       </Section>}
 
-      {shows('ddd') && report.antibiotics && <Section {...part('ddd')} title="استهلاك المضادات الحيوية — DDD لكل 100 يوم مريض" note="الجرعة اليومية المحددة (DDD) حسب منظمة الصحة العالمية، وتصنيف AWaRe (Access / Watch / Reserve) لعام 2023. مضادات الفطريات غير مصنّفة في AWaRe.">
+      {shows('ddd') && report.antibiotics && <Section {...part('ddd')} title="استهلاك المضادات الحيوية — DDD لكل 100 يوم مريض" note="الجرعة اليومية المحددة (DDD) حسب منظمة الصحة العالمية، وتصنيف AWaRe (Access / Watch / Reserve) لعام 2023. مضادات الفطريات غير مصنّفة في AWaRe. الكمية هنا هي المصروف فعلاً: جارت الخميس يُحسب مرتين لأن الجمعة بلا جارت (إلا الأدوية «لا تُضاعف يوم الخميس»).">
         {!report.antibiotics.lines.length && !report.antibiotics.notCounted.length ? <Empty>لا توجد مضادات حيوية مسجّلة في هذه المدة.</Empty> : <>
           <dl className="report-figures">
             <div><dt>DDD لكل 100 يوم مريض</dt><dd>{orDash(report.antibiotics.dddPer100)}</dd><span className="report-delta" dir="ltr">{report.antibiotics.totalDdds} DDD</span></div>
