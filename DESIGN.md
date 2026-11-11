@@ -246,6 +246,14 @@ Icons are drawn inline SVG in one family — `1.75` stroke width, round caps/joi
 - **Style:** fully round (`999px`), `4px 10px` padding, `12px` weight-700 text, an optional leading `14px` inline-SVG check.
 - **Variants** (`.card-status--*`): `pending` = `warning-tint` / `warning` ("not started"); `partial` = `green-100` / `primary-hover` ("2/3 started"); `done` = `success-tint` / `success` + check ("اكتملت"); `muted` = `surface-alt` / `text-muted` ("data unavailable"). Interactive chips in the status band (`.ward-status-chip`) are the same shape at `min-height: 44px` with a transparent border that fills on hover/focus.
 
+### Reports surface (approved exception)
+The Reports screen (`src/screens/ReportsScreen.jsx`, the `.rp-*` rules at the end of `App.css`) is the one place the One Hue Rule is waived, by the user's decision: it takes the category-standard analytics layout. Scoped to `.reports-shell` / `.reports-page`:
+- **Accent:** a single data blue (`--rp-accent` `#2563eb`, dark `#7aa7ff`) for chips, links, the primary button, focus and every bar. The app header and headings stay green.
+- **Ground:** neutral cool greys (`--bg #f3f4f6`, dark `#0f1318`), not the green-tinted ground.
+- **Structure:** a sticky filter bar that folds to one line once a report is shown; key-figure tiles on the page ground; 17 parts as closed rows (title, a count or headline pill, chevron) that open on a tap; what is open is what the PDF prints.
+- **Numbers:** 30px tabular numerals on the tiles (24px on phones); magnitude bars (`.rp-meter`) beside values, and a horizontal bar list for DDD per 100 by floor.
+- The PDF pages (`.report-page`, mounted on `<body>`) never see these rules.
+
 ### Navigation
 - **Top bar:** full-width `--surface` strip, `1px` bottom `--border`, fluid inline padding. The brand block is a `<button>` (title in `--heading` `15px` bold, subtitle `--text-muted` `12px`) that tints `green-50` on hover. Admin sections live behind a single `<details>` disclosure with Escape / outside-click / focus-return handling. There is no persistent side nav — navigation is the floor→ward→chart drill and a back button.
 

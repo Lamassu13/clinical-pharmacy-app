@@ -46,7 +46,7 @@ const paginate = (article, root, only, title) => {
 
   newPage()
   body.append(paperCopy(article.querySelector('.report-doc-head')))
-  const sections = [...article.querySelectorAll(':scope > .report-section')].filter((section) => !only || section.dataset.section === only)
+  const sections = [...article.querySelectorAll(':scope > .report-section:not(.is-closed)')].filter((section) => !only || section.dataset.section === only)
   for (const section of sections) {
     let shell = section.cloneNode(false)
     body.append(shell)
