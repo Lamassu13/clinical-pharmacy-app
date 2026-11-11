@@ -31,7 +31,11 @@ export default function ChartScreen({
   const columnFocusValue = useRef('')
   // «صفوف أكبر»: taller rows and larger type for a gloved thumb. A per-device choice, so it lives
   // here rather than in App — nothing else reads it, and a remount just reads it back.
-  const [roomy, setRoomy] = useState(() => { try { return storage.getItem('cpa-chart-roomy') === '1' } catch { return false } })
+  // Phones start roomy (16px type, so iOS stops zooming into a cell, and finger-size rows) until the pharmacist chooses otherwise.
+  const [roomy, setRoomy] = useState(() => {
+    try { const saved = storage.getItem('cpa-chart-roomy'); if (saved != null) return saved === '1' } catch { /* storage unavailable */ }
+    return typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 700px) and (pointer: coarse)').matches
+  })
   const toggleRoomy = () => setRoomy((current) => {
     try { storage.setItem('cpa-chart-roomy', current ? '0' : '1') } catch { /* storage unavailable */ }
     return !current
@@ -147,14 +151,14 @@ export default function ChartScreen({
       <button className="back-button" onClick={onBack}>→ العودة للردهات</button>
       <div><h1>{wardLabel}</h1></div>
       <div className="toolbar-actions">
-        {!readOnly && <ToolbarButton icon="patient" primary label="إدخال مريض" onClick={onOpenForm} />}
-        {!readOnly && <ToolbarButton icon="column" label={canAddColumn ? 'إضافة عمود' : 'الحد الأقصى لعدد الأعمدة'} onClick={onAddColumn} disabled={!canAddColumn} />}
-        {!readOnly && <ToolbarButton icon="row" label={patientNames.length >= MAX_PATIENT_ROWS ? 'الحد الأقصى لعدد الصفوف' : !canAddRow ? 'الصف الأخير فارغ — اكتب فيه أولًا' : printPageCount(patientNames, quantities) === 2 ? `إضافة صف (${patientNames.length} صفًّا — الطباعة صفحتان)` : 'إضافة صف'} onClick={onAddRow} disabled={!canAddRow} />}
-        {!readOnly && <ToolbarButton icon="complete" primary={chartCompleted} label={chartCompleted ? 'إلغاء الاكتمال' : 'اكتمل الجارت'} aria-pressed={chartCompleted} onClick={onToggleComplete} />}
+        {!readOnly && <ToolbarButton icon="patient" primary label="إدخال مريض" caption="إدخال مريض" onClick={onOpenForm} />}
+        {!readOnly && <ToolbarButton icon="column" caption="إضافة عمود" label={canAddColumn ? 'إضافة عمود' : 'الحد الأقصى لعدد الأعمدة'} onClick={onAddColumn} disabled={!canAddColumn} />}
+        {!readOnly && <ToolbarButton icon="row" caption="إضافة صف" label={patientNames.length >= MAX_PATIENT_ROWS ? 'الحد الأقصى لعدد الصفوف' : !canAddRow ? 'الصف الأخير فارغ — اكتب فيه أولًا' : printPageCount(patientNames, quantities) === 2 ? `إضافة صف (${patientNames.length} صفًّا — الطباعة صفحتان)` : 'إضافة صف'} onClick={onAddRow} disabled={!canAddRow} />}
+        {!readOnly && <ToolbarButton icon="complete" primary={chartCompleted} caption={chartCompleted ? 'إلغاء الاكتمال' : 'اكتمل الجارت'} label={chartCompleted ? 'إلغاء الاكتمال' : 'اكتمل الجارت'} aria-pressed={chartCompleted} onClick={onToggleComplete} />}
         <span className="tb-sep" aria-hidden="true" />
-        <ToolbarButton icon="print" primary label={pdfBusy ? 'جارٍ التحضير…' : 'طباعة A4 / PDF'} busy={pdfBusy} onClick={onExportPdf} disabled={pdfBusy} />
-        <ToolbarButton icon="pills" label="استمارة الحبوب" onClick={onGoToPills} />
-        <ToolbarButton icon="order" label="الطلبية" onClick={onGoToOrder} />
+        <ToolbarButton icon="print" primary caption="طباعة" label={pdfBusy ? 'جارٍ التحضير…' : 'طباعة A4 / PDF'} busy={pdfBusy} onClick={onExportPdf} disabled={pdfBusy} />
+        <ToolbarButton icon="pills" caption="الحبوب" label="استمارة الحبوب" onClick={onGoToPills} />
+        <ToolbarButton icon="order" caption="الطلبية" label="الطلبية" onClick={onGoToOrder} />
       </div>
     </div>
 
@@ -201,6 +205,9 @@ export default function ChartScreen({
       <div className="bar-focus">{activeRow >= 0
         ? <><span className="bar-item"><span className="bar-key">المريض</span><strong>{patientNames[activeRow]?.trim() || 'بلا اسم'}</strong><span className="bar-num">صف {activeRow + 1}</span></span>{activeColumn >= 0 && <span className="bar-item"><span className="bar-key">العلاج</span><strong>{columnMedicines[activeColumn]?.trim() || 'بلا اسم'}</strong><span className="bar-num">عمود {activeColumn + 1}</span></span>}</>
         : <span className="muted">اضغط داخل خلية ليظهر المريض والعلاج هنا</span>}</div>
+      {/* iOS's number pad has no Enter key, and Enter is how the grid moves on: this sends it. Touch devices only (CSS); pressing it must not take focus from the cell. */}
+      {!readOnly && chartReady && <button type="button" className="secondary-button compact bar-next" aria-label="الخلية التالية" onMouseDown={(event) => event.preventDefault()} onPointerDown={(event) => event.preventDefault()}
+        onClick={() => { const cell = document.activeElement; if (cell?.tagName === 'INPUT' && chartGridRef.current?.contains(cell)) cell.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })) }}>التالي ↓</button>}
       {!dateIsToday && <span className="bar-date-warning">⚠ جارت {today} — ليس اليوم</span>}
       {idClashes.list.length > 0 && <span className="bar-date-warning">⚠ رقم الطبلة {idClashes.list[0].id} مسجّل اليوم أيضًا في {idClashes.list[0].wards[0]}{idClashes.list[0].wards.length > 1 || idClashes.list.length > 1 ? ' …' : ''}</span>}
       {chartReady && <span className={saveClass} aria-live="polite">{saveIcon}{saveText}</span>}
