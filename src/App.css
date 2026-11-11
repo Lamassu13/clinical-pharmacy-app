@@ -3056,3 +3056,31 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
   .chart-medicine-notice .notice-dismiss { width: 44px; height: 44px; }
   .date-controls button { min-height: 44px; }
 }
+
+/* ============================================================
+   Phone polish: save line, loading frame, pills strip, request dialog. Screen only.
+   ============================================================ */
+/* The save line carries a drawn mark (the toolbar's icon family) before its words. Green is the second
+   channel for «محفوظ»; amber and red already ride the pending / device / error classes. */
+.save-state { display: inline-flex; align-items: center; gap: var(--space-2); }
+.save-state .tb-glyph { width: 16px; height: 16px; opacity: 1; }
+.save-state .spinner { width: 14px; height: 14px; border-width: 2px; flex: none; }
+.save-state-saved, .active-patient-bar .save-state-saved, .pills-toolbar .save-state-saved, .pills-save-chip .save-state-saved { color: var(--success); }
+/* The shape of a table while it loads: quiet rows, not a lone spinner (reuses the dashboard's .skeleton-row). */
+.load-skeleton { display: flex; flex-direction: column; gap: var(--space-3); width: min(100%, 560px); }
+.load-skeleton .skeleton-row:nth-child(n) { width: 100%; height: 28px; border-radius: var(--radius-sm); }
+.chart-frame-loading .load-skeleton { margin-bottom: var(--space-2); }
+/* Pills: the status line lives in the toolbar on wide screens, and as a pinned one-line strip on phones. */
+.pills-save-inline { display: contents; }
+.pills-save-chip { display: none; }
+@media screen and (max-width: 700px) {
+  .pills-save-inline { display: none; }
+  .pills-save-chip { display: flex; position: sticky; top: 0; z-index: 6; align-items: center; min-height: 40px; padding: var(--space-2) var(--space-3); margin-bottom: var(--space-3); background: var(--bg); border-bottom: 1px solid var(--border); overflow: hidden; }
+  .pills-save-chip .save-state { margin-inline-start: 0; min-width: 0; white-space: nowrap; }
+  /* «العلاج» stays in view while the dose, method and note columns scroll past it (older browsers just scroll it). */
+  .pills-page .pill-table th:nth-child(2), .pills-page .pill-table td:nth-child(2) { position: sticky; inset-inline-start: 0; z-index: 1; background: var(--surface); box-shadow: 1px 0 0 var(--border-strong), -1px 0 0 var(--border-strong); }
+  .pills-page .pill-table thead th:nth-child(2) { background: var(--green-100); }
+}
+/* Request dialog: save and cancel stay reachable however far the form is scrolled. */
+.req-dialog .modal-actions { position: sticky; bottom: calc(-1 * var(--space-6)); margin: 0 calc(-1 * var(--space-6)) calc(-1 * var(--space-6)); padding: var(--space-3) var(--space-6); background: var(--surface); border-top: 1px solid var(--border); }
+@media (max-width: 480px) { .req-dialog .modal-actions { bottom: calc(-1 * var(--space-5)); margin-inline: calc(-1 * var(--space-5)); margin-bottom: calc(-1 * var(--space-5)); padding-inline: var(--space-5); } }

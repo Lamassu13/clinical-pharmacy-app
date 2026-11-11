@@ -3,6 +3,7 @@ import { flushSync } from 'react-dom'
 import hospitalLogo from '../assets/hospital-logo.png'
 import ChartDoseRow from '../components/ChartDoseRow.jsx'
 import ToolbarButton, { Glyph } from '../components/ToolbarIcons.jsx'
+import LoadingRows from '../components/LoadingRows.jsx'
 import { PATIENT_ROWS, MAX_PATIENT_ROWS } from '../constants.js'
 import MedicineSuggest from '../components/MedicineSuggest.jsx'
 import ChartHistoryDialog from '../components/ChartHistoryDialog.jsx'
@@ -69,12 +70,17 @@ export default function ChartScreen({
   // Edits not yet confirmed by the server while there is no link (or the save is failing):
   // they are on this device — the mirror and the device copy — and will upload by themselves.
   const onDeviceOnly = !loadError && chartSaveStatus !== 'saved' && (!isOnline || chartSaveStatus === 'error')
-  const saveText = loadError ? '⚠ تعذر تحميل الجارت'
-    : onDeviceOnly ? '◐ على الجهاز فقط — لم يصل إلى الخادم بعد'
-    : chartSaveStatus === 'saving' ? '⟳ جارٍ الحفظ…'
-    : chartSaveStatus === 'pending' ? '○ لم يُحفظ بعد…'
-    : savedTime ? `● محفوظ · آخر حفظ ${savedTime}`
-    : '● محفوظ'
+  const saveText = loadError ? 'تعذر تحميل الجارت'
+    : onDeviceOnly ? 'على الجهاز فقط — لم يصل إلى الخادم بعد'
+    : chartSaveStatus === 'saving' ? 'جارٍ الحفظ…'
+    : chartSaveStatus === 'pending' ? 'لم يُحفظ بعد…'
+    : savedTime ? `محفوظ · آخر حفظ ${savedTime}`
+    : 'محفوظ'
+  // Drawn marks from the toolbar's icon family, not text glyphs; the words still carry the meaning (colour is the second channel).
+  const saveIcon = loadError || onDeviceOnly ? <Glyph icon="warn" />
+    : chartSaveStatus === 'saving' ? <span className="spinner" aria-hidden="true" />
+    : chartSaveStatus === 'pending' ? <Glyph icon="history" />
+    : <Glyph icon="done" />
   const saveClass = loadError ? 'save-state save-state-error'
     : onDeviceOnly ? 'save-state save-state-device'
     : chartSaveStatus === 'saving' ? 'save-state save-state-saving'
@@ -197,7 +203,7 @@ export default function ChartScreen({
         : <span className="muted">اضغط داخل خلية ليظهر المريض والعلاج هنا</span>}</div>
       {!dateIsToday && <span className="bar-date-warning">⚠ جارت {today} — ليس اليوم</span>}
       {idClashes.list.length > 0 && <span className="bar-date-warning">⚠ رقم الطبلة {idClashes.list[0].id} مسجّل اليوم أيضًا في {idClashes.list[0].wards[0]}{idClashes.list[0].wards.length > 1 || idClashes.list.length > 1 ? ' …' : ''}</span>}
-      {chartReady && <span className={saveClass} aria-live="polite">{saveText}</span>}
+      {chartReady && <span className={saveClass} aria-live="polite">{saveIcon}{saveText}</span>}
     </div>
 
     {/* Held until the next valid commit or an explicit dismiss — no auto-timeout, since on a
@@ -220,7 +226,7 @@ export default function ChartScreen({
       {!chartReady && <div className="chart-frame-loading" role="status">
         {loadError
           ? <><span>تعذّر تحميل الجارت. تُعاد المحاولة تلقائيًا كل بضع ثوانٍ.</span><button type="button" className="secondary-button compact" onClick={onRetryLoad}>إعادة المحاولة الآن</button></>
-          : <span>جارٍ تحميل الجارت…</span>}
+          : <><LoadingRows rows={7} /><span>جارٍ تحميل الجارت…</span></>}
       </div>}
       {/* A blank 41×51 grid on a new chart otherwise looks the same as a dismissed failed load.
           Floats over the empty grid and clears the instant anything is typed — no layout shift. */}
