@@ -882,11 +882,12 @@ router.get('/meropenem-order', requireAuth, async (request, response) => {
 // restart the service). Each query is tagged (/* course: … */) so the traffic table shows it apart.
 // Two caches: one for windows that end yesterday (today's forms: room for every ward's part) and a
 // small one for a past date's window, so browsing old dates can neither evict nor bloat today's.
-// ponytail: per-process memory, ~290 B a row: ~40 MB for today's set, a few MB per past window; a
-// restart empties both.
+// ponytail: per-process memory, ~290 B a row. Measured at 24 wards x 96 days: ~48 MB for today's set,
+// ~35 MB per past date browsed, so the past cache holds 6 entries (12 grew the heap to ~155 MB on a
+// 512 MB instance; 6 holds ~105 MB). Raise it only with the memory to match; a restart empties both.
 const keepFor = (max) => memoizeByKey((load, from, to) => load(from, to), { ttlMs: 6 * 3600_000, max })
 const liveHistory = keepFor(60)
-const pastHistory = keepFor(12)
+const pastHistory = keepFor(6)
 // `why` only labels the log line: a cold load a few minutes after a clear is explained by it, one
 // with no clear before it is the 6-hour expiry or a restart.
 export const clearCourseRows = (why = 'unspecified') => { console.log(`course cache: cleared (${why})`); wardsById = new Map(); liveHistory.clear(); pastHistory.clear() }
