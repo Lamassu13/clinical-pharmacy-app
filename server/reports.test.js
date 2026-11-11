@@ -86,20 +86,20 @@ test('GET /api/reports: a stay of 7+ days still running on the last day is a lon
 
 test('GET /api/reports: antibiotic stewardship — long courses, concurrent antibiotics, Reserve drugs, scope', async () => {
   const admin = await loginAs({ role: 'admin' })
-  await pool.query('INSERT INTO medicines (name) SELECT unnest($1::text[])', [['Meronem 1000gm Vial', 'Tazocin 4.5gm Vial', 'Tygacil 50mg Vial']])
+  await pool.query('INSERT INTO medicines (name) SELECT unnest($1::text[])', [['Meronem 1000gm Vial', 'Tazocin 4.5gm Vial', 'Tygacil 50mg Vial', 'Diflucan 200mg Vial']])
   for (let day = 1; day <= 16; day += 1) {
     const meds = { 'Meronem 1000gm Vial': 3 }
     if (day === 10) Object.assign(meds, { 'Tazocin 4.5gm Vial': 3, 'Tygacil 50mg Vial': 2 })
     await saveChart(admin, 2, `2026-05-${String(day).padStart(2, '0')}`, [{ name: 'هادي', meds }])
   }
-  await saveChart(admin, 5, '2026-05-16', [{ name: 'سعد', meds: { 'Tygacil 50mg Vial': 2 } }])
+  await saveChart(admin, 5, '2026-05-16', [{ name: 'سعد', meds: { 'Tygacil 50mg Vial': 2, 'Diflucan 200mg Vial': 1 } }])
 
   const { body } = await admin.get('/api/reports?scope=all&from=2026-05-01&to=2026-05-16')
   assert.deepEqual(body.antibiotics.longCourses.map((row) => [row.name, row.floor, row.drugKey, row.day]), [['هادي', 2, 'meropenem', 16]])
   assert.deepEqual(body.antibiotics.multiple.map((row) => [row.patient, row.maxConcurrent, row.days, row.drugs]), [['هادي', 3, 1, ['Meropenem', 'Piperacillin/tazobactam', 'Tigecycline']]])
   assert.deepEqual(body.antibiotics.reserve.map((row) => [row.patient, row.drug, row.days]), [['سعد', 'Tigecycline', 1], ['هادي', 'Tigecycline', 1]])
-  // Days of therapy: Meropenem 16 + Tazocin 1 + Tigecycline 1 (هادي) + Tigecycline 1 (سعد), over 17 patient-days.
-  assert.deepEqual([body.antibiotics.dot.days, ...body.antibiotics.dot.byDrug.slice(0, 2).map((row) => [row.drug, row.days])], [19, ['Meropenem', 16], ['Tigecycline', 2]])
+  // Days of therapy: Meropenem 16 + Tazocin 1 + Tigecycline 1 (هادي) + Tigecycline 1 and fluconazole 1 (سعد, an antifungal counts like the DDD).
+  assert.deepEqual([body.antibiotics.dot.days, ...body.antibiotics.dot.byDrug.slice(0, 2).map((row) => [row.drug, row.days])], [20, ['Meropenem', 16], ['Tigecycline', 2]])
 
   const floor5 = (await admin.get('/api/reports?scope=5&from=2026-05-01&to=2026-05-16')).body.antibiotics
   assert.deepEqual([floor5.longCourses.length, floor5.multiple.length, floor5.reserve.map((row) => row.patient)], [0, 0, ['سعد']])
