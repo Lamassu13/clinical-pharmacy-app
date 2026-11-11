@@ -490,16 +490,13 @@ const buildReport = async (from, to, scope) => {
       dayList.forEach((day, i) => { if (i && bridged(dayList[i - 1], day)) runs[runs.length - 1][1] = day; else runs.push([day, day]) })
       runs.forEach(([start, end]) => {
         // Days of therapy: every day of the run inside the range (and the previous period, for ↑/↓), Friday gaps
-        // included, a patient on two drugs counting twice. Antibacterials only, like the long courses.
-        if (antibacterial.get(drug)) {
-          const inside = (a, b) => Math.max(0, Math.min(end, b) - Math.max(start, a) + 1)
-          const now = inside(toDay(from), toDay(to))
-          const before = inside(toDay(previousFrom), toDay(previousTo))
-          const wardDot = dotByWard.get(wardKey(floor, ward)) || 0
-          dotByWard.set(wardKey(floor, ward), wardDot + now)
-          const drugDot = dotByDrug.get(drug) || { days: 0, previous: 0 }
-          dotByDrug.set(drug, { days: drugDot.days + now, previous: drugDot.previous + before })
-        }
+        // included, a patient on two drugs counting twice. Antifungals count too, the same drug set as the DDD.
+        const inside = (a, b) => Math.max(0, Math.min(end, b) - Math.max(start, a) + 1)
+        const now = inside(toDay(from), toDay(to))
+        const before = inside(toDay(previousFrom), toDay(previousTo))
+        dotByWard.set(wardKey(floor, ward), (dotByWard.get(wardKey(floor, ward)) || 0) + now)
+        const drugDot = dotByDrug.get(drug) || { days: 0, previous: 0 }
+        dotByDrug.set(drug, { days: drugDot.days + now, previous: drugDot.previous + before })
         if (end < toDay(from)) return
         const length = end - start + 1
         lengths.push(length)

@@ -343,8 +343,8 @@ function ReportDocument({ ref, report, stale, sections, printing, onPrint }) {
         </>}
       </Section>}
 
-      {shows('dot') && report.antibiotics && <Section {...part('dot')} title="أيام العلاج بالمضادات الحيوية — DOT لكل 1000 يوم مريض" note="كل يوم يأخذ فيه المريض مضادًا بكتيريًا يُحسب يوم علاج واحد، مهما كان عدد الحبوب أو الفيالات؛ ومن أخذ مضادين في اليوم يُحسب يومين. الجمعة داخل الكورس تُحسب. مضادات الفطريات غير محسوبة.">
-        {!report.antibiotics.dot.days ? <Empty>لا توجد أيام علاج بالمضادات البكتيرية في هذه المدة.</Empty> : <>
+      {shows('dot') && report.antibiotics && <Section {...part('dot')} title="أيام العلاج بالمضادات الحيوية — DOT لكل 1000 يوم مريض" note="كل يوم يأخذ فيه المريض مضادًا حيويًا يُحسب يوم علاج واحد، مهما كان عدد الحبوب أو الفيالات؛ ومن أخذ مضادين في اليوم يُحسب يومين. الجمعة داخل الكورس تُحسب. مضادات الفطريات محسوبة كما في DDD.">
+        {!report.antibiotics.dot.days ? <Empty>لا توجد أيام علاج بالمضادات الحيوية في هذه المدة.</Empty> : <>
           <dl className="report-figures">
             <div><dt>DOT لكل 1000 يوم مريض</dt><dd>{orDash(report.antibiotics.dot.per1000)}</dd><Delta now={report.antibiotics.dot.per1000} before={report.antibiotics.dot.previousPer1000} /></div>
             <div><dt>أيام العلاج</dt><dd>{report.antibiotics.dot.days}</dd></div>
