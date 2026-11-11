@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import app from './index.js'
 import { pool } from './db.js'
 import { startServer, resetDatabase, createUser, ApiClient } from './test-helpers.js'
+import { clearReports } from './routes/reports.js'
 
 const WARD = 'ردهة رجال'
 const MEDS = ['Aspirin 100mg Tab', 'Panadol 500mg Tab', 'Lasix 40mg Tab', 'Plavix 75mg tab', 'Brufen 200mg Tab', 'Risek 20mg cap', 'Heparin', 'Digoxin 250mcg Tab', 'Losartan 50mg Tab', 'Inderal 40mg Tab']
@@ -295,4 +296,17 @@ test('GET /api/reports: the same ID on two patients of one floor is not listed; 
   await saveChart(admin, 5, '2026-05-03', [{ name: 'هدى', id: '900', meds }])
   const { body } = await admin.get('/api/reports?scope=all&from=2026-05-01&to=2026-05-05')
   assert.deepEqual(body.sameIds.map((group) => group.patientId), ['900'])
+})
+
+test('GET /api/reports: a repeat of the same range is served from the 60 s cache, and a clear refreshes it', async () => {
+  const admin = await loginAs({ role: 'admin' })
+  const meds = { 'Aspirin 100mg Tab': 1 }
+  const url = '/api/reports?scope=all&from=2026-05-01&to=2026-05-05'
+  await saveChart(admin, 2, '2026-05-02', [{ name: 'سامي', id: '800', meds }])
+  assert.equal((await admin.get(url)).body.summary.distinctPatients, 1)
+  await saveChart(admin, 2, '2026-05-03', [{ name: 'ليث', id: '801', meds }])
+  assert.equal((await admin.get(url)).body.summary.distinctPatients, 1, 'second read of the range is the cached one')
+  assert.equal((await admin.get('/api/reports?scope=2&from=2026-05-01&to=2026-05-05')).body.summary.distinctPatients, 2, 'another scope is its own entry')
+  clearReports()
+  assert.equal((await admin.get(url)).body.summary.distinctPatients, 2)
 })
