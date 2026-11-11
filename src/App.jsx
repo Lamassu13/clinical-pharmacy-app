@@ -421,6 +421,8 @@ function App() {
   // resume-draft card (a real localStorage draft, unrelated to this session-only nav pointer)
   // was the only reason it still looked like it worked.
   const navRestoreAttemptedRef = useRef(false)
+  // Same moment as the ref above, as state: the Back-button history (below) must not sync before the restore has run.
+  const [navReady, setNavReady] = useState(false)
 
   useEffect(() => {
     const landFromNav = () => {
@@ -461,7 +463,7 @@ function App() {
         setIsLoggedIn(true)
         landFromNav()
       })
-      .finally(() => { navRestoreAttemptedRef.current = true })
+      .finally(() => { navRestoreAttemptedRef.current = true; setNavReady(true) })
   }, [endServerSession, forgetSessionData])
 
   const submitLogin = async (event) => {
@@ -488,6 +490,7 @@ function App() {
       // nav-persist effect forever, silently breaking "resume after a refresh" for this whole
       // session even though the user is now genuinely logged in.
       navRestoreAttemptedRef.current = true
+      setNavReady(true)
       // Back on the same screen with the same unsaved chart; the autosave effect resumes.
       setSessionExpired(false)
     } catch (error) { setLoginError(failureText(error, 'تعذر الاتصال بالخادم')) } finally { setBusy(false) }
@@ -1390,8 +1393,11 @@ function App() {
     // The brand logo is "home"; mid-edit with a save still in flight, a stray tap on a shared
     // iPad shouldn't drop the round without a word. Only asks while something is actually
     // unsaved — chart or pills alike (logout already treats both the same way, below).
-    const unsaved = Boolean(selected) && (selected.mode === 'pills' ? pillsSaveStatus : chartSaveStatus) !== 'saved'
-    if (unsaved && !(await askConfirm('العودة إلى قائمة الطوابق؟ سيُحفَظ ما كتبته.'))) return
+    // A write that is merely queued or in flight is flushed below without a word (the chart's Back and the ward tabs
+    // already do); only a save the server refused is worth stopping for. Other screens keep a stale status, so
+    // only the chart and the pills are asked about.
+    const failed = (selected?.mode === 'pills' && pillsSaveStatus === 'error') || (selected?.mode === 'chart' && chartSaveStatus === 'error')
+    if (failed && !(await askConfirm('لم يُحفَظ ما كتبته على الخادم بعد. يبقى على هذا الجهاز ويُعاد حفظه تلقائيًا. العودة إلى قائمة الطوابق؟'))) return
     if (selected?.mode === 'pills') flushPills(); else if (!(await settleChart())) return
     setSelected(null)
     setWardHub(null)
@@ -2289,6 +2295,41 @@ function App() {
     return undefined
   }, [selected, floor, selectedDate, chartFormOpen])
 
+  // Android's Back button and iOS's edge-swipe used to leave the app from anywhere: navigation is state, not
+  // URLs, so the browser had nothing to go back to. One history entry per level now (home = 0), so Back
+  // goes up one level through the same code as the on-screen Back buttons (goUpRef, set further down).
+  // Pushed when a deeper view opens and dropped when the app climbs by itself, so the entries always equal
+  // the depth; Back on the home view still exits the app, as it should.
+  const homeFloor = !isManager ? assignedFloorObj : null
+  const navDepth = (floor && floor.number !== homeFloor?.number ? 1 : 0) + (wardHub ? 1 : 0) + (selected ? 1 : 0)
+    + (selected?.mode === 'chart' && chartFormOpen ? 1 : 0) + (adminView ? 1 : 0)
+  const navDepthRef = useRef(0)
+  const goUpRef = useRef(null)
+  const popBusyRef = useRef(false)
+  const sessionExpiredRef = useRef(false)
+  useEffect(() => { navDepthRef.current = navDepth; sessionExpiredRef.current = sessionExpired })
+  const [navTick, setNavTick] = useState(0)
+  useEffect(() => {
+    if (!navReady || !isLoggedIn) return
+    try {
+      const at = Number(window.history.state?.app) || 0
+      if (navDepth > at) { for (let level = at + 1; level <= navDepth; level += 1) window.history.pushState({ app: level }, '') }
+      else if (navDepth < at) window.history.go(navDepth - at)
+    } catch { /* pushState can throw (Safari rate limit); Back then just leaves the app as before */ }
+  }, [navDepth, navTick, navReady, isLoggedIn])
+  useEffect(() => {
+    const onPop = async () => {
+      const at = Number(window.history.state?.app) || 0
+      if (navDepthRef.current > at && !popBusyRef.current && !sessionExpiredRef.current && goUpRef.current) {
+        popBusyRef.current = true // a second Back while this leave is still settling is ignored, not run on top of it
+        try { await goUpRef.current() } finally { popBusyRef.current = false }
+      }
+      setNavTick((tick) => tick + 1) // re-sync: a refused or ignored Back gets its entry back
+    }
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [])
+
   // Rendered by every screen that can raise it, not just the chart. askConfirm() is also
   // called from the users and medicines screens, and a dialog whose JSX never renders leaves
   // its promise pending forever: the click silently does nothing, and the dialog then ambushes
@@ -2323,6 +2364,25 @@ function App() {
     setWardHub({ floor: selected.floor ?? null, ward: selected.ward }) // the way out is the ward page, however this step was reached
     setSelected(null)
   }
+  // One level up, for the browser's Back. An open dialog takes the Back first (a click on its backdrop closes
+  // the ones that close that way; DrugRequestDialog ignores backdrop taps on purpose, so it stays). Everything
+  // else is what the on-screen Back button does.
+  const goUp = async () => {
+    if (confirmDialog) { resolveConfirm(false); return }
+    const backdrop = document.querySelector('.modal-backdrop')
+    if (backdrop) { backdrop.click(); return }
+    if (adminView) { setAdminView(null); return }
+    if (selected) {
+      if (selected.mode === 'chart' && chartFormOpen) { setChartFormOpen(false); return }
+      if (await unsavedExtraPills()) return
+      if (selected.mode === 'chart') { if (!(await settleChart())) return } else if (selected.mode === 'pills') flushPills()
+      setSelected(null)
+      return
+    }
+    if (wardHub) { setWardHub(null); return }
+    if (floor && floor.number !== homeFloor?.number) setFloor(null)
+  }
+  goUpRef.current = goUp
   const goToStep = async (step, direction) => {
     if (await unsavedExtraPills()) return
     if (selected.mode === 'chart') { if (!(await settleChart())) return } else if (selected.mode === 'pills') flushPills()
