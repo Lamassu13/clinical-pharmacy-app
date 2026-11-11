@@ -3116,3 +3116,16 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
 /* «التالي»: only where there may be no Enter key. */
 .bar-next { display: none; flex: 0 0 auto; }
 @media screen and (pointer: coarse) { .bar-next { display: inline-flex; align-items: center; min-height: 44px; } }
+
+/* The touch medicine picker (MedicinePicker): top-anchored so the on-screen keyboard cannot cover its list. */
+.modal-backdrop--top { place-items: start center; }
+.medicine-modal.medicine-picker { width: min(100%, 520px); padding: var(--space-5); display: flex; flex-direction: column; gap: var(--space-3); overflow-y: hidden; }
+.medicine-picker h2 { margin: 0; padding-inline-end: 44px; font-size: var(--text-lg); }
+.picker-current { margin: 0; color: var(--text-muted); font-size: var(--text-sm); }
+.medicine-picker input[type="search"] { width: 100%; min-height: 48px; font-size: 16px; }
+.picker-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1); overflow-y: auto; overscroll-behavior: contain; max-height: 40vh; }
+.picker-list button { width: 100%; min-height: 48px; padding: var(--space-2) var(--space-3); text-align: start; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); font-weight: 600; }
+.picker-list button[aria-current] { border-color: var(--primary); background: var(--green-50); color: var(--heading); }
+.picker-list button:active { background: var(--green-50); border-color: var(--green-300); }
+.picker-empty { margin: 0; color: var(--text-muted); }
+.picker-remove { align-self: flex-start; min-height: 44px; }

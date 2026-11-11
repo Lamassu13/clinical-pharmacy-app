@@ -1051,7 +1051,8 @@ function App() {
   useEffect(() => {
     const offer = currentPreviousDayOffer
     if (!offer || offerDialogOpenRef.current) return undefined
-    const typingInHeader = () => Boolean(document.activeElement?.classList?.contains('medicine-select'))
+    // The previous-day offer waits while a column's medicine is being chosen too (the touch picker), not only typed.
+    const typingInHeader = () => Boolean(document.activeElement?.closest?.('.medicine-select, .medicine-picker'))
     const present = async () => {
       offerDialogOpenRef.current = true
       const accepted = await askConfirm(`${offer.who} موجود في ${offer.daysAgo === 2 ? 'جارت أول أمس' : 'جارت الأمس'} — هل تريد نسخ بياناته (الاسم والرقم والأدوية والكميات)؟`)

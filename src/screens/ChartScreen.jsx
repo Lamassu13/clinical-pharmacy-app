@@ -7,6 +7,7 @@ import LoadingRows from '../components/LoadingRows.jsx'
 import { PATIENT_ROWS, MAX_PATIENT_ROWS } from '../constants.js'
 import MedicineSuggest from '../components/MedicineSuggest.jsx'
 import ChartHistoryDialog from '../components/ChartHistoryDialog.jsx'
+import MedicinePicker from '../components/MedicinePicker.jsx'
 import IdClashNote, { useIdClashes } from '../components/IdClashNote.jsx'
 import { medicineMatches, printPageCount } from '../helpers.js'
 import { storage } from '../storage.js'
@@ -42,6 +43,9 @@ export default function ChartScreen({
   })
   // The header cell being typed in ({ column, input }) and the highlighted suggestion.
   const [suggestFor, setSuggestFor] = useState(null)
+  // Touch devices choose a column's medicine from a picker instead of typing in the 11px vertical header (MedicinePicker).
+  const [touchPick] = useState(() => typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches)
+  const [pickerCol, setPickerCol] = useState(null)
   const [historyOpen, setHistoryOpen] = useState(false)
   const idClashes = useIdClashes(selected, selectedDate, patientIds)
   const [suggestHighlight, setSuggestHighlight] = useState(0)
@@ -97,6 +101,10 @@ export default function ChartScreen({
   // or while it is not today's chart and this is not a manager (dayLocked, App).
   const heldElsewhere = lockState === 'readonly'
   const readOnly = heldElsewhere || dayLocked
+  // Derived, not trusted: a lock refusal can flip readOnly while the picker is open, and a pick after that must not mutate the grid.
+  const pickerOpen = pickerCol !== null && !readOnly && chartReady && pickerCol < columnMedicines.length
+  const closePicker = () => { setPickerCol(null); setActiveColumn(-1) }
+  useEffect(() => { if (pickerCol !== null && !pickerOpen) setPickerCol(null) })
   // Print only: the sheet normally shows 34 rows before المجموع, blank ones included — that's
   // what fits one A4 landscape page on the ward's printer. A chart with a patient past row 34
   // extends instead of truncating them: totals follow whichever is taller. Screen view is
@@ -134,6 +142,9 @@ export default function ChartScreen({
 
   return <section className={roomy ? 'chart-page chart-page--roomy' : 'chart-page'}>
     <ChartHistoryDialog open={historyOpen} selected={selected} selectedDate={selectedDate} onClose={() => setHistoryOpen(false)} />
+    {pickerOpen && <MedicinePicker column={pickerCol} current={columnMedicines[pickerCol]} medicines={medicines} filled={quantities.filter((row) => row[pickerCol]).length}
+      onPick={(name) => { onApplySuggestion(pickerCol, name); closePicker() }}
+      onClear={() => { onCommitColumnMedicine(pickerCol, '', columnMedicines[pickerCol]); closePicker() }} onClose={closePicker} />}
     {dayLocked && <div className="chart-lock-banner chart-lock-banner--day" role="status">
       جارت {today} — للعرض فقط. لا يُعدَّل إلا جارت اليوم.
     </div>}
@@ -244,14 +255,16 @@ export default function ChartScreen({
           still scroll — an inert element ignores a finger — so there the boxes just cannot take focus or a tap. */}
       <div className="chart-head" inert={!chartReady || undefined} onFocusCapture={(event) => { if (readOnly) event.target.blur?.() }}>
         <div className="chart-head-corner"><img className="patient-header-logo" src={hospitalLogo} alt="" /><span>مستشفى بغداد التعليمي</span><span>وحدة الصيدلة السريرية</span>{selected.floor && <span>الطابق {selected.floor}</span>}<span>{selected.ward}</span><span>{today}</span><span>{todayWeekday}</span></div>
-        <div className="chart-head-scroll" ref={chartHeadRef}><table className="chart-table" role="presentation"><thead><tr>{Array.from({ length: columnMedicines.length }, (_, index) => <th key={index} className={activeColumn === index ? 'col-active' : undefined}><input className="medicine-select" readOnly={readOnly} value={columnMedicines[index]}
+        <div className="chart-head-scroll" ref={chartHeadRef}><table className="chart-table" role="presentation"><thead><tr>{Array.from({ length: columnMedicines.length }, (_, index) => <th key={index} className={activeColumn === index ? 'col-active' : undefined}><input className="medicine-select" readOnly={readOnly || touchPick} inputMode={touchPick ? 'none' : undefined} aria-haspopup={touchPick ? 'dialog' : undefined} value={columnMedicines[index]}
+          onMouseDown={touchPick ? (event) => event.preventDefault() : undefined}
+          onClick={touchPick ? () => { if (!readOnly && chartReady) { setActiveColumn(index); setPickerCol(index) } } : undefined}
           autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
           role="combobox" aria-autocomplete="list" aria-expanded={suggestFor?.column === index && suggestOptions.length > 0}
           aria-controls="medicine-suggest" aria-activedescendant={suggestFor?.column === index && suggestOptions.length ? `medicine-suggest-${suggestHighlight}` : undefined}
           onChange={(event) => { onSetColumnMedicine(index, event.target.value); setSuggestHighlight(0) }}
           // Read-only (a past day, another device editing): a tap neither opens the list nor commits a stale name on the way out.
-          onFocus={(event) => { if (readOnly) return; columnFocusValue.current = event.target.value; setActiveColumn(index); setSuggestFor({ column: index, input: event.target }); setSuggestHighlight(0) }}
-          onBlur={(event) => { setSuggestFor(null); if (!readOnly) onCommitColumnMedicine(index, event.target.value, columnFocusValue.current) }}
+          onFocus={(event) => { if (readOnly || touchPick) return; columnFocusValue.current = event.target.value; setActiveColumn(index); setSuggestFor({ column: index, input: event.target }); setSuggestHighlight(0) }}
+          onBlur={(event) => { setSuggestFor(null); if (!readOnly && !touchPick) onCommitColumnMedicine(index, event.target.value, columnFocusValue.current) }}
           onKeyDown={(event) => {
             if (suggestFor?.column !== index || !suggestOptions.length) return
             if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -266,7 +279,7 @@ export default function ChartScreen({
               setSuggestFor(null)
             }
           }}
-          placeholder="دواء" title="اكتب أول حروف الدواء واختر من القائمة" aria-label={`اسم الدواء، عمود ${index + 1}`} /></th>)}</tr></thead></table></div>
+          placeholder="دواء" title={touchPick ? 'اضغط لاختيار الدواء' : 'اكتب أول حروف الدواء واختر من القائمة'} aria-label={`اسم الدواء، عمود ${index + 1}`} /></th>)}</tr></thead></table></div>
       </div>
       {/* Read-only while another device holds the lock or on a past day — the poll keeps this view current. */}
       <div className="chart-grid" ref={chartGridRef} inert={!chartReady || undefined}
