@@ -512,3 +512,22 @@ EXCEPTION WHEN unique_violation THEN NULL;
 END $$;
 UPDATE extra_pill_forms SET patient_name = regexp_replace(patient_name, '[\u00ad\u061c\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]', '', 'g')
   WHERE patient_name ~ '[\u00ad\u061c\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]';
+
+-- «استمارة صرف المضادات الحياتية» (shared/antibiotic-form.js, server/routes/antibiotic-forms.js): one per patient per ward
+-- stay, open until its outcome is given. ward_key as drug_requests ('floor|ward', '' floor for an independent ward).
+-- form_date is the Baghdad day it was begun, set by the server. `fields` holds the patient's answers, `drugs` a JSON array
+-- with one entry per antibiotic. No unique key: a stay has no date of its own, so the route finds the open form itself.
+CREATE TABLE IF NOT EXISTS antibiotic_forms (
+  id BIGSERIAL PRIMARY KEY,
+  ward_key TEXT NOT NULL,
+  form_date DATE NOT NULL,
+  patient_name TEXT NOT NULL,
+  patient_id TEXT NOT NULL DEFAULT '',
+  fields JSONB NOT NULL DEFAULT '{}',
+  drugs JSONB NOT NULL DEFAULT '[]',
+  created_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS antibiotic_forms_date_idx ON antibiotic_forms (form_date);
+CREATE INDEX IF NOT EXISTS antibiotic_forms_patient_idx ON antibiotic_forms (ward_key, patient_id);

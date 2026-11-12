@@ -3146,7 +3146,7 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
 .rp-chip[aria-pressed="true"] .rp-tick { display: block; }
 .rp-when { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-3) var(--space-4); }
 .rp-when label { display: grid; gap: var(--space-1); }
-.rp-actions { display: flex; gap: var(--space-3); margin-inline-start: auto; }
+.rp-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-inline-start: auto; }
 .rp-actions button { min-height: 44px; white-space: nowrap; }
 .rp-actions .primary-button { background: var(--rp-accent); border-color: var(--rp-accent); color: var(--rp-on-accent); }
 .rp-actions .primary-button:hover:not(:disabled) { background: var(--rp-accent); filter: brightness(.92); }
@@ -3209,10 +3209,98 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
   .rp-bars li { grid-template-columns: 6rem 1fr; }
   .rp-bars b { grid-column: 1 / -1; text-align: start; }
   .rp-actions button { flex: 1; }
+  .rp-actions .rp-abx-export { flex-basis: 100%; }
   .rp-summary { padding-inline: 8px; }
   .rp-hide-narrow { display: none; }
   .reports-page .report-figures dd { font-size: 24px; }
 }
 @media print {
   .rp-bar, .rp-toolbar, .rp-group, .reports-page .report-section.is-closed { display: none !important; }
+}
+
+/* ============================================================
+   «استمارة صرف المضادات» — the ward's list (.abx-page) and one patient's form (.abx-sheet), which sits on the
+   patient-entry sheet's frame (.entry-form-page). Every status is a word first; answers are the request
+   dialog's chips (.req-chip, a drawn tick when chosen). Screen only.
+   ============================================================ */
+@media screen {
+  .abx-intro { margin: var(--space-4) 0 0; max-width: 70ch; color: var(--text-muted); font-size: var(--text-sm); }
+  .abx-queued { margin: var(--space-3) 0 0; padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); background: var(--warning-tint); color: var(--warning-text); font-size: var(--text-sm); font-weight: 700; }
+  .abx-skeleton { display: grid; gap: var(--space-3); margin-top: var(--space-5); }
+  .abx-list { display: grid; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+  /* The whole row opens the form, so it may lift (DESIGN.md: interactive card). */
+  .abx-row {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto auto; grid-template-areas: "who status chevron" "drugs drugs chevron" "missing missing chevron";
+    align-items: center; gap: var(--space-2) var(--space-3); width: 100%; min-height: 64px; padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--shadow-xs);
+    color: var(--text); font: inherit; text-align: start; cursor: pointer;
+    transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+  }
+  .abx-row:active { transform: translateY(1px); }
+  .abx-row-who { grid-area: who; display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-3); min-width: 0; }
+  .abx-row-who strong { color: var(--heading); font-size: var(--text-base); overflow-wrap: anywhere; }
+  .abx-row > .card-status { grid-area: status; justify-self: start; }
+  .abx-row-drugs { grid-area: drugs; display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-2); }
+  .abx-pill { display: inline-flex; align-items: baseline; gap: 2px; padding: 2px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-alt); color: var(--text); font-size: var(--text-xs); font-weight: 700; }
+  .abx-pill span { color: var(--text-muted); }
+  .abx-row-missing { grid-area: missing; color: var(--text-muted); font-size: var(--text-xs); font-weight: 700; }
+  .abx-row-chevron { grid-area: chevron; color: var(--text-muted); transition: transform var(--dur-fast) var(--ease); }
+  @media (hover: hover) {
+    .abx-row:hover { border-color: var(--green-300); box-shadow: var(--shadow-sm); transform: translateY(-2px); }
+    /* Physical on purpose: in RTL, «forward» is to the left. */
+    .abx-row:hover .abx-row-chevron { transform: translateX(-3px); }
+  }
+  .abx-add-patient { margin-top: var(--space-4); }
+
+  /* The form: a sticky head (where the pharmacist is, what is left, the four parts), the parts, a sticky save. */
+  .abx-sheet-top { position: sticky; top: 0; z-index: 3; background: var(--surface); border-bottom: 1px solid var(--border); }
+  .abx-sheet-top .entry-form-head { padding-bottom: var(--space-1); border-bottom: 0; }
+  .abx-jump b { display: inline-grid; place-items: center; min-width: 26px; height: 26px; padding: 0 6px; border-radius: 999px; background: var(--warning-tint); color: var(--warning-text); font-variant-numeric: tabular-nums; }
+  .abx-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; max-width: 680px; margin: 0 auto; padding: 0 var(--space-3) var(--space-2); }
+  .abx-tabs button { display: grid; justify-items: center; align-content: center; gap: 2px; min-height: 48px; padding: 4px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--heading); font: inherit; font-size: var(--text-sm); font-weight: 700; cursor: pointer; }
+  @media (hover: hover) { .abx-tabs button:hover { background: var(--green-50); } }
+  .abx-tabs small { display: inline-flex; align-items: center; gap: 3px; font-size: var(--text-xs); font-weight: 700; }
+  .abx-tab-left { color: var(--warning-text); }
+  .abx-tab-done { color: var(--primary-hover); }
+  .abx-track { height: 3px; background: var(--surface-alt); }
+  .abx-track i { display: block; height: 100%; background: var(--primary); transition: width var(--dur) var(--ease); }
+  .abx-note, .abx-restored { width: min(100% - var(--space-6), 680px); margin: var(--space-3) auto 0; }
+  .abx-restored { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3); border: 1px solid var(--warning-border); border-radius: var(--radius-md); background: var(--warning-tint); color: var(--warning-text); font-size: var(--text-sm); font-weight: 700; }
+  .abx-form { max-width: 680px; padding-top: var(--space-4); }
+  .abx-form > fieldset { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-7); }
+  .abx-section { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); min-width: 0; scroll-margin-top: 150px; }
+  .abx-section > h2 { display: flex; align-items: center; gap: var(--space-2); margin: 0; font-size: var(--text-lg); }
+  .abx-card { gap: var(--space-5); }
+  .abx-q { display: grid; gap: var(--space-2); scroll-margin-top: 150px; }
+  .abx-q-label { color: var(--heading); font-size: var(--text-sm); font-weight: 700; }
+  .abx-q-label small { margin-inline-start: var(--space-1); color: var(--text-muted); font-size: var(--text-xs); font-weight: 700; }
+  .abx-sheet input { width: 100%; min-height: 48px; font-size: 16px; }
+  .abx-pair { display: grid; grid-template-columns: 1fr 1fr; align-items: start; gap: var(--space-3); }
+  .abx-source { color: var(--text-muted); font-size: var(--text-xs); font-weight: 700; line-height: 1.5; }
+  .abx-hint { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-1) var(--space-3); margin: 0; padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3); border-radius: var(--radius-sm); background: var(--surface-alt); color: var(--text); font-size: var(--text-sm); }
+  .abx-hint bdi { font-weight: 700; }
+  .abx-drug { gap: var(--space-4); }
+  .abx-drug-head { display: flex; align-items: center; gap: var(--space-2); }
+  .abx-drug-name { color: var(--heading); font-size: var(--text-lg); font-weight: 700; }
+  .abx-drug-head .entry-line-remove { margin-inline-start: auto; }
+  .abx-chart-line { margin: calc(-1 * var(--space-2)) 0 0; color: var(--text-muted); font-size: var(--text-xs); font-weight: 700; }
+  .abx-done-pick { justify-self: start; }
+  .abx-dates { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); }
+  /* A date field's own minimum width would push two of them past a phone's edge. */
+  .abx-dates > label, .abx-dates input { min-width: 0; }
+  .abx-suggest { display: grid; gap: var(--space-2); padding: var(--space-3); border: 1px dashed var(--border-strong); border-radius: var(--radius-md); color: var(--text-muted); font-size: var(--text-sm); font-weight: 700; }
+  .abx-empty { margin: 0; padding: var(--space-4); border: 1px dashed var(--border-strong); border-radius: var(--radius-md); color: var(--text-muted); font-size: var(--text-sm); scroll-margin-top: 150px; }
+  .abx-add, .abx-delete { justify-self: start; }
+  .abx-delete { margin-top: var(--space-2); }
+  .abx-bar { border-top: 1px solid var(--border); }
+  .abx-bar .abx-queued { margin: 0; }
+  .abx-conflict { display: grid; gap: var(--space-2); padding: var(--space-3); border: 2px solid var(--warning); border-radius: var(--radius-md); background: var(--warning-tint); color: var(--warning-text); font-size: var(--text-sm); font-weight: 700; }
+  .abx-conflict p { margin: 0; }
+  .abx-conflict div { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+  @media (max-width: 560px) {
+    .abx-row { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "who chevron" "status chevron" "drugs chevron" "missing chevron"; }
+    .abx-dates { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .abx-dates > label:last-child { grid-column: 1 / -1; }
+    .abx-tabs { padding-inline: var(--space-2); }
+  }
 }

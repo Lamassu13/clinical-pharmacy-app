@@ -128,7 +128,7 @@ router.post('/charts/purge', requireAdmin, async (request, response) => {
   const wards = Array.isArray(request.body.wards) ? [...new Set(request.body.wards.filter((w) => SPECIAL_WARDS.includes(w)))] : []
   if (!all && floors.length === 0 && wards.length === 0) return response.status(400).json({ message: 'اختر طابقًا واحدًا على الأقل أو كل الطوابق' })
 
-  // All four deletes or none: a failure half-way used to leave the charts gone, their notes and
+  // All the deletes or none: a failure half-way used to leave the charts gone, their notes and
   // forms (which name the same patients) kept, and no line in the audit log.
   const client = await pool.connect()
   let result
@@ -151,6 +151,12 @@ router.post('/charts/purge', requireAdmin, async (request, response) => {
     // «استمارة الميرونيم» / «استمارة الالبومين» name the patient too, and belong to their ward/day the same way.
     await client.query(
       `DELETE FROM drug_requests WHERE request_date BETWEEN $1 AND $2
+         AND ($3::boolean OR split_part(ward_key, '|', 1) = ANY($4::text[]) OR (split_part(ward_key, '|', 1) = '' AND split_part(ward_key, '|', 2) = ANY($5::text[])))`,
+      [from, to, all, floors.map(String), wards],
+    )
+    // «استمارة صرف المضادات الحياتية» names the patient too: by the day it was begun.
+    await client.query(
+      `DELETE FROM antibiotic_forms WHERE form_date BETWEEN $1 AND $2
          AND ($3::boolean OR split_part(ward_key, '|', 1) = ANY($4::text[]) OR (split_part(ward_key, '|', 1) = '' AND split_part(ward_key, '|', 2) = ANY($5::text[])))`,
       [from, to, all, floors.map(String), wards],
     )

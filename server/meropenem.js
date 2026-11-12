@@ -29,8 +29,9 @@ const wardLabelOf = (floor, ward) => (floor ? `الطابق ${floor} — ${ward}
 // charted:  [{ date, floor, ward }] — the days each ward has a chart with a named patient.
 // overrides: [{ patientKey, date, n }] oldest first — a typed course day: on `date` the patient is Dn,
 //           and the rest of that course counts on from it.
-// All over the lookback window. Returns this ward's rows for the month of `date`, up to `date`.
-export const buildMeropenemForm = ({ date, floor, ward, cells, presence, charted, perDay = 3, overrides = [] }) => {
+// All over the lookback window. Returns this ward's rows for the month of `date`, up to `date` — or from `since`
+// (inside the window) instead of the month's first day, for a list that reaches back across a month's start.
+export const buildMeropenemForm = ({ date, floor, ward, cells, presence, charted, perDay = 3, overrides = [], since = null }) => {
   const here = wardKeyOf(floor, ward)
   const chartedByWard = new Map()
   charted.forEach((row) => {
@@ -77,7 +78,7 @@ export const buildMeropenemForm = ({ date, floor, ward, cells, presence, charted
     patient.seen.get(row.date).add(wardKeyOf(row.floor, row.ward))
   })
 
-  const first = monthStart(date)
+  const first = since || monthStart(date)
   const hereCharted = [...(chartedByWard.get(here) || [])].filter((iso) => iso <= date).sort()
   const latestCharted = hereCharted[hereCharted.length - 1]
   const wardLabels = new Map(presence.map((row) => [wardKeyOf(row.floor, row.ward), wardLabelOf(row.floor, row.ward)]))

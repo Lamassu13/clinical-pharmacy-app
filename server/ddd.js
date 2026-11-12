@@ -58,7 +58,7 @@ export const DDD = {
 
 export const PARENTERAL = /\b(vial|amp|ampoule|inj|injection|infusion|iv|bag)\b/i
 export const ORAL = /\b(tab|tablet|cap|capsule)s?\b/i
-const PER_VOLUME = /\b(syp|syrup|susp|suspension|drops?)\b|\/\s*\d*\s*ml/i // strength is per ml, not per unit
+export const PER_VOLUME = /\b(syp|syrup|susp|suspension|drops?)\b|\/\s*\d*\s*ml/i // strength is per ml, not per unit
 
 // The followed drug a medicine name belongs to: { key, label, perDay }, or null.
 const titleCase = (generic) => generic.replace(/(^|[\s(])([a-z])/g, (match, before, letter) => before + letter.toUpperCase())

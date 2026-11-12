@@ -28,6 +28,8 @@ import MeropenemOrderScreen from './screens/MeropenemOrderScreen.jsx'
 import DrugRequestsScreen from './screens/DrugRequestsScreen.jsx'
 import InteractionsScreen from './screens/InteractionsScreen.jsx'
 import RenalDoseScreen from './screens/RenalDoseScreen.jsx'
+import AntibioticFormsScreen from './screens/AntibioticFormsScreen.jsx'
+import { settleAbxDraft } from './antibioticDraft.js'
 import { INTERACTION_RULES } from './interactions.js'
 import { reportError } from './error-reporter.js'
 import { storage, queueWrite, forgetWrite, pendingWrites, flushWrites } from './storage.js'
@@ -101,6 +103,8 @@ function App() {
   // effect (load, lock, heartbeat, poll) re-runs on a new `selected`, so toggling the form there
   // reloaded the chart and released the edit lock on each open and close.
   const [chartFormOpen, setChartFormOpen] = useState(false)
+  // «استمارة صرف المضادات»: the patient whose form is open over the list (its key), so Back closes it first.
+  const [abxOpen, setAbxOpen] = useState(null)
   // Every way into a ward goes through here: an opener may ask for the entry form with `form: true`.
   // The ward whose own page (WardHubScreen) is open, { floor, ward } — set only by a ward card, and
   // kept while one of its screens is open so every «back» lands on that page. Any other way into a
@@ -1480,6 +1484,7 @@ function App() {
     else if (selected?.mode === 'receipts') screen = `متابعة الاستلام — ${ward}`
     else if (selected?.mode === 'meropenem-order') screen = `طلبية الميرونيم — ${ward}`
     else if (selected?.mode === 'meropenem') screen = `متابعة الميروبينيم — ${ward}`
+    else if (selected?.mode === 'antibiotic-forms') screen = `استمارة صرف المضادات — ${ward}`
     else if (kindOfMode(selected?.mode)) screen = `${DRUG_REQUESTS[kindOfMode(selected.mode)].label} — ${wardName}`
     else if (selected?.mode === 'renal') screen = `تعديل الجرعة الكلوية — ${ward}`
     else if (selected?.mode === 'interactions') screen = `التداخلات الدوائية — ${ward}`
@@ -2049,6 +2054,8 @@ function App() {
   }, [selected, selectedDate, isExpired, pillsLoadNonce])
   // Back online on a form opened from the device copy: load the real one and merge the draft.
   useEffect(() => { if (isOnline && pillsStale) setPillsLoadNonce((n) => n + 1) }, [isOnline, pillsStale])
+  // Leaving «استمارة صرف المضادات» (or moving to another ward's) closes the form that was open on it.
+  useEffect(() => { setAbxOpen(null) }, [selected])
   // Mirrors the live pills form to localStorage so a killed/offline tab doesn't lose whatever
   // hadn't reached the server yet — same role as chart's cpa-chart-draft mirror below.
   useEffect(() => {
@@ -2104,7 +2111,9 @@ function App() {
     if (!isLoggedIn || !isOnline || userId == null) return undefined
     const run = async () => {
       if (!pendingWrites(userId).length) return
-      const { sent, dropped } = await flushWrites(userId, (entry) => fetch(`${apiUrl}${entry.path}`, { method: entry.method, headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(entry.body) }))
+      // (An antibiotic form's device draft goes once the server has its save: settleAbxDraft.)
+      const { sent, dropped } = await flushWrites(userId, (entry) => fetch(`${apiUrl}${entry.path}`, { method: entry.method, headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(entry.body) })
+        .then((response) => { if (response.ok) settleAbxDraft(entry); return response }))
       if (sent) { setWritesFlushed((value) => value + 1); refreshCourseForms() }
       if (dropped.length) askConfirm('رفض الخادم تغييرًا حُفظ على هذا الجهاز دون اتصال، فلم يُحفظ.', { confirmLabel: 'حسنًا', detail: dropped.map((entry) => entry.label).join('، ') })
     }
@@ -2303,7 +2312,7 @@ function App() {
   // the depth; Back on the home view still exits the app, as it should.
   const homeFloor = !isManager ? assignedFloorObj : null
   const navDepth = (floor && floor.number !== homeFloor?.number ? 1 : 0) + (wardHub ? 1 : 0) + (selected ? 1 : 0)
-    + (selected?.mode === 'chart' && chartFormOpen ? 1 : 0) + (adminView ? 1 : 0)
+    + (selected?.mode === 'chart' && chartFormOpen ? 1 : 0) + (selected?.mode === 'antibiotic-forms' && abxOpen ? 1 : 0) + (adminView ? 1 : 0)
   const navDepthRef = useRef(0)
   const goUpRef = useRef(null)
   const popBusyRef = useRef(false)
@@ -2375,6 +2384,7 @@ function App() {
     if (adminView) { setAdminView(null); return }
     if (selected) {
       if (selected.mode === 'chart' && chartFormOpen) { setChartFormOpen(false); return }
+      if (selected.mode === 'antibiotic-forms' && abxOpen) { setAbxOpen(null); return }
       if (await unsavedExtraPills()) return
       if (selected.mode === 'chart') { if (!(await settleChart())) return } else if (selected.mode === 'pills') flushPills()
       setSelected(null)
@@ -2435,6 +2445,7 @@ function App() {
   if (selected && selected.mode === 'meropenem-order') return <MeropenemOrderScreen header={appHeader} footer={stepFooter} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={meroOrderLoading} data={meroOrderData} loadError={meroOrderError} onPrint={() => window.print()} />
   if (selected && drugRequests.listKind) return <DrugRequestsScreen key={drugRequests.listKind} dayLocked={dayLocked} kind={drugRequests.listKind} header={appHeader} footer={stepFooter} wardLabel={wardLabel} wardName={selected.ward} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} isOnline={isOnline} loading={drugRequests.loading} loadError={drugRequests.loadError} requests={drugRequests.requests} busy={drugRequests.busy} actionError={drugRequests.actionError} notice={drugRequests.notice} manualUrl={drugRequests.manualUrl} manualId={drugRequests.manualId} onConfirmManual={drugRequests.confirmManualSent} onSendToGoogle={drugRequests.sendToGoogle} onSendAll={drugRequests.sendAll} onFindMissing={drugRequests.findMissing} onSave={drugRequests.save} onSetTicks={drugRequests.setTicks} onSaveField={drugRequests.saveField} onDelete={drugRequests.remove} confirmModal={confirmModal} />
   if (selected && selected.mode === 'meropenem') return <MeropenemScreen header={appHeader} footer={stepFooter} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={meropenemLoading} data={meropenemData} loadError={meropenemError} onEditDay={dayLocked ? undefined : saveCourseDay} onPrint={() => window.print()} />
+  if (selected && selected.mode === 'antibiotic-forms') return <AntibioticFormsScreen header={appHeader} footer={stepFooter} wardLabel={wardLabel} floor={selected.floor ?? null} ward={selected.ward} selectedDate={selectedDate} onChangeDate={setSelectedDate} onBack={() => setSelected(null)} isOnline={isOnline} isExpired={isExpired} userId={userId} writesFlushed={writesFlushed} openKey={abxOpen} onOpenKey={setAbxOpen} askConfirm={askConfirm} confirmModal={confirmModal} />
   if (selected && selected.mode === 'interactions') return <InteractionsScreen header={appHeader} footer={stepFooter} wardLabel={wardLabel} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={interactionsLoading} data={interactionsData} loadError={interactionsError} onPrint={() => window.print()} />
   if (selected && selected.mode === 'receipts') return <ReceiptsScreen dayLocked={dayLocked} header={appHeader} footer={stepFooter} wardLabel={wardLabel} roomLabel={/\bccu\b/i.test(selected.ward || '') ? 'رقم السرير' : 'رقم الغرفة'} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={receiptsLoading} patients={receiptsData} loadError={receiptsError} saveError={receiptSaveError} savingRows={savingRows} onSetReceived={setReceived} />
   if (selected && selected.mode === 'order') return <OrderScreen header={appHeader} footer={stepFooter} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={orderLoading} data={orderData} loadError={orderError} onPrint={() => window.print()} />

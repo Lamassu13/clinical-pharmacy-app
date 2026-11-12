@@ -4,10 +4,14 @@ import { Glyph } from '../components/ToolbarIcons.jsx'
 import { apiUrl, floors, specialWards } from '../constants.js'
 import { isoDate, failureText } from '../helpers.js'
 import { exportReportPdf } from '../reportPdf.js'
+import { buildXlsx, downloadXlsx } from '../xlsx.js'
+import { EXPORT_COLUMNS, exportRows } from '../../shared/antibiotic-form.js'
 
 // التقارير — per-floor figures over a chosen range, read on screen or printed. Loaded only when
 // «عرض التقرير» is pressed: no auto-load, no polling (the Neon/Render free plans bill wake time).
 const MAX_DAYS = 120
+// «استمارة صرف المضادات» as an Excel file: every form begun in the dates, all wards (the floor chips do not narrow it).
+const ABX_MAX_DAYS = 92
 const RANGE_PRESETS = [7, 30, 90]
 const daysBefore = (iso, n) => isoDate(new Date(Date.parse(`${iso}T12:00:00`) - n * DAY_MS))
 const DAY_MS = 86400000
@@ -160,6 +164,27 @@ export default function ReportsScreen({ adminHeader, isExpired }) {
     } finally { setLoading(false) }
   }
 
+  // One row per antibiotic, the patient's columns repeated on each — the unit's Google sheet's own layout.
+  const [abxBusy, setAbxBusy] = useState(false)
+  const [abxNote, setAbxNote] = useState('')
+  const exportAbx = async () => {
+    if (abxBusy || !from || !to || days < 1) return
+    setError(''); setAbxNote('')
+    if (days > ABX_MAX_DAYS) { setAbxNote(`ملف استمارات المضادات يغطي ${ABX_MAX_DAYS} يومًا على الأكثر — قصّر المدة.`); return }
+    setAbxBusy(true)
+    try {
+      const response = await fetch(`${apiUrl}/antibiotic-forms/export?${new URLSearchParams({ from, to })}`, { credentials: 'include' })
+      if (isExpired(response)) return
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.message)
+      if (!result.forms.length) { setAbxNote('لا توجد استمارات صرف مضادات بدأت في هذه المدة.'); return }
+      downloadXlsx(buildXlsx({ sheetName: 'استمارات المضادات', columns: EXPORT_COLUMNS, rows: exportRows(result.forms) }), `استمارات المضادات ${from} – ${to}.xlsx`)
+    } catch (caught) {
+      setError(failureText(caught, 'تعذّر تنزيل ملف استمارات المضادات — تحقّق من الاتصال وحاول مرة أخرى.'))
+    } finally { setAbxBusy(false) }
+  }
+  const abxButton = <button type="button" className="secondary-button rp-abx-export" title="كل الردهات، حسب تاريخ الاستمارة" disabled={abxBusy || Boolean(rangeProblem)} onClick={exportAbx}>{abxBusy ? 'جارٍ التحضير…' : 'استمارات المضادات (Excel)'}</button>
+
   const print = async (key) => {
     if (!report || pdfBusy || !articleRef.current) return
     const part = key && SECTIONS.find((section) => section.key === key)
@@ -187,6 +212,7 @@ export default function ReportsScreen({ adminHeader, isExpired }) {
           <div className="rp-actions">
             <button type="submit" className="primary-button" disabled={loading}>{loading ? 'جارٍ إنشاء التقرير…' : 'تحديث'}</button>
             <button type="button" className="secondary-button" disabled={loading || Boolean(pdfBusy) || !sections.length} onClick={() => print(null)}>{pdfBusy === 'all' ? 'جارٍ التحضير…' : 'طباعة / PDF'}</button>
+            {abxButton}
           </div>
         </div>
       ) : <>
@@ -203,12 +229,14 @@ export default function ReportsScreen({ adminHeader, isExpired }) {
         <div className="rp-actions">
           <button type="submit" className="primary-button" disabled={Boolean(rangeProblem) || !selected.length || loading}>{loading ? 'جارٍ إنشاء التقرير…' : 'عرض التقرير'}</button>
           <button type="button" className="secondary-button" disabled={!report || loading || Boolean(pdfBusy) || !sections.length} onClick={() => print(null)}>{pdfBusy === 'all' ? 'جارٍ التحضير…' : 'طباعة / PDF'}</button>
+          {abxButton}
         </div>
       </div>
       </>}
       {!selected.length && <p className="reports-controls-hint" role="status">اختر طابقًا أو ردهة واحدة على الأقل.</p>}
       {report && !sections.length && <p className="reports-controls-hint" role="status">افتح قسمًا واحدًا على الأقل لطباعته.</p>}
       {rangeProblem && <p className="reports-controls-hint" role="status">{rangeProblem}</p>}
+      {abxNote && <p className="reports-controls-hint" role="status">{abxNote}</p>}
     </form>
 
     {error && <p className="form-error" role="alert">{error}</p>}

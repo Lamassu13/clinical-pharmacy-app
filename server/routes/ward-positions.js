@@ -5,7 +5,7 @@ import { memoizeByKey } from '../cache.js'
 import { isIsoDate } from '../validation.js'
 import { buildMeropenemForm, monthStart, windowStart, MEROPENEM_SQL_PATTERN } from '../meropenem.js'
 import { loadCourseRows } from './chart.js'
-import { nameKey, monthDates, startDates, courseMg, stayRun, formFor, reportRow, sortRows, dedupeStarts, nextStartOf, FORM_GRACE_DAYS } from '../ward-positions.js'
+import { monthDates, startDates, courseMg, stayRun, formFor, reportRow, sortRows, dedupeStarts, nextStartOf, seenDatesIndex, FORM_GRACE_DAYS } from '../ward-positions.js'
 
 const router = express.Router()
 
@@ -25,18 +25,7 @@ const computeMonth = async (date) => {
   const rows = await loadCourseRows({ floor: null, wardName: '', chartDate: date }, { pattern: MEROPENEM_SQL_PATTERN, allWards: true })
   const first = monthStart(date)
   const readFrom = windowStart(date)
-  // The days each patient is on a chart (any ward): by ID, and — for rows typed by name — by ward and name.
-  const byId = new Map()
-  const byWardName = new Map()
-  const add = (map, key, value) => { if (!map.has(key)) map.set(key, []); map.get(key).push(value) }
-  rows.presence.forEach((row) => {
-    if (row.patientId) add(byId, row.patientId, row.date)
-    add(byWardName, `${row.floor ?? ''}|${row.ward}|${nameKey(row.name)}`, { date: row.date, patientId: row.patientId })
-  })
-  const seenDates = (course) => [
-    ...(course.patientId ? byId.get(course.patientId) || [] : []),
-    ...(byWardName.get(`${course.floor ?? ''}|${course.ward}|${nameKey(course.name)}`) || []).filter((row) => !row.patientId || row.patientId === course.patientId).map((row) => row.date),
-  ]
+  const seenDates = seenDatesIndex(rows.presence)
   const wards = new Map()
   rows.cells.filter((cell) => cell.date >= first).forEach((cell) => {
     const key = `${cell.floor ?? ''}|${cell.ward}`
