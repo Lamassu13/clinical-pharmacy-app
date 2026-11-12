@@ -61,6 +61,22 @@ export const stayRun = (seenDates, start, readFrom) => {
   return { days: toDay(start) - toDay(first) + 1, capped: toDay(first) - toDay(readFrom) <= 2 }
 }
 
+// The days each patient is on a chart (any ward): by ID, and — for rows typed by name — by ward and name.
+// presence: the course rows' presence ([{ date, floor, ward, name, patientId }]) → seenDates({ floor, ward, name, patientId }).
+export const seenDatesIndex = (presence) => {
+  const byId = new Map()
+  const byWardName = new Map()
+  const add = (map, key, value) => { if (!map.has(key)) map.set(key, []); map.get(key).push(value) }
+  presence.forEach((row) => {
+    if (row.patientId) add(byId, row.patientId, row.date)
+    add(byWardName, `${row.floor ?? ''}|${row.ward}|${nameKey(row.name)}`, { date: row.date, patientId: row.patientId })
+  })
+  return (course) => [
+    ...(course.patientId ? byId.get(course.patientId) || [] : []),
+    ...(byWardName.get(`${course.floor ?? ''}|${course.ward}|${nameKey(course.name)}`) || []).filter((row) => !row.patientId || row.patientId === course.patientId).map((row) => row.date),
+  ]
+}
+
 const DIAGNOSIS = DRUG_REQUESTS.meropenem.groups.find((group) => group.id === 'diagnosis')
 export const diagnosisTexts = (ticks, note) => DIAGNOSIS.options
   .filter((option) => (ticks || []).includes(option.key))

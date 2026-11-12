@@ -28,6 +28,7 @@ const GROUPS = [
   { id: 'clinical', label: 'المتابعة السريرية', items: [
     { label: 'متابعة الاستلام', icon: 'receipt', open: { mode: 'receipts' }, needsConnection: true },
     { label: 'متابعة الميروبينيم', icon: 'trend', open: { mode: 'meropenem' }, needsConnection: true },
+    { label: 'استمارة صرف المضادات', icon: 'clipboard', open: { mode: 'antibiotic-forms' } },
     { label: 'التداخلات الدوائية', icon: 'overlap', open: { mode: 'interactions' } },
     { label: 'تعديل الجرعة الكلوية', icon: 'kidney', open: { mode: 'renal' } },
   ] },

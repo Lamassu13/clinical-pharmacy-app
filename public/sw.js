@@ -32,7 +32,7 @@ const API_CACHE = 'cpa-api-v1'
 const CACHEABLE_API_PATHS = ['/api/chart', '/api/pills', '/api/extra-pills', '/api/medicines',
   '/api/templates', '/api/interactions', '/api/patients/search', '/api/patients/history', '/api/ward-note', '/api/antibiotics',
   '/api/antibiotics/long', '/api/meropenem', '/api/dashboard', '/api/announcements', '/api/treatment-forms',
-  '/api/order', '/api/meropenem-order', '/api/drug-requests', '/api/renal-doses']
+  '/api/order', '/api/meropenem-order', '/api/drug-requests', '/api/renal-doses', '/api/antibiotic-forms']
 // Every chart, date and search a device opens is a separate entry, and nothing removed them short
 // of a sign-out — patient data piling up on a shared iPad, and storage pressure that can make the
 // browser evict the offline drafts. Keep the newest API_CACHE_MAX: keys() lists the oldest first,

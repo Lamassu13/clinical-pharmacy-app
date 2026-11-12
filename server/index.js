@@ -23,6 +23,7 @@ import drugRequestFollowupRoutes, { pendingFormsFor } from './routes/drug-reques
 import albuminFollowupRoutes from './routes/albumin-followup.js'
 import reportsRoutes from './routes/reports.js'
 import wardPositionsRoutes from './routes/ward-positions.js'
+import antibioticFormsRoutes from './routes/antibiotic-forms.js'
 import { bridgedDailyCounts, MAX_BRIDGE_DAYS } from './dashboard-bridge.js'
 import templatesRoutes from './routes/templates.js'
 import interactionsRoutes from './routes/interactions.js'
@@ -732,6 +733,7 @@ app.use('/api', drugRequestsRoutes)
 app.use('/api', albuminFollowupRoutes)
 app.use('/api', reportsRoutes)
 app.use('/api', wardPositionsRoutes)
+app.use('/api', antibioticFormsRoutes)
 app.use('/api', templatesRoutes)
 app.use('/api', interactionsRoutes)
 app.use('/api', pushRoutes)
