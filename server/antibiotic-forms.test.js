@@ -56,6 +56,14 @@ test('candidates: a course last charted on a Thursday ran through the uncharted 
   assert.deepEqual([chartedFriday.days, chartedFriday.stop], ['3', '2026-11-05'])
 })
 
+test('candidates: a patient no longer on the ward\'s latest chart is flagged out of the chart; a Friday looks at Thursday\'s chart', () => {
+  const chartDays = [['2026-11-04', [ali(), { name: 'سعد', id: '777', meds: { [VANCO]: 2 } }]], ['2026-11-05', [ali(), { name: 'سعد', id: '777', meds: { [VANCO]: 2 } }]], ['2026-11-07', [ali()]]]
+  const byName = (list) => Object.fromEntries(list.map((patient) => [patient.name, patient.inChart]))
+  assert.deepEqual(byName(candidates('2026-11-08', chartDays).patients), { 'علي': true, 'سعد': false })
+  // Friday 6: no chart that day, Thursday's is the latest — both are still on it.
+  assert.deepEqual(byName(candidates('2026-11-06', chartDays.slice(0, 2)).patients), { 'علي': true, 'سعد': true })
+})
+
 test('candidates: a restart shows the latest course only', () => {
   // 27-28 Oct, then Thu 29 / Sat 31 / Sun 1 on the chart without it (course over), restarted 2-3 Nov.
   const { patients: [patient] } = candidates('2026-11-03', [
