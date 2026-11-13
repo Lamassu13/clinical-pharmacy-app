@@ -1,7 +1,8 @@
 import { formsWord } from '../helpers.js'
 
-// «مواقف القسم»: a floor's six forms in one place. Each tile is the form's own screen (its mode), so editing, sending
-// and printing work exactly as on the ward page; the controls only switch the ward (`wards`, the floor's) and the form.
+// «مواقف القسم»: a floor's six forms in one place, to correct and send them. Each tile is the form's own screen (its mode), so
+// editing and sending work exactly as on the ward page — no new form and no print here (both stay on the ward page); albumin
+// «Not indicated» forms are left out. The controls only switch the ward (`wards`, the floor's) and the form.
 // The ward is a segmented track (one choice of a few, always one row); the forms are tiles with their day's state in
 // words under the name. `counts` is useRequestCounts' for the ward shown ({ kind: n, attention: { kind: n } }).
 export const FORM_TABS = [
