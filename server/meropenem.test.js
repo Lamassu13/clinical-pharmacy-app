@@ -5,7 +5,7 @@ import { pool } from './db.js'
 import { startServer, resetDatabase, createUser, ApiClient } from './test-helpers.js'
 import { buildMeropenemForm, doseText, MEROPENEM_SQL_PATTERN, windowStart } from './meropenem.js'
 import { todayInBaghdad } from './push.js'
-import { loadCourseRows, warmCourseRows } from './routes/chart.js'
+import { loadCourseRows, loadOverridesFor, warmCourseRows } from './routes/chart.js'
 import { FLOOR_WARDS } from './validation.js'
 
 const FLOOR = 5
@@ -448,4 +448,14 @@ test('GET /api/meropenem: a ward\'s form reads only its own patients and their t
 
 test('warmCourseRows: reads the shared window without a ward and without failing on an empty database', async () => {
   await warmCourseRows()
+})
+
+test('loadOverridesFor: one query groups each drug\'s typed days, oldest first; a drug with none gets []', async () => {
+  await pool.query(`INSERT INTO course_day_overrides (patient_key, drug_key, anchor_date, n, updated_at) VALUES
+    ('id:1', 'meropenem', '2026-11-01', 3, now() - interval '1 hour'), ('id:2', 'vancomycin', '2026-11-02', 5, now()),
+    ('id:1', 'meropenem', '2026-11-03', 1, now())`)
+  const byDrug = await loadOverridesFor(['meropenem', 'vancomycin', 'colistin'])
+  assert.deepEqual(byDrug.get('meropenem').map((row) => row.date), ['2026-11-01', '2026-11-03'])
+  assert.deepEqual(byDrug.get('vancomycin'), [{ patientKey: 'id:2', date: '2026-11-02', n: 5 }])
+  assert.deepEqual(byDrug.get('colistin'), [])
 })

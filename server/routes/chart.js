@@ -1044,10 +1044,18 @@ export const warmCourseRows = async () => {
   console.log(`course cache: warmed in ${Date.now() - started} ms`)
 }
 
-export const loadOverrides = async (drugKey) => (await query(
-  'SELECT patient_key, anchor_date::text AS date, n FROM course_day_overrides WHERE drug_key = $1 ORDER BY updated_at',
-  [drugKey],
-)).rows.map((row) => ({ patientKey: row.patient_key, date: row.date, n: row.n }))
+// drug key -> its typed course days, for many drugs in one query (a ward's antibiotics, not one query each).
+export const loadOverridesFor = async (drugKeys) => {
+  const byDrug = new Map(drugKeys.map((key) => [key, []]))
+  if (!drugKeys.length) return byDrug
+  const { rows } = await query(
+    'SELECT drug_key, patient_key, anchor_date::text AS date, n FROM course_day_overrides WHERE drug_key = ANY($1::text[]) ORDER BY updated_at',
+    [drugKeys],
+  )
+  rows.forEach((row) => byDrug.get(row.drug_key).push({ patientKey: row.patient_key, date: row.date, n: row.n }))
+  return byDrug
+}
+export const loadOverrides = async (drugKey) => (await loadOverridesFor([drugKey])).get(drugKey)
 
 // «استمارة متابعة الميروبينيم»: every patient on Meronem this month on this ward (main and extra
 // charts), each day's course number, and whether they are still on it. Read-only and fully derived.
@@ -1079,9 +1087,9 @@ router.get('/antibiotics', requireAuth, async (request, response) => {
     if (!byDrug.has(drug.key)) byDrug.set(drug.key, { ...drug, cells: [] })
     byDrug.get(drug.key).cells.push(cell)
   })
-  const drugs = (await Promise.all([...byDrug.values()]
-    .map(async (drug) => ({ key: drug.key, label: drug.label, patients: buildMeropenemForm({ ...rows, cells: drug.cells, perDay: drug.perDay, overrides: await loadOverrides(drug.key) }).patients.map((patient) => ({ ...patient, drugKey: drug.key })) }))
-  ))
+  const overridesByDrug = await loadOverridesFor([...byDrug.keys()])
+  const drugs = [...byDrug.values()]
+    .map((drug) => ({ key: drug.key, label: drug.label, patients: buildMeropenemForm({ ...rows, cells: drug.cells, perDay: drug.perDay, overrides: overridesByDrug.get(drug.key) }).patients.map((patient) => ({ ...patient, drugKey: drug.key })) }))
     .filter((drug) => drug.patients.length)
     .sort((a, b) => a.label.localeCompare(b.label))
   response.json({ drugs })
@@ -1112,8 +1120,9 @@ const computeLongCourses = async (date) => {
   })
   const first = monthStart(date)
   const patients = []
+  const overridesByDrug = await loadOverridesFor([...byDrug.keys()])
   for (const drug of byDrug.values()) {
-    const overrides = await loadOverrides(drug.key)
+    const overrides = overridesByDrug.get(drug.key)
     const wards = new Map()
     drug.cells.filter((cell) => cell.date >= first).forEach((cell) => {
       const key = `${cell.floor ?? ''}|${cell.ward}`
