@@ -52,8 +52,8 @@ export default function AntibioticFormsScreen({ header, footer, wardLabel, floor
 
   // One row per patient on the list and per form added by hand.
   const items = useMemo(() => (data ? [
-    ...data.patients.map((candidate) => ({ patientKey: candidate.key, name: candidate.name, patientId: candidate.patientId, candidate, form: candidate.form, drugs: candidate.drugs })),
-    ...data.manual.map((form) => ({ patientKey: `form:${form.id}`, name: form.name, patientId: form.patientId, candidate: null, form, drugs: form.drugs, manual: true })),
+    ...data.patients.map((candidate) => ({ patientKey: candidate.key, name: candidate.name, patientId: candidate.patientId, candidate, form: candidate.form, drugs: candidate.drugs, inChart: candidate.inChart !== false })),
+    ...data.manual.map((form) => ({ patientKey: `form:${form.id}`, name: form.name, patientId: form.patientId, candidate: null, form, drugs: form.drugs, manual: true, inChart: true })),
   ] : []), [data])
   const waiting = new Set(userId == null ? [] : pendingWrites(userId).map((entry) => entry.key))
   const waitingNew = [...waiting].some((key) => key.startsWith(abxQueueKey(wardKey, 'manual:new')))
@@ -73,6 +73,22 @@ export default function AntibioticFormsScreen({ header, footer, wardLabel, floor
     patients: current.patients.map((candidate) => (candidate.form?.id === id ? { ...candidate, form: null } : candidate)),
     manual: current.manual.filter((form) => form.id !== id),
   })
+
+  const renderRow = (item) => <li key={item.patientKey}>
+                <button type="button" className="abx-row" onClick={() => onOpenKey(item.patientKey)}>
+                  <span className="abx-row-who">
+                    <strong>{item.name}</strong>
+                    {item.patientId && <span className="patient-search-id">رقم الطبلة <bdi>{item.patientId}</bdi></span>}
+                    {item.manual && <span className="patient-search-id">أُضيف يدويًا</span>}
+                  </span>
+                  <FormStatus form={item.form} waiting={waiting.has(abxQueueKey(wardKey, item.patientKey))} />
+                  <span className="abx-row-drugs">{item.drugs.map((drug, index) => <span key={`${drug.drug}|${index}`} className="abx-pill">
+                    <bdi dir="ltr" lang="en">{drug.drug || '—'}</bdi>{drug.day ? <span> D{drug.day}{drug.status ? ` · ${STATUS[drug.status.kind] || ''}` : ''}</span> : null}
+                  </span>)}</span>
+                  {item.form?.missing.length > 0 && <span className="abx-row-missing">ناقص: {item.form.missing.slice(0, 3).join('، ')}{item.form.missing.length > 3 ? '…' : ''}</span>}
+                  <Chevron />
+                </button>
+              </li>
 
   return <main className="app-shell">
     {header}
@@ -101,23 +117,15 @@ export default function AntibioticFormsScreen({ header, footer, wardLabel, floor
 
           {!items.length ? <div className="empty-state"><strong>لا يوجد مريض على مضاد حياتي</strong><span>لم يُسجَّل في جارت هذه الردهة مضاد حياتي خلال آخر 14 يومًا. يمكنك إضافة مريض يدويًا.</span></div>
             : !shown.length ? <div className="empty-state"><strong>لا يوجد مرضى في «{active.label}»</strong></div>
-            : <ul className="abx-list">
-              {shown.map((item) => <li key={item.patientKey}>
-                <button type="button" className="abx-row" onClick={() => onOpenKey(item.patientKey)}>
-                  <span className="abx-row-who">
-                    <strong>{item.name}</strong>
-                    {item.patientId && <span className="patient-search-id">رقم الطبلة <bdi>{item.patientId}</bdi></span>}
-                    {item.manual && <span className="patient-search-id">أُضيف يدويًا</span>}
-                  </span>
-                  <FormStatus form={item.form} waiting={waiting.has(abxQueueKey(wardKey, item.patientKey))} />
-                  <span className="abx-row-drugs">{item.drugs.map((drug, index) => <span key={`${drug.drug}|${index}`} className="abx-pill">
-                    <bdi dir="ltr" lang="en">{drug.drug || '—'}</bdi>{drug.day ? <span> D{drug.day}{drug.status ? ` · ${STATUS[drug.status.kind] || ''}` : ''}</span> : null}
-                  </span>)}</span>
-                  {item.form?.missing.length > 0 && <span className="abx-row-missing">ناقص: {item.form.missing.slice(0, 3).join('، ')}{item.form.missing.length > 3 ? '…' : ''}</span>}
-                  <Chevron />
-                </button>
-              </li>)}
-            </ul>}
+            : <>
+              {[{ title: 'في الردهة (في الجارت)', list: shown.filter((item) => item.inChart) }, { title: 'خرجوا (ليسوا في الجارت)', list: shown.filter((item) => !item.inChart) }]
+                .filter((group) => group.list.length > 0).map((group) => <section key={group.title} aria-label={group.title}>
+                  <h2 className="abx-group-title">{group.title} <span className="filter-chip-count">{group.list.length}</span></h2>
+                  <ul className="abx-list">
+                    {group.list.map(renderRow)}
+                  </ul>
+                </section>)}
+            </>}
 
           <button type="button" className="secondary-button abx-add-patient" onClick={() => onOpenKey('manual:new')}>+ مريض ليس في القائمة</button>
         </>}

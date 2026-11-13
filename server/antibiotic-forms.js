@@ -63,6 +63,8 @@ export const buildCandidates = ({ rows, date, overridesByDrug = new Map(), reque
   const since = plusDays(date, -RECENT_DOSE_DAYS)
   const readFrom = windowStart(date)
   const hereCharted = new Set(rows.charted.filter((row) => row.floor === floor && row.ward === ward).map((row) => row.date))
+  // The ward's latest chart on or before the asked day (a Friday has none: Thursday's counts). A patient on it is still in the ward.
+  const latestChart = [...hereCharted].filter((iso) => iso <= date).sort().pop() || ''
 
   // Antibacterials only (antifungals are followed too, but this form is the antibiotics').
   const byDrug = new Map()
@@ -146,6 +148,9 @@ export const buildCandidates = ({ rows, date, overridesByDrug = new Map(), reque
     if (form) used.add(form.id)
     return {
       key: patient.key, name: patient.name, patientId: patient.patientId, admitted,
+      // false = no longer on the ward's chart (discharged, died, moved to another ward): the screen lists them apart.
+      inChart: !!latestChart && rows.presence.some((row) => row.date === latestChart && row.floor === floor && row.ward === ward
+        && (patient.patientId ? row.patientId === patient.patientId || (!row.patientId && nameKey(row.name) === patient.name) : !row.patientId && nameKey(row.name) === patient.name)),
       prefill: { age: pick(ageOf), diagnosis: pick(diagnosisOf), stayDays: { value: stay.capped ? `${stay.days}+` : String(stay.days), source: 'الجارت' } },
       hints: { allergy: hint(allergyHint), culture: hint(cultureHint) },
       drugs: patient.drugs,
