@@ -2,6 +2,7 @@
 // the component around them.
 import { floors, specialWards, PATIENT_ROWS, MAX_PATIENT_ROWS, CHART_COLUMNS, MAX_CHART_COLUMNS } from './constants.js'
 import { storage } from './storage.js'
+import { needsFollowUp } from '../shared/form-problems.js'
 
 // Shared by the two places a chart snapshot from elsewhere (the server, after a save
 // conflict; or localStorage, after a killed tab) has to be combined with what is on screen:
@@ -788,3 +789,9 @@ export const formsBadge = (counts, kinds) => {
   const total = list.reduce((sum, kind) => sum + (counts?.[kind] || 0), 0)
   return total > 0 ? { tone: 'partial', text: formsWord(total) } : null
 }
+// Those counts with the open list's own numbers for its kind (`requests`, null while it loads): a form just added, sent or
+// deleted shows on the step bar and the «مواقف القسم» tabs at once, without asking the server again.
+export const liveFormCounts = (counts, kind, requests) => (kind && requests ? {
+  ...counts, [kind]: requests.length,
+  attention: { ...counts?.attention, [kind]: requests.filter((request) => needsFollowUp(kind, request)).length },
+} : counts)

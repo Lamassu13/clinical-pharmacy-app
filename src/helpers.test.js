@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { withBlankRow, parseChartRows, mergeChartSnapshots as mergeRows, printPageCount, failureText, rememberIdentity, recallIdentity, IDENTITY_KEEP_HOURS, averagePatients, pillChanges, interactionsForChart, mergeKeyedSnapshots, looksWiped, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, settleExtraPillsOp, EXTRA_PILL_SLOTS, isDraftStale, rememberChart, recallChart, forgetChartCopies, mergePreviousDayDoses, addPatientToChart, medicineMatches, pillSheetPlan, yesterdaySchedules, scheduleFor, applyTemplateColumns, catalogueMatches, RENAL_EQUATIONS, renalGuidance, SCR_UMOL_PER_MGDL } from './helpers.js'
+import { withBlankRow, parseChartRows, mergeChartSnapshots as mergeRows, printPageCount, failureText, rememberIdentity, recallIdentity, IDENTITY_KEEP_HOURS, averagePatients, pillChanges, interactionsForChart, mergeKeyedSnapshots, looksWiped, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, settleExtraPillsOp, EXTRA_PILL_SLOTS, isDraftStale, rememberChart, recallChart, forgetChartCopies, mergePreviousDayDoses, addPatientToChart, medicineMatches, pillSheetPlan, yesterdaySchedules, scheduleFor, applyTemplateColumns, catalogueMatches, RENAL_EQUATIONS, renalGuidance, SCR_UMOL_PER_MGDL, liveFormCounts, formsBadge } from './helpers.js'
 
 test('mergeKeyedSnapshots keeps a local edit and adopts an unrelated server change', () => {
   const base = { a: '1', b: '2' }
@@ -615,4 +615,15 @@ test('printPageCount: one page up to row 41, two once something sits past it —
   assert.equal(at(60, 41), 2)            // the 42nd row has a name
   assert.equal(at(60, 59, 'qty'), 2)     // a dose alone on row 60
   assert.equal(at(41, 0), 1)
+})
+
+test('liveFormCounts: the open list replaces the fetched numbers of its own kind only; nothing open or still loading leaves them as fetched', () => {
+  const fetched = { albumin: 1, ivig: 2, attention: { albumin: 1, ivig: 2 } }
+  const sent = { googleSentAt: '2026-11-13T08:00:00Z', fields: {} }
+  const live = liveFormCounts(fetched, 'albumin', [sent, sent, { fields: {} }])
+  assert.deepEqual(live, { albumin: 3, ivig: 2, attention: { albumin: 1, ivig: 2 } })
+  assert.equal(formsBadge(liveFormCounts(fetched, 'albumin', [sent]), 'albumin').tone, 'partial') // all sent: a plain count, no follow-up
+  assert.deepEqual(liveFormCounts(null, 'ivig', []), { ivig: 0, attention: { ivig: 0 } }) // counts not in yet, an empty list open
+  assert.equal(liveFormCounts(fetched, 'albumin', null), fetched)
+  assert.equal(liveFormCounts(fetched, null, [sent]), fetched)
 })
