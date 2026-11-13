@@ -437,7 +437,9 @@ function App() {
         const nav = JSON.parse(sessionStorage.getItem('cpa-nav') || 'null')
         if (nav?.selectedDate) setSelectedDate(nav.selectedDate)
         if (nav?.floor) setFloor(nav.floor)
-        if (nav?.selected) { didAutoLandRef.current = true; const { form, ...target } = nav.selected; setChartFormOpen(Boolean(form)); setWardHub(null); setSelected(target) }
+        if (nav?.selected) { didAutoLandRef.current = true; const { form, ...target } = nav.selected; setChartFormOpen(Boolean(form)); setWardHub(null)
+          // «استمارة صرف المضادات» is only in «مواقف القسم»: a tab saved before it moved there opens in it.
+          setSelected(target.mode === 'antibiotic-forms' ? { ...target, hub: true } : target) }
       } catch { /* storage unavailable or corrupt — start on the picker */ }
     }
     let logoutPending = false
@@ -2433,8 +2435,7 @@ function App() {
   // «مواقف القسم» (a floor's ward list, or a floor pharmacist's bottom bar): the floor's wards and the six forms over the form screens.
   // The form's mode stays the screen and `hub` keeps the rows on; a tap changes only the ward or only the form.
   const openHub = (change) => { setAbxOpen(null); setSelected({ floor: selected.floor, ward: selected.ward, mode: selected.mode, hub: true, ...change }) }
-  // «استمارة صرف المضادات» is only in «مواقف القسم»: shown any other way (a tab restored from before it moved) it still wears the hub.
-  const formsHub = selected?.hub || selected?.mode === 'antibiotic-forms' ? { title: 'مواقف القسم', sub: selected.floor ? `الطابق ${selected.floor}` : '', controls: <WardFormsTabs mode={selected.mode} counts={liveCounts} onPick={(mode) => openHub({ mode })} wards={floors.find((item) => item.number === selected.floor)?.wards} ward={selected.ward} onPickWard={(ward) => { hubWardRef.current[selected.floor] = ward; openHub({ ward }) }} /> } : null
+  const formsHub = selected?.hub ? { title: 'مواقف القسم', sub: selected.floor ? `الطابق ${selected.floor}` : selected.ward, controls: <WardFormsTabs mode={selected.mode} counts={liveCounts} onPick={(mode) => openHub({ mode })} wards={floors.find((item) => item.number === selected.floor)?.wards} ward={selected.ward} onPickWard={(ward) => { hubWardRef.current[selected.floor] = ward; openHub({ ward }) }} /> } : null
   const appHeader = stepBar ? <>{appTopBar}{stepBar}</> : appTopBar
 
   if (adminView === 'profile') return <ProfileScreen isManager={isManager} adminHeader={appHeader} profileForm={profileForm} setProfileForm={setProfileForm} profileError={profileError} profileSuccess={profileSuccess} busy={busy} onSubmit={submitProfile} />
