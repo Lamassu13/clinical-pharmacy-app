@@ -148,6 +148,9 @@ export const DRUG_REQUESTS = {
     sqlPattern: '(ivig|immunoglobulin|immune globulin|gamma ?globulin|octagam|intratect|privigen|gammagard|kiovig|flebogamma|gamunex|sandoglobulin|nanogam|pentaglobin)',
     // Asked on the first day of the course, like Meropenem.
     firstDayOnly: true,
+    // IVIG is not given every day (alternate days, weekly, whenever vials arrive): doses up to two weeks apart are one course, so a
+    // dose after a few days without it is not a first day again and asks for no second form. (An antibiotic restarts after two days off.)
+    courseGapDays: 14,
     formsSince: '2026-11-09',
     // The boxes are the ministry's Google Form's own (shared/ivig-google-form.js).
     fields: [
