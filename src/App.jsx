@@ -112,10 +112,11 @@ function App() {
   // ward (search, resume, the dashboard) goes through openTarget, which clears it, so those backs
   // still land where they always did.
   const [wardHub, setWardHub] = useState(null)
-  const openTarget = useCallback(({ form, ...target }) => { setChartFormOpen(Boolean(form)); setWardHub(null); setSelected(target) }, [])
+  // Each opens its screen at the top: on a phone the ward page was scrolled down to the row tapped, and the screen kept that offset.
+  const openTarget = useCallback(({ form, ...target }) => { setChartFormOpen(Boolean(form)); setWardHub(null); window.scrollTo(0, 0); setSelected(target) }, [])
   // «مواقف القسم»: the ward last chosen there on each floor, for this visit to the app (it opens on the floor's first ward otherwise).
   const hubWardRef = useRef({})
-  const openFromWardPage = useCallback(({ form, ...target }) => { setChartFormOpen(Boolean(form)); setSelected(target) }, [])
+  const openFromWardPage = useCallback(({ form, ...target }) => { setChartFormOpen(Boolean(form)); window.scrollTo(0, 0); setSelected(target) }, [])
   // The chart (wardKey) opened blank because the iPad was offline and had never downloaded it —
   // see the load effect. Cleared by the first real load or save once the connection is back.
   const [offlineChartKey, setOfflineChartKey] = useState(null)
@@ -1444,6 +1445,7 @@ function App() {
     setAbxOpen(null)
     setChartFormOpen(false)
     setFloor(assignedFloorObj)
+    window.scrollTo(0, 0) // the bar's tab is reachable from a scrolled page
     setSelected({ floor: number, ward: hubWardRef.current[number] || assignedFloorObj.wards[0], mode: 'albumin-forms', hub: true })
   }, [assignedFloorObj, selected, settleChart, flushPills])
   // Ending the session is the likeliest accidental tap on a shared iPad, so it keeps the
