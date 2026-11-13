@@ -1430,6 +1430,19 @@ function App() {
     setFloor(assignedFloorObj)
     setWardHub(target)
   }, [assignedFloorObj, selected, settleChart, flushPills])
+  // «مواقف القسم» in a floor pharmacist's bottom bar: the floor's six forms, on the ward last used there (else the first), the floor's
+  // ward list behind it as the way back. Leaving the chart or the pills settles them first, as the ward tabs do.
+  const goToForms = useCallback(async () => {
+    if (!assignedFloorObj || selected?.hub) return
+    if (selected?.mode === 'pills') flushPills(); else if (!(await settleChart())) return
+    const number = assignedFloorObj.number
+    setAdminView(null)
+    setWardHub(null)
+    setAbxOpen(null)
+    setChartFormOpen(false)
+    setFloor(assignedFloorObj)
+    setSelected({ floor: number, ward: hubWardRef.current[number] || assignedFloorObj.wards[0], mode: 'albumin-forms', hub: true })
+  }, [assignedFloorObj, selected, settleChart, flushPills])
   // Ending the session is the likeliest accidental tap on a shared iPad, so it keeps the
   // session-expired screen's promise: flush any debounced edits first, and if something still
   // is not confirmed saved, say so before tearing down — the work stays mirrored on this
@@ -2360,8 +2373,8 @@ function App() {
 
   const openWardName = selected ? selected.ward : wardHub?.ward
   const wardTabs = isManager ? undefined : (assignedFloorObj ? assignedFloorObj.wards.map((ward) => ({ floor: assignedFloorObj.number, ward })) : (currentUser?.assignedWards || []).map((ward) => ({ floor: null, ward })))
-    .map((target) => ({ ward: target.ward, active: !adminView && openWardName === target.ward && (selected ? selected.floor ?? null : wardHub?.floor ?? null) === target.floor, onClick: () => goToWard({ floor: target.floor, ward: target.ward }) }))
-  const appTopBar = <AppHeader theme={theme} onToggleTheme={toggleTheme} currentUser={currentUser} onLogout={logout} onHome={goHome} onMyWard={!isManager && assignedFloorObj ? goToMyWard : undefined} wardTabs={wardTabs} homeActive={!adminView && !selected && !wardHub} onOpenProfile={openProfile} isAdmin={isAdmin} isManager={isManager} adminView={adminView} onNavigate={setAdminView} isOnline={isOnline} pendingWrites={userId == null ? 0 : pendingWrites(userId).length} pendingRequests={isAdmin ? pendingRequests : 0} onAdminMenuOpen={isAdmin ? refreshPendingRequests : undefined} />
+    .map((target) => ({ ward: target.ward, active: !adminView && !selected?.hub && openWardName === target.ward && (selected ? selected.floor ?? null : wardHub?.floor ?? null) === target.floor, onClick: () => goToWard({ floor: target.floor, ward: target.ward }) }))
+  const appTopBar = <AppHeader theme={theme} onToggleTheme={toggleTheme} currentUser={currentUser} onLogout={logout} onHome={goHome} onMyWard={!isManager && assignedFloorObj ? goToMyWard : undefined} wardTabs={wardTabs} formsTab={!isManager && assignedFloorObj?.wards.length ? { active: !adminView && Boolean(selected?.hub), onClick: goToForms } : undefined} homeActive={!adminView && !selected && !wardHub} onOpenProfile={openProfile} isAdmin={isAdmin} isManager={isManager} adminView={adminView} onNavigate={setAdminView} isOnline={isOnline} pendingWrites={userId == null ? 0 : pendingWrites(userId).length} pendingRequests={isAdmin ? pendingRequests : 0} onAdminMenuOpen={isAdmin ? refreshPendingRequests : undefined} />
   // A ward's daily work as steps (WardSteps.jsx): a bar under the top bar on each step's screen, a
   // «الخطوة التالية» button at the foot of its page, and a short slide when moving between steps. Moving
   // saves the screen being left the way its own Back does, and keeps the ward page as the way back.
@@ -2415,7 +2428,7 @@ function App() {
   // «مواقف القسم» (opened from a floor's ward list): the floor's wards and the six forms as two chip rows over the form screens.
   // The form's mode stays the screen and `hub` keeps the rows on; a tap changes only the ward or only the form.
   const openHub = (change) => { setAbxOpen(null); setSelected({ floor: selected.floor, ward: selected.ward, mode: selected.mode, hub: true, ...change }) }
-  const formTabs = selected?.hub ? <WardFormsTabs mode={selected.mode} counts={liveCounts} onPick={(mode) => openHub({ mode })} wards={floors.find((item) => item.number === selected.floor)?.wards} ward={selected.ward} onPickWard={(ward) => { hubWardRef.current[selected.floor] = ward; openHub({ ward }) }} /> : null
+  const formsHub = selected?.hub ? { title: 'مواقف القسم', sub: selected.floor ? `الطابق ${selected.floor}` : '', controls: <WardFormsTabs mode={selected.mode} counts={liveCounts} onPick={(mode) => openHub({ mode })} wards={floors.find((item) => item.number === selected.floor)?.wards} ward={selected.ward} onPickWard={(ward) => { hubWardRef.current[selected.floor] = ward; openHub({ ward }) }} /> } : null
   const appHeader = stepBar ? <>{appTopBar}{stepBar}</> : appTopBar
 
   if (adminView === 'profile') return <ProfileScreen isManager={isManager} adminHeader={appHeader} profileForm={profileForm} setProfileForm={setProfileForm} profileError={profileError} profileSuccess={profileSuccess} busy={busy} onSubmit={submitProfile} />
@@ -2452,9 +2465,9 @@ function App() {
   const chartReady = chartReadyKey !== null && loadedChartKey === chartReadyKey
   if (selected && selected.mode === 'renal') return <RenalDoseScreen header={appHeader} footer={stepFooter} wardLabel={wardLabel} onBack={() => setSelected(null)} />
   if (selected && selected.mode === 'meropenem-order') return <MeropenemOrderScreen header={appHeader} footer={stepFooter} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={meroOrderLoading} data={meroOrderData} loadError={meroOrderError} onPrint={() => window.print()} />
-  if (selected && drugRequests.listKind) return <DrugRequestsScreen key={`${drugRequests.listKind}|${selected.ward}`} tabs={formTabs} dayLocked={dayLocked} kind={drugRequests.listKind} header={appHeader} footer={stepFooter} wardLabel={wardLabel} wardName={selected.ward} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} isOnline={isOnline} loading={drugRequests.loading} loadError={drugRequests.loadError} requests={drugRequests.requests} busy={drugRequests.busy} actionError={drugRequests.actionError} notice={drugRequests.notice} manualUrl={drugRequests.manualUrl} manualId={drugRequests.manualId} onConfirmManual={drugRequests.confirmManualSent} onSendToGoogle={drugRequests.sendToGoogle} onSendAll={drugRequests.sendAll} onFindMissing={drugRequests.findMissing} onSave={drugRequests.save} onSetTicks={drugRequests.setTicks} onSaveField={drugRequests.saveField} onDelete={drugRequests.remove} confirmModal={confirmModal} />
+  if (selected && drugRequests.listKind) return <DrugRequestsScreen key={`${drugRequests.listKind}|${selected.ward}`} hub={formsHub} dayLocked={dayLocked} kind={drugRequests.listKind} header={appHeader} footer={stepFooter} wardLabel={wardLabel} wardName={selected.ward} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} isOnline={isOnline} loading={drugRequests.loading} loadError={drugRequests.loadError} requests={drugRequests.requests} busy={drugRequests.busy} actionError={drugRequests.actionError} notice={drugRequests.notice} manualUrl={drugRequests.manualUrl} manualId={drugRequests.manualId} onConfirmManual={drugRequests.confirmManualSent} onSendToGoogle={drugRequests.sendToGoogle} onSendAll={drugRequests.sendAll} onFindMissing={drugRequests.findMissing} onSave={drugRequests.save} onSetTicks={drugRequests.setTicks} onSaveField={drugRequests.saveField} onDelete={drugRequests.remove} confirmModal={confirmModal} />
   if (selected && selected.mode === 'meropenem') return <MeropenemScreen header={appHeader} footer={stepFooter} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={meropenemLoading} data={meropenemData} loadError={meropenemError} onEditDay={dayLocked ? undefined : saveCourseDay} onPrint={() => window.print()} />
-  if (selected && selected.mode === 'antibiotic-forms') return <AntibioticFormsScreen key={selected.ward} tabs={formTabs} header={appHeader} footer={stepFooter} wardLabel={wardLabel} floor={selected.floor ?? null} ward={selected.ward} selectedDate={selectedDate} onChangeDate={setSelectedDate} onBack={() => setSelected(null)} isOnline={isOnline} isExpired={isExpired} userId={userId} writesFlushed={writesFlushed} openKey={abxOpen} onOpenKey={setAbxOpen} askConfirm={askConfirm} confirmModal={confirmModal} />
+  if (selected && selected.mode === 'antibiotic-forms') return <AntibioticFormsScreen key={selected.ward} hub={formsHub} header={appHeader} footer={stepFooter} wardLabel={wardLabel} floor={selected.floor ?? null} ward={selected.ward} selectedDate={selectedDate} onChangeDate={setSelectedDate} onBack={() => setSelected(null)} isOnline={isOnline} isExpired={isExpired} userId={userId} writesFlushed={writesFlushed} openKey={abxOpen} onOpenKey={setAbxOpen} askConfirm={askConfirm} confirmModal={confirmModal} />
   if (selected && selected.mode === 'interactions') return <InteractionsScreen header={appHeader} footer={stepFooter} wardLabel={wardLabel} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={interactionsLoading} data={interactionsData} loadError={interactionsError} onPrint={() => window.print()} />
   if (selected && selected.mode === 'receipts') return <ReceiptsScreen dayLocked={dayLocked} header={appHeader} footer={stepFooter} wardLabel={wardLabel} roomLabel={/\bccu\b/i.test(selected.ward || '') ? 'رقم السرير' : 'رقم الغرفة'} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={receiptsLoading} patients={receiptsData} loadError={receiptsError} saveError={receiptSaveError} savingRows={savingRows} onSetReceived={setReceived} />
   if (selected && selected.mode === 'order') return <OrderScreen header={appHeader} footer={stepFooter} wardLabel={wardLabel} today={today} onBack={() => setSelected(null)} selectedDate={selectedDate} onChangeDate={setSelectedDate} loading={orderLoading} data={orderData} loadError={orderError} onPrint={() => window.print()} />

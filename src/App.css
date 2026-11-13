@@ -2056,6 +2056,9 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
   .pills-page { width: min(100% - var(--space-5), 1100px); }
 }
 @media (max-width: 700px) {
+  /* The request forms' day actions: the date on its own line, the buttons sharing the next one (not one left alone on a third). */
+  .req-page .toolbar-actions .pills-date { flex-basis: 100%; }
+  .req-page .toolbar-actions > button { flex: 1 1 0; }
   .login-card { padding: var(--space-6) var(--space-5); }
   .topbar { align-items: flex-start; gap: var(--space-3); }
   .user-menu { width: 100%; justify-content: flex-start; }
@@ -2720,6 +2723,11 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
   .bottom-nav button:active { transform: scale(.96); }
   .bottom-nav .tb-glyph { width: 26px; height: 26px; opacity: 1; }
   .bottom-nav span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Five tabs (a floor of three wards plus «مواقف القسم»): a ward's two-word name no longer fits one line on a phone, so the words
+     take two lines (never cut to «الردهة ال…») and the drawing steps down to keep the bar's height close to the four-tab one. */
+  .bottom-nav[data-crowded] span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: normal; line-height: 1.15; text-align: center; }
+  .bottom-nav[data-crowded] button { gap: 2px; padding-block: 4px; }
+  .bottom-nav[data-crowded] .tb-glyph { width: 22px; height: 22px; }
   .bottom-nav button { position: relative; z-index: 1; }
   /* While a field is focused the bar slides off the bottom (AppHeader.jsx): it is neither in the way of what is typed nor drawn over the keyboard. */
   .bottom-nav { transition: transform .24s var(--ease), opacity .2s var(--ease); }
@@ -3230,8 +3238,34 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
   .abx-queued { margin: var(--space-3) 0 0; padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); background: var(--warning-tint); color: var(--warning-text); font-size: var(--text-sm); font-weight: 700; }
   .abx-skeleton { display: grid; gap: var(--space-3); margin-top: var(--space-5); }
   .abx-list { display: grid; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
-  .ward-forms-tabs { margin: var(--space-3) 0; }
-  .ward-forms-dot { display: inline-block; width: 8px; height: 8px; margin-inline-start: var(--space-1); border-radius: 50%; background: var(--warning, #b45309); }
+  /* «مواقف القسم» (WardFormsTabs): the ward / form controls, a whole row of the toolbar between its title and the day's actions.
+     The ward is a segmented track (the patient-entry sheet's main / extra switch, .entry-form-slots); the forms are tiles, the
+     day's state in words under each name — two different shapes for two different choices. */
+  .forms-hub { flex-basis: 100%; align-self: stretch; display: grid; gap: var(--space-3); min-width: 0; }
+  .forms-hub-wards {
+    display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 4px; padding: 4px;
+    background: var(--surface-alt); border: 1px solid var(--border); border-radius: var(--radius-md);
+  }
+  .forms-hub-wards button {
+    min-height: 44px; min-width: 0; padding: 0 var(--space-2); border: 0; border-radius: var(--radius-sm); background: transparent;
+    color: var(--text-muted); font: inherit; font-size: var(--text-sm); font-weight: 700; line-height: 1.3; cursor: pointer;
+    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+  }
+  .forms-hub-wards button:hover { color: var(--heading); }
+  .forms-hub-wards button[aria-pressed="true"] { background: var(--surface); color: var(--heading); box-shadow: var(--shadow-xs); }
+  .forms-hub-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); }
+  .forms-hub-tab {
+    display: grid; align-content: center; justify-items: center; gap: 2px; min-width: 0; min-height: 60px; padding: var(--space-2) var(--space-1);
+    border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface);
+    color: var(--text); font: inherit; font-size: var(--text-sm); font-weight: 700; line-height: 1.3; text-align: center; cursor: pointer;
+    transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+  }
+  .forms-hub-tab:hover { border-color: var(--green-300); background: var(--green-50); }
+  .forms-hub-tab[aria-pressed="true"] { border-color: var(--primary); background: var(--green-100); color: var(--primary-hover); box-shadow: inset 0 0 0 1px var(--primary); }
+  .forms-hub-tab small { color: var(--text-muted); font-size: var(--text-xs); font-weight: 700; }
+  .forms-hub-tab[aria-pressed="true"] small { color: inherit; }
+  .forms-hub-tab small.is-attention { color: var(--warning-text); }
+  @media (min-width: 900px) { .forms-hub-tabs { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
   .abx-group-title { margin: var(--space-5) 0 var(--space-2); color: var(--text-muted); font-size: var(--text-sm); font-weight: 600; }
   /* The whole row opens the form, so it may lift (DESIGN.md: interactive card). */
   .abx-row {

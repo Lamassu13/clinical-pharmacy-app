@@ -1,8 +1,9 @@
-import { formsBadge } from '../helpers.js'
+import { formsWord } from '../helpers.js'
 
-// «مواقف القسم»: a floor's six forms in one place. Each tab is the form's own screen (its mode), so editing, sending
-// and printing work exactly as on the ward page; the rows only switch the ward (`wards`, the floor's) and the form.
-// `counts` is useRequestCounts' for the ward shown.
+// «مواقف القسم»: a floor's six forms in one place. Each tile is the form's own screen (its mode), so editing, sending
+// and printing work exactly as on the ward page; the controls only switch the ward (`wards`, the floor's) and the form.
+// The ward is a segmented track (one choice of a few, always one row); the forms are tiles with their day's state in
+// words under the name. `counts` is useRequestCounts' for the ward shown ({ kind: n, attention: { kind: n } }).
 export const FORM_TABS = [
   { kind: 'albumin', mode: 'albumin-forms', label: 'الالبومين' },
   { kind: 'meropenem', mode: 'meropenem-forms', label: 'الميرونيم' },
@@ -12,19 +13,29 @@ export const FORM_TABS = [
   { kind: null, mode: 'antibiotic-forms', label: 'صرف المضادات' },
 ]
 
+// The tile's second line: what still needs following up, else how many there are, else none. Nothing while the count
+// is unknown (offline, still loading), and nothing for the dispensing form, which is per patient, not per day.
+const stateOf = (counts, kind) => {
+  if (!kind || !counts) return null
+  const attention = counts.attention?.[kind] || 0
+  if (attention > 0) return { text: `${attention} تحتاج متابعة`, attention: true }
+  const total = counts[kind] || 0
+  return { text: total > 0 ? formsWord(total) : 'لا توجد' }
+}
+
 export default function WardFormsTabs({ mode, counts, onPick, wards, ward, onPickWard }) {
-  return <>
-    {wards?.length > 1 && <div className="filter-chips ward-forms-tabs" role="group" aria-label="الردهة">
-      {wards.map((name) => <button key={name} type="button" className="filter-chip" aria-pressed={ward === name} onClick={() => { if (ward !== name) onPickWard(name) }}>{name}</button>)}
+  return <div className="forms-hub">
+    {wards?.length > 1 && <div className="forms-hub-wards" role="group" aria-label="الردهة">
+      {wards.map((name) => <button key={name} type="button" aria-pressed={ward === name} onClick={() => { if (ward !== name) onPickWard(name) }}>{name}</button>)}
     </div>}
-    <div className="filter-chips ward-forms-tabs" role="group" aria-label="استمارات الردهة">
+    <div className="forms-hub-tabs" role="group" aria-label="الاستمارة">
       {FORM_TABS.map((tab) => {
-        const badge = tab.kind && formsBadge(counts, tab.kind)
-        const total = tab.kind ? counts?.[tab.kind] || 0 : 0
-        return <button key={tab.mode} type="button" className="filter-chip" aria-pressed={mode === tab.mode} title={badge?.text} onClick={() => { if (mode !== tab.mode) onPick(tab.mode) }}>
-          {tab.label}{total > 0 && <> <span className="filter-chip-count">{total}</span></>}{badge?.tone === 'pending' && <span className="ward-forms-dot" aria-label={badge.text} />}
+        const state = stateOf(counts, tab.kind)
+        return <button key={tab.mode} type="button" className="forms-hub-tab" aria-pressed={mode === tab.mode} onClick={() => { if (mode !== tab.mode) onPick(tab.mode) }}>
+          <span lang={tab.kind === 'ivig' ? 'en' : undefined}>{tab.label}</span>
+          {state && <small className={state.attention ? 'is-attention' : undefined}>{state.text}</small>}
         </button>
       })}
     </div>
-  </>
+  </div>
 }
