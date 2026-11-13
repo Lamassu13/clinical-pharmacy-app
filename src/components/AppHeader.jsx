@@ -110,7 +110,7 @@ function AccountMenu({ theme, onToggleTheme, currentUser, onLogout, onMyWard, on
 let lastGlide = null // where the glass capsule was on the last bar drawn: { x, width }
 // A floor pharmacist's bar (`wardTabs`, set by App.jsx): their floor (the ward list) and each of its wards, no account tab —
 // the account is in the top bar. A manager's: home, reports, admin and the account.
-function BottomNav({ adminView, isManager, onHome, onMyWard, onNavigate, onOpenProfile, wardTabs, homeActive }) {
+function BottomNav({ adminView, isManager, onHome, onMyWard, onNavigate, onOpenProfile, wardTabs, formsTab, homeActive }) {
   useEffect(() => {
     document.body.classList.add('has-bottom-nav')
     // iOS can leave a fixed bar floating mid-screen after the keyboard closes (the layout viewport keeps
@@ -137,7 +137,9 @@ function BottomNav({ adminView, isManager, onHome, onMyWard, onNavigate, onOpenP
   const tabs = wardTabs ? [
     { key: 'home', icon: 'home', label: 'الرئيسية', active: homeActive, onClick: onMyWard || onHome },
     ...wardTabs.map((tab) => ({ key: `ward:${tab.ward}`, icon: 'ward', label: tab.ward, active: tab.active, onClick: tab.onClick })),
-  ] : [
+    // The floor's six forms in one screen (a floor pharmacist only: it needs the floor).
+    formsTab && { key: 'forms', icon: 'forms', label: 'مواقف القسم', active: formsTab.active, onClick: formsTab.onClick },
+  ].filter(Boolean) : [
     { key: 'home', icon: 'home', label: 'الرئيسية', active: !adminView, onClick: onHome },
     onMyWard && { key: 'ward', icon: 'ward', label: 'ردهتي', onClick: onMyWard },
     isManager && { key: 'reports', icon: 'reports', label: 'التقارير', active: adminView === 'reports', onClick: () => onNavigate('reports') },
@@ -183,7 +185,7 @@ function BottomNav({ adminView, isManager, onHome, onMyWard, onNavigate, onOpenP
     if (document.fonts?.status === 'loading') document.fonts.ready.then(place)
     return () => { cancelAnimationFrame(first); cancelAnimationFrame(second); window.removeEventListener('resize', place) }
   }, [activeKey, tabKeys])
-  return <nav className="bottom-nav" aria-label="التنقل الرئيسي" ref={navRef} data-typing={typing || undefined} data-glide={glide && glideReady ? 'on' : glide ? 'set' : 'off'}>
+  return <nav className="bottom-nav" aria-label="التنقل الرئيسي" ref={navRef} data-typing={typing || undefined} data-crowded={tabs.length > 4 || undefined} data-glide={glide && glideReady ? 'on' : glide ? 'set' : 'off'}>
     {/* (physical `left`: the place comes from offsetLeft, which counts from the left in either direction) */}
     <span className="bottom-nav-glide" aria-hidden="true" style={glide ? { transform: `translateX(${glide.x}px)`, width: glide.width } : undefined}>
       <i key={activeKey} />
@@ -196,7 +198,7 @@ function BottomNav({ adminView, isManager, onHome, onMyWard, onNavigate, onOpenP
   </nav>
 }
 
-export default function AppHeader({ theme, onToggleTheme, currentUser, onLogout, onHome, onMyWard, onOpenProfile, wardTabs, homeActive, isAdmin, isManager, adminView, onNavigate, isOnline, pendingWrites = 0, pendingRequests = 0, onAdminMenuOpen }) {
+export default function AppHeader({ theme, onToggleTheme, currentUser, onLogout, onHome, onMyWard, onOpenProfile, wardTabs, formsTab, homeActive, isAdmin, isManager, adminView, onNavigate, isOnline, pendingWrites = 0, pendingRequests = 0, onAdminMenuOpen }) {
   return <><header className="topbar">
     <TopBarBrand onClick={onHome} />
     <nav className="user-menu" aria-label="أدوات الحساب">
@@ -214,6 +216,6 @@ export default function AppHeader({ theme, onToggleTheme, currentUser, onLogout,
       <AccountMenu theme={theme} onToggleTheme={onToggleTheme} currentUser={currentUser} onLogout={onLogout} onMyWard={onMyWard} onOpenProfile={onOpenProfile} adminView={adminView} />
     </nav>
   </header>
-  <BottomNav adminView={adminView} isManager={isManager} onHome={onHome} onMyWard={onMyWard} onNavigate={onNavigate} onOpenProfile={onOpenProfile} wardTabs={wardTabs} homeActive={homeActive} />
+  <BottomNav adminView={adminView} isManager={isManager} onHome={onHome} onMyWard={onMyWard} onNavigate={onNavigate} onOpenProfile={onOpenProfile} wardTabs={wardTabs} formsTab={formsTab} homeActive={homeActive} />
   </>
 }

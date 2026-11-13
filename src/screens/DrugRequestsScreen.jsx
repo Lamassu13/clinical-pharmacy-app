@@ -31,7 +31,7 @@ const standing = (request, google, problems) => {
   return lacking ? { tone: 'pending', text: lacking } : null
 }
 
-export default function DrugRequestsScreen({ tabs, footer, dayLocked = false, kind, header, wardLabel, wardName, onBack, selectedDate, onChangeDate, isOnline, loading, loadError, requests, busy, actionError, notice, manualUrl, manualId, onConfirmManual, onSendToGoogle, onSendAll, onFindMissing, onSave, onSetTicks, onSaveField, onDelete, confirmModal }) {
+export default function DrugRequestsScreen({ hub, footer, dayLocked = false, kind, header, wardLabel, wardName, onBack, selectedDate, onChangeDate, isOnline, loading, loadError, requests, busy, actionError, notice, manualUrl, manualId, onConfirmManual, onSendToGoogle, onSendAll, onFindMissing, onSave, onSetTicks, onSaveField, onDelete, confirmModal }) {
   const spec = DRUG_REQUESTS[kind]
   const Sheet = SHEETS[kind]
   const [adding, setAdding] = useState(false)
@@ -71,15 +71,16 @@ export default function DrugRequestsScreen({ tabs, footer, dayLocked = false, ki
       {dayLocked && <p className="day-lock-note" role="status">ليست استمارات اليوم — للعرض والطباعة فقط. لا يُعدَّل إلا يوم اليوم.</p>}
       <div className="chart-toolbar order-toolbar">
         <button className="back-button" onClick={onBack}>→ العودة للردهات</button>
-        <div><p className="modal-kicker">{spec.label}</p><h1>{wardLabel}</h1></div>
+        {/* In «مواقف القسم» (`hub`: its title, the floor, and the ward / form controls) the controls come before the day's
+            actions: the ward and the form are chosen first, then acted on. */}
+        {hub ? <div><h1>{hub.title}</h1><p className="receipts-ward">{hub.sub}</p></div> : <div><p className="modal-kicker">{spec.label}</p><h1>{wardLabel}</h1></div>}
+        {hub?.controls}
         <div className="toolbar-actions">
           <label className="pills-date">التاريخ <input type="date" value={selectedDate} onChange={(event) => onChangeDate(event.target.value)} /></label>
           {!dayLocked && <button type="button" className="secondary-button compact" disabled={!isOnline || loadError || loading} onClick={() => { setAddFor(null); setAdding(true) }}>+ استمارة جديدة</button>}
           {printable && <button type="button" className="primary-button compact" disabled={!list.length || pdf.busy} onClick={() => print(list)}>{pdf.busy ? 'جارٍ التحضير…' : list.length > 1 ? 'طباعة الكل' : 'طباعة'}</button>}
         </div>
       </div>
-
-      {tabs}
 
       {spec.firstDayOnly && !dayLocked && !loading && !loadError && <div className="req-missing">
         <button type="button" className="text-button" disabled={!isOnline || missingBusy} onClick={searchMissing}>{missingBusy ? 'جارٍ البحث…' : 'مرضى بلا استمارة؟'}</button>

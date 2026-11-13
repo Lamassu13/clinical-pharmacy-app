@@ -51,6 +51,7 @@ const ICONS = {
   admin: <><rect className="tb-t" x="3.5" y="3.5" width="7.5" height="7.5" rx="2" /><rect className="tb-t" x="13" y="3.5" width="7.5" height="7.5" rx="2" /><rect className="tb-t" x="3.5" y="13" width="7.5" height="7.5" rx="2" /><rect className="tb-t" x="13" y="13" width="7.5" height="7.5" rx="2" /><rect x="3.5" y="3.5" width="7.5" height="7.5" rx="2" /><rect x="13" y="3.5" width="7.5" height="7.5" rx="2" /><rect x="3.5" y="13" width="7.5" height="7.5" rx="2" /><rect x="13" y="13" width="7.5" height="7.5" rx="2" /></>,
   home: <><path className="tb-t" d="M4.5 10.5 12 4l7.5 6.5V20h-15z" /><path d="M3 11.5 12 3.5l9 8M5.5 10v10h13V10M10 20v-5.5h4V20" /></>,
   account: <><circle className="tb-t" cx="12" cy="8.5" r="4" /><circle cx="12" cy="8.5" r="4" /><path className="tb-t" d="M4.5 20.5c0-4 3.4-6.5 7.5-6.5s7.5 2.5 7.5 6.5z" /><path d="M4.5 20.5c0-4 3.4-6.5 7.5-6.5s7.5 2.5 7.5 6.5" /></>,
+  forms: <><rect className="tb-t" x="4.5" y="4.5" width="15" height="16" rx="2.4" /><rect x="4.5" y="4.5" width="15" height="16" rx="2.4" /><path d="M9 4.5V3h6v1.5M8 10.6l1.5 1.5 2.6-2.8M14.2 11h1.8M8 15.6l1.5 1.5 2.6-2.8M14.2 16h1.8" /></>,
   reports: <><rect className="tb-t" x="4" y="3.5" width="16" height="17" rx="2.4" /><rect x="4" y="3.5" width="16" height="17" rx="2.4" /><path d="M8.5 17v-4M12 17V8.5M15.5 17v-6.5" /></>,
   warn: <><path className="tb-t" d="M12 3.5 2.8 19.5h18.4z" /><path d="M12 3.5 2.8 19.5h18.4zM12 10v4.5M12 17h.01" /></>,
   order: <>
