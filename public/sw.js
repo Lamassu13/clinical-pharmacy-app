@@ -1,7 +1,7 @@
 // Basic offline app shell: reopening the tab with no signal shows the last-loaded app
 // instead of the browser's own offline error page.
 // Both placeholders are filled by vite.config.js (precacheServiceWorker) at build time: every
-// hashed file in dist/assets, and a hash of that list naming this build's shell cache. Unfilled,
+// hashed file in dist/assets but the .woff fonts, and a hash of that list naming this build's shell cache. Unfilled,
 // this falls back to the old fixed cache and cache-on-first-use only.
 const PRECACHE = '__PRECACHE__'
 const BUILD_HASH = '__BUILD_HASH__'
