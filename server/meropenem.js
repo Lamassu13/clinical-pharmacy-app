@@ -29,9 +29,12 @@ const wardLabelOf = (floor, ward) => (floor ? `الطابق ${floor} — ${ward}
 // charted:  [{ date, floor, ward }] — the days each ward has a chart with a named patient.
 // overrides: [{ patientKey, date, n }] oldest first — a typed course day: on `date` the patient is Dn,
 //           and the rest of that course counts on from it.
+// gapDays:  for a medicine not given every day (IVIG): doses up to this many days apart are one course, whatever was
+//           charted in between (14: a dose on the 1st and the next on the 15th). 0 (every antibiotic) leaves the
+//           off-day rule below alone.
 // All over the lookback window. Returns this ward's rows for the month of `date`, up to `date` — or from `since`
 // (inside the window) instead of the month's first day, for a list that reaches back across a month's start.
-export const buildMeropenemForm = ({ date, floor, ward, cells, presence, charted, perDay = 3, overrides = [], since = null }) => {
+export const buildMeropenemForm = ({ date, floor, ward, cells, presence, charted, perDay = 3, overrides = [], since = null, gapDays = 0 }) => {
   const here = wardKeyOf(floor, ward)
   const chartedByWard = new Map()
   charted.forEach((row) => {
@@ -99,7 +102,7 @@ export const buildMeropenemForm = ({ date, floor, ward, cells, presence, charted
       const doses = patient.doses.get(iso)
       if (doses) {
         const offDays = pending.filter((entry) => entry.off).length
-        if (start === null || offDays > 1) start = day
+        if (start === null || (offDays > 1 && pending.length >= gapDays)) start = day
         else pending.forEach((entry) => days.set(entry.iso, { n: entry.day - start + 1, start, wardKey: entry.wardKey, missed: entry.off }))
         pending = []
         currentWard = (doses.find((dose) => dose.wardKey === here) || doses[0]).wardKey

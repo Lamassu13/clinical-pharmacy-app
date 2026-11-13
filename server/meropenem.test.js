@@ -67,6 +67,16 @@ test('meropenem: a Friday with no chart keeps counting; still active when today 
   assert.deepEqual(row.status, { kind: 'active' })
 })
 
+test('gapDays (IVIG, not given daily): doses up to that many days apart are one course; a longer gap, or no gapDays, restarts at D1', () => {
+  // A dose on 21 Sep, charted without it on 22-23, a dose on the 24th; off the ward's chart until the next dose 14 days later
+  // (8 Oct), and again until the one 15 days after that (23 Oct).
+  const days = [['2026-09-21', A, [ali()]], ['2026-09-22', A, [ali(0)]], ['2026-09-23', A, [ali(0)]], ['2026-09-24', A, [ali()]], ['2026-09-26', A, []], ['2026-09-27', A, []],
+    ['2026-10-08', A, [ali()]], ['2026-10-10', A, []], ['2026-10-11', A, []], ['2026-10-23', A, [ali()]]]
+  const dayOf = (iso, gapDays) => buildMeropenemForm({ date: iso, ...A, ...scenario(days.filter(([date]) => date <= iso)), gapDays }).patients[0].days[iso]
+  assert.deepEqual(['2026-09-24', '2026-10-08', '2026-10-23'].map((iso) => dayOf(iso, 14)), [4, 18, 1])
+  assert.deepEqual(['2026-09-24', '2026-10-08', '2026-10-23'].map((iso) => dayOf(iso)), [1, 1, 1]) // the antibiotic rule, unchanged
+})
+
 test('meropenem: one charted day without it is forgiven and flagged; two restart at D1', () => {
   const [forgiven] = form('2026-09-23', A, [['2026-09-21', A, [ali()]], ['2026-09-22', A, [ali(0)]], ['2026-09-23', A, [ali()]]])
   assert.deepEqual(forgiven.days, { '2026-09-21': 1, '2026-09-22': 2, '2026-09-23': 3 })

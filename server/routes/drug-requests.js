@@ -115,7 +115,8 @@ router.get('/drug-requests/counts', requireAuth, async (request, response) => {
 // The course is the follow-up form's own (../meropenem.js): the patient is counted as if charted on
 // it here today — their chart save may still be on its way — so a patient who had it yesterday, here
 // or on the ward they were transferred from, is past day 1. Meropenem asks only on day 1; albumin
-// asks every day and starts «Treatment day» from this number.
+// asks every day and starts «Treatment day» from this number. A kind with `courseGapDays` (IVIG, not
+// given daily) stays on the same course across that many days without a dose, so it is day 1 once.
 router.get('/drug-requests/check', requireAuth, async (request, response) => {
   const kind = kindOf(request.query.kind)
   if (!kind) return response.status(400).json(BAD_KIND)
@@ -127,7 +128,7 @@ router.get('/drug-requests/check', requireAuth, async (request, response) => {
   const { floor, wardName, chartDate } = location
   const rows = await loadCourseRows(location, { pattern: DRUG_REQUESTS[kind].sqlPattern, keepIds: [patientId] })
   const probe = { date: chartDate, floor, ward: wardName, name, patientId, medicine: kind, quantity: 1 }
-  const form = buildMeropenemForm({ ...rows, cells: [...rows.cells, probe], overrides: await loadOverrides(kind) })
+  const form = buildMeropenemForm({ ...rows, cells: [...rows.cells, probe], overrides: await loadOverrides(kind), gapDays: DRUG_REQUESTS[kind].courseGapDays })
   const patient = form.patients.find((row) => (patientId ? row.patientId === patientId : row.name === name))
   const requested = await query(
     `SELECT 1 FROM drug_requests WHERE kind = $1 AND ward_key = $2 AND request_date = $3

@@ -583,6 +583,24 @@ test('ivig: a fifth kind — asked on the first day only, vials prefilled, one d
   assert.deepEqual(await check(pharmacist, 'ivig', '2026-09-24', { name: 'نور', id: '66' }), { day: 1, requested: true })
 })
 
+test('ivig: not given daily — a dose after days without it (on the chart or discharged) is not a first day again; Meropenem still restarts; over two weeks apart is a new course', async () => {
+  const admin = await loginAs({ role: 'admin' })
+  await admin.post('/api/medicines', { name: 'IVIG 5g vial' })
+  await admin.post('/api/medicines', { name: MERONEM })
+  const pharmacist = await loginAs({ role: 'user', floor: FLOOR })
+  // نور: IVIG on the 21st, on the chart without it for three days. زيد: IVIG on the 21st, then off the chart. علي: the same gap on Meropenem.
+  await saveChart(pharmacist, '2026-09-21', 'IVIG 5g vial', [{ name: 'نور', id: '66', qty: 4 }, { name: 'زيد', qty: 2 }])
+  await saveChart(pharmacist, '2026-09-22', 'IVIG 5g vial', [{ name: 'نور', id: '66' }, { name: 'علي', id: '77' }])
+  await saveChart(pharmacist, '2026-09-23', 'IVIG 5g vial', [{ name: 'نور', id: '66' }, { name: 'علي', id: '77' }])
+  await saveChart(pharmacist, '2026-09-24', 'IVIG 5g vial', [{ name: 'نور', id: '66' }, { name: 'علي', id: '77' }])
+  assert.deepEqual(await check(pharmacist, 'ivig', '2026-09-26', { name: 'نور', id: '66' }), { day: 6, requested: false }) // was day 1: the form was asked again
+  assert.deepEqual(await check(pharmacist, 'ivig', '2026-09-28', { name: 'زيد' }), { day: 8, requested: false }) // weekly, by name
+  assert.deepEqual(await check(pharmacist, 'ivig', '2026-10-05', { name: 'نور', id: '66' }), { day: 15, requested: false }) // 14 days after the last dose
+  assert.deepEqual(await check(pharmacist, 'ivig', '2026-10-06', { name: 'نور', id: '66' }), { day: 1, requested: false }) // 15: a new course, a new form
+  await saveChart(pharmacist, '2026-09-20', MERONEM, [{ name: 'علي', id: '77', qty: 3 }])
+  assert.deepEqual(await check(pharmacist, 'meropenem', '2026-09-25', { name: 'علي', id: '77' }), { day: 1, requested: false })
+})
+
 test('ivig google form: each part is its own page (pageHistory) with its own question; season and month from the day; what is missing or refused', () => {
   const form = { name: 'نور', patientId: '66', date: '2026-11-09', ticks: ['kawasaki'], note: '', fields: { sex: 'أنثى', age: '0.083', vials: '4', doctor: 'د. سعد' } }
   const answers = (patch) => ivigFormAnswers({ ...form, ...patch })
