@@ -19,6 +19,9 @@ const GROUPS = [
     { label: 'استمارة الحبوب الإضافي', icon: 'pill-sheet', open: { mode: 'extra-pills' }, show: (floor) => Boolean(floor && EXTRA_PILL_FLOORS.includes(floor)) },
     { label: 'الطلبية', icon: 'clipboard', open: { mode: 'order', slot: 'main' }, needsConnection: true },
     { label: 'استمارة الالبومين', icon: 'drop', open: { mode: 'albumin-forms' }, count: 'albumin' },
+    // An independent ward (the ICU) is on no floor's ward list, where «مواقف القسم» lives: its own page carries it instead (the six forms
+    // for this ward, opening on the dispensing form — «استمارة صرف المضادات» is in no ward menu). Not a step: its mode is in no flow.
+    { label: 'مواقف القسم', icon: 'sheet-stack', open: { mode: 'antibiotic-forms', hub: true }, show: (floor) => !floor },
     { label: 'طلبية الميرونيم', icon: 'clipboard', open: { mode: 'meropenem-order', slot: 'main' } },
     { label: 'استمارة الميرونيم', icon: 'vial', open: { mode: 'meropenem-forms' }, count: 'meropenem' },
     { label: 'استمارة التايجيسايكلين', icon: 'vial', open: { mode: 'tigecycline-forms' }, count: 'tigecycline' },
@@ -28,7 +31,6 @@ const GROUPS = [
   { id: 'clinical', label: 'المتابعة السريرية', items: [
     { label: 'متابعة الاستلام', icon: 'receipt', open: { mode: 'receipts' }, needsConnection: true },
     { label: 'متابعة الميروبينيم', icon: 'trend', open: { mode: 'meropenem' }, needsConnection: true },
-    { label: 'استمارة صرف المضادات', icon: 'clipboard', open: { mode: 'antibiotic-forms' } },
     { label: 'التداخلات الدوائية', icon: 'overlap', open: { mode: 'interactions' } },
     { label: 'تعديل الجرعة الكلوية', icon: 'kidney', open: { mode: 'renal' } },
   ] },
