@@ -3228,6 +3228,8 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
   .abx-queued { margin: var(--space-3) 0 0; padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); background: var(--warning-tint); color: var(--warning-text); font-size: var(--text-sm); font-weight: 700; }
   .abx-skeleton { display: grid; gap: var(--space-3); margin-top: var(--space-5); }
   .abx-list { display: grid; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+  .ward-forms-tabs { margin: var(--space-3) 0; }
+  .ward-forms-dot { display: inline-block; width: 8px; height: 8px; margin-inline-start: var(--space-1); border-radius: 50%; background: var(--warning, #b45309); }
   .abx-group-title { margin: var(--space-5) 0 var(--space-2); color: var(--text-muted); font-size: var(--text-sm); font-weight: 600; }
   /* The whole row opens the form, so it may lift (DESIGN.md: interactive card). */
   .abx-row {
