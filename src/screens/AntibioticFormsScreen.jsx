@@ -25,7 +25,7 @@ function FormStatus({ form, waiting }) {
   return <span className="card-status card-status--done"><Check />مكتملة</span>
 }
 
-export default function AntibioticFormsScreen({ header, footer, wardLabel, floor, ward, selectedDate, onChangeDate, onBack, isOnline, isExpired, userId, writesFlushed, openKey, onOpenKey, askConfirm, confirmModal }) {
+export default function AntibioticFormsScreen({ tabs, header, footer, wardLabel, floor, ward, selectedDate, onChangeDate, onBack, isOnline, isExpired, userId, writesFlushed, openKey, onOpenKey, askConfirm, confirmModal }) {
   const wardKey = `${floor ?? ''}|${ward}`
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -101,6 +101,8 @@ export default function AntibioticFormsScreen({ header, footer, wardLabel, floor
           <label className="pills-date">التاريخ <input type="date" value={selectedDate} onChange={(event) => onChangeDate(event.target.value)} /></label>
         </div>
       </div>
+
+      {tabs}
 
       {loading && !data ? <div className="load-skeleton abx-skeleton" aria-hidden="true">{Array.from({ length: 4 }, (_, index) => <span key={index} className="skeleton-row" />)}</div>
         : loadError && !data ? <div className="empty-state"><strong>تعذّر تحميل القائمة</strong><span>{isOnline ? 'حدث خطأ في الخادم.' : 'لا يوجد اتصال، ولم تُفتح هذه القائمة على هذا الجهاز من قبل.'}</span><button type="button" className="secondary-button" onClick={() => setNonce((n) => n + 1)}>إعادة المحاولة</button></div>

@@ -31,7 +31,7 @@ const standing = (request, google, problems) => {
   return lacking ? { tone: 'pending', text: lacking } : null
 }
 
-export default function DrugRequestsScreen({ footer, dayLocked = false, kind, header, wardLabel, wardName, onBack, selectedDate, onChangeDate, isOnline, loading, loadError, requests, busy, actionError, notice, manualUrl, manualId, onConfirmManual, onSendToGoogle, onSendAll, onFindMissing, onSave, onSetTicks, onSaveField, onDelete, confirmModal }) {
+export default function DrugRequestsScreen({ tabs, footer, dayLocked = false, kind, header, wardLabel, wardName, onBack, selectedDate, onChangeDate, isOnline, loading, loadError, requests, busy, actionError, notice, manualUrl, manualId, onConfirmManual, onSendToGoogle, onSendAll, onFindMissing, onSave, onSetTicks, onSaveField, onDelete, confirmModal }) {
   const spec = DRUG_REQUESTS[kind]
   const Sheet = SHEETS[kind]
   const [adding, setAdding] = useState(false)
@@ -78,6 +78,8 @@ export default function DrugRequestsScreen({ footer, dayLocked = false, kind, he
           {printable && <button type="button" className="primary-button compact" disabled={!list.length || pdf.busy} onClick={() => print(list)}>{pdf.busy ? 'جارٍ التحضير…' : list.length > 1 ? 'طباعة الكل' : 'طباعة'}</button>}
         </div>
       </div>
+
+      {tabs}
 
       {spec.firstDayOnly && !dayLocked && !loading && !loadError && <div className="req-missing">
         <button type="button" className="text-button" disabled={!isOnline || missingBusy} onClick={searchMissing}>{missingBusy ? 'جارٍ البحث…' : 'مرضى بلا استمارة؟'}</button>

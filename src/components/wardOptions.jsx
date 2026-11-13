@@ -19,6 +19,8 @@ const GROUPS = [
     { label: 'استمارة الحبوب الإضافي', icon: 'pill-sheet', open: { mode: 'extra-pills' }, show: (floor) => Boolean(floor && EXTRA_PILL_FLOORS.includes(floor)) },
     { label: 'الطلبية', icon: 'clipboard', open: { mode: 'order', slot: 'main' }, needsConnection: true },
     { label: 'استمارة الالبومين', icon: 'drop', open: { mode: 'albumin-forms' }, count: 'albumin' },
+    // The six forms in one screen (WardFormsTabs): it opens on albumin's, with `hub` so the strip shows. Not a step of the daily flow.
+    { label: 'مواقف القسم', icon: 'sheet-stack', open: { mode: 'albumin-forms', hub: true } },
     { label: 'طلبية الميرونيم', icon: 'clipboard', open: { mode: 'meropenem-order', slot: 'main' } },
     { label: 'استمارة الميرونيم', icon: 'vial', open: { mode: 'meropenem-forms' }, count: 'meropenem' },
     { label: 'استمارة التايجيسايكلين', icon: 'vial', open: { mode: 'tigecycline-forms' }, count: 'tigecycline' },
