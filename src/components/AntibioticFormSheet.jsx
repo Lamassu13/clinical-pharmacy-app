@@ -126,8 +126,8 @@ function DrugCard({ drug, index, chart, onChange, onRemove }) {
 
 export default function AntibioticFormSheet({ entry, wardLabel, floor, ward, wardKey, userId, isOnline, isExpired, lastDepartment, onClose, onSaved, onDeleted, askConfirm }) {
   const editable = !entry.form || entry.form.editable !== false
-  // A new hand-added form becomes «form:<id>» once saved, so its draft and queue entry follow it.
-  const [patientKey, setPatientKey] = useState(entry.patientKey)
+  // The row's key (a listed patient, or «form:<id>» for a saved form off the list): its draft and queue entry are keyed by it.
+  const patientKey = entry.patientKey
   const draftKey = abxDraftKey(userId, wardKey, patientKey)
   const queueKey = abxQueueKey(wardKey, patientKey)
   const [init] = useState(() => {
@@ -204,32 +204,26 @@ export default function AntibioticFormSheet({ entry, wardLabel, floor, ward, war
     const payload = { floor, ward, ...(id ? { id } : {}), updatedAt: startedFrom, ...plain(form) }
     const name = cleanForm(payload).name
     if (!name) { setStatus({ kind: 'error', text: 'اكتب اسم المريض أولًا.' }); jumpTo('name'); return }
-    // Each patient added by hand gets its own draft and queue entry at its first save: two added offline must not share one.
-    const key = patientKey === 'manual:new' ? `manual:new:${name}` : patientKey
-    const thisDraft = abxDraftKey(userId, wardKey, key)
-    const thisQueue = abxQueueKey(wardKey, key)
-    if (key !== patientKey) { pending.current = null; dropAbxDraft(draftKey); setPatientKey(key) }
     setStatus({ kind: 'saving' })
     let response
     try {
       response = await fetch(`${apiUrl}/antibiotic-forms`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
     } catch {
       // No signal: queued, and sent by the app's flush loop when it returns. The draft stays until the server has it.
-      writeAbxDraft(thisDraft, { form: plain(form), base: startedFrom })
-      queueWrite({ key: thisQueue, user: userId, method: 'POST', path: '/antibiotic-forms', body: payload, label: `استمارة المضادات — ${name}`, draftKey: thisDraft })
+      writeAbxDraft(draftKey, { form: plain(form), base: startedFrom })
+      queueWrite({ key: queueKey, user: userId, method: 'POST', path: '/antibiotic-forms', body: payload, label: `استمارة المضادات — ${name}`, draftKey })
       setStatus({ kind: 'queued', text: 'لا يوجد اتصال — حُفظت على هذا الجهاز وتُرسل وحدها عند عودة الإشارة.' })
       return
     }
     if (isExpired(response)) { setStatus(null); return }
     const result = await response.json().catch(() => ({}))
     if (response.ok && result.form) {
-      forgetWrite(thisQueue)
+      forgetWrite(queueKey)
       const saved = result.form
       setFormId(saved.id)
       setBase(saved.updatedAt)
       setRestored(false)
-      if (sameForm(formRef.current ? plain(formRef.current) : payload, payload)) { pending.current = null; dropAbxDraft(thisDraft); setDirty(false) }
-      if (key.startsWith('manual:new')) { pending.current = null; dropAbxDraft(thisDraft); setPatientKey(`form:${saved.id}`) }
+      if (sameForm(formRef.current ? plain(formRef.current) : payload, payload)) { pending.current = null; dropAbxDraft(draftKey); setDirty(false) }
       onSaved(saved, entry)
       if (!saved.missing.length) { onClose(); return }
       setStatus({ kind: 'saved', text: `حُفظت — بقي ${saved.missing.length}: ${saved.missing.slice(0, 3).join('، ')}${saved.missing.length > 3 ? '…' : ''}` })
