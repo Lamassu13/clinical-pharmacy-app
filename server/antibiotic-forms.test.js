@@ -86,6 +86,16 @@ test('candidates: nobody before the form\'s start day; from it, a course already
   assert.deepEqual(buildCandidates({ rows: scenario('2026-11-14', days.slice(0, 2)), date: '2026-11-14' }).patients, [])
 })
 
+test('candidates: a patient moved to الجارت الإضافي mid-course is still listed (main chart since the start day) with the whole course\'s days and stop', () => {
+  // Sun 15, Mon 16 on the main chart; Tue 17 – Thu 19 on the extra chart; (Fri 20 uncharted); Sat 21 on the chart without it.
+  const rows = scenario('2026-11-21', [['2026-11-15', [ali()]], ['2026-11-16', [ali()]], ['2026-11-17', [ali()]], ['2026-11-18', [ali()]], ['2026-11-19', [ali()]], ['2026-11-21', [ali({})]]])
+  rows.cells.forEach((cell) => { cell.extra = cell.date >= '2026-11-17' })
+  const { patients } = buildCandidates({ rows, date: '2026-11-21' })
+  assert.deepEqual(patients.map((patient) => patient.name), ['علي'])
+  const drug = patients[0].drugs[0]
+  assert.deepEqual([drug.days, drug.start, drug.stop], ['6', '2026-11-15', '2026-11-20'])
+})
+
 test('candidates: a restart shows the latest course only', () => {
   // 27-28 Oct, then Thu 29 / Sat 31 / Sun 1 on the chart without it (course over), restarted 2-3 Nov.
   const { patients: [patient] } = candidates('2026-11-03', [

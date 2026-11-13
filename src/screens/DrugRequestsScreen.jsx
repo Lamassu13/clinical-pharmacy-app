@@ -47,7 +47,9 @@ export default function DrugRequestsScreen({ hub, footer, dayLocked = false, kin
   const [openIds, setOpenIds] = useState(() => new Set())
   const setOpen = (id, open) => setOpenIds((current) => { const next = new Set(current); if (open) next.add(id); else next.delete(id); return next })
   const pdf = usePdfSheets()
-  const list = requests || []
+  // «مواقف القسم» leaves albumin «Not indicated» forms out — except one open right now: marked while open, it stays until closed,
+  // so its reason can still be typed and a mis-tap undone.
+  const list = (requests || []).filter((request) => !hub || !isNotIndicated(kind, request) || openIds.has(request.id))
   const google = GOOGLE_KINDS.includes(kind)
   // The IVIG form is not printed: it only goes to the ministry's Google Form.
   const printable = kind !== 'ivig'
@@ -68,7 +70,7 @@ export default function DrugRequestsScreen({ hub, footer, dayLocked = false, kin
     {header}
 
     <section className="order-page req-page">
-      {dayLocked && <p className="day-lock-note" role="status">ليست استمارات اليوم — للعرض والطباعة فقط. لا يُعدَّل إلا يوم اليوم.</p>}
+      {dayLocked && <p className="day-lock-note" role="status">ليست استمارات اليوم — {hub ? 'للعرض فقط' : 'للعرض والطباعة فقط'}. لا يُعدَّل إلا يوم اليوم.</p>}
       <div className="chart-toolbar order-toolbar">
         <button className="back-button" onClick={onBack}>→ العودة للردهات</button>
         {/* In «مواقف القسم» (`hub`: its title, the floor, and the ward / form controls) the controls come before the day's

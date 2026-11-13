@@ -83,13 +83,17 @@ export const buildCandidates = ({ rows, date, overridesByDrug = new Map(), reque
     const overrides = overridesByDrug.get(drug.key) || []
     // The follow-up's own course rules (D-numbers, forgiven gaps, Fridays, transfers, typed days), from `since`.
     buildMeropenemForm({ ...rows, cells: drug.cells, perDay: drug.perDay, overrides, since }).patients.forEach((row) => {
-      // This patient's doses on this ward's MAIN chart (الجارت الإضافي's patients are not listed; its doses still count in the course).
-      const mine = drug.cells.filter((cell) => !cell.extra && cell.floor === floor && cell.ward === ward && (row.patientId
+      // This patient's doses on this ward, both charts: the dates, days, strength and route come from all of them (a patient moved to
+      // الجارت الإضافي mid-course keeps the course's real length and stop). Who is LISTED is the main chart's: a dose on it since listFrom.
+      const mine = drug.cells.filter((cell) => cell.floor === floor && cell.ward === ward && (row.patientId
         ? cell.patientId === row.patientId || (!cell.patientId && nameKey(cell.name) === row.name)
         : !cell.patientId && nameKey(cell.name) === row.name))
-      const lastDose = mine.reduce((latest, cell) => (cell.date > latest ? cell.date : latest), '')
+      const lastOf = (cells) => cells.reduce((latest, cell) => (cell.date > latest ? cell.date : latest), '')
+      const lastMain = lastOf(mine.filter((cell) => !cell.extra))
+      if (!lastMain || lastMain < listFrom) return
+      const lastDose = lastOf(mine)
       const n = row.days[lastDose]
-      if (!lastDose || lastDose < listFrom || !n) return
+      if (!n) return
       // The latest course only: its day count on the last dose day, counted back to its first day.
       const rawStart = plusDays(lastDose, 1 - n)
       const active = row.status.kind === 'active'
