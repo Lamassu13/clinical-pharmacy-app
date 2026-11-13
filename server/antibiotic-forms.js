@@ -7,7 +7,7 @@ import { antibioticOf, ORAL, PARENTERAL, PER_VOLUME } from './ddd.js'
 import { strengthMg, colistinIU } from '../shared/dose.js'
 import { nameKey, samePatient, stayRun, diagnosisTexts, seenDatesIndex } from './ward-positions.js'
 import { DRUG_REQUESTS, CARRY_DAYS, toEnglish } from '../shared/drug-requests.js'
-import { googleDrugName, isFinal, YES, NO } from '../shared/antibiotic-form.js'
+import { googleDrugName, isFinal, YES, NO, FORMS_FROM } from '../shared/antibiotic-form.js'
 
 // A patient is listed while their last dose of an antibiotic on this ward is this recent: the form is
 // often finished after the course, or after the patient has gone.
@@ -57,10 +57,13 @@ const ageOf = (request) => (/\d+(?:\.\d+)?/.exec(toEnglish(request.fields?.age))
 // typed course days. requests: drug_requests rows ({ id, kind, wardKey, date, name, patientId, fields, ticks, note })
 // of the last CARRY_DAYS, on this ward or carrying one of its patients' IDs. forms: this ward's saved antibiotic forms
 // ({ id, name, patientId, formDate, fields, updatedAt, … }) of the last FORM_DAYS.
-export const buildCandidates = ({ rows, date, overridesByDrug = new Map(), requests = [], forms = [] }) => {
+export const buildCandidates = ({ rows, date, overridesByDrug = new Map(), requests = [], forms = [], formsFrom = FORMS_FROM }) => {
   const { floor, ward } = rows
   const here = wardKeyOf(floor, ward)
   const since = plusDays(date, -RECENT_DOSE_DAYS)
+  // Who is listed: a last dose in the last two weeks, and not before the form began (FORMS_FROM). The course itself is still read
+  // from `since` (and its look-back), so a course that began before then keeps its real start date and day count.
+  const listFrom = since > formsFrom ? since : formsFrom
   const readFrom = windowStart(date)
   const hereCharted = new Set(rows.charted.filter((row) => row.floor === floor && row.ward === ward).map((row) => row.date))
   // The ward's latest chart on or before the asked day (a Friday has none: Thursday's counts). A patient on it is still in the ward.
@@ -80,12 +83,13 @@ export const buildCandidates = ({ rows, date, overridesByDrug = new Map(), reque
     const overrides = overridesByDrug.get(drug.key) || []
     // The follow-up's own course rules (D-numbers, forgiven gaps, Fridays, transfers, typed days), from `since`.
     buildMeropenemForm({ ...rows, cells: drug.cells, perDay: drug.perDay, overrides, since }).patients.forEach((row) => {
-      const mine = drug.cells.filter((cell) => cell.floor === floor && cell.ward === ward && (row.patientId
+      // This patient's doses on this ward's MAIN chart (الجارت الإضافي's patients are not listed; its doses still count in the course).
+      const mine = drug.cells.filter((cell) => !cell.extra && cell.floor === floor && cell.ward === ward && (row.patientId
         ? cell.patientId === row.patientId || (!cell.patientId && nameKey(cell.name) === row.name)
         : !cell.patientId && nameKey(cell.name) === row.name))
       const lastDose = mine.reduce((latest, cell) => (cell.date > latest ? cell.date : latest), '')
       const n = row.days[lastDose]
-      if (!lastDose || lastDose < since || !n) return
+      if (!lastDose || lastDose < listFrom || !n) return
       // The latest course only: its day count on the last dose day, counted back to its first day.
       const rawStart = plusDays(lastDose, 1 - n)
       const active = row.status.kind === 'active'

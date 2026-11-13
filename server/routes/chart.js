@@ -919,7 +919,7 @@ const readRows = (range, load) => (range ? load(...range).then((result) => resul
 
 // The loaders are built out here so a cached one holds only its own arguments, not the request's.
 const cellsLoader = (pattern, names) => (start, end) => query(
-  `/* course: cells */ SELECT dc.chart_date::text AS date, dc.ward_id, cp.patient_name AS name, cp.patient_id,
+  `/* course: cells */ SELECT dc.chart_date::text AS date, dc.ward_id, dc.slot = 'extra' AS extra, cp.patient_name AS name, cp.patient_id,
           COALESCE(m.name, cc.custom_name) AS medicine, cq.quantity
    FROM daily_charts dc
    JOIN chart_patients cp ON cp.chart_id = dc.id
@@ -1022,7 +1022,9 @@ export const loadCourseRows = async ({ floor, wardName, chartDate }, { pattern, 
   }
   return {
     date: chartDate, floor, ward: wardName,
-    cells: cellRows.filter(keepCell).map((row) => ({ ...toRow(row), medicine: row.medicine, quantity: row.quantity })),
+    // `extra`: the dose is on الجارت الإضافي (a boolean, not the slot's text: the kept windows hold ~200k of these rows). The course
+    // rules count both charts; «استمارة صرف المضادات» lists the main chart's patients.
+    cells: cellRows.filter(keepCell).map((row) => ({ ...toRow(row), extra: row.extra, medicine: row.medicine, quantity: row.quantity })),
     presence: presenceRows.filter(keepPresence).map(toRow),
     charted: chartedRows.map(placed),
   }

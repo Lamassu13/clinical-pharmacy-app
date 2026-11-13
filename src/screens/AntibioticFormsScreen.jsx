@@ -3,6 +3,7 @@ import { apiUrl } from '../constants.js'
 import { pendingWrites } from '../storage.js'
 import { abxQueueKey, pruneAbxDrafts } from '../antibioticDraft.js'
 import AntibioticFormSheet from '../components/AntibioticFormSheet.jsx'
+import { FORMS_FROM } from '../../shared/antibiotic-form.js'
 
 // «استمارة صرف المضادات الحياتية» (GET /api/antibiotic-forms): the ward's patients on an antibiotic in the last two
 // weeks, each with what the charts say and where their form stands — none yet, missing answers, or complete — plus
@@ -106,7 +107,7 @@ export default function AntibioticFormsScreen({ hub, header, footer, wardLabel, 
       {loading && !data ? <div className="load-skeleton abx-skeleton" aria-hidden="true">{Array.from({ length: 4 }, (_, index) => <span key={index} className="skeleton-row" />)}</div>
         : loadError && !data ? <div className="empty-state"><strong>تعذّر تحميل القائمة</strong><span>{isOnline ? 'حدث خطأ في الخادم.' : 'لا يوجد اتصال، ولم تُفتح هذه القائمة على هذا الجهاز من قبل.'}</span><button type="button" className="secondary-button" onClick={() => setNonce((n) => n + 1)}>إعادة المحاولة</button></div>
         : <>
-          <p className="abx-intro">كل مريض أخذ مضادًا حياتيًا في هذه الردهة خلال آخر 14 يومًا. ما في الجارت واستمارات الطلب يُملأ مسبقًا — راجعه وأكمل الباقي.</p>
+          <p className="abx-intro">كل مريض في الجارت الرئيسي أخذ مضادًا حياتيًا في هذه الردهة خلال آخر 14 يومًا (ابتداءً من الأحد 15/11/2026). ما في الجارت واستمارات الطلب يُملأ مسبقًا — راجعه وأكمل الباقي.</p>
           {stale && <p className="abx-queued" role="status">لا يوجد اتصال — هذه آخر نسخة فُتحت على هذا الجهاز.</p>}
           {waitingNew && <p className="abx-queued" role="status">استمارة مريض أُضيف يدويًا محفوظة على هذا الجهاز بانتظار الإرسال.</p>}
 
@@ -116,7 +117,9 @@ export default function AntibioticFormsScreen({ hub, header, footer, wardLabel, 
             </button>)}
           </div>}
 
-          {!items.length ? <div className="empty-state"><strong>لا يوجد مريض على مضاد حياتي</strong><span>لم يُسجَّل في جارت هذه الردهة مضاد حياتي خلال آخر 14 يومًا. يمكنك إضافة مريض يدويًا.</span></div>
+          {!items.length ? <div className="empty-state">{selectedDate < FORMS_FROM
+            ? <><strong>تبدأ هذه الاستمارة يوم الأحد 15/11/2026</strong><span>يُدرج فيها كل مريض في الجارت الرئيسي يأخذ مضادًا حياتيًا من ذلك اليوم.</span></>
+            : <><strong>لا يوجد مريض على مضاد حياتي</strong><span>لم يُسجَّل في الجارت الرئيسي لهذه الردهة مضاد حياتي خلال آخر 14 يومًا.{hub ? '' : ' يمكنك إضافة مريض يدويًا.'}</span></>}</div>
             : !shown.length ? <div className="empty-state"><strong>لا يوجد مرضى في «{active.label}»</strong></div>
             : <>
               {[{ title: 'في الردهة (في الجارت)', list: shown.filter((item) => item.inChart) }, { title: 'خرجوا (ليسوا في الجارت)', list: shown.filter((item) => !item.inChart) }]
@@ -128,7 +131,7 @@ export default function AntibioticFormsScreen({ hub, header, footer, wardLabel, 
                 </section>)}
             </>}
 
-          <button type="button" className="secondary-button abx-add-patient" onClick={() => onOpenKey('manual:new')}>+ مريض ليس في القائمة</button>
+          {!hub && <button type="button" className="secondary-button abx-add-patient" onClick={() => onOpenKey('manual:new')}>+ مريض ليس في القائمة</button>}
         </>}
     </section>
     {footer}

@@ -77,12 +77,13 @@ export default function DrugRequestsScreen({ hub, footer, dayLocked = false, kin
         {hub?.controls}
         <div className="toolbar-actions">
           <label className="pills-date">التاريخ <input type="date" value={selectedDate} onChange={(event) => onChangeDate(event.target.value)} /></label>
-          {!dayLocked && <button type="button" className="secondary-button compact" disabled={!isOnline || loadError || loading} onClick={() => { setAddFor(null); setAdding(true) }}>+ استمارة جديدة</button>}
-          {printable && <button type="button" className="primary-button compact" disabled={!list.length || pdf.busy} onClick={() => print(list)}>{pdf.busy ? 'جارٍ التحضير…' : list.length > 1 ? 'طباعة الكل' : 'طباعة'}</button>}
+          {/* «مواقف القسم» is for sending and correcting the day's forms: no new form, no print (both stay on the ward page). */}
+          {!dayLocked && !hub && <button type="button" className="secondary-button compact" disabled={!isOnline || loadError || loading} onClick={() => { setAddFor(null); setAdding(true) }}>+ استمارة جديدة</button>}
+          {printable && !hub && <button type="button" className="primary-button compact" disabled={!list.length || pdf.busy} onClick={() => print(list)}>{pdf.busy ? 'جارٍ التحضير…' : list.length > 1 ? 'طباعة الكل' : 'طباعة'}</button>}
         </div>
       </div>
 
-      {spec.firstDayOnly && !dayLocked && !loading && !loadError && <div className="req-missing">
+      {spec.firstDayOnly && !hub && !dayLocked && !loading && !loadError && <div className="req-missing">
         <button type="button" className="text-button" disabled={!isOnline || missingBusy} onClick={searchMissing}>{missingBusy ? 'جارٍ البحث…' : 'مرضى بلا استمارة؟'}</button>
         {missing?.date === selectedDate && !missing.ok && <span className="form-error" role="alert">{missing.message}</span>}
         {missing?.date === selectedDate && missing.ok && (missing.patients.length === 0
@@ -102,7 +103,7 @@ export default function DrugRequestsScreen({ hub, footer, dayLocked = false, kin
 
       {loading ? <div className="empty-state"><span className="spinner" /><span>جارٍ تحميل الاستمارات…</span></div>
         : loadError ? <div className="empty-state"><strong>تعذّر تحميل الاستمارات</strong><span>{isOnline ? 'حدّث الصفحة وحاول مجددًا.' : 'لا يوجد اتصال — تُعرض الاستمارات عند عودته.'}</span></div>
-        : !list.length ? <div className="empty-state"><strong>لا توجد {spec.label} لهذا اليوم</strong><span>تُملأ من «إدخال مريض» أو الجارت عند إضافة {kind === 'albumin' ? 'الالبومين لمريض' : `${{ meropenem: 'Meronem', tigecycline: 'Tygacil', colistin: 'Colistin', ivig: 'IVIG' }[kind]} لمريض في أول يوم له`}، أو أضِفها من «+ استمارة جديدة».</span></div>
+        : !list.length ? <div className="empty-state"><strong>لا توجد {spec.label} لهذا اليوم</strong><span>تُملأ من «إدخال مريض» أو الجارت عند إضافة {kind === 'albumin' ? 'الالبومين لمريض' : `${{ meropenem: 'Meronem', tigecycline: 'Tygacil', colistin: 'Colistin', ivig: 'IVIG' }[kind]} لمريض في أول يوم له`}{hub ? '.' : '، أو أضِفها من «+ استمارة جديدة».'}</span></div>
         : <>
             {(unsent.length > 0 || incomplete.length > 0 || unconfirmed.length > 0) && <p className="req-hint req-attention" role="status">
               <strong>{[unsent.length > 0 && `${unsent.length} لم تُرسل`, incomplete.length > 0 && `${incomplete.length} ناقصة`, unconfirmed.length > 0 && `${unconfirmed.length} لم يتأكد إرسالها — راجع ردود النموذج`].filter(Boolean).join(' · ')}</strong>
@@ -126,7 +127,7 @@ export default function DrugRequestsScreen({ hub, footer, dayLocked = false, kin
                       <p className="req-sheet-meta">{request.createdByName && <span>أدخلها {request.createdByName} · {savedAt(request.createdAt)}</span>}{sends(request) && request.googleSentAt && request.googleSentBy && <span>{request.googleSentHow === 'manual' ? 'أكمل إرسالها يدويًا' : 'أرسلها'} {request.googleSentBy}</span>}{request.googleError && <span className="req-error-note">{request.googleError}</span>}</p>
                       <span className="req-sheet-actions">
                         {sends(request) && <button type="button" className="secondary-button compact" disabled={busy || !isOnline} onClick={() => onSendToGoogle(request)}>{request.googleSentAt ? 'أُرسلت ✓ — إعادة الإرسال' : 'إرسال إلى نموذج الوزارة'}</button>}
-                        {printable && <button type="button" className="secondary-button compact" disabled={pdf.busy} onClick={() => print([request])}>طباعة</button>}
+                        {printable && !hub && <button type="button" className="secondary-button compact" disabled={pdf.busy} onClick={() => print([request])}>طباعة</button>}
                         {!dayLocked && <button type="button" className="danger-button compact" disabled={busy} onClick={() => onDelete(request)}>حذف</button>}
                       </span>
                     </div>
