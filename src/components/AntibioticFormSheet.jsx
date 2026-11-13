@@ -126,7 +126,7 @@ function DrugCard({ drug, index, chart, onChange, onRemove }) {
 
 export default function AntibioticFormSheet({ entry, wardLabel, floor, ward, wardKey, userId, isOnline, isExpired, lastDepartment, onClose, onSaved, onDeleted, askConfirm }) {
   const editable = !entry.form || entry.form.editable !== false
-  // A new hand-added form becomes «form:<id>» once saved, so its draft and queue entry follow it.
+  // The row's key (a listed patient, or «form:<id>» for a saved form off the list): its draft and queue entry are keyed by it.
   const patientKey = entry.patientKey
   const draftKey = abxDraftKey(userId, wardKey, patientKey)
   const queueKey = abxQueueKey(wardKey, patientKey)
