@@ -2,7 +2,7 @@ import express from 'express'
 import { pool, query } from '../db.js'
 import { requireAuth, requireManager } from '../auth.js'
 import { canAccessLocation, isIsoDate } from '../validation.js'
-import { readLocation, refuse, loadCourseRows, loadOverrides, antibioticNames } from './chart.js'
+import { readLocation, refuse, loadCourseRows, loadOverridesFor, antibioticNames } from './chart.js'
 import { wardKeyOf } from '../meropenem.js'
 import { antibioticOf } from '../ddd.js'
 import { todayInBaghdad } from '../push.js'
@@ -47,7 +47,7 @@ router.get('/antibiotic-forms', requireAuth, async (request, response) => {
   const wardKey = wardKeyOf(floor, wardName)
   const rows = await loadCourseRows(location, { names: await antibioticNames() })
   const drugKeys = [...new Set(rows.cells.map((cell) => antibioticOf(cell.medicine)?.key).filter(Boolean))]
-  const overridesByDrug = new Map(await Promise.all(drugKeys.map(async (key) => [key, await loadOverrides(key)])))
+  const overridesByDrug = await loadOverridesFor(drugKeys)
   const ids = [...new Set(rows.cells.map((cell) => cell.patientId).filter(Boolean))]
   const [requests, forms] = await Promise.all([
     query(
