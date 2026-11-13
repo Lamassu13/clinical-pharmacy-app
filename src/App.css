@@ -1971,7 +1971,7 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
 @keyframes modal-in { from { opacity: 0; transform: translateY(8px) scale(.98); } }
 
 /* date picker + copy-forward, pushed to the end of the dark .chart-meta bar */
-.date-controls { display: inline-flex; align-items: center; gap: 10px; margin-inline-start: auto; }
+.date-controls { display: inline-flex; flex-wrap: wrap; max-width: 100%; align-items: center; gap: 10px; margin-inline-start: auto; } /* wraps on a 320px phone instead of pushing «القوالب» off-screen */
 .date-controls label { display: inline-flex; align-items: center; gap: 6px; color: #fff; font-size: var(--text-xs); }
 .date-controls input { width: 150px; padding: 6px 8px; border: 0; background: var(--surface); color: var(--text); font-size: var(--text-xs); border-radius: var(--radius-sm); }
 .date-controls button { padding: 6px 12px; border: 1px solid #ffffff4d; background: transparent; color: #fff; font-size: var(--text-xs); border-radius: var(--radius-sm); transition: background var(--dur-fast) var(--ease); }
@@ -2342,7 +2342,8 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
 .reports-controls-actions button { min-height: 44px; white-space: nowrap; }
 .reports-controls-hint { grid-column: 1 / -1; margin: 0; color: var(--warning-text); font-size: var(--text-sm); font-weight: 700; }
 @media (max-width: 900px) {
-  .reports-controls { grid-template-columns: 1fr 1fr; }
+  .reports-controls { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .reports-controls label, .reports-controls input { min-width: 0; } /* a 1fr column could not shrink below Chrome's date field: «إلى تاريخ» hung off a 320px phone */
   .reports-controls label:first-child, .reports-controls-actions { grid-column: 1 / -1; }
   .reports-controls-actions button { flex: 1; }
 }
@@ -2351,7 +2352,7 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
 .reports-controls--range { grid-template-columns: repeat(2, minmax(150px, 220px)) 1fr; }
 .reports-controls--range .reports-controls-actions { flex-wrap: wrap; }
 @media (max-width: 900px) {
-  .reports-controls--range { grid-template-columns: 1fr 1fr; }
+  .reports-controls--range { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .reports-controls--range label:first-child { grid-column: auto; }
 }
 
@@ -3065,6 +3066,10 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
   .close-button { min-width: 44px; min-height: 44px; }
   .chart-medicine-notice .notice-dismiss { width: 44px; height: 44px; }
   .date-controls button { min-height: 44px; }
+  /* Every other field too (the list above missed the renal, Meropenem follow-up, reports and forms follow-up fields); the chart grid
+     keeps its own sizes (16px cells further down, the 11px medicine header). Kept apart from the list above on purpose: adjacent,
+     the minifier merges them, and a browser that cannot read :not(.chart-table *) (Chrome < 88) would then drop the list too. */
+  input:not([type="checkbox"]):not([type="radio"]):not(.chart-table *):not(.pill-form-patient-input), select:not(.chart-table *), textarea:not(.chart-table *) { font-size: 16px; }
 }
 
 /* ============================================================
