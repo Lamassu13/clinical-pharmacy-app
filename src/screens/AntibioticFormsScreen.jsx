@@ -11,7 +11,8 @@ const FROM_TEXT = `${WEEKDAYS[new Date(`${FORMS_FROM}T12:00:00`).getDay()]} ${Nu
 
 // «استمارة صرف المضادات الحياتية» (GET /api/antibiotic-forms): the ward's patients on an antibiotic in the last two
 // weeks, each with what the charts say and where their form stands — none yet, missing answers, or complete — plus
-// forms added by hand. A row opens the patient's form (AntibioticFormSheet); `openKey` lives in App so the browser's
+// the saved forms of patients no longer on the list (some added by hand before that was taken out). No patient is added
+// here: the list is the main chart's. A row opens the patient's form (AntibioticFormSheet); `openKey` lives in App so the browser's
 // Back closes the form first.
 const STATUS = { active: 'مستمر', stopped: 'متوقف', left: 'غادر', transferred: 'نُقل' }
 const FILTERS = [
@@ -55,17 +56,16 @@ export default function AntibioticFormsScreen({ hub, header, footer, wardLabel, 
     return () => { cancelled = true }
   }, [floor, ward, selectedDate, isExpired, writesFlushed, nonce])
 
-  // One row per patient on the list and per form added by hand.
+  // One row per patient on the list and per saved form of a patient off it.
   const items = useMemo(() => (data ? [
     ...data.patients.map((candidate) => ({ patientKey: candidate.key, name: candidate.name, patientId: candidate.patientId, candidate, form: candidate.form, drugs: candidate.drugs, inChart: candidate.inChart !== false })),
     ...data.manual.map((form) => ({ patientKey: `form:${form.id}`, name: form.name, patientId: form.patientId, candidate: null, form, drugs: form.drugs, manual: true, inChart: true })),
   ] : []), [data])
   const waiting = new Set(userId == null ? [] : pendingWrites(userId).map((entry) => entry.key))
-  const waitingNew = [...waiting].some((key) => key.startsWith(abxQueueKey(wardKey, 'manual:new')))
   const active = FILTERS.find((item) => item.key === filter)
   const shown = items.filter(active.match)
 
-  const open = openKey === 'manual:new' ? { patientKey: 'manual:new', candidate: null, form: null } : items.find((item) => item.patientKey === openKey) || null
+  const open = items.find((item) => item.patientKey === openKey) || null
   // A save's answer, put in place without a reload.
   const onSaved = (saved, entry) => setData((current) => {
     if (!current) return current
@@ -113,7 +113,6 @@ export default function AntibioticFormsScreen({ hub, header, footer, wardLabel, 
         : <>
           <p className="abx-intro">كل مريض في الجارت الرئيسي أخذ مضادًا حياتيًا في هذه الردهة خلال آخر 14 يومًا (ابتداءً من {FROM_TEXT}). ما في الجارت واستمارات الطلب يُملأ مسبقًا — راجعه وأكمل الباقي.</p>
           {stale && <p className="abx-queued" role="status">لا يوجد اتصال — هذه آخر نسخة فُتحت على هذا الجهاز.</p>}
-          {waitingNew && <p className="abx-queued" role="status">استمارة مريض أُضيف يدويًا محفوظة على هذا الجهاز بانتظار الإرسال.</p>}
 
           {items.length > 0 && <div className="filter-chips receipts-filters" role="group" aria-label="عرض المرضى حسب الاستمارة">
             {FILTERS.map((item) => <button key={item.key} type="button" className="filter-chip" aria-pressed={filter === item.key} onClick={() => setFilter(item.key)}>
@@ -123,7 +122,7 @@ export default function AntibioticFormsScreen({ hub, header, footer, wardLabel, 
 
           {!items.length ? <div className="empty-state">{selectedDate < FORMS_FROM
             ? <><strong>تبدأ هذه الاستمارة يوم {FROM_TEXT}</strong><span>يُدرج فيها كل مريض في الجارت الرئيسي يأخذ مضادًا حياتيًا من ذلك اليوم.</span></>
-            : <><strong>لا يوجد مريض على مضاد حياتي</strong><span>لم يُسجَّل في الجارت الرئيسي لهذه الردهة مضاد حياتي خلال آخر 14 يومًا.{hub ? '' : ' يمكنك إضافة مريض يدويًا.'}</span></>}</div>
+            : <><strong>لا يوجد مريض على مضاد حياتي</strong><span>لم يُسجَّل في الجارت الرئيسي لهذه الردهة مضاد حياتي خلال آخر 14 يومًا.</span></>}</div>
             : !shown.length ? <div className="empty-state"><strong>لا يوجد مرضى في «{active.label}»</strong></div>
             : <>
               {[{ title: 'في الردهة (في الجارت)', list: shown.filter((item) => item.inChart) }, { title: 'خرجوا (ليسوا في الجارت)', list: shown.filter((item) => !item.inChart) }]
@@ -135,7 +134,6 @@ export default function AntibioticFormsScreen({ hub, header, footer, wardLabel, 
                 </section>)}
             </>}
 
-          {!hub && <button type="button" className="secondary-button abx-add-patient" onClick={() => onOpenKey('manual:new')}>+ مريض ليس في القائمة</button>}
         </>}
     </section>
     {footer}

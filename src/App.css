@@ -3289,7 +3289,6 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
     /* Physical on purpose: in RTL, «forward» is to the left. */
     .abx-row:hover .abx-row-chevron { transform: translateX(-3px); }
   }
-  .abx-add-patient { margin-top: var(--space-4); }
 
   /* The form: a sticky head (where the pharmacist is, what is left, the four parts), the parts, a sticky save. */
   .abx-sheet-top { position: sticky; top: 0; z-index: 3; background: var(--surface); border-bottom: 1px solid var(--border); }
