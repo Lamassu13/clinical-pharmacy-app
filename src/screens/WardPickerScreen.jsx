@@ -12,7 +12,7 @@ import FormsPendingNote from '../components/FormsPendingNote.jsx'
 // from the floor grid into a floor doesn't feel like a different screen. The floor number
 // is in the heading, so the cards don't repeat it — each carries the ward glyph instead.
 export default function WardPickerScreen({
-  onOpenAlbuminFollowUp, floor, today, selectedDate, isExpired, dashboard, dashboardError, onOpen, onOpenWard,
+  onOpenAlbuminFollowUp, onOpenForms, floor, today, selectedDate, isExpired, dashboard, dashboardError, onOpen, onOpenWard,
   announcements, isManager, announcementDraft, setAnnouncementDraft, announcementError, announcementBusy,
   onPostAnnouncement, onEditAnnouncement, onDeleteAnnouncement, onDeleteAllAnnouncements,
 }) {
@@ -63,6 +63,10 @@ export default function WardPickerScreen({
     <div className="ward-tools">
       <button type="button" className="tool-link" onClick={onOpenAlbuminFollowUp}>
         <span className="tool-link-text">متابعة الالبومين</span><span className="arrow"><ChevronStart /></span>
+      </button>
+      {/* The floor's six forms in one screen, the ward chosen there (WardFormsTabs). */}
+      <button type="button" className="tool-link" onClick={onOpenForms}>
+        <span className="tool-link-text">مواقف القسم</span><span className="arrow"><ChevronStart /></span>
       </button>
       <LongAntibioticPatients date={selectedDate} floor={floor.number} isExpired={isExpired} />
       <PatientSearch floor={floor.number} date={selectedDate} onOpen={onOpen} isExpired={isExpired} />
