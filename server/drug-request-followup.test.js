@@ -289,6 +289,7 @@ test('albumin «Not indicated»: not sent to Google, not an alert, not a follow-
   assert.match(refused.body.message, /غير مستطبّة/)
   const counts = (await pharmacist.get(`/api/drug-requests/counts?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=${today}`)).body
   assert.deepEqual([counts.albumin, counts.attention.albumin], [2, 1]) // both are forms; only the indicated one (unsent) needs following up
+  assert.equal(counts.notIndicated.albumin, 1) // what «مواقف القسم» takes off its albumin count
   assert.deepEqual((await pharmacist.get(`/api/dashboard?date=${today}`)).body.formsPending, { total: 1, wards: [{ floor: FLOOR, ward: WARD, n: 1 }] })
   assert.equal((await manager.get(`/api/dashboard?date=${today}`)).body.formsToSend, 1)
   assert.deepEqual((await manager.get(`/api/drug-requests/followup?from=${today}&to=${today}`)).body.rows.map((row) => row.name), ['مستطبّة'])

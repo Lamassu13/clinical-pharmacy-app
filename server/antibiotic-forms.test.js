@@ -7,7 +7,10 @@ import { buildCandidates } from './antibiotic-forms.js'
 import { buildMeropenemForm } from './meropenem.js'
 import { todayInBaghdad } from './push.js'
 import { dayLockSettings } from './day-lock.js'
-import { cleanForm, missingAnswers, exportRows, EXPORT_COLUMNS, floorLabel, isFinal, YES, NO } from '../shared/antibiotic-form.js'
+import { cleanForm, missingAnswers, exportRows, EXPORT_COLUMNS, floorLabel, isFinal, YES, NO, FORMS_FROM } from '../shared/antibiotic-form.js'
+
+// The API tests chart days before the form's start day (FORMS_FROM): they turn it off (read by the route; this file's process only).
+process.env.ABX_FORMS_FROM = ''
 
 const A = { floor: 5, ward: 'ردهة رجال' }
 const MERONEM = 'Meronem 1000gm Vial'
@@ -26,7 +29,8 @@ const scenario = (date, chartDays, extraCharted = []) => {
   })
   return { date, ...A, cells, presence, charted }
 }
-const candidates = (date, chartDays, extra = {}) => buildCandidates({ rows: scenario(date, chartDays, extra.charted), date, ...extra })
+// The scenarios chart days before the form's start day (FORMS_FROM); they test the course rules, so the start day is off here.
+const candidates = (date, chartDays, extra = {}) => buildCandidates({ rows: scenario(date, chartDays, extra.charted), date, formsFrom: '', ...extra })
 const ali = (meds = { [MERONEM]: 3 }) => ({ name: 'علي', id: '123', meds })
 const pick = (drug) => ({ drug: drug.drug, strength: drug.strength, oral: drug.oral, injection: drug.injection, frequency: drug.frequency, days: drug.days, start: drug.start, stop: drug.stop })
 
@@ -62,6 +66,24 @@ test('candidates: a patient no longer on the ward\'s latest chart is flagged out
   assert.deepEqual(byName(candidates('2026-11-08', chartDays).patients), { 'علي': true, 'سعد': false })
   // Friday 6: no chart that day, Thursday's is the latest — both are still on it.
   assert.deepEqual(byName(candidates('2026-11-06', chartDays.slice(0, 2)).patients), { 'علي': true, 'سعد': true })
+})
+
+test('candidates: only the main chart\'s patients are listed; an extra-chart dose still counts in the course', () => {
+  const rows = scenario('2026-11-10', [['2026-11-08', [ali()]], ['2026-11-09', [ali()]], ['2026-11-10', [ali(), { name: 'سعد', id: '777', meds: { [VANCO]: 2 } }]]])
+  // سعد is on الجارت الإضافي only; علي's first day was on it too.
+  rows.cells.forEach((cell) => { cell.extra = cell.name === 'سعد' || cell.date === '2026-11-08' })
+  const { patients } = buildCandidates({ rows, date: '2026-11-10', formsFrom: '' })
+  assert.deepEqual(patients.map((patient) => patient.name), ['علي'])
+  assert.deepEqual([patients[0].drugs[0].days, patients[0].drugs[0].start], ['3', '2026-11-08'])
+})
+
+test('candidates: nobody before the form\'s start day; from it, a course already running keeps its real start', () => {
+  assert.equal(FORMS_FROM, '2026-11-15')
+  const days = [['2026-11-12', [ali()]], ['2026-11-14', [ali(), { name: 'سعد', id: '777', meds: { [VANCO]: 2 } }]], ['2026-11-15', [ali()]], ['2026-11-16', [ali()]]]
+  const later = buildCandidates({ rows: scenario('2026-11-16', days), date: '2026-11-16' })
+  assert.deepEqual(later.patients.map((patient) => patient.name), ['علي']) // سعد's last dose was the day before
+  assert.equal(later.patients[0].drugs[0].start, '2026-11-12')
+  assert.deepEqual(buildCandidates({ rows: scenario('2026-11-14', days.slice(0, 2)), date: '2026-11-14' }).patients, [])
 })
 
 test('candidates: a restart shows the latest course only', () => {

@@ -171,11 +171,11 @@ test('requests: list per kind, resend updates in place and keeps ticks, edit, ti
 test('counts: forms per kind for the ward and day; zeros when none; another floor refused', async () => {
   const pharmacist = await loginAs({ role: 'user', floor: FLOOR })
   const counts = async (date, client = pharmacist, floor = FLOOR, ward = WARD) => client.get(`/api/drug-requests/counts?floor=${floor}&ward=${encodeURIComponent(ward)}&date=${date}`)
-  assert.deepEqual((await counts('2026-09-24')).body, { ...Z0, attention: Z0 })
+  assert.deepEqual((await counts('2026-09-24')).body, { ...Z0, attention: Z0, notIndicated: Z0 })
   const form = { floor: FLOOR, ward: WARD, date: '2026-09-24', fields: {} }
   for (const [kind, name] of [['meropenem', 'علي'], ['albumin', 'علي'], ['albumin', 'حسن']]) assert.equal((await pharmacist.post('/api/drug-requests', { ...form, kind, name })).status, 201)
-  assert.deepEqual((await counts('2026-09-24')).body, { meropenem: 1, albumin: 2, tigecycline: 0, colistin: 0, ivig: 0, attention: { meropenem: 1, albumin: 2, tigecycline: 0, colistin: 0, ivig: 0 } })
-  assert.deepEqual((await counts('2026-09-25')).body, { ...Z0, attention: Z0 })
+  assert.deepEqual((await counts('2026-09-24')).body, { meropenem: 1, albumin: 2, tigecycline: 0, colistin: 0, ivig: 0, attention: { meropenem: 1, albumin: 2, tigecycline: 0, colistin: 0, ivig: 0 }, notIndicated: Z0 })
+  assert.deepEqual((await counts('2026-09-25')).body, { ...Z0, attention: Z0, notIndicated: Z0 })
   assert.equal((await counts('2026-09-24', pharmacist, 8, 'الردهة الخامسة')).status, 403)
   assert.equal((await counts('not-a-date')).status, 400)
 })
@@ -371,7 +371,7 @@ test('tigecycline: a third kind — asked on the first day only, dose prefilled 
   assert.deepEqual(ticked.body.request.ticks, ['abdominal'])
   assert.deepEqual(await check(pharmacist, 'tigecycline', '2026-09-24', { name: 'سارة', id: '44' }), { day: 1, requested: true })
   const counts = (await pharmacist.get(`/api/drug-requests/counts?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=2026-09-24`)).body
-  assert.deepEqual(counts, { ...Z0, tigecycline: 1, attention: { ...Z0, tigecycline: 1 } }) // sent by nobody yet, no case chosen
+  assert.deepEqual(counts, { ...Z0, tigecycline: 1, attention: { ...Z0, tigecycline: 1 }, notIndicated: Z0 }) // sent by nobody yet, no case chosen
   assert.equal((await pharmacist.get(`/api/drug-requests?${where('tigecycline', '2026-09-24')}`)).body.requests.length, 1)
 })
 
@@ -529,7 +529,7 @@ test('colistin: a fourth kind — asked on the first day only, dose prefilled in
   assert.deepEqual(ticked.body.request.ticks, ['cf'])
   assert.deepEqual(await check(pharmacist, 'colistin', '2026-09-24', { name: 'ليلى', id: '55' }), { day: 1, requested: true })
   const counts = (await pharmacist.get(`/api/drug-requests/counts?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=2026-09-24`)).body
-  assert.deepEqual(counts, { ...Z0, colistin: 1, attention: { ...Z0, colistin: 1 } })
+  assert.deepEqual(counts, { ...Z0, colistin: 1, attention: { ...Z0, colistin: 1 }, notIndicated: Z0 })
 })
 
 test('dose boxes hold a number only: letters dropped, the old wording («50mg × 2», «6 MU») read as the number', () => {

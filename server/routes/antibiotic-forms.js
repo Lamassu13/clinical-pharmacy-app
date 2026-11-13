@@ -63,6 +63,8 @@ router.get('/antibiotic-forms', requireAuth, async (request, response) => {
     rows, date: chartDate, overridesByDrug,
     requests: requests.rows.map((row) => ({ id: Number(row.id), kind: row.kind, wardKey: row.ward_key, date: row.date, name: row.patient_name, patientId: row.patient_id, fields: row.fields, ticks: row.ticks, note: row.note })),
     forms: forms.rows.map((row) => toForm(row, user)),
+    // (The API tests chart days before the start day; they set ABX_FORMS_FROM. Unset everywhere else.)
+    ...(process.env.ABX_FORMS_FROM !== undefined ? { formsFrom: process.env.ABX_FORMS_FROM } : {}),
   })
   response.json({ date: chartDate, ...result })
 })

@@ -49,6 +49,8 @@ export const QUICK_DRUGS = [
 ]
 export const QUICK_STRENGTHS = ['1000 mg', '500 mg', '625 mg', '480 mg', '250 mg', '80 mg']
 export const MAX_DRUGS = 10
+// The form is used from this day (Sunday 15/11/2026): a patient is listed only for antibiotics charted on or after it.
+export const FORMS_FROM = '2026-11-15'
 // A follow-up drug as the Google Form spells it; one it does not list keeps its own name.
 export const googleDrugName = (label) => (QUICK_DRUGS.find((item) => item.label.toLowerCase() === String(label).toLowerCase()) || {}).name || label
 

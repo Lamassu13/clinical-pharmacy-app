@@ -102,13 +102,16 @@ router.get('/drug-requests/counts', requireAuth, async (request, response) => {
   const ids = forms.some((row) => !row.patient_id) ? await chartIds(floor, wardName, chartDate) : new Map()
   const counts = Object.fromEntries(Object.keys(DRUG_REQUESTS).map((kind) => [kind, 0]))
   const attention = { ...counts }
+  // Albumin forms marked «Not indicated» (never sent): «مواقف القسم» leaves them out of its count.
+  const notIndicated = { ...counts }
   forms.forEach((row) => {
     counts[row.kind] += 1
     const patientId = row.patient_id || ids.get(row.patient_name) || ''
     const form = { name: row.patient_name, patientId, date: chartDate, fields: cleanFields(row.kind, row.fields), ticks: cleanTicks(row.kind, row.ticks), note: row.note, googleSentAt: row.google_sent_at, googleError: row.google_error }
     if (needsFollowUp(row.kind, form)) attention[row.kind] += 1
+    if (isNotIndicated(row.kind, form)) notIndicated[row.kind] += 1
   })
-  response.json({ ...counts, attention })
+  response.json({ ...counts, attention, notIndicated })
 })
 
 // The patient's course day for this medicine on `date`, and whether today's form is already filled.

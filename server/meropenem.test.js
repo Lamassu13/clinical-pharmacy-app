@@ -336,7 +336,7 @@ test('GET /api/meropenem: today is always read fresh, and a save to today keeps 
 const referenceCourseRows = async ({ floor, wardName, chartDate }, { pattern, names, allWards = false }) => {
   const from = windowStart(chartDate)
   const cells = (await pool.query(
-    `SELECT dc.chart_date::text AS date, w.floor_number AS floor, w.name AS ward, cp.patient_name AS name, cp.patient_id, COALESCE(m.name, cc.custom_name) AS medicine, cq.quantity
+    `SELECT dc.chart_date::text AS date, w.floor_number AS floor, w.name AS ward, cp.patient_name AS name, cp.patient_id, dc.slot = 'extra' AS extra, COALESCE(m.name, cc.custom_name) AS medicine, cq.quantity
      FROM daily_charts dc JOIN wards w ON w.id = dc.ward_id JOIN chart_patients cp ON cp.chart_id = dc.id
      JOIN chart_quantities cq ON cq.chart_id = dc.id AND cq.row_number = cp.row_number
      JOIN chart_columns cc ON cc.chart_id = dc.id AND cc.column_number = cq.column_number LEFT JOIN medicines m ON m.id = cc.medicine_id
@@ -360,7 +360,7 @@ const referenceCourseRows = async ({ floor, wardName, chartDate }, { pattern, na
     [from, chartDate],
   )).rows
   const toRow = (row) => ({ date: row.date, floor: row.floor, ward: row.ward, name: row.name, patientId: row.patient_id })
-  return { cells: cells.map((row) => ({ ...toRow(row), medicine: row.medicine, quantity: row.quantity })), presence: presence.map(toRow), charted }
+  return { cells: cells.map((row) => ({ ...toRow(row), extra: row.extra, medicine: row.medicine, quantity: row.quantity })), presence: presence.map(toRow), charted }
 }
 
 // A ward's form keeps the rows on that ward and the rows of anyone carrying an ID it has had (see loadCourseRows).
