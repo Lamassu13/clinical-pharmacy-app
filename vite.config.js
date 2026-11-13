@@ -5,7 +5,7 @@ import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
 // Fills public/sw.js's '__PRECACHE__' / '__BUILD_HASH__' placeholders in the built dist/sw.js
-// with every hashed file in dist/assets, so a first visit caches the whole app at install instead
+// with every hashed file in dist/assets (but the unused .woff fonts), so a first visit caches the whole app at install instead
 // of only what that visit happened to load. Unfilled (dev, or this plugin skipped), sw.js keeps
 // its old cache-on-use behaviour.
 const precacheServiceWorker = () => {
@@ -16,7 +16,9 @@ const precacheServiceWorker = () => {
     configResolved(config) { outDir = path.resolve(config.root, config.build.outDir) },
     closeBundle() {
       const swPath = path.join(outDir, 'sw.js')
-      const assets = readdirSync(path.join(outDir, 'assets')).sort().map((file) => `/assets/${file}`)
+      // Not the .woff fonts: every target browser (Safari 14, Chrome 87) takes the .woff2 beside them, so they were
+      // ~250 KB each device downloaded at every deploy and never used. A browser that did want one still gets it from the network.
+      const assets = readdirSync(path.join(outDir, 'assets')).filter((file) => !file.endsWith('.woff')).sort().map((file) => `/assets/${file}`)
       const hash = createHash('sha256').update(assets.join('\n')).digest('hex').slice(0, 10)
       const source = readFileSync(swPath, 'utf8')
       if (!source.includes("'__PRECACHE__'") || !source.includes("'__BUILD_HASH__'")) throw new Error('sw.js precache placeholders not found')
