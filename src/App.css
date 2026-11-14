@@ -3071,8 +3071,9 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
   .date-controls button { min-height: 44px; }
   /* Every other field too (the list above missed the renal, Meropenem follow-up, reports and forms follow-up fields); the chart grid
      keeps its own sizes (16px cells further down, the 11px medicine header). Kept apart from the list above on purpose: adjacent,
-     the minifier merges them, and a browser that cannot read :not(.chart-table *) (Chrome < 88) would then drop the list too. */
-  input:not([type="checkbox"]):not([type="radio"]):not(.chart-table *):not(.pill-form-patient-input), select:not(.chart-table *), textarea:not(.chart-table *) { font-size: 16px; }
+     the minifier merges them, and a browser that cannot read :not(.chart-table *) (Chrome < 88) would then drop the list too.
+     The request sheets' blanks keep the paper's size: on iOS public/theme.js stops the zoom on focus instead. */
+  input:not([type="checkbox"]):not([type="radio"]):not(.chart-table *):not(.pill-form-patient-input):not(.req-input), select:not(.chart-table *), textarea:not(.chart-table *) { font-size: 16px; }
 }
 
 /* ============================================================
