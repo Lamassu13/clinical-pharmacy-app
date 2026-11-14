@@ -45,11 +45,12 @@ export function Field({ label, value, unit, ltr, paper, field, required, bare, o
     input.value = next
     if (next !== shown) onSave(next)
   }
+  const input = <input className="req-input" defaultValue={shown} key={shown} dir={ltr || field?.digits || field?.decimal ? 'ltr' : 'auto'}
+    inputMode={field?.digits ? 'numeric' : field?.decimal ? 'decimal' : undefined} maxLength={field?.max || 200} autoComplete="off"
+    aria-label={label.replace(/:$/, '')} onBlur={commit} onKeyDown={(event) => { if (event.key === 'Enter') event.target.blur() }} />
   return <label className="req-field">
     {!bare && <span className="req-label">{label}</span>}
-    <input className="req-input" defaultValue={shown} key={shown} dir={ltr || field?.digits || field?.decimal ? 'ltr' : 'auto'}
-      inputMode={field?.digits ? 'numeric' : field?.decimal ? 'decimal' : undefined} maxLength={field?.max || 200} autoComplete="off"
-      aria-label={label.replace(/:$/, '')} onBlur={commit} onKeyDown={(event) => { if (event.key === 'Enter') event.target.blur() }} />
-    {unit && <span className="req-unit">{unit}</span>}
+    {/* The unit travels with its blank, so a phone never leaves «kg» alone on a line of its own. */}
+    {unit ? <span className="req-blank">{input}<span className="req-unit">{unit}</span></span> : input}
   </label>
 }

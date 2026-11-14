@@ -2846,7 +2846,7 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
 
 /* A value typed on the form, edited where it sits: the label, then a blank to write in. The blank
    is an underline at rest (the paper's dotted line) and a normal field while focused. */
-.req-field { display: flex; align-items: center; gap: 6px; min-width: 0; color: inherit; font-size: inherit; font-weight: 400; }
+.req-field { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; color: inherit; font-size: inherit; font-weight: 400; }
 .req-input {
   flex: 1 1 auto; min-width: 0; min-height: 36px; padding: 4px 6px;
   border: 0; border-bottom: 1px dashed var(--border-strong); border-radius: 0; background: transparent;
@@ -2857,7 +2857,10 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
 .req-unit { flex: none; color: var(--text-muted); }
 /* A label never breaks mid-word; the blank takes what is left of the cell. */
 .req-field .req-label { flex: none; white-space: nowrap; }
+/* At least 4em beside the label (the row wraps, see .req-field); where the cell has no room for that (a phone), the blank
+   drops under its label at the cell's full width instead of shrinking to its padding (12px: what was typed could not be seen). */
 .req-field .req-input { width: 4em; }
+.req-blank { display: flex; align-items: center; gap: 6px; flex: 1 1 auto; min-width: 0; }
 
 .req-signatures { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-4); margin-top: var(--space-6); padding-bottom: var(--space-7); text-align: center; font-size: 13px; }
 .req-signatures p { margin: 0; }
