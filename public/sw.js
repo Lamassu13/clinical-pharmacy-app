@@ -88,6 +88,10 @@ self.addEventListener('fetch', (event) => {
   }
   if (url.pathname.startsWith('/api/')) return
 
+  // This build's own copy first: caches.match() searches every cache oldest first, and the previous build's shell (kept
+  // on purpose) holds an unhashed file such as /theme.js under the same URL, so the old one won until the deploy after.
+  // The other caches stay the fallback, for a lazy chunk of the previous build in a tab left open across a deploy.
+  const fromShell = (key, options) => caches.open(SHELL_CACHE).then((cache) => cache.match(key, options)).then((hit) => hit || caches.match(key, options))
   if (request.mode === 'navigate') {
     // Refresh the offline copy on every online load. Cached only at install, it stayed whatever
     // build was live the last time sw.js itself changed, so an offline cold start ran that old
@@ -97,7 +101,7 @@ self.addEventListener('fetch', (event) => {
       const responseToCache = isPage ? response.clone() : null
       if (responseToCache) event.waitUntil(caches.open(SHELL_CACHE).then((cache) => cache.put('/index.html', responseToCache)))
       return response
-    }).catch(() => caches.match('/index.html')))
+    }).catch(() => fromShell('/index.html')))
     return
   }
 
@@ -106,7 +110,7 @@ self.addEventListener('fetch', (event) => {
   // export) never matched its cached copy — offline, or in a tab left open across a deploy.
   // Safe here: these files are content-hashed and never change.
   event.respondWith(
-    caches.match(request, { ignoreVary: true }).then((cached) => cached || fetch(request).then((response) => {
+    fromShell(request, { ignoreVary: true }).then((cached) => cached || fetch(request).then((response) => {
       // clone() must run synchronously, before the body is read anywhere else — deferring
       // it into the .then() below (after caches.open() resolves) clones an already-consumed
       // stream and throws "Response body is already used".
