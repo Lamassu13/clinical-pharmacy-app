@@ -38,11 +38,9 @@ const toForm = (row, user) => {
 const openSql = (yes) => `(${OUTCOMES.map((item) => `COALESCE(f.fields->>'${item.key}', '') <> ${yes}`).join(' AND ')})`
 const wardOfKey = (wardKey) => { const [floor, ...ward] = String(wardKey).split('|'); return { floor: floor ? Number(floor) : null, ward: ward.join('|') } }
 
-// The ward's patients on an antibiotic lately, what the charts and request forms say for each, and their saved forms.
-router.get('/antibiotic-forms', requireAuth, async (request, response) => {
-  const user = request.session.user
-  const location = readLocation(request.query, user)
-  if (location.status) return refuse(response, location)
+// The ward's patients on an antibiotic lately, what the charts and request forms say for each, and their saved forms
+// (GET /antibiotic-forms; also read for the floor banner, routes/drug-request-followup.js). `user` decides each form's `editable`.
+export async function wardAbxList(location, user) {
   const { floor, wardName, chartDate } = location
   const wardKey = wardKeyOf(floor, wardName)
   const rows = await loadCourseRows(location, { names: await antibioticNames() })
@@ -66,7 +64,14 @@ router.get('/antibiotic-forms', requireAuth, async (request, response) => {
     // (The API tests chart days before the start day; they set ABX_FORMS_FROM. Unset everywhere else.)
     ...(process.env.ABX_FORMS_FROM !== undefined ? { formsFrom: process.env.ABX_FORMS_FROM } : {}),
   })
-  response.json({ date: chartDate, ...result })
+  return { date: chartDate, ...result }
+}
+
+router.get('/antibiotic-forms', requireAuth, async (request, response) => {
+  const user = request.session.user
+  const location = readLocation(request.query, user)
+  if (location.status) return refuse(response, location)
+  response.json(await wardAbxList(location, user))
 })
 
 // Save a form: the patient's open form on this ward (or the one named by `id`) is updated, else one is begun today.
