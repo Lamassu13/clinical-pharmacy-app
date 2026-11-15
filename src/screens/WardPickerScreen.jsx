@@ -7,6 +7,7 @@ import DashboardWidgets from '../components/DashboardWidgets.jsx'
 import PatientSearch from '../components/PatientSearch.jsx'
 import LongAntibioticPatients from '../components/LongAntibioticPatients.jsx'
 import FormsPendingNote from '../components/FormsPendingNote.jsx'
+import useAbxPending from '../hooks/useAbxPending.js'
 
 // The sub-wards of one floor. Mirrors FloorPickerScreen's header and card shape so moving
 // from the floor grid into a floor doesn't feel like a different screen. The floor number
@@ -36,6 +37,7 @@ export default function WardPickerScreen({
     return () => { cancelled = true }
   }, [isManager, floor.number, isExpired])
   const formsPending = isManager ? (floorPending?.floor === floor.number ? floorPending : null) : dashboard?.formsPending
+  const abxPending = useAbxPending({ floor: floor.number, isExpired })
   const pendingByWard = new Map((formsPending?.wards ?? []).filter((item) => item.floor === floor.number).map((item) => [item.ward, item.n]))
 
   // The ward cards come first: they are what this page is for, and every tool below is a step aside from them. How many have
@@ -48,7 +50,7 @@ export default function WardPickerScreen({
       </div>
       {today && <div className="date-chip"><Glyph icon="today" /><span>اليوم</span><strong>{today}</strong></div>}
     </div>
-    <FormsPendingNote pending={formsPending} floor={floor.number} onOpenWard={onOpenWard} onOpenAbx={onOpenAbx} />
+    <FormsPendingNote pending={formsPending} floor={floor.number} onOpenWard={onOpenWard} />
     <div className="location-grid">{floor.wards.map((ward) => {
       const started = startedWards.has(ward)
       const pending = pendingByWard.get(ward)
@@ -60,6 +62,8 @@ export default function WardPickerScreen({
         <span className="arrow"><ChevronStart /></span>
       </button>
     })}</div>
+    {/* The dispensing line lands a second or two after the page (its own request): under the cards, so it never moves one under a finger. */}
+    <FormsPendingNote abx={abxPending} floor={floor.number} onOpenAbx={onOpenAbx} />
     <div className="ward-tools">
       <button type="button" className="tool-link" onClick={onOpenAlbuminFollowUp}>
         <span className="tool-link-text">متابعة الالبومين</span><span className="arrow"><ChevronStart /></span>
