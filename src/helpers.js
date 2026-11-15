@@ -789,13 +789,8 @@ export const formsBadge = (counts, kinds) => {
   const total = list.reduce((sum, kind) => sum + (counts?.[kind] || 0), 0)
   return total > 0 ? { tone: 'partial', text: formsWord(total) } : null
 }
-// The dispensing form's list (GET /antibiotic-forms) as its «مواقف القسم» tile counts it: one per listed patient and per saved form of
-// a patient off the list; those with no form yet, or with answers still missing, need following up (the screen's «بلا استمارة» and «ناقصة») —
-// but not a form this user can no longer change (closed with its outcome on an earlier day: `editable` false), which they cannot clear.
-export const abxListCounts = ({ patients = [], manual = [] }) => {
-  const forms = [...patients.map((patient) => patient.form), ...manual]
-  return { total: forms.length, attention: forms.filter((form) => !form || (form.missing?.length > 0 && form.editable !== false)).length }
-}
+// The dispensing form's list counts (what needs following up): one copy, shared/antibiotic-form.js, also read by the server's floor banner.
+export { abxListCounts } from '../shared/antibiotic-form.js'
 // Those counts with the open list's own numbers for its kind (`requests`, null while it loads): a form just added, sent or
 // deleted shows on the step bar and the «مواقف القسم» tabs at once, without asking the server again.
 export const liveFormCounts = (counts, kind, requests) => (kind && requests ? {

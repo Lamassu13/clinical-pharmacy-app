@@ -3,10 +3,14 @@ import { query } from '../db.js'
 import { requireAuth, requireManager } from '../auth.js'
 import { checkAll, readHealth, refreshIfStale } from '../google-form-health.js'
 import { isIsoDate, clampInt, canAccessLocation, ALLOWED_FLOORS } from '../validation.js'
-import { readLocation } from './chart.js'
+import { readLocation, antibioticNames } from './chart.js'
+import { wardAbxList } from './antibiotic-forms.js'
+import { todayInBaghdad } from '../push.js'
 import { wardKeyOf } from '../meropenem.js'
 import { DRUG_REQUESTS, cleanFields, cleanTicks } from '../../shared/drug-requests.js'
 import { formProblems, needsFollowUp, GOOGLE_KINDS } from '../../shared/form-problems.js'
+import { abxListCounts } from '../../shared/antibiotic-form.js'
+import { FLOORS, SPECIAL_WARDS } from '../../shared/options.js'
 
 const router = express.Router()
 
@@ -142,11 +146,14 @@ router.get('/drug-requests/missing', requireAuth, async (request, response) => {
 // A floor user's are their own floor's or wards'; a manager's are every ward's (the alert on the floors screen). Read from the one
 // small set of today's forms; added to the dashboard answer the floors / floor page already loads, so it costs no request.
 // { total, wards: [{ floor, ward, n }] } — wards with nothing pending are left out.
-export const pendingFormsFor = async (user, date) => {
+// `abx` is the dispensing form's own list, kept apart: [{ floor, ward, n }], the patients of today's wards (a floor user's / a ward user's;
+// never a manager's hospital-wide answer, so [] there) with no form yet or an incomplete one. `viewer` is who is really asking (the
+// /pending route passes a floor-shaped stand-in as `user`): their day lock decides which forms they can still change.
+export const pendingFormsFor = async (user, date, viewer = user) => {
   const manager = isManagerUser(user)
   const floor = !manager && Number.isInteger(user.assignedFloor) ? user.assignedFloor : null
   const wards = !manager && floor === null && Array.isArray(user.assignedWards) ? user.assignedWards : []
-  if (!manager && floor === null && !wards.length) return { total: 0, wards: [] }
+  if (!manager && floor === null && !wards.length) return { total: 0, wards: [], abx: [] }
   const rows = (await query(
     `SELECT kind, ward_key, patient_name, patient_id, fields, ticks, note, google_sent_at, google_error FROM drug_requests
      WHERE request_date = $1::date ${manager ? '' : `AND ${floor !== null ? 'ward_key LIKE $2' : 'ward_key = ANY($2::text[])'}`}`,
@@ -174,17 +181,40 @@ export const pendingFormsFor = async (user, date) => {
   }
   const list = [...counts].map(([key, n]) => { const [floorText, ...ward] = key.split('|'); return { floor: floorText ? Number(floorText) : null, ward: ward.join('|'), n } })
     .sort((a, b) => (a.floor ?? 99) - (b.floor ?? 99) || a.ward.localeCompare(b.ward, 'ar'))
-  return { total: list.reduce((sum, item) => sum + item.n, 0), wards: list }
+  return { total: list.reduce((sum, item) => sum + item.n, 0), wards: list, abx: manager || date !== todayInBaghdad() ? [] : await abxWithin({ floor, wards }, date, viewer) }
 }
 
-// The same count for one floor, for anyone who may open it: { total, wards }. A manager's floor page asks this — their dashboard
+// The dispensing form's wards needing follow-up (see pendingFormsFor): the wards in parallel, one that fails is left out and logged.
+// A ward user's are special wards only (a floor ward's name there has no ward of its own, and would make the course read hospital-wide).
+const abxPendingFor = async ({ floor, wards }, date, viewer) => {
+  const places = floor !== null ? (FLOORS.find((item) => item.number === floor)?.wards || []).map((ward) => ({ floor, ward })) : wards.filter((ward) => SPECIAL_WARDS.includes(ward)).map((ward) => ({ floor: null, ward }))
+  if (!places.length) return []
+  const names = await antibioticNames()
+  const counted = await Promise.all(places.map(async ({ floor: wardFloor, ward }) => {
+    try { return { floor: wardFloor, ward, n: abxListCounts(await wardAbxList({ floor: wardFloor, wardName: ward, chartDate: date }, viewer, names)).attention } } catch (error) {
+      console.error('Antibiotic form count failed:', error?.message || error)
+      return { floor: wardFloor, ward, n: 0 }
+    }
+  }))
+  return counted.filter((item) => item.n > 0).sort((a, b) => (a.floor ?? 99) - (b.floor ?? 99) || a.ward.localeCompare(b.ward, 'ar'))
+}
+
+// ponytail: time-boxed so a cold course cache (after a wake, midnight, a medicine edit) never holds up the dashboard; the read goes on and
+// warms the cache, and that one answer has no dispensing line (a missed alert, right again on the next load). Never throws.
+const ABX_WAIT_MS = 1500
+const abxWithin = (scope, date, viewer) => Promise.race([
+  abxPendingFor(scope, date, viewer).catch((error) => { console.error('Antibiotic form count failed:', error?.message || error); return [] }),
+  new Promise((resolve) => { setTimeout(resolve, ABX_WAIT_MS, []).unref() }),
+])
+
+// The same count for one floor, for anyone who may open it: { total, wards, abx }. A manager's floor page asks this — their dashboard
 // answer carries no `formsPending` (it would be every ward of the hospital) and is not asked again inside a floor.
 router.get('/drug-requests/pending', requireAuth, async (request, response) => {
   const floor = clampInt(request.query.floor, 2, 10)
   if (!isIsoDate(request.query.date)) return response.status(400).json({ message: 'التاريخ مطلوب' })
   if (floor === null || !ALLOWED_FLOORS.includes(floor)) return response.status(400).json({ message: 'الطابق غير مسموح' })
   if (!canAccessLocation(request.session.user, floor, null)) return response.status(403).json({ message: 'لا تملك صلاحية لهذا الطابق' })
-  response.json(await pendingFormsFor({ assignedFloor: floor }, request.query.date))
+  response.json(await pendingFormsFor({ assignedFloor: floor }, request.query.date, request.session.user))
 })
 
 export default router

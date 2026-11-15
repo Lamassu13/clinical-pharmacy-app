@@ -183,3 +183,11 @@ export const exportRows = (forms) => forms.flatMap((form) => {
     frequency: numeric(drug.frequency), days: numeric(drug.days), startDate: drug.start || '', stopDate: drug.stop || '',
   }))
 })
+
+// The dispensing form's list (GET /antibiotic-forms) as its «مواقف القسم» tile counts it: one per listed patient and per saved form of
+// a patient off the list; those with no form yet, or with answers still missing, need following up (the screen's «بلا استمارة» and «ناقصة») —
+// but not a form this user can no longer change (closed with its outcome on an earlier day: `editable` false), which they cannot clear.
+export const abxListCounts = ({ patients = [], manual = [] }) => {
+  const forms = [...patients.map((patient) => patient.form), ...manual]
+  return { total: forms.length, attention: forms.filter((form) => !form || (form.missing?.length > 0 && form.editable !== false)).length }
+}

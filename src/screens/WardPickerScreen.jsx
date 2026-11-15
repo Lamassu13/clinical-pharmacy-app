@@ -12,7 +12,7 @@ import FormsPendingNote from '../components/FormsPendingNote.jsx'
 // from the floor grid into a floor doesn't feel like a different screen. The floor number
 // is in the heading, so the cards don't repeat it — each carries the ward glyph instead.
 export default function WardPickerScreen({
-  onOpenAlbuminFollowUp, onOpenForms, floor, today, selectedDate, isExpired, dashboard, dashboardError, onOpen, onOpenWard,
+  onOpenAlbuminFollowUp, onOpenForms, onOpenAbx, floor, today, selectedDate, isExpired, dashboard, dashboardError, onOpen, onOpenWard,
   announcements, isManager, announcementDraft, setAnnouncementDraft, announcementError, announcementBusy,
   onPostAnnouncement, onEditAnnouncement, onDeleteAnnouncement, onDeleteAllAnnouncements,
 }) {
@@ -48,7 +48,7 @@ export default function WardPickerScreen({
       </div>
       {today && <div className="date-chip"><Glyph icon="today" /><span>اليوم</span><strong>{today}</strong></div>}
     </div>
-    <FormsPendingNote pending={formsPending} floor={floor.number} onOpenWard={onOpenWard} />
+    <FormsPendingNote pending={formsPending} floor={floor.number} onOpenWard={onOpenWard} onOpenAbx={onOpenAbx} />
     <div className="location-grid">{floor.wards.map((ward) => {
       const started = startedWards.has(ward)
       const pending = pendingByWard.get(ward)

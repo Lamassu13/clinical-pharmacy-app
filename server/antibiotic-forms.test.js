@@ -359,3 +359,22 @@ test('export: managers only, a date range of at most 92 days, audited without na
   assert.equal((await admin.post('/api/charts/purge', { from: today, to: today, floors: [5] })).status, 200)
   assert.equal(await count(), 0)
 })
+
+test('the floor banner: «formsPending.abx» lists the ward with a charted antibiotic patient who has no complete form, for a floor user and a manager\'s floor page, today only', async () => {
+  await pool.query('INSERT INTO medicines (name) VALUES ($1)', [MERONEM])
+  const today = todayInBaghdad()
+  const pharmacist = await loginAs({ role: 'user', floor: 5 })
+  const manager = await loginAs({ role: 'admin' })
+  assert.equal((await saveChart(pharmacist, today, [ali()])).status, 200)
+  const dashboard = async (client, date = today) => (await client.get(`/api/dashboard?date=${date}`)).body.formsPending
+  const pending = async (client, date = today) => (await client.get(`/api/drug-requests/pending?floor=${A.floor}&date=${date}`)).body
+  const one = [{ floor: A.floor, ward: A.ward, n: 1 }]
+  assert.deepEqual((await dashboard(pharmacist)).abx, one)
+  assert.deepEqual((await pending(manager)).abx, one) // a manager sees it per floor
+  assert.deepEqual((await dashboard(manager)).abx, []) // not on the hospital-wide dashboard
+  assert.deepEqual((await dashboard(pharmacist, '2026-01-01')).abx, []) // a past day is no alert
+  const complete = { fields: { age: '45', department: 'الباطنية', diagnosis: 'CAP', stayDays: '5', allergy: NO, culture: YES, review48: YES, same: YES, stillAdmitted: YES }, drugs: [{ drug: 'meropenem', strength: '1000 mg', injection: YES, frequency: '3', days: '5' }] }
+  assert.equal((await pharmacist.post('/api/antibiotic-forms', body(complete))).status, 201)
+  assert.deepEqual((await dashboard(pharmacist)).abx, [])
+  assert.deepEqual((await pending(manager)).abx, [])
+})
