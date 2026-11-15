@@ -201,7 +201,7 @@ const abxPendingFor = async ({ floor, wards }, date, viewer) => {
 
 // ponytail: time-boxed so a cold course cache (after a wake, midnight, a medicine edit) never holds up the dashboard; the read goes on and
 // warms the cache, and that one answer has no dispensing line (a missed alert, right again on the next load). Never throws.
-const ABX_WAIT_MS = 1500
+const ABX_WAIT_MS = 800
 const abxWithin = (scope, date, viewer) => Promise.race([
   abxPendingFor(scope, date, viewer).catch((error) => { console.error('Antibiotic form count failed:', error?.message || error); return [] }),
   new Promise((resolve) => { setTimeout(resolve, ABX_WAIT_MS, []).unref() }),

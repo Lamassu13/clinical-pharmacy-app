@@ -8,6 +8,7 @@ import {
 } from '../validation.js'
 import { numberToArabicWords } from '../arabic-number.js'
 import { memoizeByKey } from '../cache.js'
+import { FLOORS } from '../../shared/options.js'
 import { buildMeropenemForm, activeCourseDay, monthStart, windowStart, doseText, strengthMg, wardKeyOf, MEROPENEM_SQL_PATTERN } from '../meropenem.js'
 import { antibioticOf } from '../ddd.js'
 import { notifyLater, todayInBaghdad, MANAGER_ROLES } from '../push.js'
@@ -943,6 +944,9 @@ const ON_WARD = '(w.floor_number IS NOT DISTINCT FROM $3 AND w.name = $4)'
 const BY_ID = 'cp.patient_id = ANY($3::text[])'
 const BY_ID_OR_NAME = "(cp.patient_id = ANY($3::text[]) OR regexp_replace(btrim(cp.patient_name), '\\s+', ' ', 'g') = ANY($4::text[]))"
 const wardPresenceLoader = (floor, wardName) => (start, end) => query(presenceSql(ON_WARD), [start, end, floor, wardName])
+const wardPresenceKey = (floor, wardName) => `presence-ward|${floor ?? ''}|${wardName}`
+// A kept part of the window: read once per [from, to] into `history`; nothing when no day of the window is kept.
+const keepIn = (history, kept) => (key, load) => (kept ? history.get(`${key}|${kept[0]}|${kept[1]}`, logged(key.split('|')[0], load), ...kept).then((result) => result.rows) : [])
 const matchedPresenceLoader = (allWards, ids, names) => (start, end) => query(presenceSql(allWards ? BY_ID_OR_NAME : BY_ID), allWards ? [start, end, ids, names] : [start, end, ids])
 const loadCharted = (start, end) => query(
   `/* course: charted */ SELECT DISTINCT dc.chart_date::text AS date, dc.ward_id
@@ -959,8 +963,7 @@ export const loadCourseRows = async ({ floor, wardName, chartDate }, { pattern, 
   const from = windowStart(chartDate)
   const today = todayInBaghdad()
   const { kept, fresh } = splitWindow(from, chartDate, today)
-  const history = kept?.[1] === dayBefore(today) ? liveHistory : pastHistory
-  const keep = (key, load) => (kept ? history.get(`${key}|${kept[0]}|${kept[1]}`, logged(key.split('|')[0], load), ...kept).then((result) => result.rows) : [])
+  const keep = keepIn(kept?.[1] === dayBefore(today) ? liveHistory : pastHistory, kept)
   const loadCells = cellsLoader(pattern, names)
   // Kept days come before fresh ones, so the cells stay in date order.
   const [keptCells, freshCells] = await Promise.all([keep(`cells|${pattern ? `p${pattern}` : [...names].sort().join('\u0001')}`, loadCells), readRows(fresh, loadCells)])
@@ -986,7 +989,7 @@ export const loadCourseRows = async ({ floor, wardName, chartDate }, { pattern, 
   const newNames = allWards ? cellNames.filter((name) => !keptNameSet.has(name)) : []
   const anyone = (idList, nameList) => idList.length > 0 || nameList.length > 0
   const [wardPart, matchedPart, newcomerPart, freshPresence, keptDays, freshDays] = await Promise.all([
-    allWards ? [] : keep(`presence-ward|${floor ?? ''}|${wardName}`, wardPresenceLoader(floor, wardName)),
+    allWards ? [] : keep(wardPresenceKey(floor, wardName), wardPresenceLoader(floor, wardName)),
     anyone(keptIds, keptNames) ? keep(`presence-${allWards ? 'all' : 'ids'}|${keptIds.join(',')}|${keptNames.join('\u0001')}`, matchedPresenceLoader(allWards, keptIds, keptNames)) : [],
     anyone(newIds, newNames) ? readRows(kept, matchedPresenceLoader(allWards, newIds, newNames)) : [],
     readRows(fresh, (start, end) => query(
@@ -1032,16 +1035,23 @@ export const loadCourseRows = async ({ floor, wardName, chartDate }, { pattern, 
 
 // Reads today's course window for the whole hospital once at start-up, so the first follow-up form a
 // pharmacist opens is not the one that pays for it (a free instance restarts every time it wakes, and
-// the kept rows are in memory). Only the parts every ward shares are kept by this; a ward's own rows
-// are read when it is opened.
+// the kept rows are in memory). The parts every ward shares first, then each ward's own kept presence alone (one query a ward, one at
+// a time, nothing of today's read): the floor banner counts every ward's «استمارة صرف المضادات» on the first landing, and a cold
+// ward there is a 73-day read. Today's set with every ward kept is the ~48 MB measured above; liveHistory has room for it.
 export const warmCourseRows = async () => {
   const started = Date.now()
-  const where = { floor: null, wardName: '', chartDate: todayInBaghdad() }
+  const chartDate = todayInBaghdad()
+  const where = { floor: null, wardName: '', chartDate }
+  const names = await antibioticNames()
   await Promise.all([
     loadCourseRows(where, { pattern: MEROPENEM_SQL_PATTERN }),
-    antibioticNames().then((names) => loadCourseRows(where, { names })),
+    loadCourseRows(where, { names }),
   ])
   console.log(`course cache: warmed in ${Date.now() - started} ms`)
+  const wards = [...FLOORS.flatMap((floor) => floor.wards.map((wardName) => ({ floor: floor.number, wardName }))), ...SPECIAL_WARDS.map((wardName) => ({ floor: null, wardName }))]
+  const keep = keepIn(liveHistory, splitWindow(windowStart(chartDate), chartDate, chartDate).kept)
+  for (const { floor, wardName } of wards) await keep(wardPresenceKey(floor, wardName), wardPresenceLoader(floor, wardName))
+  console.log(`course cache: ${wards.length} wards warmed in ${Date.now() - started} ms`)
 }
 
 // drug key -> its typed course days, for many drugs in one query (a ward's antibiotics, not one query each).
