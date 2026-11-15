@@ -11,13 +11,13 @@ export const FORM_TABS = [
   { kind: 'colistin', mode: 'colistin-forms', label: 'الكوليستين' },
   { kind: 'tigecycline', mode: 'tigecycline-forms', label: 'التايجيسايكلين' },
   { kind: 'ivig', mode: 'ivig-forms', label: 'IVIG' },
-  { kind: null, mode: 'antibiotic-forms', label: 'صرف المضادات' },
+  { kind: 'antibiotic', mode: 'antibiotic-forms', label: 'صرف المضادات' },
 ]
 
 // The tile's second line: what still needs following up, else how many there are, else none. Nothing while the count
-// is unknown (offline, still loading), and nothing for the dispensing form, which is per patient, not per day.
+// is unknown (offline, still loading). The dispensing form's (`antibiotic`) is per patient, not per day: its list's (abxListCounts).
 const stateOf = (counts, kind) => {
-  if (!kind || !counts) return null
+  if (counts?.[kind] === undefined) return null
   const attention = counts.attention?.[kind] || 0
   if (attention > 0) return { text: `${attention} تحتاج متابعة`, attention: true }
   const total = counts[kind] || 0

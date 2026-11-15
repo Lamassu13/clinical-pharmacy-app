@@ -4,6 +4,7 @@ import { pendingWrites } from '../storage.js'
 import { abxQueueKey, pruneAbxDrafts } from '../antibioticDraft.js'
 import AntibioticFormSheet from '../components/AntibioticFormSheet.jsx'
 import { FORMS_FROM } from '../../shared/antibiotic-form.js'
+import { abxListCounts } from '../helpers.js'
 
 // The form's start day in words, from FORMS_FROM: «الأحد 15/11/2026».
 const WEEKDAYS = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت']
@@ -31,7 +32,7 @@ function FormStatus({ form, waiting }) {
   return <span className="card-status card-status--done"><Check />مكتملة</span>
 }
 
-export default function AntibioticFormsScreen({ hub, header, footer, wardLabel, floor, ward, selectedDate, onChangeDate, onBack, isOnline, isExpired, userId, writesFlushed, openKey, onOpenKey, askConfirm, confirmModal }) {
+export default function AntibioticFormsScreen({ hub, header, footer, wardLabel, floor, ward, selectedDate, onChangeDate, onBack, isOnline, isExpired, userId, writesFlushed, openKey, onOpenKey, onCounts, askConfirm, confirmModal }) {
   const wardKey = `${floor ?? ''}|${ward}`
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -61,6 +62,10 @@ export default function AntibioticFormsScreen({ hub, header, footer, wardLabel, 
     ...data.patients.map((candidate) => ({ patientKey: candidate.key, name: candidate.name, patientId: candidate.patientId, candidate, form: candidate.form, drugs: candidate.drugs, inChart: candidate.inChart !== false })),
     ...data.manual.map((form) => ({ patientKey: `form:${form.id}`, name: form.name, patientId: form.patientId, candidate: null, form, drugs: form.drugs, manual: true, inChart: true })),
   ] : []), [data])
+  // The list's numbers for the «مواقف القسم» tile, kept with the ward and day they are of (a save or delete shows at once).
+  // Not from a copy kept on this device (the server could not be reached), and none once the screen closes.
+  useEffect(() => { if (data && !stale) onCounts?.({ key: `${wardKey}|${data.date}`, counts: abxListCounts(data) }) }, [data, stale, wardKey, onCounts])
+  useEffect(() => () => onCounts?.(null), [onCounts])
   const waiting = new Set(userId == null ? [] : pendingWrites(userId).map((entry) => entry.key))
   const active = FILTERS.find((item) => item.key === filter)
   const shown = items.filter(active.match)
