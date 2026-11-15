@@ -628,9 +628,10 @@ test('liveFormCounts: the open list replaces the fetched numbers of its own kind
   assert.equal(liveFormCounts(fetched, null, [sent]), fetched)
 })
 
-test('abxListCounts: listed patients with no form, or with answers missing, and incomplete off-list forms need following up', () => {
-  const done = { missing: [] }
-  const partial = { missing: ['العمر'] }
-  assert.deepEqual(abxListCounts({ patients: [{ form: null }, { form: done }, { form: partial }], manual: [done, partial] }), { total: 5, attention: 3 })
+test('abxListCounts: listed patients with no form, or with answers missing, and incomplete off-list forms need following up; locked ones do not', () => {
+  const done = { missing: [], editable: true }
+  const partial = { missing: ['العمر'], editable: true }
+  const locked = { missing: ['العمر'], editable: false }
+  assert.deepEqual(abxListCounts({ patients: [{ form: null }, { form: done }, { form: partial }, { form: locked }], manual: [done, partial, locked] }), { total: 7, attention: 3 })
   assert.deepEqual(abxListCounts({ patients: [], manual: [] }), { total: 0, attention: 0 })
 })
