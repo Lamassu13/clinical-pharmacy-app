@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { withBlankRow, parseChartRows, mergeChartSnapshots as mergeRows, printPageCount, failureText, rememberIdentity, recallIdentity, IDENTITY_KEEP_HOURS, averagePatients, pillChanges, interactionsForChart, mergeKeyedSnapshots, looksWiped, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, settleExtraPillsOp, EXTRA_PILL_SLOTS, isDraftStale, rememberChart, recallChart, forgetChartCopies, mergePreviousDayDoses, addPatientToChart, medicineMatches, pillSheetPlan, yesterdaySchedules, scheduleFor, applyTemplateColumns, catalogueMatches, RENAL_EQUATIONS, renalGuidance, SCR_UMOL_PER_MGDL, liveFormCounts, formsBadge } from './helpers.js'
+import { withBlankRow, parseChartRows, mergeChartSnapshots as mergeRows, printPageCount, failureText, rememberIdentity, recallIdentity, IDENTITY_KEEP_HOURS, averagePatients, pillChanges, interactionsForChart, mergeKeyedSnapshots, looksWiped, diffKeyedMergeOutcome, enqueueExtraPillsOp, applyExtraPillsQueue, settleExtraPillsOp, EXTRA_PILL_SLOTS, isDraftStale, rememberChart, recallChart, forgetChartCopies, mergePreviousDayDoses, addPatientToChart, medicineMatches, pillSheetPlan, yesterdaySchedules, scheduleFor, applyTemplateColumns, catalogueMatches, RENAL_EQUATIONS, renalGuidance, SCR_UMOL_PER_MGDL, liveFormCounts, formsBadge, abxListCounts } from './helpers.js'
 
 test('mergeKeyedSnapshots keeps a local edit and adopts an unrelated server change', () => {
   const base = { a: '1', b: '2' }
@@ -626,4 +626,11 @@ test('liveFormCounts: the open list replaces the fetched numbers of its own kind
   assert.deepEqual(liveFormCounts(null, 'ivig', []), { ivig: 0, attention: { ivig: 0 } }) // counts not in yet, an empty list open
   assert.equal(liveFormCounts(fetched, 'albumin', null), fetched)
   assert.equal(liveFormCounts(fetched, null, [sent]), fetched)
+})
+
+test('abxListCounts: listed patients with no form, or with answers missing, and incomplete off-list forms need following up', () => {
+  const done = { missing: [] }
+  const partial = { missing: ['العمر'] }
+  assert.deepEqual(abxListCounts({ patients: [{ form: null }, { form: done }, { form: partial }], manual: [done, partial] }), { total: 5, attention: 3 })
+  assert.deepEqual(abxListCounts({ patients: [], manual: [] }), { total: 0, attention: 0 })
 })
