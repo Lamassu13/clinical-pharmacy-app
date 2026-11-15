@@ -1777,12 +1777,6 @@ function App() {
   // pagehide/visibilitychange below cover that) doesn't lose whatever hadn't reached the
   // server yet. `base` is the last state this tab knows was actually saved, so the load
   // effect's merge can tell a real edit apart from a stale copy of old server data.
-  // A tap on the floor banner's dispensing line: «مواقف القسم» on that ward at the dispensing form (what the special ward's row opens too).
-  const openAbx = useCallback(({ floor: abxFloor, ward }) => {
-    if (abxFloor) hubWardRef.current[abxFloor] = ward
-    openTarget({ floor: abxFloor, ward, mode: 'antibiotic-forms', hub: true })
-  }, [openTarget])
-
   useEffect(() => {
     const chartKey = selected ? wardKey(selected, selectedDate) : null
     if (!selected || selected.mode !== 'chart' || loadedChartKey !== chartKey) return undefined
@@ -1829,6 +1823,13 @@ function App() {
     if (resumeDraft.date) setSelectedDate(resumeDraft.date)
     openTarget({ floor: resumeDraft.floor, ward: resumeDraft.ward, mode: 'chart', slot: resumeDraft.slot || 'main' })
   }, [resumeDraft, openTarget])
+  // A tap on the floor banner's dispensing line: «مواقف القسم» on that ward at the dispensing form (what the special ward's row opens too).
+  const openAbx = useCallback(({ floor: abxFloor, ward }) => {
+    // Today's list: the banner is today's, whatever day was browsed last.
+    setSelectedDate(isoDate(new Date()))
+    if (abxFloor) hubWardRef.current[abxFloor] = ward
+    openTarget({ floor: abxFloor, ward, mode: 'antibiotic-forms', hub: true })
+  }, [openTarget])
   // The hub's onOpen: a «كل التواريخ» search result carries the date to open the chart on.
   const openFromHub = useCallback(({ date, ...location }) => {
     if (date) setSelectedDate(date)

@@ -3,14 +3,14 @@ import { query } from '../db.js'
 import { requireAuth, requireManager } from '../auth.js'
 import { checkAll, readHealth, refreshIfStale } from '../google-form-health.js'
 import { isIsoDate, clampInt, canAccessLocation, ALLOWED_FLOORS } from '../validation.js'
-import { readLocation } from './chart.js'
+import { readLocation, antibioticNames } from './chart.js'
 import { wardAbxList } from './antibiotic-forms.js'
 import { todayInBaghdad } from '../push.js'
 import { wardKeyOf } from '../meropenem.js'
 import { DRUG_REQUESTS, cleanFields, cleanTicks } from '../../shared/drug-requests.js'
 import { formProblems, needsFollowUp, GOOGLE_KINDS } from '../../shared/form-problems.js'
 import { abxListCounts } from '../../shared/antibiotic-form.js'
-import { FLOORS } from '../../shared/options.js'
+import { FLOORS, SPECIAL_WARDS } from '../../shared/options.js'
 
 const router = express.Router()
 
@@ -181,20 +181,31 @@ export const pendingFormsFor = async (user, date, viewer = user) => {
   }
   const list = [...counts].map(([key, n]) => { const [floorText, ...ward] = key.split('|'); return { floor: floorText ? Number(floorText) : null, ward: ward.join('|'), n } })
     .sort((a, b) => (a.floor ?? 99) - (b.floor ?? 99) || a.ward.localeCompare(b.ward, 'ar'))
-  return { total: list.reduce((sum, item) => sum + item.n, 0), wards: list, abx: manager || date !== todayInBaghdad() ? [] : await abxPendingFor({ floor, wards }, date, viewer) }
+  return { total: list.reduce((sum, item) => sum + item.n, 0), wards: list, abx: manager || date !== todayInBaghdad() ? [] : await abxWithin({ floor, wards }, date, viewer) }
 }
 
 // The dispensing form's wards needing follow-up (see pendingFormsFor): the wards in parallel, one that fails is left out and logged.
+// A ward user's are special wards only (a floor ward's name there has no ward of its own, and would make the course read hospital-wide).
 const abxPendingFor = async ({ floor, wards }, date, viewer) => {
-  const places = floor !== null ? (FLOORS.find((item) => item.number === floor)?.wards || []).map((ward) => ({ floor, ward })) : wards.map((ward) => ({ floor: null, ward }))
+  const places = floor !== null ? (FLOORS.find((item) => item.number === floor)?.wards || []).map((ward) => ({ floor, ward })) : wards.filter((ward) => SPECIAL_WARDS.includes(ward)).map((ward) => ({ floor: null, ward }))
+  if (!places.length) return []
+  const names = await antibioticNames()
   const counted = await Promise.all(places.map(async ({ floor: wardFloor, ward }) => {
-    try { return { floor: wardFloor, ward, n: abxListCounts(await wardAbxList({ floor: wardFloor, wardName: ward, chartDate: date }, viewer)).attention } } catch (error) {
+    try { return { floor: wardFloor, ward, n: abxListCounts(await wardAbxList({ floor: wardFloor, wardName: ward, chartDate: date }, viewer, names)).attention } } catch (error) {
       console.error('Antibiotic form count failed:', error?.message || error)
       return { floor: wardFloor, ward, n: 0 }
     }
   }))
   return counted.filter((item) => item.n > 0).sort((a, b) => (a.floor ?? 99) - (b.floor ?? 99) || a.ward.localeCompare(b.ward, 'ar'))
 }
+
+// ponytail: time-boxed so a cold course cache (after a wake, midnight, a medicine edit) never holds up the dashboard; the read goes on and
+// warms the cache, and that one answer has no dispensing line (a missed alert, right again on the next load). Never throws.
+const ABX_WAIT_MS = 1500
+const abxWithin = (scope, date, viewer) => Promise.race([
+  abxPendingFor(scope, date, viewer).catch((error) => { console.error('Antibiotic form count failed:', error?.message || error); return [] }),
+  new Promise((resolve) => { setTimeout(resolve, ABX_WAIT_MS, []).unref() }),
+])
 
 // The same count for one floor, for anyone who may open it: { total, wards, abx }. A manager's floor page asks this — their dashboard
 // answer carries no `formsPending` (it would be every ward of the hospital) and is not asked again inside a floor.

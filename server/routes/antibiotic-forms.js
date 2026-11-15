@@ -40,10 +40,11 @@ const wardOfKey = (wardKey) => { const [floor, ...ward] = String(wardKey).split(
 
 // The ward's patients on an antibiotic lately, what the charts and request forms say for each, and their saved forms
 // (GET /antibiotic-forms; also read for the floor banner, routes/drug-request-followup.js). `user` decides each form's `editable`.
-export async function wardAbxList(location, user) {
+// `names`: the antibiotic names, when the caller already read them (the floor banner reads them once for all its wards).
+export async function wardAbxList(location, user, names) {
   const { floor, wardName, chartDate } = location
   const wardKey = wardKeyOf(floor, wardName)
-  const rows = await loadCourseRows(location, { names: await antibioticNames() })
+  const rows = await loadCourseRows(location, { names: names || await antibioticNames() })
   const drugKeys = [...new Set(rows.cells.map((cell) => antibioticOf(cell.medicine)?.key).filter(Boolean))]
   const overridesByDrug = await loadOverridesFor(drugKeys)
   const ids = [...new Set(rows.cells.map((cell) => cell.patientId).filter(Boolean))]

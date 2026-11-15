@@ -26,7 +26,7 @@ export default function FormsPendingNote({ pending, floor, onOpenWard, onOpenAbx
       </div>
     </>}
     {abx.length > 0 && <>
-      <p className={`forms-pending-head${wards.length ? ' forms-pending-head--next' : ''}`}>{!wards.length && <Glyph icon="warn" />}<strong>استمارة صرف المضادات</strong><small>{patientsWord(abxTotal)} بلا استمارة أو ينقصها شيء</small></p>
+      <p className={`forms-pending-head${wards.length ? ' forms-pending-head--next' : ''}`}>{!wards.length && <Glyph icon="warn" />}<strong>استمارة صرف المضادات</strong><small>{patientsWord(abxTotal)} بلا استمارة أو باستمارة ناقصة</small></p>
       <div className="forms-pending-wards">
         {abx.map((item) => <button key={`${item.floor ?? ''}|${item.ward}`} type="button" className="forms-pending-ward" onClick={() => onOpenAbx({ floor: item.floor, ward: item.ward })}>
           <span>{label(item)}</span><b>{item.n}</b>
