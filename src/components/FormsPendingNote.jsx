@@ -16,7 +16,7 @@ export default function FormsPendingNote({ pending, abx: abxAll = [], floor, onO
   if (!wards.length && !abx.length) return null
   const total = wards.reduce((sum, item) => sum + item.n, 0)
   const abxTotal = abx.reduce((sum, item) => sum + item.n, 0)
-  return <section className="forms-pending" role="status" aria-label="استمارات تحتاج متابعة">
+  return <section className="forms-pending" role="status" aria-label={wards.length ? 'استمارات تحتاج متابعة' : 'استمارة صرف المضادات تحتاج متابعة'}>
     {wards.length > 0 && <>
       <p className="forms-pending-head"><Glyph icon="warn" /><strong>{formsWord(total)} تحتاج متابعة اليوم</strong><small>لم تُرسل إلى نموذج الوزارة أو ينقصها شيء</small></p>
       <div className="forms-pending-wards">

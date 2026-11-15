@@ -50,7 +50,7 @@ export default function WardPickerScreen({
       </div>
       {today && <div className="date-chip"><Glyph icon="today" /><span>اليوم</span><strong>{today}</strong></div>}
     </div>
-    <FormsPendingNote pending={formsPending} abx={abxPending} floor={floor.number} onOpenWard={onOpenWard} onOpenAbx={onOpenAbx} />
+    <FormsPendingNote pending={formsPending} floor={floor.number} onOpenWard={onOpenWard} />
     <div className="location-grid">{floor.wards.map((ward) => {
       const started = startedWards.has(ward)
       const pending = pendingByWard.get(ward)
@@ -62,6 +62,8 @@ export default function WardPickerScreen({
         <span className="arrow"><ChevronStart /></span>
       </button>
     })}</div>
+    {/* The dispensing line lands a second or two after the page (its own request): under the cards, so it never moves one under a finger. */}
+    <FormsPendingNote abx={abxPending} floor={floor.number} onOpenAbx={onOpenAbx} />
     <div className="ward-tools">
       <button type="button" className="tool-link" onClick={onOpenAlbuminFollowUp}>
         <span className="tool-link-text">متابعة الالبومين</span><span className="arrow"><ChevronStart /></span>
