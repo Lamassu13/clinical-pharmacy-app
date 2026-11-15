@@ -4,6 +4,7 @@ import { Glyph } from '../components/ToolbarIcons.jsx'
 import PatientSearch from '../components/PatientSearch.jsx'
 import LongAntibioticPatients from '../components/LongAntibioticPatients.jsx'
 import FormsPendingNote from '../components/FormsPendingNote.jsx'
+import useAbxPending from '../hooks/useAbxPending.js'
 import { wardAttention } from '../helpers.js'
 
 // The floor/special-ward grid. `floors` / `specialWards` arrive already narrowed to what this
@@ -35,6 +36,8 @@ export default function FloorPickerScreen({
     </button>
   )
 
+  // A manager's own-scope answer is always empty: not asked.
+  const abxPending = useAbxPending({ enabled: !isManager, isExpired })
   const nothingAssigned = !isManager && floors.length === 0 && specialWards.length === 0
 
   return <section className="dashboard">
@@ -51,7 +54,7 @@ export default function FloorPickerScreen({
       </button>
     )}
 
-    <FormsPendingNote pending={dashboard?.formsPending} onOpenWard={onOpenWard} onOpenAbx={onOpenAbx} />
+    <FormsPendingNote pending={dashboard?.formsPending} abx={abxPending} onOpenWard={onOpenWard} onOpenAbx={onOpenAbx} />
     {isManager && <LongAntibioticPatients date={selectedDate} isExpired={isExpired} />}
     {isManager && <PatientSearch date={selectedDate} onOpen={onOpen} isExpired={isExpired} />}
 
