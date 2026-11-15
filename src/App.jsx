@@ -955,7 +955,8 @@ function App() {
   const inSteps = Boolean(selected) && (selected.slot || 'main') === 'main' && stepsFor(selected.floor).some((step) => step.key === selected.mode)
   const requestCounts = useRequestCounts({ ward: selected ? (inSteps || selected.hub ? selected : null) : wardHub, selectedDate, isOnline, isExpired, refreshKey: selected?.mode ?? null })
   // The dispensing form's tile in «مواقف القسم»: read from its list while another form is shown; its own screen reports its live numbers.
-  const abxCounts = useRequestCounts({ ward: selected?.hub && selected.mode !== 'antibiotic-forms' ? selected : null, selectedDate, isOnline, isExpired, refreshKey: selected?.mode ?? null, path: 'antibiotic-forms', read: abxListCounts })
+  // Today only (a past day is a cold read of the course engine, and not an alert); nothing on the other forms' screens changes it.
+  const abxCounts = useRequestCounts({ ward: selected?.hub && selected.mode !== 'antibiotic-forms' && dateIsToday ? selected : null, selectedDate, isOnline, isExpired, refreshKey: null, path: 'antibiotic-forms', read: abxListCounts })
   const [abxLive, setAbxLive] = useState(null)
   // The chart's «اكتمل» for the steps bar on the other screens (this session's knowledge only).
   useEffect(() => {

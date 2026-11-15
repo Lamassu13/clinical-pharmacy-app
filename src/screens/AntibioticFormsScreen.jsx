@@ -63,7 +63,9 @@ export default function AntibioticFormsScreen({ hub, header, footer, wardLabel, 
     ...data.manual.map((form) => ({ patientKey: `form:${form.id}`, name: form.name, patientId: form.patientId, candidate: null, form, drugs: form.drugs, manual: true, inChart: true })),
   ] : []), [data])
   // The list's numbers for the «مواقف القسم» tile, kept with the ward and day they are of (a save or delete shows at once).
-  useEffect(() => { if (data) onCounts?.({ key: `${wardKey}|${data.date}`, counts: abxListCounts(data) }) }, [data, wardKey, onCounts])
+  // Not from a copy kept on this device (the server could not be reached), and none once the screen closes.
+  useEffect(() => { if (data && !stale) onCounts?.({ key: `${wardKey}|${data.date}`, counts: abxListCounts(data) }) }, [data, stale, wardKey, onCounts])
+  useEffect(() => () => onCounts?.(null), [onCounts])
   const waiting = new Set(userId == null ? [] : pendingWrites(userId).map((entry) => entry.key))
   const active = FILTERS.find((item) => item.key === filter)
   const shown = items.filter(active.match)

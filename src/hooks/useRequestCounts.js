@@ -15,7 +15,7 @@ export default function useRequestCounts({ ward, selectedDate, isOnline, isExpir
     let cancelled = false
     const params = new URLSearchParams({ floor: ward.floor || '', ward: ward.ward, date: selectedDate })
     fetch(`${apiUrl}/${path}?${params}`, { credentials: 'include' })
-      .then((response) => { isExpired(response); return response.ok ? response.json() : null })
+      .then((response) => { isExpired(response); return response.ok && response.headers.get('x-from-cache') !== '1' ? response.json() : null })
       .then((result) => { if (!cancelled && result) setLoaded({ key, counts: read(result) }) })
       .catch(() => {})
     return () => { cancelled = true }
