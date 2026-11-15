@@ -255,18 +255,19 @@ test('dashboard: a floor user gets their own wards’ forms still to follow up t
   await form(mine, { kind: 'ivig', date: '2000-01-01', name: 'قديمة', patientId: '5' })
 
   const own = (await mine.get(`/api/dashboard?date=${today}`)).body.formsPending
-  assert.deepEqual(own, { total: 2, wards: [{ floor: FLOOR, ward: WARD, n: 2 }], abx: [] })
-  assert.deepEqual((await other.get(`/api/dashboard?date=${today}`)).body.formsPending, { total: 1, wards: [{ floor: OTHER.floor, ward: OTHER.ward, n: 1 }], abx: [] })
+  assert.deepEqual(own, { total: 2, wards: [{ floor: FLOOR, ward: WARD, n: 2 }] })
+  assert.equal(Object.hasOwn(own, 'abx'), false) // the dispensing count is its own request (/pending-abx)
+  assert.deepEqual((await other.get(`/api/dashboard?date=${today}`)).body.formsPending, { total: 1, wards: [{ floor: OTHER.floor, ward: OTHER.ward, n: 1 }] })
   // A manager's answer lists every ward's.
-  assert.deepEqual((await manager.get(`/api/dashboard?date=${today}`)).body.formsPending, { total: 3, wards: [{ floor: FLOOR, ward: WARD, n: 2 }, { floor: OTHER.floor, ward: OTHER.ward, n: 1 }], abx: [] })
+  assert.deepEqual((await manager.get(`/api/dashboard?date=${today}`)).body.formsPending, { total: 3, wards: [{ floor: FLOOR, ward: WARD, n: 2 }, { floor: OTHER.floor, ward: OTHER.ward, n: 1 }] })
   // A user with no assignment has nothing pending.
   const nobody = await loginAs({ role: 'user' })
-  assert.deepEqual((await nobody.get(`/api/dashboard?date=${today}`)).body.formsPending, { total: 0, wards: [], abx: [] })
+  assert.deepEqual((await nobody.get(`/api/dashboard?date=${today}`)).body.formsPending, { total: 0, wards: [] })
   // One floor's own count, for whoever may open that floor: a manager any floor, a floor user theirs only.
   const pending = (client, floor, date = today) => client.get(`/api/drug-requests/pending?floor=${floor}&date=${date}`)
   assert.deepEqual((await pending(manager, FLOOR)).body, own)
-  assert.deepEqual((await pending(manager, OTHER.floor)).body, { total: 1, wards: [{ floor: OTHER.floor, ward: OTHER.ward, n: 1 }], abx: [] })
-  assert.deepEqual((await pending(manager, 3)).body, { total: 0, wards: [], abx: [] })
+  assert.deepEqual((await pending(manager, OTHER.floor)).body, { total: 1, wards: [{ floor: OTHER.floor, ward: OTHER.ward, n: 1 }] })
+  assert.deepEqual((await pending(manager, 3)).body, { total: 0, wards: [] })
   assert.deepEqual((await pending(mine, FLOOR)).body, own)
   assert.equal((await pending(mine, OTHER.floor)).status, 403)
   assert.equal((await pending(manager, 99)).status, 400)
@@ -290,7 +291,7 @@ test('albumin «Not indicated»: not sent to Google, not an alert, not a follow-
   const counts = (await pharmacist.get(`/api/drug-requests/counts?floor=${FLOOR}&ward=${encodeURIComponent(WARD)}&date=${today}`)).body
   assert.deepEqual([counts.albumin, counts.attention.albumin], [2, 1]) // both are forms; only the indicated one (unsent) needs following up
   assert.equal(counts.notIndicated.albumin, 1) // what «مواقف القسم» takes off its albumin count
-  assert.deepEqual((await pharmacist.get(`/api/dashboard?date=${today}`)).body.formsPending, { total: 1, wards: [{ floor: FLOOR, ward: WARD, n: 1 }], abx: [] })
+  assert.deepEqual((await pharmacist.get(`/api/dashboard?date=${today}`)).body.formsPending, { total: 1, wards: [{ floor: FLOOR, ward: WARD, n: 1 }] })
   assert.equal((await manager.get(`/api/dashboard?date=${today}`)).body.formsToSend, 1)
   assert.deepEqual((await manager.get(`/api/drug-requests/followup?from=${today}&to=${today}`)).body.rows.map((row) => row.name), ['مستطبّة'])
   assert.deepEqual([needsFollowUp('albumin', { ...not, fields: not.fields }), formProblems('albumin', not)], [false, []])
