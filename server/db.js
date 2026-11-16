@@ -1,10 +1,16 @@
 import dns from 'node:dns'
+import net from 'node:net'
 import pg from 'pg'
 import 'dotenv/config'
 
 // Render has no outbound IPv6 route: a host that resolves to an IPv6 address first fails with
 // ENETUNREACH on port 5432. Try IPv4 first; nothing changes where IPv6 works.
 dns.setDefaultResultOrder('ipv4first')
+// Node tries the host's addresses in turn and gives each only 250 ms to connect. On the server's tenth of a core a busy moment holds
+// the event loop longer than that, so the timer fired before the finished connect was even looked at: every address "timed out"
+// (AggregateError [ETIMEDOUT] in the log, a 500 for whoever asked). 3 s an address: Neon's three IPv4 addresses fit inside the
+// pool's 10 s below (the IPv6 ones in between fail at once here). Process-wide, so outbound fetches get it too.
+net.setDefaultAutoSelectFamilyAttemptTimeout(3000)
 
 const { Pool } = pg
 

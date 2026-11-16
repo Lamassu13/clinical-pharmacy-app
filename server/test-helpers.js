@@ -7,6 +7,7 @@ import { medicineCatalogue } from './medicine-catalogue.js'
 import { dashboardRows } from './dashboard-rows.js'
 import { clearCourseRows, clearLongCourses, forgetSavedCharts } from './routes/chart.js'
 import { clearWardPositions } from './routes/ward-positions.js'
+import { clearAbxAttention } from './routes/antibiotic-forms.js'
 import { clearReports } from './routes/reports.js'
 import { dayLockSettings } from './day-lock.js'
 
@@ -45,6 +46,7 @@ export const resetDatabase = async () => {
   clearLongCourses()
   clearWardPositions()
   clearCourseRows()
+  clearAbxAttention()
   clearReports()
   forgetSavedCharts() // chart ids restart from 1 above, so a kept description would belong to another test's chart
 }
