@@ -8,7 +8,6 @@ import {
 } from '../validation.js'
 import { numberToArabicWords } from '../arabic-number.js'
 import { memoizeByKey } from '../cache.js'
-import { FLOORS } from '../../shared/options.js'
 import { buildMeropenemForm, activeCourseDay, monthStart, windowStart, doseText, strengthMg, wardKeyOf, MEROPENEM_SQL_PATTERN } from '../meropenem.js'
 import { antibioticOf } from '../ddd.js'
 import { notifyLater, todayInBaghdad, MANAGER_ROLES } from '../push.js'
@@ -1039,23 +1038,16 @@ export const loadCourseRows = async ({ floor, wardName, chartDate }, { pattern, 
 
 // Reads today's course window for the whole hospital once at start-up, so the first follow-up form a
 // pharmacist opens is not the one that pays for it (a free instance restarts every time it wakes, and
-// the kept rows are in memory). The parts every ward shares first, then each ward's own kept presence alone (one query a ward, one at
-// a time, nothing of today's read): the floor banner counts every ward's «استمارة صرف المضادات» on the first landing, and a cold
-// ward there is a 73-day read. Today's set with every ward kept is the ~48 MB measured above; liveHistory has room for it.
+// the kept rows are in memory). Only the parts every ward shares are kept by this; a ward's own rows
+// are read when it is opened.
 export const warmCourseRows = async () => {
   const started = Date.now()
-  const chartDate = todayInBaghdad()
-  const where = { floor: null, wardName: '', chartDate }
-  const names = await antibioticNames()
+  const where = { floor: null, wardName: '', chartDate: todayInBaghdad() }
   await Promise.all([
     loadCourseRows(where, { pattern: MEROPENEM_SQL_PATTERN }),
-    loadCourseRows(where, { names }),
+    antibioticNames().then((names) => loadCourseRows(where, { names })),
   ])
   console.log(`course cache: warmed in ${Date.now() - started} ms`)
-  const wards = [...FLOORS.flatMap((floor) => floor.wards.map((wardName) => ({ floor: floor.number, wardName }))), ...SPECIAL_WARDS.map((wardName) => ({ floor: null, wardName }))]
-  const keep = keepIn(liveHistory, splitWindow(windowStart(chartDate), chartDate, chartDate).kept)
-  for (const { floor, wardName } of wards) await keep(wardPresenceKey(floor, wardName), wardPresenceLoader(floor, wardName))
-  console.log(`course cache: ${wards.length} wards warmed in ${Date.now() - started} ms`)
 }
 
 // drug key -> its typed course days, for many drugs in one query (a ward's antibiotics, not one query each).

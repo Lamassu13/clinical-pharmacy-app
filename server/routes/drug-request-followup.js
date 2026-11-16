@@ -4,12 +4,9 @@ import { requireAuth, requireManager } from '../auth.js'
 import { checkAll, readHealth, refreshIfStale } from '../google-form-health.js'
 import { isIsoDate, clampInt, canAccessLocation, ALLOWED_FLOORS } from '../validation.js'
 import { readLocation } from './chart.js'
-import { wardAbxAttention } from './antibiotic-forms.js'
-import { todayInBaghdad } from '../push.js'
 import { wardKeyOf } from '../meropenem.js'
 import { DRUG_REQUESTS, cleanFields, cleanTicks } from '../../shared/drug-requests.js'
 import { formProblems, needsFollowUp, GOOGLE_KINDS } from '../../shared/form-problems.js'
-import { FLOORS, SPECIAL_WARDS } from '../../shared/options.js'
 
 const router = express.Router()
 
@@ -180,24 +177,6 @@ export const pendingFormsFor = async (user, date) => {
   return { total: list.reduce((sum, item) => sum + item.n, 0), wards: list }
 }
 
-// The dispensing form's wards needing follow-up: one that fails is left out and logged. { abx: [{ floor, ward, n }], wards }:
-// the patients of the wards with no form yet or an incomplete one, `wards` being how many were read (for the slow-answer log). `viewer` is who
-// is really asking: their day lock decides which forms they can still change. A ward user's are special wards only (a floor ward's name
-// there has no ward of its own, and would make the course read hospital-wide).
-const abxPendingFor = async ({ floor, wards }, date, viewer) => {
-  const places = floor !== null ? (FLOORS.find((item) => item.number === floor)?.wards || []).map((ward) => ({ floor, ward })) : wards.filter((ward) => SPECIAL_WARDS.includes(ward)).map((ward) => ({ floor: null, ward }))
-  if (!places.length) return { abx: [], wards: 0 }
-  // One ward after another: the work is CPU on one thread, so side by side is no faster, and it queued 20-odd queries on the pool at
-  // once — a session lookup behind them waited out the pool's 10 s and failed someone else's request.
-  const counted = []
-  for (const { floor: wardFloor, ward } of places) {
-    try { counted.push({ floor: wardFloor, ward, n: await wardAbxAttention({ floor: wardFloor, wardName: ward, chartDate: date }, viewer) }) } catch (error) {
-      console.error('Antibiotic form count failed:', error?.message || error)
-    }
-  }
-  return { abx: counted.filter((item) => item.n > 0).sort((a, b) => (a.floor ?? 99) - (b.floor ?? 99) || a.ward.localeCompare(b.ward, 'ar')), wards: places.length }
-}
-
 // The same count for one floor, for anyone who may open it: { total, wards }. A manager's floor page asks this — their dashboard
 // answer carries no `formsPending` (it would be every ward of the hospital) and is not asked again inside a floor.
 router.get('/drug-requests/pending', requireAuth, async (request, response) => {
@@ -206,29 +185,6 @@ router.get('/drug-requests/pending', requireAuth, async (request, response) => {
   if (floor === null || !ALLOWED_FLOORS.includes(floor)) return response.status(400).json({ message: 'الطابق غير مسموح' })
   if (!canAccessLocation(request.session.user, floor, null)) return response.status(403).json({ message: 'لا تملك صلاحية لهذا الطابق' })
   response.json(await pendingFormsFor({ assignedFloor: floor }, request.query.date))
-})
-
-// The dispensing form's patients needing follow-up, its own request so the home screen never waits for it (the course read is slow when
-// cold): { abx: [{ floor, ward, n }] }, today only. With `floor`, that floor's wards (the manager's floor page); without, the user's own
-// floor or special wards. A manager's hospital-wide answer stays out, for cost: [].
-router.get('/drug-requests/pending-abx', requireAuth, async (request, response) => {
-  const user = request.session.user
-  if (!isIsoDate(request.query.date)) return response.status(400).json({ message: 'التاريخ مطلوب' })
-  let scope
-  if (request.query.floor !== undefined) {
-    const floor = clampInt(request.query.floor, 2, 10)
-    if (floor === null || !ALLOWED_FLOORS.includes(floor)) return response.status(400).json({ message: 'الطابق غير مسموح' })
-    if (!canAccessLocation(user, floor, null)) return response.status(403).json({ message: 'لا تملك صلاحية لهذا الطابق' })
-    scope = { floor, wards: [] }
-  } else if (isManagerUser(user)) scope = { floor: null, wards: [] }
-  else if (Number.isInteger(user.assignedFloor)) scope = { floor: user.assignedFloor, wards: [] }
-  else scope = { floor: null, wards: Array.isArray(user.assignedWards) ? user.assignedWards : [] }
-  if (request.query.date !== todayInBaghdad()) return response.json({ abx: [] })
-  const started = Date.now()
-  const { abx, wards } = await abxPendingFor(scope, request.query.date, user)
-  const ms = Date.now() - started
-  if (ms > 300) console.warn(`[pending-abx] ${wards} wards took ${ms}ms`)
-  response.json({ abx })
 })
 
 export default router
