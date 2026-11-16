@@ -180,19 +180,21 @@ export const pendingFormsFor = async (user, date) => {
   return { total: list.reduce((sum, item) => sum + item.n, 0), wards: list }
 }
 
-// The dispensing form's wards needing follow-up: the wards in parallel, one that fails is left out and logged. { abx: [{ floor, ward, n }], wards }:
+// The dispensing form's wards needing follow-up: one that fails is left out and logged. { abx: [{ floor, ward, n }], wards }:
 // the patients of the wards with no form yet or an incomplete one, `wards` being how many were read (for the slow-answer log). `viewer` is who
 // is really asking: their day lock decides which forms they can still change. A ward user's are special wards only (a floor ward's name
 // there has no ward of its own, and would make the course read hospital-wide).
 const abxPendingFor = async ({ floor, wards }, date, viewer) => {
   const places = floor !== null ? (FLOORS.find((item) => item.number === floor)?.wards || []).map((ward) => ({ floor, ward })) : wards.filter((ward) => SPECIAL_WARDS.includes(ward)).map((ward) => ({ floor: null, ward }))
   if (!places.length) return { abx: [], wards: 0 }
-  const counted = await Promise.all(places.map(async ({ floor: wardFloor, ward }) => {
-    try { return { floor: wardFloor, ward, n: await wardAbxAttention({ floor: wardFloor, wardName: ward, chartDate: date }, viewer) } } catch (error) {
+  // One ward after another: the work is CPU on one thread, so side by side is no faster, and it queued 20-odd queries on the pool at
+  // once — a session lookup behind them waited out the pool's 10 s and failed someone else's request.
+  const counted = []
+  for (const { floor: wardFloor, ward } of places) {
+    try { counted.push({ floor: wardFloor, ward, n: await wardAbxAttention({ floor: wardFloor, wardName: ward, chartDate: date }, viewer) }) } catch (error) {
       console.error('Antibiotic form count failed:', error?.message || error)
-      return { floor: wardFloor, ward, n: 0 }
     }
-  }))
+  }
   return { abx: counted.filter((item) => item.n > 0).sort((a, b) => (a.floor ?? 99) - (b.floor ?? 99) || a.ward.localeCompare(b.ward, 'ar')), wards: places.length }
 }
 
