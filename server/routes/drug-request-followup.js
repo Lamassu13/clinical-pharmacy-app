@@ -3,13 +3,12 @@ import { query } from '../db.js'
 import { requireAuth, requireManager } from '../auth.js'
 import { checkAll, readHealth, refreshIfStale } from '../google-form-health.js'
 import { isIsoDate, clampInt, canAccessLocation, ALLOWED_FLOORS } from '../validation.js'
-import { readLocation, antibioticNames } from './chart.js'
-import { wardAbxList } from './antibiotic-forms.js'
+import { readLocation } from './chart.js'
+import { wardAbxAttention } from './antibiotic-forms.js'
 import { todayInBaghdad } from '../push.js'
 import { wardKeyOf } from '../meropenem.js'
 import { DRUG_REQUESTS, cleanFields, cleanTicks } from '../../shared/drug-requests.js'
 import { formProblems, needsFollowUp, GOOGLE_KINDS } from '../../shared/form-problems.js'
-import { abxListCounts } from '../../shared/antibiotic-form.js'
 import { FLOORS, SPECIAL_WARDS } from '../../shared/options.js'
 
 const router = express.Router()
@@ -188,9 +187,8 @@ export const pendingFormsFor = async (user, date) => {
 const abxPendingFor = async ({ floor, wards }, date, viewer) => {
   const places = floor !== null ? (FLOORS.find((item) => item.number === floor)?.wards || []).map((ward) => ({ floor, ward })) : wards.filter((ward) => SPECIAL_WARDS.includes(ward)).map((ward) => ({ floor: null, ward }))
   if (!places.length) return { abx: [], wards: 0 }
-  const names = await antibioticNames()
   const counted = await Promise.all(places.map(async ({ floor: wardFloor, ward }) => {
-    try { return { floor: wardFloor, ward, n: abxListCounts(await wardAbxList({ floor: wardFloor, wardName: ward, chartDate: date }, viewer, names)).attention } } catch (error) {
+    try { return { floor: wardFloor, ward, n: await wardAbxAttention({ floor: wardFloor, wardName: ward, chartDate: date }, viewer) } } catch (error) {
       console.error('Antibiotic form count failed:', error?.message || error)
       return { floor: wardFloor, ward, n: 0 }
     }

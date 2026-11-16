@@ -956,6 +956,9 @@ const loadCharted = (start, end) => query(
   [start, end],
 )
 const sortedSet = (values) => [...new Set(values.filter(Boolean))].sort()
+// The kept cells' IDs, worked out once per kept array (the same array until the cache is cleared or expires), not on every form:
+// collecting and sorting them again each time was a seventh of a form's CPU, on a server with a tenth of a core.
+const keptIdsOf = new WeakMap()
 
 // `keepIds`: IDs to follow from other wards although this ward's rows do not carry them (yet) — the
 // patient a «does this need a form?» check asks about, who may have just arrived.
@@ -970,10 +973,12 @@ export const loadCourseRows = async ({ floor, wardName, chartDate }, { pattern, 
   const cellRows = [...keptCells, ...freshCells]
   const idsOf = (rows) => sortedSet(rows.map((row) => row.patient_id))
   const namesOf = (rows) => sortedSet(rows.map((row) => String(row.name).trim().replace(/\s+/g, ' ')))
-  const ids = idsOf(cellRows)
+  let keptIds = keptIdsOf.get(keptCells)
+  if (!keptIds) { keptIds = idsOf(keptCells); keptIdsOf.set(keptCells, keptIds) }
+  const ids = sortedSet([...keptIds, ...freshCells.map((row) => row.patient_id)])
   // allWards (the hospital-wide long-course list): presence is every row carrying a seen ID or a
   // seen name, on any ward, instead of one ward's whole chart.
-  const cellNames = namesOf(cellRows)
+  const cellNames = allWards ? namesOf(cellRows) : []
 
   // Who is on a chart each day: everyone on this ward, plus anyone anywhere carrying an ID that had
   // the drug — "still here without it?" and "turned up on another ward?". The kept days come in
@@ -981,7 +986,6 @@ export const loadCourseRows = async ({ floor, wardName, chartDate }, { pattern, 
   // (shared by every ward's form), and, uncached, the earlier rows of anyone who first had it today
   // (a handful). A row can arrive twice (on this ward and carrying a matched ID); the form collects
   // presence into sets and picks a name's ID by date, so neither the repeat nor the order matters.
-  const keptIds = idsOf(keptCells)
   const keptNames = allWards ? namesOf(keptCells) : []
   const keptIdSet = new Set(keptIds)
   const keptNameSet = new Set(keptNames)

@@ -4,6 +4,7 @@ import app from './index.js'
 import { pool } from './db.js'
 import { startServer, resetDatabase, createUser, ApiClient } from './test-helpers.js'
 import { buildCandidates } from './antibiotic-forms.js'
+import { clearAbxAttention } from './routes/antibiotic-forms.js'
 import { buildMeropenemForm } from './meropenem.js'
 import { todayInBaghdad } from './push.js'
 import { dayLockSettings } from './day-lock.js'
@@ -377,4 +378,9 @@ test('GET /drug-requests/pending-abx lists the ward with a charted antibiotic pa
   assert.equal((await pharmacist.post('/api/antibiotic-forms', body(complete))).status, 201)
   assert.deepEqual(await ask(pharmacist), [])
   assert.deepEqual(await ask(manager, `&floor=${A.floor}`), [])
+  // The count is kept (two minutes): a change made behind the app's back is not seen until it is cleared, as a saved form does.
+  await pool.query('DELETE FROM antibiotic_forms')
+  assert.deepEqual(await ask(pharmacist), [])
+  clearAbxAttention()
+  assert.deepEqual(await ask(pharmacist), one)
 })
