@@ -2570,7 +2570,7 @@ fieldset.day-lock:disabled :is(input, select, textarea, button), .pill-room inpu
   .long-abx > summary::-webkit-details-marker { display: none; }
   .long-abx > summary:active { background: var(--green-100); }
   .long-abx[open] .ward-hub-chevron { transform: rotate(-90deg); }
-  .long-abx strong { flex: 1 1 auto; }
+  .long-abx > summary > strong, .long-abx--note > strong { flex: 1 1 auto; }
   .long-abx--note { flex-wrap: wrap; padding: var(--space-1) var(--space-4); }
   .ward-hub-list .long-abx--note { padding: var(--space-1) var(--space-2); }
   .long-abx--note span { color: var(--text-muted); font-weight: 700; font-size: var(--text-sm); }

@@ -41,12 +41,14 @@ export default function WardPickerScreen({
   // The ward cards come first: they are what this page is for, and every tool below is a step aside from them. Nothing that
   // answers late may move a card under a finger: the line under the heading and each card's status keep their place while the
   // dashboard answer is on its way (the free server sleeps, so that wait is seen), and the forms note lands under the cards.
+  // (With no dashboard answer and no failure, one is on its way for everyone: useDashboardData asks here for whoever holds none.)
+  const subLine = dashboard ? (startedWards.size === 0 ? 'لم تبدأ أي ردهة اليوم' : `بدأت ${startedWards.size} من ${floor.wards.length} ردهات اليوم`)
+    : dashboardError ? 'تعذّر تحميل حالة الردهات' : 'جارٍ تحميل حالة الردهات…'
   return <section className="dashboard ward-picker">
     <div className="section-heading section-heading--date">
       <div>
         <h1>الطابق {floor.number}</h1>
-        <p className="ward-picker-sub">{!dashboard ? (dashboardError ? 'تعذّر تحميل حالة الردهات' : 'جارٍ تحميل حالة الردهات…')
-          : startedWards.size === 0 ? 'لم تبدأ أي ردهة اليوم' : `بدأت ${startedWards.size} من ${floor.wards.length} ردهات اليوم`}</p>
+        <p className="ward-picker-sub">{subLine}</p>
       </div>
       {today && <div className="date-chip"><Glyph icon="today" /><span>اليوم</span><strong>{today}</strong></div>}
     </div>
