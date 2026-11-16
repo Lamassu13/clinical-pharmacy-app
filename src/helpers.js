@@ -789,7 +789,7 @@ export const formsBadge = (counts, kinds) => {
   const total = list.reduce((sum, kind) => sum + (counts?.[kind] || 0), 0)
   return total > 0 ? { tone: 'partial', text: formsWord(total) } : null
 }
-// The dispensing form's list counts (what needs following up): one copy, shared/antibiotic-form.js, also read by the server's floor banner.
+// The dispensing form's list counts (what needs following up): one copy, in shared/antibiotic-form.js.
 export { abxListCounts } from '../shared/antibiotic-form.js'
 // Those counts with the open list's own numbers for its kind (`requests`, null while it loads): a form just added, sent or
 // deleted shows on the step bar and the «مواقف القسم» tabs at once, without asking the server again.
