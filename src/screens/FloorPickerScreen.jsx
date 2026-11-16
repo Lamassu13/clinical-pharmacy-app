@@ -4,14 +4,13 @@ import { Glyph } from '../components/ToolbarIcons.jsx'
 import PatientSearch from '../components/PatientSearch.jsx'
 import LongAntibioticPatients from '../components/LongAntibioticPatients.jsx'
 import FormsPendingNote from '../components/FormsPendingNote.jsx'
-import useAbxPending from '../hooks/useAbxPending.js'
 import { wardAttention } from '../helpers.js'
 
 // The floor/special-ward grid. `floors` / `specialWards` arrive already narrowed to what this
 // user may see (their assignment, or the whole unit for a manager) — no post-paint DOM hiding.
 export default function FloorPickerScreen({
   today, selectedDate, isExpired, floors = [], specialWards = [], resumeDraft, onResume,
-  onPickFloor, onOpen, onOpenWard, onOpenAbx, dashboard, dashboardError,
+  onPickFloor, onOpen, onOpenWard, dashboard, dashboardError,
   announcements, isManager, announcementDraft, setAnnouncementDraft, announcementError, announcementBusy,
   onPostAnnouncement, onEditAnnouncement, onDeleteAnnouncement, onDeleteAllAnnouncements,
 }) {
@@ -36,8 +35,6 @@ export default function FloorPickerScreen({
     </button>
   )
 
-  // A manager's own-scope answer is always empty: not asked.
-  const abxPending = useAbxPending({ enabled: !isManager, isExpired })
   const nothingAssigned = !isManager && floors.length === 0 && specialWards.length === 0
 
   return <section className="dashboard">
@@ -80,8 +77,6 @@ export default function FloorPickerScreen({
         </button>
       })}
     </div>
-    {/* The dispensing line lands a second or two after the page (its own request): under the cards, so it never moves one under a finger. */}
-    <FormsPendingNote abx={abxPending} onOpenAbx={onOpenAbx} />
 
     {/* Managers get announcements here; so does a special-ward-only user, who never opens a
         floor page, where everyone else sees them. */}

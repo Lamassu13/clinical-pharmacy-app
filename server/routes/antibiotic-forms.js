@@ -7,11 +7,10 @@ import { wardKeyOf } from '../meropenem.js'
 import { antibioticOf } from '../ddd.js'
 import { todayInBaghdad } from '../push.js'
 import { DAY_LOCKED, isDayLocked } from '../day-lock.js'
-import { memoizeByKey } from '../cache.js'
 import { recordAudit } from '../audit.js'
 import { buildCandidates, FORM_DAYS } from '../antibiotic-forms.js'
 import { CARRY_DAYS } from '../../shared/drug-requests.js'
-import { cleanForm, missingAnswers, isFinal, OUTCOMES, YES, abxListCounts } from '../../shared/antibiotic-form.js'
+import { cleanForm, missingAnswers, isFinal, OUTCOMES, YES } from '../../shared/antibiotic-form.js'
 
 const router = express.Router()
 
@@ -40,7 +39,7 @@ const openSql = (yes) => `(${OUTCOMES.map((item) => `COALESCE(f.fields->>'${item
 const wardOfKey = (wardKey) => { const [floor, ...ward] = String(wardKey).split('|'); return { floor: floor ? Number(floor) : null, ward: ward.join('|') } }
 
 // The ward's patients on an antibiotic lately, what the charts and request forms say for each, and their saved forms
-// (GET /antibiotic-forms; also read for the floor banner, routes/drug-request-followup.js). `user` decides each form's `editable`.
+// (GET /antibiotic-forms). `user` decides each form's `editable`.
 export async function wardAbxList(location, user) {
   const { floor, wardName, chartDate } = location
   const wardKey = wardKeyOf(floor, wardName)
@@ -67,18 +66,6 @@ export async function wardAbxList(location, user) {
   })
   return { date: chartDate, ...result }
 }
-
-// How many of a ward's patients still need the form — the floor banner's number (routes/drug-request-followup.js), which is the whole
-// list above worked out just to count it: seconds of CPU on the server's tenth of a core, asked on every landing on the floors screen
-// and again on the floor's page. So one working-out is shared by everyone asking at once and kept for two minutes; a saved or deleted
-// form clears it, so a pharmacist who fills one sees the number drop at once. The key carries what the answer depends on: the day,
-// the ward, and whether a closed form still counts for this user (isDayLocked: a manager's are never locked). The kept loader holds
-// the first asker's arguments for good, so nothing that changes (the antibiotic names) is passed in: each working-out reads its own.
-// ponytail: a dose typed on today's chart can take up to the two minutes to show in the banner (the ward's own list is always live).
-// Clear it from the chart save too if that ever matters — at the cost of working it out again after every autosave.
-const attention = memoizeByKey(async (location, user) => abxListCounts(await wardAbxList(location, user)).attention, { ttlMs: 120_000, max: 120 })
-export const wardAbxAttention = (location, user) => attention.get(`${location.chartDate}|${wardKeyOf(location.floor, location.wardName)}|${isDayLocked(user, '')}`, location, user)
-export const clearAbxAttention = () => attention.clear()
 
 router.get('/antibiotic-forms', requireAuth, async (request, response) => {
   const user = request.session.user
@@ -148,7 +135,6 @@ router.post('/antibiotic-forms', requireAuth, async (request, response) => {
     throw error
   } finally { client.release() }
   if (!outcome.row) return response.status(outcome.status).json(outcome.body)
-  clearAbxAttention()
   const saved = toForm(outcome.row, user)
   response.status(outcome.status).json({ form: saved, missing: saved.missing })
 })
@@ -162,7 +148,6 @@ router.delete('/antibiotic-forms/:id', requireAuth, async (request, response) =>
   if (!canAccessLocation(user, floor, ward)) return response.status(403).json({ message: 'لا تملك صلاحية لهذه الردهة' })
   if (lockedFor(user, row)) return refuse(response, { status: 403, ...DAY_LOCKED })
   await query('DELETE FROM antibiotic_forms WHERE id = $1', [id])
-  clearAbxAttention()
   response.json({ ok: true })
 })
 

@@ -4,7 +4,6 @@ import app from './index.js'
 import { pool } from './db.js'
 import { startServer, resetDatabase, createUser, ApiClient } from './test-helpers.js'
 import { buildCandidates } from './antibiotic-forms.js'
-import { clearAbxAttention } from './routes/antibiotic-forms.js'
 import { buildMeropenemForm } from './meropenem.js'
 import { todayInBaghdad } from './push.js'
 import { dayLockSettings } from './day-lock.js'
@@ -359,28 +358,4 @@ test('export: managers only, a date range of at most 92 days, audited without na
   assert.equal(await count(), 1) // another floor's purge leaves it
   assert.equal((await admin.post('/api/charts/purge', { from: today, to: today, floors: [5] })).status, 200)
   assert.equal(await count(), 0)
-})
-
-test('GET /drug-requests/pending-abx lists the ward with a charted antibiotic patient who has no complete form, today only, by the user\'s scope or `floor`', async () => {
-  await pool.query('INSERT INTO medicines (name) VALUES ($1)', [MERONEM])
-  const today = todayInBaghdad()
-  const pharmacist = await loginAs({ role: 'user', floor: 5 })
-  const manager = await loginAs({ role: 'admin' })
-  assert.equal((await saveChart(pharmacist, today, [ali()])).status, 200)
-  const ask = async (client, query = '', date = today) => (await client.get(`/api/drug-requests/pending-abx?date=${date}${query}`)).body.abx
-  const one = [{ floor: A.floor, ward: A.ward, n: 1 }]
-  assert.deepEqual(await ask(pharmacist), one)
-  assert.deepEqual(await ask(manager, `&floor=${A.floor}`), one) // a manager sees it per floor
-  assert.deepEqual(await ask(manager), []) // not hospital-wide
-  assert.deepEqual(await ask(pharmacist, '', '2026-01-01'), []) // a past day is no alert
-  assert.equal((await pharmacist.get(`/api/drug-requests/pending-abx?date=${today}&floor=${A.floor + 1}`)).status, 403)
-  const complete = { fields: { age: '45', department: 'الباطنية', diagnosis: 'CAP', stayDays: '5', allergy: NO, culture: YES, review48: YES, same: YES, stillAdmitted: YES }, drugs: [{ drug: 'meropenem', strength: '1000 mg', injection: YES, frequency: '3', days: '5' }] }
-  assert.equal((await pharmacist.post('/api/antibiotic-forms', body(complete))).status, 201)
-  assert.deepEqual(await ask(pharmacist), [])
-  assert.deepEqual(await ask(manager, `&floor=${A.floor}`), [])
-  // The count is kept (two minutes): a change made behind the app's back is not seen until it is cleared, as a saved form does.
-  await pool.query('DELETE FROM antibiotic_forms')
-  assert.deepEqual(await ask(pharmacist), [])
-  clearAbxAttention()
-  assert.deepEqual(await ask(pharmacist), one)
 })
