@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { apiUrl } from '../constants.js'
 import { isoDate } from '../helpers.js'
 
@@ -12,7 +12,9 @@ export default function useDashboardData({ isLoggedIn, sessionExpired, floor, se
   // re-run the loader effect below.
   const [dashboardError, setDashboardError] = useState(false)
   const [dashboardReloadKey, setDashboardReloadKey] = useState(0)
-  const retryDashboard = useCallback(() => { setDashboardData(null); setDashboardError(false); setDashboardReloadKey((key) => key + 1) }, [])
+  // Whether an answer is held, for the loader below to read without re-running each time one lands.
+  const hasAnswer = useRef(false)
+  const retryDashboard = useCallback(() => { hasAnswer.current = false; setDashboardData(null); setDashboardError(false); setDashboardReloadKey((key) => key + 1) }, [])
 
   // The dashboard aggregates — loaded for the floor-picker landing page and for لوحة التحكم
   // (which hosts the medicines + per-floor patients + daily-trend widgets), not carried along
@@ -21,10 +23,12 @@ export default function useDashboardData({ isLoggedIn, sessionExpired, floor, se
     // Also re-runs when adminView clears, so returning from a screen that changed things
     // (a chart purge, an announcement) lands on fresh numbers rather than the stale set.
     // A manager reaches a floor's ward list through the floors screen, which has just loaded this, and
-    // their answer is the heavy one: not asked again inside a floor. A floor user is put straight on
+    // their answer is the heavy one: not asked again inside a floor — unless they hold none (a reload on
+    // a floor, or a tap on a floor before the answer landed, which drops it): the ward list then showed
+    // no started marks at all, for as long as they stayed. A floor user is put straight on
     // their floor at sign-in (and on a reload), past the floors screen: its request was dropped unread,
     // so their floor page showed no forms alert and no started marks. Theirs is a few rows: ask there too.
-    if (!isLoggedIn || sessionExpired || (floor && isManager) || selected || (adminView && adminView !== 'dashboard')) return undefined
+    if (!isLoggedIn || sessionExpired || (floor && isManager && hasAnswer.current) || selected || (adminView && adminView !== 'dashboard')) return undefined
     let cancelled = false
     const date = isoDate(new Date())
     const rangeQuery = isManager && rangeFrom && rangeTo ? `&rangeFrom=${rangeFrom}&rangeTo=${rangeTo}` : ''
@@ -32,7 +36,7 @@ export default function useDashboardData({ isLoggedIn, sessionExpired, floor, se
       .then((response) => { isExpired(response); return response.ok ? response.json() : null })
       .then((result) => {
         if (cancelled) return
-        if (result) { setDashboardData(result); setDashboardError(false) } else setDashboardError(true)
+        if (result) { hasAnswer.current = true; setDashboardData(result); setDashboardError(false) } else setDashboardError(true)
       })
       .catch(() => { if (!cancelled) setDashboardError(true) })
     return () => { cancelled = true }

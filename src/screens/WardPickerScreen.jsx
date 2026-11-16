@@ -38,38 +38,50 @@ export default function WardPickerScreen({
   const formsPending = isManager ? (floorPending?.floor === floor.number ? floorPending : null) : dashboard?.formsPending
   const pendingByWard = new Map((formsPending?.wards ?? []).filter((item) => item.floor === floor.number).map((item) => [item.ward, item.n]))
 
-  // The ward cards come first: they are what this page is for, and every tool below is a step aside from them. How many have
-  // begun is said in words under the heading (shown once the dashboard answer is in).
+  // The ward cards come first: they are what this page is for, and every tool below is a step aside from them. Nothing that
+  // answers late may move a card under a finger: the line under the heading and each card's status keep their place while the
+  // dashboard answer is on its way (the free server sleeps, so that wait is seen), and the forms note lands under the cards.
+  // (With no dashboard answer and no failure, one is on its way for everyone: useDashboardData asks here for whoever holds none.)
+  const subLine = dashboard ? (startedWards.size === 0 ? 'لم تبدأ أي ردهة اليوم' : `بدأت ${startedWards.size} من ${floor.wards.length} ردهات اليوم`)
+    : dashboardError ? 'تعذّر تحميل حالة الردهات' : 'جارٍ تحميل حالة الردهات…'
   return <section className="dashboard ward-picker">
     <div className="section-heading section-heading--date">
       <div>
         <h1>الطابق {floor.number}</h1>
-        {dashboard && <p className="ward-picker-sub">{startedWards.size === 0 ? 'لم تبدأ أي ردهة اليوم' : `بدأت ${startedWards.size} من ${floor.wards.length} ردهات اليوم`}</p>}
+        <p className="ward-picker-sub">{subLine}</p>
       </div>
       {today && <div className="date-chip"><Glyph icon="today" /><span>اليوم</span><strong>{today}</strong></div>}
     </div>
-    <FormsPendingNote pending={formsPending} floor={floor.number} onOpenWard={onOpenWard} />
     <div className="location-grid">{floor.wards.map((ward) => {
       const started = startedWards.has(ward)
       const pending = pendingByWard.get(ward)
       return <button type="button" className="location-card location-card--link" key={ward} onClick={() => onOpenWard({ floor: floor.number, ward })}>
         <span className="floor-number"><WardGlyph /></span>
-        <span className="location-card-body"><strong>{ward}</strong></span>
-        {pending > 0 && <span className="card-status card-status--pending">{pending} تحتاج متابعة</span>}
-        {dashboard ? <CardStatus started={started} /> : dashboardError && <CardStatus unavailable />}
+        <span className="location-card-body">
+          <strong>{ward}</strong>
+          {/* Under the name, so two pills never squeeze it onto two lines; the status first, as it is always there. */}
+          <span className="ward-card-status">
+            {dashboard ? <CardStatus started={started} /> : dashboardError ? <CardStatus unavailable /> : <span className="card-status card-status--loading" aria-hidden="true" />}
+            {pending > 0 && <span className="card-status card-status--pending">{pending} تحتاج متابعة</span>}
+          </span>
+        </span>
         <span className="arrow"><ChevronStart /></span>
       </button>
     })}</div>
+    <FormsPendingNote pending={formsPending} floor={floor.number} onOpenWard={onOpenWard} />
+    {/* Search first: it is the one tool that ends in a chart. Then the rest as rows of one panel, as on a ward's own page. */}
     <div className="ward-tools">
-      <button type="button" className="tool-link" onClick={onOpenAlbuminFollowUp}>
-        <span className="tool-link-text">متابعة الالبومين</span><span className="arrow"><ChevronStart /></span>
-      </button>
-      {/* The floor's six forms in one screen, the ward chosen there (WardFormsTabs). */}
-      <button type="button" className="tool-link" onClick={onOpenForms}>
-        <span className="tool-link-text">مواقف القسم</span><span className="arrow"><ChevronStart /></span>
-      </button>
-      <LongAntibioticPatients date={selectedDate} floor={floor.number} isExpired={isExpired} />
       <PatientSearch floor={floor.number} date={selectedDate} onOpen={onOpen} isExpired={isExpired} />
+      <ul className="ward-hub-list" role="list">
+        <li><button type="button" className="ward-menu-item" onClick={onOpenAlbuminFollowUp}>
+          <span>متابعة الالبومين</span><span className="arrow" aria-hidden="true"><ChevronStart /></span>
+        </button></li>
+        {/* The floor's six forms in one screen, the ward chosen there (WardFormsTabs). */}
+        <li><button type="button" className="ward-menu-item" onClick={onOpenForms}>
+          <span>مواقف القسم</span><span className="arrow" aria-hidden="true"><ChevronStart /></span>
+        </button></li>
+        <li><LongAntibioticPatients date={selectedDate} floor={floor.number} isExpired={isExpired} /></li>
+      </ul>
     </div>
     {!isManager && <div className="dashboard-announcements">
       <DashboardWidgets

@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
 import { apiUrl } from '../constants.js'
+import { ChevronStart } from './WardGlyph.jsx'
 
 // Every patient whose antibiotic course has run past 14 days as of `date`: hospital-wide on the
 // managers' floor list, or just `floor` on that floor's ward list (everyone with access). The day
 // numbers come from the same course derivation as «متابعة الميروبينيم».
-// It always shows, so it is clear where the list lives: a loading line, «no one», or a retry,
-// then the list.
+// It always shows, so it is clear where the list lives: a loading mark, «no one», or a retry,
+// then the list. A plain row in every state; only the count is amber, so a row with nothing to
+// say yet does not read as a warning. While loading, a placeholder holds the count's place.
 export default function LongAntibioticPatients({ date, floor = null, isExpired }) {
   const [list, setList] = useState(null)
   const [failed, setFailed] = useState(false)
@@ -35,13 +37,14 @@ export default function LongAntibioticPatients({ date, floor = null, isExpired }
     <strong>{title}</strong>
     {refusal ? <span>{refusal}</span> : failed
       ? <span>تعذّر التحميل <button type="button" className="text-button" onClick={() => setAttempt((n) => n + 1)}>إعادة المحاولة</button></span>
-      : <span>جارٍ التحميل…</span>}
+      : <><span className="long-abx-wait" aria-hidden="true" /><span className="sr-only">جارٍ التحميل…</span></>}
   </div>
   if (!list.patients.length) return <div className="long-abx long-abx--note"><strong>{title}</strong><span>لا يوجد مرضى</span></div>
   return <details className="long-abx">
     <summary>
-      <span className="long-abx-count">{list.patients.length}</span>
       <strong>{title}</strong>
+      <span className="long-abx-count">{list.patients.length}</span>
+      <span className="ward-hub-chevron" aria-hidden="true"><ChevronStart /></span>
     </summary>
     <ul className="long-abx-list">
       {list.patients.map((patient) => (
@@ -52,7 +55,7 @@ export default function LongAntibioticPatients({ date, floor = null, isExpired }
               {patient.patientId && <span className="patient-search-id">رقم الطبلة <bdi>{patient.patientId}</bdi></span>}
             </span>
             <span className="long-abx-day">اليوم <b>{patient.day}</b></span>
-            <span className="long-abx-meta"><bdi dir="ltr">{patient.drug}</bdi> · {patient.floor ? `الطابق ${patient.floor} — ` : ''}{patient.ward}</span>
+            <span className="long-abx-meta"><bdi dir="ltr" lang="en">{patient.drug}</bdi> · {patient.floor && !floor ? `الطابق ${patient.floor} — ` : ''}{patient.ward}</span>
           </div>
         </li>
       ))}
