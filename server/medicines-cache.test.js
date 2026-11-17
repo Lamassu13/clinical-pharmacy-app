@@ -48,3 +48,29 @@ test('a pharmacist reads the same list, and an anonymous request is still refuse
   assert.deepEqual(await names(pharmacist), ['Plavix 75mg tab'])
   assert.equal((await new ApiClient(baseUrl).get('/api/medicines')).status, 401)
 })
+
+// The kept antibiotic course rows (routes/chart.js) are emptied by a medicine edit only when it renames an antibiotic:
+// they hold nothing else of a medicine, and emptying them costs the next form a hospital-wide re-read.
+test('a medicine edit empties the kept course rows only when it renames an antibiotic', async () => {
+  const manager = await signedIn('supervisor')
+  const cleared = []
+  const log = console.log
+  console.log = (...args) => { if (String(args[0]).startsWith('course cache: cleared')) cleared.push(args[0]); else log(...args) }
+  try {
+    const add = async (name) => (await manager.post('/api/medicines', { name })).body.medicine.id
+    const paracetamol = await add('Paracetamol 1g Vial')
+    const meronem = await add('Meronem 500gm Vial')
+    const put = async (id, body) => assert.equal((await manager.put(`/api/medicines/${id}`, body)).status, 200)
+    await put(paracetamol, { name: 'Paracetamol 1000mg Vial' }) // not an antibiotic
+    await put(meronem, { arabicName: 'ميرونيم' }) // an antibiotic, but not renamed
+    await put(meronem, { isSupply: false, noThursdayDouble: true })
+    assert.deepEqual(cleared, [])
+    await put(meronem, { name: 'Meronem 1000gm Vial' })
+    assert.deepEqual(cleared, ['course cache: cleared (medicine edit)'])
+    await put(paracetamol, { name: 'Vancomycin 500mg Vial' }) // renamed into an antibiotic
+    assert.equal(cleared.length, 2)
+    const ivig = await add('I.V.I.G 5g') // a request form's drug, not an antibiotic: renamed into its pattern
+    await put(ivig, { name: 'IVIG 5g' })
+    assert.equal(cleared.length, 3)
+  } finally { console.log = log }
+})
