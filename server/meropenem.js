@@ -9,8 +9,9 @@ export const MEROPENEM_SQL_PATTERN = '(meronem|meropenem)'
 
 // How far before the month's first day to look, so a course already running on the 1st keeps
 // its real D-number instead of restarting at D1. 35 days, the owner's choice (2026-11-17, was 60):
-// the longest course they need counted right. A course older than that on the 1st restarts at D1
-// and leaves the "more than 14 days" list. Every course read covers this window hospital-wide on a
+// the longest course they need counted right. A course older than that on the 1st is counted from
+// the window's first day, so its D-number is too low (D36 at the least, on the 1st) and the dispensing
+// form leaves its days and start blank (capped). Every course read covers this window hospital-wide on a
 // tenth of a core, so each day here costs time on every cold read.
 export const LOOKBACK_DAYS = 35
 
