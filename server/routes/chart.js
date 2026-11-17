@@ -10,6 +10,7 @@ import { numberToArabicWords } from '../arabic-number.js'
 import { memoizeByKey } from '../cache.js'
 import { buildMeropenemForm, activeCourseDay, monthStart, windowStart, doseText, strengthMg, wardKeyOf, MEROPENEM_SQL_PATTERN } from '../meropenem.js'
 import { antibioticOf } from '../ddd.js'
+import { DRUG_REQUESTS } from '../../shared/drug-requests.js'
 import { notifyLater, todayInBaghdad, MANAGER_ROLES } from '../push.js'
 import { recordChartChanges } from '../chart-history.js'
 import { recordAudit } from '../audit.js'
@@ -896,13 +897,12 @@ const liveHistory = keepFor(60)
 const pastHistory = keepFor(6)
 // `why` only labels the log line: a cold load a few minutes after a clear is explained by it, one
 // with no clear before it is the 6-hour expiry or a restart.
-// Whether renaming a medicine from `before` to `after` changes the kept rows: a different name, and either one an antibiotic
-// (the rows are only antibiotics', read by name, Meropenem by its pattern) — then the rows carry the old name and must go.
-export const renameTouchesCourses = (before, after) => {
-  if (before === after) return false
-  const meropenem = new RegExp(MEROPENEM_SQL_PATTERN, 'i')
-  return [before, after].some((name) => Boolean(antibioticOf(name)) || meropenem.test(name))
-}
+// Whether renaming a medicine from `before` to `after` changes the kept rows: a different name, and either one read into them —
+// an antibiotic (read by name) or a drug a request form follows (read by its pattern: Meropenem, Tigecycline, Colistin, IVIG,
+// albumin; a rename can move a name into or out of a pattern) — then the rows must go.
+const keptPatterns = Object.values(DRUG_REQUESTS).map(({ sqlPattern }) => new RegExp(sqlPattern, 'i'))
+export const renameTouchesCourses = (before, after) => before !== after
+  && [before, after].some((name) => Boolean(antibioticOf(name)) || keptPatterns.some((pattern) => pattern.test(name)))
 export const clearCourseRows = (why = 'unspecified') => { console.log(`course cache: cleared (${why})`); wardsById = new Map(); liveHistory.clear(); pastHistory.clear() }
 // Ward text (floor, name) is sent once from here, not on every row of a 36-66 day read. Wards are
 // only ever inserted (never renamed or deleted), so an id seen once keeps its text; an unknown id

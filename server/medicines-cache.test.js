@@ -69,5 +69,8 @@ test('a medicine edit empties the kept course rows only when it renames an antib
     assert.deepEqual(cleared, ['course cache: cleared (medicine edit)'])
     await put(paracetamol, { name: 'Vancomycin 500mg Vial' }) // renamed into an antibiotic
     assert.equal(cleared.length, 2)
+    const ivig = await add('I.V.I.G 5g') // a request form's drug, not an antibiotic: renamed into its pattern
+    await put(ivig, { name: 'IVIG 5g' })
+    assert.equal(cleared.length, 3)
   } finally { console.log = log }
 })
