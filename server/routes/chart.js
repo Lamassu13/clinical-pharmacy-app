@@ -896,6 +896,13 @@ const liveHistory = keepFor(60)
 const pastHistory = keepFor(6)
 // `why` only labels the log line: a cold load a few minutes after a clear is explained by it, one
 // with no clear before it is the 6-hour expiry or a restart.
+// Whether renaming a medicine from `before` to `after` changes the kept rows: a different name, and either one an antibiotic
+// (the rows are only antibiotics', read by name, Meropenem by its pattern) — then the rows carry the old name and must go.
+export const renameTouchesCourses = (before, after) => {
+  if (before === after) return false
+  const meropenem = new RegExp(MEROPENEM_SQL_PATTERN, 'i')
+  return [before, after].some((name) => Boolean(antibioticOf(name)) || meropenem.test(name))
+}
 export const clearCourseRows = (why = 'unspecified') => { console.log(`course cache: cleared (${why})`); wardsById = new Map(); liveHistory.clear(); pastHistory.clear() }
 // Ward text (floor, name) is sent once from here, not on every row of a 36-66 day read. Wards are
 // only ever inserted (never renamed or deleted), so an id seen once keeps its text; an unknown id

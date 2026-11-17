@@ -15,7 +15,7 @@ import {
   DOSE_TIMES, USAGE_METHODS, MAX_NOTE_LENGTH, clampInt, isIsoDate, cleanText,
   normalizeMedicineKey, medicineKeySql, SUPPLY_MATCH, SUPPLY_EXCEPT,
 } from './validation.js'
-import chartRoutes, { resolveChartId, readLocation, readWritableLocation, refuse, clearCourseRows, warmCourseRows, saveFailureStatus } from './routes/chart.js'
+import chartRoutes, { resolveChartId, readLocation, readWritableLocation, refuse, clearCourseRows, warmCourseRows, saveFailureStatus, renameTouchesCourses } from './routes/chart.js'
 import treatmentFormsRoutes from './routes/treatment-forms.js'
 import extraPillsRoutes from './routes/extra-pills.js'
 import drugRequestsRoutes from './routes/drug-requests.js'
@@ -269,7 +269,10 @@ app.put('/api/medicines/:id', requireManager, async (request, response) => {
     }
     await client.query('COMMIT')
     medicineCatalogue.invalidate()
-    clearCourseRows('medicine edit')
+    // The kept course rows hold an antibiotic's name and nothing else of a medicine (not its Arabic name or flags), and only
+    // antibiotics' rows: only renaming one changes them. Emptying them for every edit made the next form open re-read the whole
+    // window hospital-wide, seconds of the server's small CPU frozen for everyone, for a fixed Arabic name.
+    if (renameTouchesCourses(existing.rows[0].name, result.rows[0].name)) clearCourseRows('medicine edit')
     // What actually changed — the client sends every field on every edit.
     const before = existing.rows[0]
     const after = result.rows[0]
