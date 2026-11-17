@@ -459,3 +459,9 @@ test('loadOverridesFor: one query groups each drug\'s typed days, oldest first; 
   assert.deepEqual(byDrug.get('vancomycin'), [{ patientKey: 'id:2', date: '2026-11-02', n: 5 }])
   assert.deepEqual(byDrug.get('colistin'), [])
 })
+
+test('windowStart: the course window starts 35 days before the month\'s first day (the owner\'s longest course to count right)', () => {
+  assert.equal(windowStart('2026-11-17'), '2026-09-27')
+  assert.equal(windowStart('2026-11-01'), '2026-09-27')
+  assert.equal(windowStart('2026-03-31'), '2026-01-25')
+})
