@@ -54,7 +54,7 @@ export const FORMS_FROM = '2026-11-15'
 // A follow-up drug as the Google Form spells it; one it does not list keeps its own name.
 export const googleDrugName = (label) => (QUICK_DRUGS.find((item) => item.label.toLowerCase() === String(label).toLowerCase()) || {}).name || label
 
-const FIELD_KEYS = ['age', 'department', 'diagnosis', 'stayDays', 'allergy', 'culture', 'review48', ...CHANGES.map((item) => item.key), ...OUTCOMES.map((item) => item.key), STILL_ADMITTED]
+const FIELD_KEYS = ['age', 'room', 'department', 'diagnosis', 'stayDays', 'allergy', 'culture', 'review48', ...CHANGES.map((item) => item.key), ...OUTCOMES.map((item) => item.key), STILL_ADMITTED]
 const YES_NO_KEYS = ['allergy', 'culture', 'review48', ...CHANGES.map((item) => item.key), ...OUTCOMES.map((item) => item.key), STILL_ADMITTED]
 
 const text = (value, max) => stripInvisible(toEnglish(value)).replace(/\s+/g, ' ').trim().slice(0, max)
@@ -85,6 +85,7 @@ export const cleanForm = (form) => {
   const fields = {}
   FIELD_KEYS.forEach((key) => { fields[key] = YES_NO_KEYS.includes(key) ? choice(sent[key], YES_NO) : '' })
   fields.age = toEnglish(sent.age).replace(/[٫,]/g, '.').replace(/[^\d.]/g, '').slice(0, 6)
+  fields.room = text(sent.room, 20)
   fields.department = choice(sent.department, DEPARTMENTS)
   fields.diagnosis = text(sent.diagnosis, 300)
   const stay = /^(\d{1,3})(\+?)$/.exec(toEnglish(sent.stayDays).trim())
@@ -161,6 +162,7 @@ export const EXPORT_COLUMNS = [
   ...CHANGES.map((item) => ({ key: item.key, header: item.label, width: 11 })),
   ...OUTCOMES.map((item) => ({ key: item.key, header: item.label, width: 11 })),
   { key: 'floor', header: 'الطابق', width: 8 },
+  { key: 'room', header: 'رقم الغرفة', width: 10 },
   { key: 'patientId', header: 'رقم الطبلة', width: 12 },
   { key: 'startDate', header: 'تاريخ بدء المضاد', width: 13 },
   { key: 'stopDate', header: 'تاريخ إيقاف المضاد', width: 13 },
@@ -176,7 +178,7 @@ export const exportRows = (forms) => forms.flatMap((form) => {
     formDate: form.formDate, name: form.name, age: numeric(fields.age), department: fields.department, diagnosis: fields.diagnosis,
     stayDays: numeric(fields.stayDays), allergy: fields.allergy, count: drugs.length, culture: fields.culture, review48: fields.review48,
     ...Object.fromEntries([...CHANGES, ...OUTCOMES].map((item) => [item.key, fields[item.key] || ''])),
-    floor: floorLabel(form.floor, form.ward), patientId: form.patientId, ward: form.floor ? `الطابق ${form.floor} — ${form.ward}` : form.ward,
+    floor: floorLabel(form.floor, form.ward), room: fields.room || '', patientId: form.patientId, ward: form.floor ? `الطابق ${form.floor} — ${form.ward}` : form.ward,
   }
   return (drugs.length ? drugs : [{}]).map((drug) => ({
     ...patient, drug: drug.drug || '', oral: drug.oral || '', injection: drug.injection || '', strength: drug.strength || '',

@@ -31,7 +31,7 @@ const startForm = (entry, lastDepartment) => {
   const { candidate, form } = entry
   if (form) {
     return {
-      name: form.name, patientId: form.patientId, fields: { ...form.fields },
+      name: form.name, patientId: form.patientId, fields: { ...form.fields, room: form.fields.room || candidate?.prefill?.room?.value || '' },
       drugs: form.drugs.map((saved) => {
         const chart = !saved.stop && candidate?.drugs.find((drug) => drug.drug === saved.drug)
         const days = chart && Number(chart.days) > Number(saved.days || 0) ? chart.days : saved.days
@@ -42,7 +42,7 @@ const startForm = (entry, lastDepartment) => {
   const prefill = candidate?.prefill || {}
   return {
     name: candidate?.name || '', patientId: candidate?.patientId || '',
-    fields: { ...cleanForm({}).fields, age: prefill.age?.value || '', diagnosis: prefill.diagnosis?.value || '', stayDays: prefill.stayDays?.value || '', department: lastDepartment || '' },
+    fields: { ...cleanForm({}).fields, age: prefill.age?.value || '', room: prefill.room?.value || '', diagnosis: prefill.diagnosis?.value || '', stayDays: prefill.stayDays?.value || '', department: lastDepartment || '' },
     drugs: (candidate?.drugs || []).map(withId),
   }
 }
@@ -309,10 +309,16 @@ export default function AntibioticFormSheet({ entry, wardLabel, floor, ward, war
               <input dir="ltr" lang="en" autoComplete="off" value={form.fields.diagnosis} onChange={(event) => setField('diagnosis', event.target.value.slice(0, 300))} />
               <Source from={prefill.diagnosis} value={form.fields.diagnosis} />
             </label>
-            <label className="abx-q" data-q="stayDays">فترة الرقود (يوم)
-              <input inputMode="numeric" autoComplete="off" value={form.fields.stayDays} onChange={(event) => setField('stayDays', toEnglishDigits(event.target.value).replace(/[^\d+]/g, '').slice(0, 4))} />
-              <Source from={prefill.stayDays} value={form.fields.stayDays} />
-            </label>
+            <div className="abx-pair">
+              <label className="abx-q">رقم الغرفة
+                <input autoComplete="off" value={form.fields.room} onChange={(event) => setField('room', toEnglishDigits(event.target.value).slice(0, 20))} />
+                <Source from={prefill.room} value={form.fields.room} />
+              </label>
+              <label className="abx-q" data-q="stayDays">فترة الرقود (يوم)
+                <input inputMode="numeric" autoComplete="off" value={form.fields.stayDays} onChange={(event) => setField('stayDays', toEnglishDigits(event.target.value).replace(/[^\d+]/g, '').slice(0, 4))} />
+                <Source from={prefill.stayDays} value={form.fields.stayDays} />
+              </label>
+            </div>
             <YesNo q="allergy" label="الحساسية" value={form.fields.allergy} onChange={(value) => setField('allergy', value)}>
               <Hint hint={hints.allergy} value={form.fields.allergy} onAccept={(value) => setField('allergy', value)} />
             </YesNo>
