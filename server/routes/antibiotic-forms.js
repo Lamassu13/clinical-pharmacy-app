@@ -8,7 +8,7 @@ import { antibioticOf } from '../ddd.js'
 import { todayInBaghdad } from '../push.js'
 import { DAY_LOCKED, isDayLocked } from '../day-lock.js'
 import { recordAudit } from '../audit.js'
-import { buildCandidates, FORM_DAYS } from '../antibiotic-forms.js'
+import { buildCandidates, FORM_DAYS, RECENT_DOSE_DAYS } from '../antibiotic-forms.js'
 import { CARRY_DAYS } from '../../shared/drug-requests.js'
 import { cleanForm, missingAnswers, isFinal, OUTCOMES, YES } from '../../shared/antibiotic-form.js'
 
@@ -47,7 +47,7 @@ export async function wardAbxList(location, user) {
   const drugKeys = [...new Set(rows.cells.map((cell) => antibioticOf(cell.medicine)?.key).filter(Boolean))]
   const overridesByDrug = await loadOverridesFor(drugKeys)
   const ids = [...new Set(rows.cells.map((cell) => cell.patientId).filter(Boolean))]
-  const [requests, forms] = await Promise.all([
+  const [requests, forms, rooms] = await Promise.all([
     query(
       `SELECT id, kind, ward_key, request_date::text AS date, patient_name, patient_id, fields, ticks, note FROM drug_requests
        WHERE request_date BETWEEN $3::date - $4::int AND $3::date AND (ward_key = $1 OR patient_id = ANY($2::text[]))`,
@@ -56,11 +56,23 @@ export async function wardAbxList(location, user) {
     // The ward's open forms however old (a long stay), and the finished ones of the last FORM_DAYS — up to today, not the
     // date asked: a form belongs to a stay, so one begun after that date is still this patient's.
     query(`${SELECT} WHERE f.ward_key = $1 AND (f.form_date >= $2::date - $3::int OR ${openSql('$4')})`, [wardKey, chartDate, FORM_DAYS, YES]),
+    // Each patient's room as the main chart wrote it, newest first (pill_patient_meta, as the receipts list reads it).
+    query(
+      `/* abx forms: rooms */ SELECT btrim(cp.patient_name) AS name, cp.patient_id, pm.room_number
+       FROM daily_charts dc
+       JOIN wards w ON w.id = dc.ward_id
+       JOIN chart_patients cp ON cp.chart_id = dc.id AND btrim(cp.patient_name) <> ''
+       JOIN pill_patient_meta pm ON pm.chart_id = dc.id AND pm.patient_row_number = cp.row_number AND pm.room_number <> ''
+       WHERE w.floor_number IS NOT DISTINCT FROM $1 AND w.name = $2 AND dc.slot = 'main' AND dc.chart_date BETWEEN $3::date - $4::int AND $3::date
+       ORDER BY dc.chart_date DESC`,
+      [floor, wardName, chartDate, RECENT_DOSE_DAYS],
+    ),
   ])
   const result = buildCandidates({
     rows, date: chartDate, overridesByDrug,
     requests: requests.rows.map((row) => ({ id: Number(row.id), kind: row.kind, wardKey: row.ward_key, date: row.date, name: row.patient_name, patientId: row.patient_id, fields: row.fields, ticks: row.ticks, note: row.note })),
     forms: forms.rows.map((row) => toForm(row, user)),
+    rooms: rooms.rows.map((row) => ({ name: row.name, patientId: row.patient_id, room: row.room_number })),
     // (The API tests chart days before the start day; they set ABX_FORMS_FROM. Unset everywhere else.)
     ...(process.env.ABX_FORMS_FROM !== undefined ? { formsFrom: process.env.ABX_FORMS_FROM } : {}),
   })
@@ -106,6 +118,8 @@ router.post('/antibiotic-forms', requireAuth, async (request, response) => {
     const before = target && stored(target)
     // A save that names the form sends its رقم الطبلة as it is (cleared, too); one that does not keeps the stored one.
     const next = target && { ...form, patientId: id ? form.patientId : form.patientId || before.patientId }
+    // A save from a build before the room existed sends no `room`: it keeps the stored one rather than blanking it.
+    if (target && !('room' in (request.body.fields || {}))) next.fields.room = before.fields.room
     if (id && !target) outcome = { status: 404, body: { message: 'الاستمارة غير موجودة — ربما حُذفت' } }
     // Exactly what is stored: a replay, answered as the save it repeats (before the lock: it changes nothing).
     else if (target && JSON.stringify(next) === JSON.stringify(before)) outcome = { status: 200, row: target }

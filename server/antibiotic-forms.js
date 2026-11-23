@@ -56,8 +56,9 @@ const ageOf = (request) => (/\d+(?:\.\d+)?/.exec(toEnglish(request.fields?.age))
 // rows: loadCourseRows for the ward and `date` with every followed antibiotic's names. overridesByDrug: drug key ->
 // typed course days. requests: drug_requests rows ({ id, kind, wardKey, date, name, patientId, fields, ticks, note })
 // of the last CARRY_DAYS, on this ward or carrying one of its patients' IDs. forms: this ward's saved antibiotic forms
-// ({ id, name, patientId, formDate, fields, updatedAt, … }) of the last FORM_DAYS.
-export const buildCandidates = ({ rows, date, overridesByDrug = new Map(), requests = [], forms = [], formsFrom = FORMS_FROM }) => {
+// ({ id, name, patientId, formDate, fields, updatedAt, … }) of the last FORM_DAYS. rooms: { name, patientId, room } rows, each patient's
+// non-empty room on this ward's main chart, newest first (the first match is the prefill).
+export const buildCandidates = ({ rows, date, overridesByDrug = new Map(), requests = [], forms = [], rooms = [], formsFrom = FORMS_FROM }) => {
   const { floor, ward } = rows
   const here = wardKeyOf(floor, ward)
   const since = plusDays(date, -RECENT_DOSE_DAYS)
@@ -154,12 +155,13 @@ export const buildCandidates = ({ rows, date, overridesByDrug = new Map(), reque
     const form = forms.filter((saved) => !used.has(saved.id) && samePatient({ ...saved, floor, ward }, who) && (saved.formDate >= admitted || !isFinal(saved.fields)))
       .sort(latestFirst)[0] || null
     if (form) used.add(form.id)
+    const room = rooms.find((row) => (patient.patientId ? row.patientId === patient.patientId || (!row.patientId && nameKey(row.name) === patient.name) : !row.patientId && nameKey(row.name) === patient.name))
     return {
       key: patient.key, name: patient.name, patientId: patient.patientId, admitted,
       // false = no longer on the ward's chart (discharged, died, moved to another ward): the screen lists them apart.
       inChart: !!latestChart && rows.presence.some((row) => row.date === latestChart && row.floor === floor && row.ward === ward
         && (patient.patientId ? row.patientId === patient.patientId || (!row.patientId && nameKey(row.name) === patient.name) : !row.patientId && nameKey(row.name) === patient.name)),
-      prefill: { age: pick(ageOf), diagnosis: pick(diagnosisOf), stayDays: { value: stay.capped ? `${stay.days}+` : String(stay.days), source: 'الجارت' } },
+      prefill: { age: pick(ageOf), diagnosis: pick(diagnosisOf), stayDays: { value: stay.capped ? `${stay.days}+` : String(stay.days), source: 'الجارت' }, room: room ? { value: room.room, source: 'الجارت' } : null },
       hints: { allergy: hint(allergyHint), culture: hint(cultureHint) },
       drugs: patient.drugs,
       form,

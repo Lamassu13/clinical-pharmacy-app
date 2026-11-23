@@ -163,6 +163,13 @@ test('candidates: age and diagnosis from the request forms; allergy and culture 
   assert.equal(lastDepartment, 'الجراحة')
 })
 
+test('candidates: the room comes from the newest matching chart row, by ID or by name; none otherwise', () => {
+  const rooms = [{ name: 'علي', patientId: '123', room: '12' }, { name: 'علي', patientId: '123', room: '9' }, { name: 'سعاد', patientId: '', room: '7' }]
+  const days = [['2026-11-08', [ali(), { name: 'سعاد', id: '', meds: { [MERONEM]: 3 } }, { name: 'منى', id: '', meds: { [MERONEM]: 3 } }]]]
+  const { patients } = candidates('2026-11-08', days, { rooms })
+  assert.deepEqual(patients.map((patient) => [patient.name, patient.prefill.room]), [['سعاد', { value: '7', source: 'الجارت' }], ['علي', { value: '12', source: 'الجارت' }], ['منى', null]])
+})
+
 test('cleanForm: known keys, checked choices, English digits, caps; a chip group once answered is all answered', () => {
   const form = cleanForm({
     name: '  علي   حسن ', patientId: '١٢٣abc', fields: { age: '٤٥', department: 'العظمية', diagnosis: 'x'.repeat(400), stayDays: '٦٠+', allergy: 'yes', increase: YES, death: YES, stillAdmitted: YES, hacked: 1 },
@@ -175,6 +182,7 @@ test('cleanForm: known keys, checked choices, English digits, caps; a chip group
   assert.equal(form.drugs.length, 10)
   assert.deepEqual([form.drugs[0].oral, form.drugs[0].frequency, form.drugs[0].start, form.drugs[0].stop], [NO, '3', '', '2026-11-08'])
   assert.equal(isFinal(form.fields), true)
+  assert.equal(cleanForm({ name: 'x', fields: { room: ' ٣١٢  أ ' } }).fields.room, '312 أ')
   const still = cleanForm({ name: 'x', fields: { stillAdmitted: YES } })
   assert.deepEqual([still.fields.recovery, still.fields.death, isFinal(still.fields)], [NO, NO, false])
 })
@@ -191,7 +199,7 @@ test('missingAnswers: every unanswered Google question, in its order; none on a 
 
 test('exportRows: one row per antibiotic with the patient repeated, numbers numeric, the floor as the Google Form lists it', () => {
   const form = { formDate: '2026-11-10', floor: 5, ward: 'ردهة رجال', ...cleanForm({
-    name: 'علي', patientId: '123', fields: { age: '45', department: 'الباطنية', diagnosis: 'CAP', stayDays: '60+', allergy: NO, culture: YES, review48: YES, add: YES, dischargeOn: YES },
+    name: 'علي', patientId: '123', fields: { age: '45', department: 'الباطنية', diagnosis: 'CAP', stayDays: '60+', room: '١٢', allergy: NO, culture: YES, review48: YES, add: YES, dischargeOn: YES },
     drugs: [{ drug: 'meropenem', strength: '1000 mg', injection: YES, frequency: '3', days: '7', start: '2026-11-04' }, { drug: 'vancomycin', strength: '500 mg', injection: YES, frequency: '2', days: '5' }],
   }) }
   const rows = exportRows([form, { formDate: '2026-11-10', floor: null, ward: 'ردهة العناية المركزة', ...cleanForm({ name: 'سعاد' }) }])
@@ -205,8 +213,9 @@ test('exportRows: one row per antibiotic with the patient repeated, numbers nume
   assert.equal(floorLabel(10, 'x'), '١٠')
   // The Google Form's titles first, in its order, then the app's own columns.
   assert.deepEqual(EXPORT_COLUMNS.slice(0, 3).map((column) => column.header), ['تاريخ الاستمارة', 'اسم المريض', 'العمر'])
-  assert.deepEqual(EXPORT_COLUMNS.slice(-5).map((column) => column.header), ['الطابق', 'رقم الطبلة', 'تاريخ بدء المضاد', 'تاريخ إيقاف المضاد', 'ردهة التطبيق'])
-  assert.equal(EXPORT_COLUMNS.length, 32)
+  assert.deepEqual(EXPORT_COLUMNS.slice(-6).map((column) => column.header), ['الطابق', 'رقم الغرفة', 'رقم الطبلة', 'تاريخ بدء المضاد', 'تاريخ إيقاف المضاد', 'ردهة التطبيق'])
+  assert.equal(EXPORT_COLUMNS.length, 33)
+  assert.deepEqual([rows[0].room, rows[2].room], ['12', ''])
 })
 
 // ---- The API ----
